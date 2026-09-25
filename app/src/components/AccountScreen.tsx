@@ -97,8 +97,21 @@ function LoginView({ login, onLoginField, onLogin, onView, authBusy }: Props) {
   )
 }
 
+/** Why a signup id is rejected, in plain words; null when it's fine (or nothing typed yet). */
+function idProblem(raw: string) {
+  const id = raw.trim()
+  if (!id) return null
+  if (/\s/.test(id)) return '띄어쓰기는 쓸 수 없어요'
+  if (/[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(id)) return '한글은 쓸 수 없어요. 영문과 숫자만 써주세요'
+  if (/[^a-zA-Z0-9]/.test(id)) return '특수문자는 쓸 수 없어요. 영문과 숫자만 써주세요'
+  if (id.length < 4) return `4자 이상이어야 해요 (지금 ${id.length}자)`
+  if (id.length > 20) return `20자까지 쓸 수 있어요 (지금 ${id.length}자)`
+  return null
+}
+
 function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus, onSubmitSignup, authBusy }: Props) {
   const pwOk = s.pw.length >= 8, idOk = ID_PATTERN.test(s.id.trim()), match = s.pw2.length > 0 && s.pw2 === s.pw
+  const idBad = idProblem(s.id)
   const cant = !(s.name.trim() && idOk && pwOk && match && nameAck) || authBusy
   return (
     <>
@@ -117,7 +130,8 @@ function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus
         </label>
         <label style={css('display:flex;flex-direction:column;gap:8px')}>
           <span style={css(fieldLabel)}>아이디</span>
-          <input data-g="l1" className="ring-focus" type="text" autoComplete="username" placeholder="영문, 숫자 4자 이상" value={s.id} onChange={e => onSignup({ id: e.target.value })} style={css(field)} />
+          <input data-g="l1" className={idBad ? 'ring-focus field-bad' : 'ring-focus'} aria-invalid={!!idBad} type="text" autoComplete="username" autoCapitalize="off" placeholder="영문, 숫자 4~20자" value={s.id} onChange={e => onSignup({ id: e.target.value })} style={css(field)} />
+          {s.id.trim().length > 0 && <span style={sx('font-size:13px;line-height:19.5px;font-weight:600', { color: idBad ? '#f04452' : '#03b26c' })}>{idBad ?? '✓ 쓸 수 있는 형식이에요'}</span>}
         </label>
         <label style={css('display:flex;flex-direction:column;gap:8px')}>
           <span style={css(fieldLabel)}>비밀번호</span>
@@ -126,7 +140,7 @@ function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus
         </label>
         <label style={css('display:flex;flex-direction:column;gap:8px')}>
           <span style={css(fieldLabel)}>비밀번호 확인</span>
-          <input data-g="l1" className="ring-focus" type="password" autoComplete="new-password" placeholder="비밀번호를 한 번 더 입력" value={s.pw2} onChange={e => onSignup({ pw2: e.target.value })} style={css(field)} />
+          <input data-g="l1" className={s.pw2.length > 0 && !match ? 'ring-focus field-bad' : 'ring-focus'} type="password" autoComplete="new-password" placeholder="비밀번호를 한 번 더 입력" value={s.pw2} onChange={e => onSignup({ pw2: e.target.value })} style={css(field)} />
           {s.pw2.length > 0 && <span style={sx('font-size:13px;line-height:19.5px;font-weight:600', { color: match ? '#03b26c' : '#f04452' })}>{match ? '✓ 비밀번호가 일치해요' : '비밀번호가 서로 달라요'}</span>}
         </label>
       </div>

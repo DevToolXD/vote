@@ -111,5 +111,6 @@ button:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #3182f6}
 .pr-97:active{transform:scale(0.97)!important}
 .pr-98:active{transform:scale(0.98)!important}
 .ring-focus:focus,.ring-within:focus-within{box-shadow:inset 0 0 0 1.5px #3182f6!important}
+.field-bad,.field-bad:focus{box-shadow:inset 0 0 0 1.5px #f04452!important}
 .av-host{display:block}
 .av-art{display:contents}
