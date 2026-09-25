@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
+import { browserLocalPersistence, browserSessionPersistence, indexedDBLocalPersistence, initializeAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
 const config = {
@@ -15,5 +15,8 @@ const config = {
 export const firebaseConfigured = Object.values(config).every(Boolean)
 
 export const app = firebaseConfigured ? initializeApp(config) : null
-export const auth = app ? getAuth(app) : null
+// Stay logged in across app restarts: IndexedDB first, localStorage where IndexedDB
+// isn't available (some in-app browsers / WebViews). Session-only is listed too so
+// a "로그인 상태 유지" off login is found again after a reload in the same tab.
+export const auth = app ? initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence] }) : null
 export const db = app ? getFirestore(app) : null

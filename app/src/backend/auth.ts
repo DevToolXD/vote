@@ -2,7 +2,11 @@ import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  setPersistence,
   signOut,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  indexedDBLocalPersistence,
   updateProfile,
   type User,
 } from 'firebase/auth'
@@ -40,6 +44,7 @@ async function ensureCandidateDoc(user: User, name: string) {
 
 export async function signUp(name: string, id: string, pw: string) {
   if (!auth || !db) throw new Error('firebase-not-configured')
+  await setPersistence(auth, indexedDBLocalPersistence).catch(() => setPersistence(auth!, browserLocalPersistence))
   let user: User
   try {
     user = (await createUserWithEmailAndPassword(auth, idToEmail(id), pw)).user
@@ -58,10 +63,22 @@ export async function signUp(name: string, id: string, pw: string) {
   return user
 }
 
-export async function logIn(id: string, pw: string) {
+/** `keep` = 로그인 상태 유지: survive closing the app; otherwise only until the tab/app closes. */
+export async function logIn(id: string, pw: string, keep = true) {
   if (!auth) throw new Error('firebase-not-configured')
+  if (keep) await setPersistence(auth, indexedDBLocalPersistence).catch(() => setPersistence(auth!, browserLocalPersistence))
+  else await setPersistence(auth, browserSessionPersistence)
   const { user } = await signInWithEmailAndPassword(auth, idToEmail(id), pw)
   await ensureCandidateDoc(user, user.displayName || id.trim())
+}
+
+// The login id (never the password) is remembered on this device to prefill the form.
+const SAVED_ID = 'vote.savedId'
+export function savedLoginId() {
+  try { return localStorage.getItem(SAVED_ID) ?? '' } catch { return '' }
+}
+export function saveLoginId(id: string) {
+  try { if (id) localStorage.setItem(SAVED_ID, id); else localStorage.removeItem(SAVED_ID) } catch { /* private mode */ }
 }
 
 export async function logOut() {

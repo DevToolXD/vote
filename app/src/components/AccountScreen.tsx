@@ -6,7 +6,7 @@ import { Avatar } from './Avatar'
 import { BackIcon } from './icons'
 
 export type SignupForm = { name: string; id: string; pw: string; pw2: string }
-export type LoginForm = { id: string; pw: string }
+export type LoginForm = { id: string; pw: string; keep: boolean }
 
 type Props = {
   loggedIn: boolean
@@ -84,7 +84,13 @@ function LoginView({ login, onLoginField, onLogin, onView, authBusy }: Props) {
       </div>
       <div style={css('padding:8px 24px 0;display:flex;flex-direction:column;gap:20px')}>
         <label style={css('display:flex;flex-direction:column;gap:8px')}><span style={css(fieldLabel)}>아이디</span><input data-g="l1" className="ring-focus" type="text" autoComplete="username" placeholder="아이디 입력" value={login.id} onChange={e => onLoginField({ id: e.target.value })} style={css(field)} /></label>
-        <label style={css('display:flex;flex-direction:column;gap:8px')}><span style={css(fieldLabel)}>비밀번호</span><input data-g="l1" className="ring-focus" type="password" autoComplete="current-password" placeholder="비밀번호 입력" value={login.pw} onChange={e => onLoginField({ pw: e.target.value })} style={css(field)} /></label>
+        <label style={css('display:flex;flex-direction:column;gap:8px')}><span style={css(fieldLabel)}>비밀번호</span><input data-g="l1" className="ring-focus" type="password" autoComplete="current-password" placeholder="비밀번호 입력" value={login.pw} onChange={e => onLoginField({ pw: e.target.value })} onKeyDown={e => { if (e.key === 'Enter' && !cant) onLogin() }} style={css(field)} /></label>
+        <button type="button" role="checkbox" aria-checked={login.keep} className="pr-dim" onClick={() => onLoginField({ keep: !login.keep })} style={css('align-self:flex-start;display:flex;align-items:center;gap:8px;height:36px;padding:0 4px;margin:-8px 0 0 -4px;border-radius:8px;font-size:15px;font-weight:500;color:#4e5968')}>
+          <span style={sx('width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;transition:background 150ms', { background: login.keep ? '#3182f6' : '#e5e8eb' })}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+          </span>
+          로그인 상태 유지
+        </button>
       </div>
       <div style={css('padding:28px 24px 0;display:flex;flex-direction:column;gap:8px')}>
         <button data-g="primary" className="pr-96" onClick={() => !cant && onLogin()} disabled={cant} style={sx(primaryBtn + ';transition:transform 150ms,opacity 200ms', { opacity: cant ? 0.5 : 1 })}>{authBusy ? '확인 중…' : '로그인'}</button>

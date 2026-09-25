@@ -1,6 +1,6 @@
 import type { User } from 'firebase/auth'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { authErrorMessage, logIn, logOut, onAuthChange, signUp } from './backend/auth'
+import { authErrorMessage, logIn, logOut, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { deleteAccount, grantPoints, isAdminEmail, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, castVote, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { DEFAULT_SEASON, type Season } from './backend/types'
@@ -30,7 +30,7 @@ const db = maybeDb
 type Buy = { kind: ItemKind; key: string; label: string; price: number }
 
 const EMPTY_SIGNUP: SignupForm = { name: '', id: '', pw: '', pw2: '' }
-const EMPTY_LOGIN: LoginForm = { id: '', pw: '' }
+const freshLogin = (): LoginForm => ({ id: savedLoginId(), pw: '', keep: true })
 
 function loadTheme() {
   try { return localStorage.getItem('pv-theme') || 'default' } catch { return 'default' }
@@ -60,7 +60,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const [buy, setBuy] = useState<Buy | null>(null)
 
   const [acctView, setAcctView] = useState<'login' | 'signup'>('login')
-  const [login, setLogin] = useState<LoginForm>(EMPTY_LOGIN)
+  const [login, setLogin] = useState<LoginForm>(freshLogin)
   const [signup, setSignup] = useState<SignupForm>(EMPTY_SIGNUP)
   const [nameAck, setNameAck] = useState(false)
   const [ruleOpen, setRuleOpen] = useState(false)
@@ -189,8 +189,9 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
     if (authBusy) return
     setAuthBusy(true)
     try {
-      await logIn(login.id.trim(), login.pw)
-      setLogin(EMPTY_LOGIN)
+      await logIn(login.id.trim(), login.pw, login.keep)
+      saveLoginId(login.id.trim())
+      setLogin(freshLogin())
       showToast('로그인했어요')
     } catch (e) {
       showToast(authErrorMessage(e))
@@ -210,6 +211,8 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
     setAuthBusy(true)
     try {
       await signUp(signup.name.trim(), signup.id.trim(), signup.pw)
+      saveLoginId(signup.id.trim())
+      setLogin(freshLogin())
       setAcctView('login')
       setSignup(EMPTY_SIGNUP)
       setNameAck(false)
