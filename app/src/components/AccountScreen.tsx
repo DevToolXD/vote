@@ -177,7 +177,7 @@ function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, on
             <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{me.name}님</span>
             {me.gender && <span style={css('height:22px;padding:0 8px;border-radius:9999px;background:#f2f4f6;color:#4e5968;font-size:12px;font-weight:600;display:flex;align-items:center')}>{me.gender}</span>}
           </span>
-          <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{me.rank}위 · {me.scoreLabel}점</span>
+          <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{me.loginId ? `@${me.loginId} · ` : ''}{me.rank}위 · {me.scoreLabel}점</span>
           {hasPhoto && <button data-g="secondary" className="pr-96" onClick={onRemovePhoto} style={css('align-self:flex-start;margin-top:4px;height:28px;padding:0 10px;border-radius:8px;background:#f2f4f6;color:#4e5968;font-size:13px;font-weight:600')}>사진 삭제</button>}
         </span>
       </div>

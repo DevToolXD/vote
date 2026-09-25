@@ -29,9 +29,9 @@ export function skinGeom(s: string, h: number, neg: boolean): SkinGeom | null {
   }
 }
 
-const PRICE: { frame: Record<string, number>; skin: Record<string, number> } = {frame:{neon:120,crown:180,sakura:100,cat:100,stars:140,flame:160,ocean:120,bunny:100,halo:150,devil:150,butterfly:120},skin:{namsan:200,eiffel:250,bigben:250,victory:220}}
+const PRICE: { frame: Record<string, number>; skin: Record<string, number> } = {frame:{neon:60,crown:90,sakura:50,cat:50,stars:70,flame:80,ocean:60,bunny:50,halo:75,devil:75,butterfly:60},skin:{namsan:100,eiffel:125,bigben:125,victory:110}}
 export const priceOf = (kind: ItemKind, k: string) =>
-  k === 'none' ? 0 : kind === 'plate' ? (PRICE.frame[k] || 120) + 30 : (PRICE[kind][k] || 150)
+  k === 'none' ? 0 : kind === 'plate' ? (PRICE.frame[k] || 60) + 15 : (PRICE[kind][k] || 75)
 export const KIND_NAME: Record<ItemKind, string> = { frame: '프레임', plate: '', skin: '막대 스킨' }
 export const THEMES: [string, string][] = [['default','기본'],['glass','글라스']]
 export const fmt = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toLocaleString()

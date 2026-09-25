@@ -139,9 +139,9 @@ service cloud.firestore {
     function photoOk(d) { return d.photoURL is string && d.photoURL.size() < 300000; }
 
     function price(kind, k) {
-      let frame = {'neon': 120, 'crown': 180, 'sakura': 100, 'cat': 100, 'stars': 140, 'flame': 160, 'ocean': 120, 'bunny': 100, 'halo': 150, 'devil': 150, 'butterfly': 120};
-      let skin = {'namsan': 200, 'eiffel': 250, 'bigben': 250, 'victory': 220};
-      return kind == 'frame' ? frame.get(k, 0) : kind == 'plate' ? frame.get(k, 0) + 30 : skin.get(k, 0);
+      let frame = {'neon': 60, 'crown': 90, 'sakura': 50, 'cat': 50, 'stars': 70, 'flame': 80, 'ocean': 60, 'bunny': 50, 'halo': 75, 'devil': 75, 'butterfly': 60};
+      let skin = {'namsan': 100, 'eiffel': 125, 'bigben': 125, 'victory': 110};
+      return kind == 'frame' ? frame.get(k, 0) : kind == 'plate' ? frame.get(k, 0) + 15 : skin.get(k, 0);
     }
     function buyable(kind, added) {
       let frameKeys = ['neon', 'crown', 'sakura', 'cat', 'stars', 'flame', 'ocean', 'bunny', 'halo', 'devil', 'butterfly'];
@@ -183,6 +183,25 @@ service cloud.firestore {
     }
     function upsNow(v, cur) { return v.get('season', 0) == cur ? v.get('ups', 0) : 0; }
     function downsNow(v, cur) { return v.get('season', 0) == cur ? v.get('downs', 0) : 0; }
+
+    // 300P once per account for opening the installed app.
+    function appBonusClaim() {
+      let d = request.resource.data;
+      let o = resource.data;
+      return request.auth.uid == o.ownerUid
+        && d.diff(o).affectedKeys().hasOnly(['appBonus', 'bonus'])
+        && o.get('appBonus', false) == false && d.appBonus == true
+        && d.bonus == o.get('bonus', 0) + 300;
+    }
+    // The login id (shown on profiles): set once, and only to the owner's own id.
+    function ownLoginId(v) { return v is string && request.auth.token.email == v + '@vote.local'; }
+    function loginIdBackfill() {
+      let d = request.resource.data;
+      return request.auth.uid == resource.data.ownerUid
+        && !('loginId' in resource.data)
+        && d.diff(resource.data).affectedKeys().hasOnly(['loginId'])
+        && ownLoginId(d.loginId);
+    }
 
     // Another user's vote moving the tally — must match their vote doc changing in the same write.
     function voteTally(candidateId) {
@@ -246,7 +265,8 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.auth.uid == candidateId
         && !exists(/databases/$(database)/documents/banned/$(candidateId))
-        && request.resource.data.keys().hasOnly(['name', 'ownerUid', 'up', 'down', 'score', 'gender', 'bio', 'photoURL', 'frame', 'plate', 'skin', 'spent', 'owned', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['name', 'ownerUid', 'up', 'down', 'score', 'gender', 'bio', 'photoURL', 'frame', 'plate', 'skin', 'spent', 'owned', 'createdAt', 'loginId'])
+        && (!('loginId' in request.resource.data) || ownLoginId(request.resource.data.loginId))
         && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 20
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.up == 0 && request.resource.data.down == 0 && request.resource.data.score == 0
@@ -256,7 +276,7 @@ service cloud.firestore {
         && request.resource.data.owned == {'frame': ['none'], 'plate': ['none'], 'skin': ['none']};
 
       allow update: if signedIn() && (
-        ownerEdit() || voteTally(candidateId) ||
+        ownerEdit() || voteTally(candidateId) || appBonusClaim() || loginIdBackfill() ||
         adminGrant(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId)
       );
 

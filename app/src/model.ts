@@ -31,7 +31,8 @@ export function waitLabel(ms: number) {
 
 /**
  * `rows` is already ordered by score (the Firestore query does that). Equal scores
- * share a rank (1, 2, 2, 4 …), so a tie never shows one person above the other.
+ * share a rank, and the next score gets the next number (1, 1, 2, 3 …), so ties
+ * at the top still leave a silver and a bronze.
  */
 export function buildPeople(rows: CandidateRow[], myVotes: Record<string, MyVote>, myUid: string | null, now = Date.now()): Person[] {
   let rank = 0
@@ -39,7 +40,7 @@ export function buildPeople(rows: CandidateRow[], myVotes: Record<string, MyVote
     const my = myVotes[d.id]
     const wait = my ? my.nextUpAt - now : 0
     const downWait = my ? my.nextDownAt - now : 0
-    if (i === 0 || d.score !== rows[i - 1].score) rank = i + 1
+    if (i === 0 || d.score !== rows[i - 1].score) rank += 1
     return {
       ...d,
       rank,

@@ -157,6 +157,23 @@ describe('voting', () => {
   })
 })
 
+describe('app bonus and login id', () => {
+  test('300P once for opening the app; login id only your own, set once', async () => {
+    const a = await signUp('a'); const b = await signUp('b')
+    const { claimAppBonus } = await import('../src/backend/candidates')
+    await claimAppBonus(a, 'a')
+    assert.equal((await read(a, 'candidates/a')).bonus, 300)
+    await denied(claimAppBonus(a, 'a'))
+    await denied(updateDoc(doc(b, 'candidates', 'a'), { appBonus: true, bonus: 600 }))
+    await denied(updateDoc(doc(b, 'candidates', 'b'), { appBonus: true, bonus: 900 }))
+    await updateDoc(doc(a, 'candidates', 'a'), { loginId: 'a' })
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { loginId: 'admin' }))
+    await denied(updateDoc(doc(b, 'candidates', 'b'), { loginId: 'admin' }))
+    await denied(setDoc(doc(userDb('c'), 'candidates', 'c'), newCandidateDoc('c', 'x', 'admin')))
+    await setDoc(doc(userDb('d'), 'candidates', 'd'), newCandidateDoc('d', 'x', 'd'))
+  })
+})
+
 describe('profile and shop', () => {
   test('profile edits within limits', async () => {
     const a = await signUp('a')
@@ -168,14 +185,14 @@ describe('profile and shop', () => {
   test('buying needs enough points and the real price; no free items, no refunds', async () => {
     const a = await signUp('a')
     await denied(buyItem(a, 'a', 'frame', 'neon', priceOf('frame', 'neon')))
-    await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 500)
+    await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 250)
     await denied(buyItem(a, 'a', 'frame', 'crown', 1))
     await buyItem(a, 'a', 'frame', 'neon', priceOf('frame', 'neon'))
     const c = await read(a, 'candidates/a')
-    assert.equal(pointsOf(c), 500 - 120); assert.equal(c.frame, 'neon')
+    assert.equal(pointsOf(c), 250 - 60); assert.equal(c.frame, 'neon')
     await buyItem(a, 'a', 'plate', 'crown', priceOf('plate', 'crown'))
-    assert.equal(pointsOf(await read(a, 'candidates/a')), 500 - 120 - 210)
-    // 170 points left: a 250P skin is out of reach, and an owned item can't be charged again.
+    assert.equal(pointsOf(await read(a, 'candidates/a')), 250 - 60 - 105)
+    // 85 points left: a 125P skin is out of reach, and an owned item can't be charged again.
     await denied(buyItem(a, 'a', 'skin', 'eiffel', priceOf('skin', 'eiffel')))
     await denied(buyItem(a, 'a', 'frame', 'neon', priceOf('frame', 'neon')))
     await denied(updateDoc(doc(a, 'candidates', 'a'), { 'owned.frame': ['none', 'neon', 'crown'] }))

@@ -10,7 +10,7 @@ import {
   updateProfile,
   type User,
 } from 'firebase/auth'
-import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { isBanned } from './admin'
 import { newCandidateDoc } from './candidateDoc'
@@ -38,8 +38,11 @@ async function ensureCandidateDoc(user: User, name: string) {
     throw new Error('account-deleted')
   }
   const ref = doc(db, 'candidates', user.uid)
-  if ((await getDoc(ref)).exists()) return
-  await setDoc(ref, newCandidateDoc(user.uid, name))
+  const loginId = user.email?.endsWith('@vote.local') ? user.email.slice(0, -'@vote.local'.length) : undefined
+  const snap = await getDoc(ref)
+  if (!snap.exists()) { await setDoc(ref, newCandidateDoc(user.uid, name, loginId)); return }
+  // Older accounts: add the login id so it shows on their profile.
+  if (loginId && !snap.data().loginId) await updateDoc(ref, { loginId }).catch(() => {})
 }
 
 export async function signUp(name: string, id: string, pw: string) {

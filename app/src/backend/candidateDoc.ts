@@ -1,7 +1,8 @@
 import { serverTimestamp } from 'firebase/firestore'
 
 /** A brand-new leaderboard entry — exactly the shape the candidates create rule accepts. */
-export const newCandidateDoc = (uid: string, name: string) => ({
+export const newCandidateDoc = (uid: string, name: string, loginId?: string) => ({
+  ...(loginId ? { loginId } : {}),
   name,
   ownerUid: uid,
   up: 0,

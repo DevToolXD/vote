@@ -2,7 +2,7 @@ import type { User } from 'firebase/auth'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, logIn, logOut, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
-import { buyItem, castVote, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { buyItem, castVote, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, isUnread, leaveGroup, openDm, sendMessage, setChatMuted, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
 import { DEFAULT_SEASON, type MyVote, type Season } from './backend/types'
@@ -22,6 +22,7 @@ import { Reveal } from './components/Reveal'
 import { css } from './css'
 import { BLUE, fmt, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab } from './data'
 import { db as maybeDb, firebaseConfigured } from './firebase'
+import { isInstalledApp } from './install'
 import { buildPeople } from './model'
 
 export type AppProps = {
@@ -160,6 +161,15 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
   const unreadChats = authUser ? chats.filter(c => isUnread(c, authUser.uid)).length : 0
   const openChat = chats.find(c => c.id === chatId)
   useEffect(() => { if (tab === 'admin' && !isAdmin) setTab('home') }, [tab, isAdmin])
+
+  // 300P for opening the installed app (home-screen app or Galaxy app), once per account.
+  const bonusTried = useRef(false)
+  useEffect(() => {
+    if (!me || me.appBonus || bonusTried.current || !isInstalledApp()) return
+    bonusTried.current = true
+    claimAppBonus(db!, me.id).then(() => showToast('앱으로 들어와서 300P를 받았어요')).catch(() => { bonusTried.current = false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me])
 
   // TOP 3 reveal: once per device, right after a season ends (the reset records the final podium).
   const podium = useMemo(() => {

@@ -103,3 +103,8 @@ export async function buyItem(db: Firestore, myUid: string, kind: ItemKind, key:
 export async function updateMyProfile(db: Firestore, myUid: string, patch: { bio?: string; gender?: string; photoURL?: string }) {
   await updateDoc(doc(db, 'candidates', myUid), patch)
 }
+
+/** 300P, once per account, for opening the installed app (firestore.rules: appBonusClaim). */
+export async function claimAppBonus(db: Firestore, myUid: string) {
+  await updateDoc(doc(db, 'candidates', myUid), { appBonus: true, bonus: increment(300) })
+}
