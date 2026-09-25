@@ -14,6 +14,8 @@ React + TypeScript + Vite build of `project/Popular Vote v2.dc.html` (Claude Des
 2. **Build → Authentication → Get started → Sign-in method → Email/Password → Enable.**
 3. **Build → Firestore Database → Create database** (production mode, any region).
 4. In Firestore's **Rules** tab, paste the contents of `../firestore.rules` (repo root) and **Publish**. This enforces: candidates are public to read, a voter can only edit their own profile fields, vote tallies can only move by one valid step per write, and nobody can vote for themselves.
+
+   **Or automate it:** generate a service account key (Project settings → **Service accounts** → **Generate new private key**), add its full JSON content as a repository secret named `FIREBASE_SERVICE_ACCOUNT`, and `.github/workflows/firestore-rules.yml` will deploy `firestore.rules` automatically — on every push to `main` that touches the file, no console visit needed. It calls the Firebase Rules API directly (`.github/scripts/deploy-firestore-rules.mjs`) rather than the `firebase` CLI, since the CLI's own pre-flight check needs a broader IAM role than the default Admin SDK service account has. Use a key generated just for this (repository secrets are encrypted at rest, but treat a service account key like a password — don't reuse one you've shared elsewhere, and delete/rotate it from that same Service accounts page if you ever suspect it leaked).
 5. **Project settings → General → Your apps → Web (`</>`)** to register a web app, then copy the `firebaseConfig` values.
 6. Add those 6 values as **repository secrets** (Settings → Secrets and variables → Actions → New repository secret) using these exact names — `.github/workflows/publish-app.yml` injects them at build time:
    - `VITE_FIREBASE_API_KEY`
