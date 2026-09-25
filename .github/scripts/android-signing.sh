@@ -10,7 +10,7 @@
 # secret around (or re-encrypt the keystore) before rotating it.
 # Run from app/. Exports KEY_PASS and leaves the keystore at $RUNNER_TEMP/release.keystore.
 set -euo pipefail
-KEY_PASS=$(node -e "const c=require('crypto');const k=JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT).private_key;process.stdout.write(c.createHmac('sha256',k).update('vote-apk-keystore-v1').digest('hex'))")
+export KEY_PASS=$(node -e "const c=require('crypto');const k=JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT).private_key;process.stdout.write(c.createHmac('sha256',k).update('vote-apk-keystore-v1').digest('hex'))")
 echo "::add-mask::$KEY_PASS"
 echo "KEY_PASS=$KEY_PASS" >> "$GITHUB_ENV"
 enc=android-signing/release.keystore.enc
