@@ -1,0 +1,61 @@
+name: Android APK
+
+# Builds the Galaxy/Android app and publishes it as the `android-latest` release,
+# which the site's "앱 설치하기 → 갤럭시" button links to. The app is a Capacitor
+# shell that loads https://devtoolxd.github.io/vote/, so site updates show up in
+# the app without a new APK; this only needs to run when the shell itself changes.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/capacitor.config.json'
+      - 'app/android-res/**'
+      - 'app/package.json'
+      - '.github/scripts/android-branding.sh'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install and build web assets
+        run: npm ci && npm run build
+      - name: Generate Android project
+        run: npx cap add android && bash ../.github/scripts/android-branding.sh && npx cap sync android
+      - name: Build APK
+        working-directory: app/android
+        run: ./gradlew assembleDebug --no-daemon
+      - name: Publish to the android-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk popular-vote.apk
+          if gh release view android-latest >/dev/null 2>&1; then
+            gh release upload android-latest popular-vote.apk --clobber
+          else
+            gh release create android-latest popular-vote.apk --target main \
+              --title "인기투표 안드로이드 앱" \
+              --notes "갤럭시/안드로이드용 설치 파일이에요. 사이트의 '앱 설치하기 → 갤럭시'에서 받을 수 있어요."
+          fi

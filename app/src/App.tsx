@@ -8,7 +8,7 @@ import { BottomNav } from './components/BottomNav'
 import { EditProfile } from './components/EditProfile'
 import { GlassFilters } from './components/GlassFilters'
 import { HomeScreen } from './components/HomeScreen'
-import { BuyDialog, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
+import { BuyDialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
 import { css } from './css'
@@ -64,6 +64,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const [theme, setTheme] = useState(loadTheme)
   const [themeOpen, setThemeOpen] = useState(false)
   const [revealOpen, setRevealOpen] = useState(false)
+  const [installOpen, setInstallOpen] = useState(false)
   const [sound, setSound] = useState(true)
 
   const toastTimer = useRef<ReturnType<typeof setTimeout>>()
@@ -242,7 +243,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
           {tab === 'home' && (
             <HomeScreen
               all={all} loggedIn={loggedIn} query={homeQuery} onQuery={setHomeQuery} onPick={setSheet}
-              goRank={() => go('rank')} goAccount={() => go('acct')} startReveal={() => setRevealOpen(true)} myCount={mine.length}
+              goRank={() => go('rank')} goAccount={() => go('acct')} startReveal={() => setRevealOpen(true)} onInstall={() => setInstallOpen(true)} myCount={mine.length}
             />
           )}
           {tab === 'rank' && (
@@ -338,6 +339,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
         {revealOpen && all.length >= 3 && (
           <Reveal top={all.slice(0, 3)} sound={sound} onToggleSound={() => setSound(s => !s)} onClose={() => setRevealOpen(false)} />
         )}
+        {installOpen && <InstallSheet onClose={() => setInstallOpen(false)} onToast={showToast} />}
         {toast && <Toast msg={toast} />}
       </div>
     </div>

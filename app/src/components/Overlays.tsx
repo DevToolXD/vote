@@ -1,7 +1,9 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { css, sx } from '../css'
 import { BANNERS, MEDALS, THEMES } from '../data'
+import { APK_URL, canPromptInstall, detectPlatform, isIosSafari, onInstallPromptChange, promptInstall } from '../install'
 import type { Person } from '../model'
+import { Segmented } from './AccountScreen'
 import { Avatar } from './Avatar'
 import { CloseIcon } from './icons'
 import { Nameplate } from './Nameplate'
@@ -182,6 +184,87 @@ export function ThemeSheet({ theme, onPick, onClose }: { theme: string; onPick: 
           )
         })}
       </div>
+    </BottomSheet>
+  )
+}
+
+type Device = 'ios' | 'android'
+
+/** Numbered how-to list used on both install tabs. */
+function Steps({ items }: { items: ReactNode[] }) {
+  return (
+    <ol style={css('margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:14px')}>
+      {items.map((it, i) => (
+        <li key={i} style={css('display:flex;gap:12px;align-items:flex-start')}>
+          <span style={css('width:24px;height:24px;flex:none;border-radius:9999px;background:#e8f3ff;color:#1b64da;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px')}>{i + 1}</span>
+          <span style={css('font-size:15px;line-height:24px;color:#333d4b')}>{it}</span>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+const ShareGlyph = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#3182f6" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: '-3px', margin: '0 2px' }}><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5" /><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8" /></svg>
+)
+
+/** "앱 설치하기": iPhone → Safari's 홈 화면에 추가, Galaxy/Android → download the APK (or Chrome's own install prompt). */
+export function InstallSheet({ onClose, onToast }: { onClose: () => void; onToast: (msg: string) => void }) {
+  const [device, setDevice] = useState<Device>(detectPlatform() === 'ios' ? 'ios' : 'android')
+  const [canPrompt, setCanPrompt] = useState(canPromptInstall())
+  useEffect(() => onInstallPromptChange(() => setCanPrompt(canPromptInstall())), [])
+  const inIosNonSafari = detectPlatform() === 'ios' && !isIosSafari()
+
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(location.href); onToast('주소를 복사했어요. Safari에 붙여넣어 열어주세요') } catch { onToast('주소를 복사하지 못했어요') }
+  }
+
+  return (
+    <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.25)" sheetStyle="border-radius:28px 28px 0 0;padding:8px 0 calc(24px + env(safe-area-inset-bottom));animation:sheetUp 420ms cubic-bezier(0.22,1,0.36,1) both;max-height:92vh;overflow-y:auto">
+      {handle}
+      <div style={css('padding:20px 24px 16px;display:flex;flex-direction:column;gap:4px')}>
+        <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>앱으로 설치할까요?</span>
+        <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>홈 화면 아이콘으로 바로 열 수 있어요. 무료예요</span>
+      </div>
+      <div style={css('padding:0 24px 20px')}>
+        <Segmented<Device> options={['ios', 'android']} labels={['아이폰', '갤럭시']} value={device} onPick={setDevice} />
+      </div>
+
+      {device === 'ios' ? (
+        <div style={css('padding:0 24px;display:flex;flex-direction:column;gap:20px')}>
+          {inIosNonSafari && (
+            <div data-g="l1" style={css('padding:14px 16px;border-radius:14px;background:#fff8e6;display:flex;flex-direction:column;gap:10px')}>
+              <span style={css('font-size:14px;line-height:21px;color:#8a5a00')}>지금 앱 안의 브라우저로 열려 있어요. 아이폰은 <b>Safari</b>에서만 설치할 수 있어요</span>
+              <button data-g="secondary" className="pr-96" onClick={copyLink} style={css('align-self:flex-start;height:34px;padding:0 12px;border-radius:10px;background:#ffffff;color:#8a5a00;font-size:14px;font-weight:600')}>주소 복사하기</button>
+            </div>
+          )}
+          <Steps items={[
+            <>Safari로 이 페이지를 열어요</>,
+            <>화면 아래 가운데의 공유 버튼<ShareGlyph />을 눌러요</>,
+            <>메뉴를 올려서 <b>홈 화면에 추가</b>를 눌러요</>,
+            <>오른쪽 위 <b>추가</b>를 누르면 끝이에요</>,
+          ]} />
+          <button data-g="primary" className="pr-96" onClick={onClose} style={css(bigBtn + ';margin-top:4px;background:#3182f6;color:#ffffff;transition:transform 150ms')}>확인</button>
+        </div>
+      ) : (
+        <div style={css('padding:0 24px;display:flex;flex-direction:column;gap:20px')}>
+          <a data-g="primary" className="pr-96" href={APK_URL} style={css(bigBtn + ';display:flex;align-items:center;justify-content:center;gap:8px;background:#3182f6;color:#ffffff;text-decoration:none;transition:transform 150ms')}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v11M7 10.5l5 5 5-5" /><path d="M5 20h14" /></svg>
+            설치 파일(APK) 받기
+          </a>
+          <Steps items={[
+            <>받은 <b>popular-vote.apk</b> 파일을 눌러 열어요</>,
+            <><b>출처를 알 수 없는 앱</b> 안내가 뜨면 <b>설정</b> → <b>이 출처 허용</b>을 켜요</>,
+            <><b>설치</b>를 누르면 끝이에요</>,
+          ]} />
+          <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1')}>스토어 밖에서 받는 앱이라 안내가 떠요. 앱 화면은 이 사이트를 그대로 보여줘서, 업데이트도 자동으로 반영돼요</span>
+          {canPrompt && (
+            <button data-g="secondary" className="pr-96" onClick={async () => { if (await promptInstall()) onClose() }} style={css('height:48px;border-radius:14px;background:#f2f4f6;color:#4e5968;font-size:15px;font-weight:600')}>
+              파일 없이 홈 화면에 바로 추가하기
+            </button>
+          )}
+        </div>
+      )}
     </BottomSheet>
   )
 }

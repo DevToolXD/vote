@@ -202,7 +202,7 @@ function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, on
 /** Grey track with a white pill on the selected option (gender picker, edit tabs). */
 export function Segmented<T extends string>({ options, labels, value, onPick }: { options: T[]; labels?: string[]; value: T; onPick: (v: T) => void }) {
   return (
-    <div style={css('display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border-radius:14px;background:#f2f4f6')}>
+    <div style={{ ...css('display:grid;gap:4px;padding:4px;border-radius:14px;background:#f2f4f6'), gridTemplateColumns: `repeat(${options.length},1fr)` }}>
       {options.map((o, i) => {
         const on = o === value
         return (

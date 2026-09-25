@@ -1,0 +1,9 @@
+{
+  "appId": "io.github.devtoolxd.vote",
+  "appName": "인기투표",
+  "webDir": "dist",
+  "server": {
+    "url": "https://devtoolxd.github.io/vote/",
+    "androidScheme": "https"
+  }
+}

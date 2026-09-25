@@ -1,4 +1,5 @@
 import { css } from '../css'
+import { isInstalledApp } from '../install'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
 import { ChevronRight, SearchIcon } from './icons'
@@ -12,10 +13,11 @@ type Props = {
   goRank: () => void
   goAccount: () => void
   startReveal: () => void
+  onInstall: () => void
   myCount: number
 }
 
-export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAccount, startReveal, myCount }: Props) {
+export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAccount, startReveal, onInstall, myCount }: Props) {
   const q = query.trim()
   // You can't vote for yourself, so you never appear in the pick list.
   const votable = all.filter(d => !d.isMe)
@@ -42,6 +44,17 @@ export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAc
           <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
             <span style={css('font-size:17px;line-height:25.5px;font-weight:700;color:#191f28')}>시즌 BETA TOP 3 발표</span>
             <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>두구두구, 3위부터 1위까지 공개해요</span>
+          </span>
+          <ChevronRight />
+        </button>
+      )}
+
+      {!isInstalledApp() && (
+        <button data-g="l2" className="pr-98" onClick={onInstall} style={css('width:calc(100% - 24px);margin:0 12px 12px;background:#ffffff;border-radius:24px;padding:18px 16px 18px 20px;display:flex;align-items:center;gap:14px;text-align:left;transition:transform 150ms')}>
+          <img src="icons/icon-192.png" alt="" width={48} height={48} style={css('flex:none;border-radius:14px')} />
+          <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
+            <span style={css('font-size:17px;line-height:25.5px;font-weight:700;color:#191f28')}>앱 설치하기</span>
+            <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>아이폰·갤럭시 홈 화면에서 바로 열어요</span>
           </span>
           <ChevronRight />
         </button>

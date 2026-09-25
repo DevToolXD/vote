@@ -30,6 +30,15 @@ React + TypeScript + Vite build of `project/Popular Vote v2.dc.html` (Claude Des
 
 For local dev, copy `.env.example` to `.env.local` and fill in the same values (it's git-ignored).
 
+## Install as an app
+
+The Home tab has an **앱 설치하기** card (hidden when already running as an app) that opens a sheet with two tabs:
+
+- **아이폰**: steps for Safari's 홈 화면에 추가. The site is a PWA (`public/manifest.webmanifest`, icons in `public/icons/`, a no-cache `public/sw.js`), so it opens full-screen with its own icon. Apple doesn't allow installing apps from outside the App Store, so this is the free option on iPhone.
+- **갤럭시**: a download button for `popular-vote.apk` from the `android-latest` GitHub release, plus Chrome's own "add to home screen" when available. `.github/workflows/android-apk.yml` builds it: a Capacitor shell (`capacitor.config.json`) that loads the live site, so site updates reach the app without a new APK. It only rebuilds when the shell changes (config, `android-res/` icons, `package.json`).
+
+The APK is debug-signed with a key generated per CI run, so it's fine for sideloading, but a rebuilt APK can't install over an older one (uninstall first). Since the app shows the live site, that rarely matters. For stable signing (or the Play Store), add a release keystore as a secret and switch the build to `assembleRelease`.
+
 ## Develop
 
 ```bash
