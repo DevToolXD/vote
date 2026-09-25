@@ -17,6 +17,18 @@ const projectId = key.project_id
 const auth = { Authorization: `Bearer ${await getAccessToken(key)}`, 'Content-Type': 'application/json' }
 const api = 'https://firebaserules.googleapis.com/v1'
 
+const releaseName = `projects/${projectId}/releases/cloud.firestore`
+
+// Hourly re-deploys (from the worker) skip when the live rules already match.
+if (process.env.SKIP_IF_SAME) {
+  const cur = await call(`${api}/${releaseName}`, { headers: auth })
+  const curSet = cur.ok ? await call(`${api}/${cur.json.rulesetName}`, { headers: auth }) : null
+  if (curSet?.json?.source?.files?.[0]?.content === rulesContent) {
+    notice(`Firestore rules already up to date (${cur.json.rulesetName}).`)
+    process.exit(0)
+  }
+}
+
 const rs = await call(`${api}/projects/${projectId}/rulesets`, {
   method: 'POST',
   headers: auth,
@@ -24,7 +36,6 @@ const rs = await call(`${api}/projects/${projectId}/rulesets`, {
 })
 if (!rs.ok) fail(`Creating ruleset failed (${rs.status}).`, rs.json)
 
-const releaseName = `projects/${projectId}/releases/cloud.firestore`
 let rel = await call(`${api}/${releaseName}`, {
   method: 'PATCH',
   headers: auth,

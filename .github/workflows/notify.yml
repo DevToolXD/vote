@@ -2,6 +2,8 @@ name: Notifications
 
 # Background worker (.github/scripts/send-notifications.mjs): push notifications
 # for new messages, received votes and 상담 messages, plus admin password resets.
+# It also re-checks the Firestore rules once an hour (deploying only if the live
+# rules differ from firestore.rules on main) and purges deleted accounts' logins.
 #
 # GitHub's scheduled (cron) runs never fire reliably for this repo, so the worker
 # keeps itself alive instead: each run polls Firestore every 10 s for ~25 minutes,
@@ -35,10 +37,23 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            firestore.rules
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      - name: Firestore rules (re-deployed hourly if they differ from main)
+        continue-on-error: true
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ "$(date -u +%M)" -lt 30 ] || [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            SKIP_IF_SAME=1 node .github/scripts/deploy-firestore-rules.mjs
+          else
+            echo "Checked in the first half of the hour."
+          fi
       - name: Remove logins of deleted accounts
         continue-on-error: true
         env:

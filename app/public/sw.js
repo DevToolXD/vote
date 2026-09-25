@@ -16,6 +16,7 @@ self.addEventListener('push', e => {
     body: d.body || '',
     tag: d.tag || undefined,
     renotify: !!d.tag,
+    vibrate: [120, 60, 120],
     icon: 'icons/icon-192.png',
     badge: 'icons/icon-192.png',
     data: { url: d.url || './' },

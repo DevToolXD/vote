@@ -59,17 +59,6 @@ export function AccountScreen(p: Props) {
         </button>
       </div>
       {!p.loggedIn && (p.view === 'login' ? <LoginView {...p} /> : <SignupView {...p} />)}
-      {p.loggedIn && p.isAdmin && (
-        <div style={css('padding:4px 12px 0')}>
-          <button data-g="l2" className="pr-98" onClick={p.goAdmin} style={css('width:100%;padding:16px 16px 16px 20px;border-radius:20px;background:#e8f3ff;display:flex;align-items:center;gap:12px;text-align:left;transition:transform 150ms')}>
-            <span style={css('flex:1;display:flex;flex-direction:column;gap:2px')}>
-              <span style={css('font-size:16px;font-weight:700;color:#1b64da')}>관리자 계정이에요</span>
-              <span style={css('font-size:13px;color:#4e5968')}>시즌 · 포인트 · 계정 관리는 관리 탭에서 해요</span>
-            </span>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1b64da" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg>
-          </button>
-        </div>
-      )}
       {p.loggedIn && (p.me ? <Profile {...p} me={p.me} /> : (
         <div style={css('padding:80px 24px;text-align:center;font-size:15px;color:#6b7684')}>불러오는 중이에요…</div>
       ))}
@@ -161,8 +150,7 @@ function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus
   )
 }
 
-function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, onOpenVote, onLogout, goHome, notifySlot }: Props & { me: Person }) {
-  const hasPhoto = me.photoCss !== 'none'
+function Profile({ me, onPhoto, onBio, onGender, points, mine, onOpenVote, onLogout, goHome, notifySlot }: Props & { me: Person }) {
   const sep = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
   return (
     <>
@@ -180,7 +168,6 @@ function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, on
             {me.gender && <span style={css('height:22px;padding:0 8px;border-radius:9999px;background:#f2f4f6;color:#4e5968;font-size:12px;font-weight:600;display:flex;align-items:center')}>{me.gender}</span>}
           </span>
           <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{me.loginId ? `@${me.loginId} · ` : ''}{me.rank}위 · {me.scoreLabel}점</span>
-          {hasPhoto && <button data-g="secondary" className="pr-96" onClick={onRemovePhoto} style={css('align-self:flex-start;margin-top:4px;height:28px;padding:0 10px;border-radius:8px;background:#f2f4f6;color:#4e5968;font-size:13px;font-weight:600')}>사진 삭제</button>}
         </span>
       </div>
       <div style={css('padding:0 24px 24px;display:flex;flex-direction:column;gap:20px')}>

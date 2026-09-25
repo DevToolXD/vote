@@ -264,7 +264,10 @@ export function ChatRoom(p: RoomProps) {
   // Opening the room (and every new message while it's open) marks it read.
   useEffect(() => { if (isUnread(chat, me.id)) markRead(db, me.id, chat.id).catch(() => {}) }, [db, chat, me.id])
   const toBottom = (smooth = false) => { const el = listRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }) }
-  useLayoutEffect(() => toBottom(firstIds.current !== null && (msgs?.length ?? 0) > firstIds.current.size), [msgs])
+  useLayoutEffect(() => {
+    const last = msgs?.[msgs.length - 1]
+    toBottom(!!last && last.uid !== me.id && firstIds.current !== null && !firstIds.current.has(last.id))
+  }, [msgs]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { toBottom() }, [box.height])
   // Auto-grow the input up to ~5 lines.
   useLayoutEffect(() => { const t = inputRef.current; if (t) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px' } }, [draft])
@@ -276,7 +279,6 @@ export function ChatRoom(p: RoomProps) {
     setDraft('')
     if (!(await onSend(t))) setDraft(t)
     setSending(false)
-    inputRef.current?.focus()
   }
   const pickPhoto = async (f: File) => {
     setSending(true)
@@ -321,8 +323,9 @@ export function ChatRoom(p: RoomProps) {
                 </Fragment>
               )
             }
-            const firstOfRun = newDay || prev.uid !== m.uid || prev.kind === 'system'
-            const lastOfRun = !next || next.uid !== m.uid || next.kind === 'system' || clock(next.at?.toMillis() ?? 0) !== clock(at)
+            // A new run (avatar + name again) when the sender changes or a minute has passed.
+            const firstOfRun = newDay || prev.uid !== m.uid || prev.kind === 'system' || at - (prev.at?.toMillis() ?? 0) > 60_000
+            const lastOfRun = !next || next.uid !== m.uid || next.kind === 'system' || (next.at?.toMillis() ?? 0) - at > 60_000 || clock(next.at?.toMillis() ?? 0) !== clock(at)
             const sender = byId.get(m.uid)
             const bubble = m.kind === 'image'
               ? <ImageBubble db={db} chatId={chat.id} msgId={m.id} onOpen={setViewer} />
@@ -330,7 +333,7 @@ export function ChatRoom(p: RoomProps) {
             return (
               <Fragment key={m.id}>
                 {dayRow}
-                <div data-anim style={sx('display:flex;gap:8px;align-items:flex-end', { justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: firstOfRun ? 12 : 4, animation: isNew ? `${mine ? 'msgInR' : 'msgInL'} 380ms ${EASE} both` : undefined, transformOrigin: mine ? 'bottom right' : 'bottom left' })}>
+                <div data-anim style={sx('display:flex;gap:8px;align-items:flex-end', { justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: firstOfRun ? 12 : 4, animation: isNew ? `${mine ? 'msgInMine' : 'msgInL'} 320ms ${EASE} both` : undefined, transformOrigin: mine ? 'bottom right' : 'bottom left' })}>
                   {!mine && (
                     <span style={css('width:32px;flex:none;align-self:flex-start')}>
                       {firstOfRun && <button className="pr-94" onClick={() => sender && onOpenProfile(sender.id)} aria-label={`${sender?.name ?? ''} 프로필`} style={css('display:block;border-radius:9999px')}><Avatar frame={sender?.frame} photo={sender?.photoCss} size={32} /></button>}
@@ -366,7 +369,7 @@ export function ChatRoom(p: RoomProps) {
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }}
                 style={css(`flex:1;min-width:0;min-height:44px;max-height:120px;resize:none;border:0;outline:none;border-radius:22px;background-color:#f2f4f6;padding:11px 16px;font-size:17px;line-height:22px;color:#191f28;font-family:inherit;transition:background-color 200ms ${EASE}`)}
               />
-              <button className="pr-94" onClick={send} disabled={!draft.trim() || sending} aria-label="보내기" style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;background:#3182f6;display:flex;align-items:center;justify-content:center;transition:opacity 200ms ${EASE},transform 200ms ${EASE}`, { opacity: draft.trim() && !sending ? 1 : 0.3, transform: draft.trim() ? 'scale(1)' : 'scale(0.92)' })}>
+              <button className="pr-94" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} onClick={send} disabled={!draft.trim() || sending} aria-label="보내기" style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;background:#3182f6;display:flex;align-items:center;justify-content:center;transition:opacity 200ms ${EASE},transform 200ms ${EASE}`, { opacity: draft.trim() && !sending ? 1 : 0.3, transform: draft.trim() ? 'scale(1)' : 'scale(0.92)' })}>
                 <PlaneIcon size={20} stroke="#ffffff" width={2.2} />
               </button>
             </div>

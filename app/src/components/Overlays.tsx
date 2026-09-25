@@ -117,7 +117,7 @@ export function ProfileSheet({ d, onClose, onCta, onMessage, canMessage }: { d: 
               {d.msgOff ? '메시지 꺼둠' : '메시지'}
             </button>
           )}
-          <button data-g="primary" className="pr-96" onClick={onCta} style={css('flex:1;min-width:0;height:56px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms')}>{d.isMe ? '내 프로필 꾸미기' : '홈에서 투표하기'}</button>
+          <button data-g="primary" className="pr-96" onClick={onCta} style={css('flex:1;min-width:0;height:56px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms')}>{d.isMe ? '내 프로필 꾸미기' : '투표하기'}</button>
         </div>
       </div>
     </BottomSheet>

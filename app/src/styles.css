@@ -118,6 +118,7 @@ button:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #3182f6}
 .av-art{display:contents}
 /* Messages motion: spring-like ease-out (Toss "quick"/"small"), off for reduced motion. */
 @keyframes msgInR{from{opacity:0;transform:translate(10px,8px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes msgInMine{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
 @keyframes msgInL{from{opacity:0;transform:translate(-10px,8px) scale(.96)}to{opacity:1;transform:none}}
 @keyframes listIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes roomIn{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
@@ -131,3 +132,4 @@ button:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #3182f6}
 .anim-list>*:nth-child(n+8){animation-delay:210ms}
 .skeleton{background:linear-gradient(90deg,#f2f4f6 0,#e8ebee 50%,#f2f4f6 100%);background-size:400px 100%;animation:shimmer 1.2s linear infinite}
 @media (prefers-reduced-motion:reduce){.anim-list>*,[data-anim]{animation:fade 1ms both !important}}
+@keyframes bannerIn{from{transform:translateY(-130%);opacity:0}to{transform:none;opacity:1}}

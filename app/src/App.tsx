@@ -16,6 +16,7 @@ import { GlassFilters } from './components/GlassFilters'
 import { HomeScreen } from './components/HomeScreen'
 import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScreen'
 import { NotifySettings } from './components/NotifySettings'
+import { MessageBanner, type Banner } from './components/MessageBanner'
 import { SupportFlow, SupportRoom } from './components/SupportScreen'
 import { sendSupport, subscribeTickets, type Ticket } from './backend/support'
 import { BuyDialog, Dialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
@@ -99,6 +100,8 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [ticketId, setTicketId] = useState<string | null>(startSupport)
   const [mustChangePw, setMustChangePw] = useState(false)
+  const [banner, setBanner] = useState<Banner | null>(null)
+  const seenLast = useRef<Map<string, number> | null>(null)
   const [newPw, setNewPw] = useState({ a: '', b: '', busy: false })
   const [newChatOpen, setNewChatOpen] = useState(false)
 
@@ -173,6 +176,35 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   const byId = useMemo(() => new Map(all.map(p => [p.id, p])), [all])
   const unreadChats = authUser ? chats.filter(c => isUnread(c, authUser.uid)).length : 0
   const openChat = chats.find(c => c.id === chatId)
+
+  // Message popup while the app is open: a new message from someone else in a chat
+  // that isn't on screen (and isn't muted, and 새 메시지 알림 is on) drops in from the top.
+  useEffect(() => {
+    if (!authUser) { seenLast.current = null; return }
+    const seen = seenLast.current
+    const next = new Map<string, number>()
+    let fresh: typeof chats[number] | undefined
+    for (const c of chats) {
+      const at = c.last?.at?.toMillis() ?? 0
+      next.set(c.id, at)
+      if (!seen || !c.last || c.last.uid === authUser.uid) continue
+      if (at > (seen.get(c.id) ?? 0) && c.id !== chatId && !c.mutes?.[authUser.uid] && (!fresh || at > (fresh.last?.at?.toMillis() ?? 0))) fresh = c
+    }
+    seenLast.current = next
+    if (!fresh || notify.notifyMsg === false) return
+    const sender = byId.get(fresh.last!.uid)
+    const others = fresh.members.filter(m => m !== authUser.uid)
+    const groupTitle = fresh.name || others.map(id => byId.get(id)?.name ?? '').filter(Boolean).join(', ')
+    const text = fresh.last!.text || '사진을 보냈어요'
+    setBanner({
+      key: fresh.id + ':' + (fresh.last!.at?.toMillis() ?? Date.now()),
+      chatId: fresh.id,
+      title: fresh.type === 'group' ? groupTitle || '단톡방' : sender?.name ?? '새 메시지',
+      text: fresh.type === 'group' ? `${sender?.name ?? ''}: ${text}` : text,
+      sender, photo: fresh.type === 'group' ? fresh.photo : undefined,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chats])
   useEffect(() => { if (tab === 'admin' && !isAdmin && authReady) setTab('home') }, [tab, isAdmin, authReady])
   useEffect(() => (isAdmin && db ? subscribeTickets(db, setTickets) : setTickets([])), [isAdmin])
   const openTicket = tickets.find(t => t.id === ticketId)
@@ -559,8 +591,8 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
             onMessage={() => startDm(profilePerson.id)}
             onCta={() => {
               setProfile(null)
-              setChatId(null)
-              if (profilePerson.isMe) { setTab('acct'); setEditOpen(true) } else { setTab('home'); setSheet(profilePerson.id) }
+              // Vote right here (the vote sheet opens over the current tab, e.g. 랭킹).
+              if (profilePerson.isMe) { setChatId(null); setTab('acct'); setEditOpen(true) } else setSheet(profilePerson.id)
             }}
           />
           </div>
@@ -606,6 +638,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
         )}
         {installOpen && <InstallSheet onClose={() => setInstallOpen(false)} onToast={showToast} />}
         {adminBusy && <AdminProgressOverlay label={adminBusy.label} p={adminBusy.p} />}
+        {banner && <MessageBanner banner={banner} onDone={() => setBanner(null)} onOpen={id => { setProfile(null); setSheet(null); setTab('msg'); setChatId(id) }} />}
         {toast && <Toast msg={toast} />}
       </div>
     </div>

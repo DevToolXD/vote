@@ -83,7 +83,10 @@ let sent = 0, dropped = 0
 async function push(uid, { title, body, url, tag }) {
   for (const t of await tokensOf(uid)) {
     const message = t.platform === 'android'
-      ? { token: t.token, notification: { title, body }, data: { url, tag }, android: { priority: 'HIGH', notification: { tag, sound: 'default' } } }
+      ? { token: t.token, notification: { title, body }, data: { url, tag }, android: { priority: 'HIGH', notification: {
+          tag, sound: 'default', channel_id: tag.startsWith('chat-') || tag.startsWith('support-') ? 'messages' : 'votes',
+          notification_priority: 'PRIORITY_MAX', default_vibrate_timings: true, visibility: 'PUBLIC',
+        } } }
       : { token: t.token, data: { title, body, url, tag }, webpush: { headers: { Urgency: 'high', TTL: '86400' } } }
     const r = await call(`${FCM}/v1/projects/${project}/messages:send`, { method: 'POST', headers: await headers(), body: JSON.stringify({ message }) })
     if (r.ok) { sent++; continue }

@@ -45,6 +45,9 @@ async function nativeToken(): Promise<string> {
   let perm = await PushNotifications.checkPermissions()
   if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') perm = await PushNotifications.requestPermissions()
   if (perm.receive !== 'granted') throw new Error('push-permission-denied')
+  // High importance = shows as a heads-up popup like a messenger app, with sound and vibration.
+  await PushNotifications.createChannel({ id: 'messages', name: '메시지', description: '새 메시지', importance: 5, visibility: 1, vibration: true, lights: true }).catch(() => {})
+  await PushNotifications.createChannel({ id: 'votes', name: '받은 투표', description: '받은 추천·비추천', importance: 4, visibility: 1, vibration: true }).catch(() => {})
   return new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('push-register-timeout')), 15000)
     PushNotifications.addListener('registration', t => { clearTimeout(timer); resolve(t.value) })
