@@ -1,0 +1,195 @@
+import type { ReactNode } from 'react'
+import { css, sx } from '../css'
+import { BANNERS, MEDALS, THEMES } from '../data'
+import type { Person } from '../model'
+import { Avatar } from './Avatar'
+import { CloseIcon } from './icons'
+import { Nameplate } from './Nameplate'
+
+const handle = <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
+const bigBtn = 'height:56px;border-radius:16px;font-size:17px;font-weight:600'
+
+/** Dimmed scrim + bottom sheet shell, centred to the app column. */
+function BottomSheet({ onScrim, scrim, sheetStyle, children }: { onScrim: () => void; scrim: string; sheetStyle: string; children: ReactNode }) {
+  return (
+    <>
+      <div data-g="scrim" onClick={onScrim} style={sx('position:fixed;inset:0;z-index:100;animation:fade 200ms ease both', { background: scrim })} />
+      <div style={css('position:fixed;left:0;right:0;bottom:0;z-index:101;display:flex;justify-content:center;pointer-events:none')}>
+        <div data-g="l4" style={css('width:100%;max-width:430px;background:#ffffff;pointer-events:auto;' + sheetStyle)}>{children}</div>
+      </div>
+    </>
+  )
+}
+
+/** Centred modal dialog (real-name rule, purchase). */
+function Dialog({ onScrim, labelledBy, gap, children }: { onScrim: () => void; labelledBy?: string; gap: number; children: ReactNode }) {
+  return (
+    <>
+      <div data-g="scrim" onClick={onScrim} style={css('position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.4);animation:fade 200ms ease both')} />
+      <div style={css('position:fixed;inset:0;z-index:301;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:none')}>
+        <div role="dialog" aria-modal="true" aria-labelledby={labelledBy} data-g="l4" style={sx('width:100%;max-width:340px;background:#ffffff;border-radius:24px;padding:28px 20px 20px;pointer-events:auto;display:flex;flex-direction:column;animation:popIn 360ms cubic-bezier(0.34,1.4,0.64,1) both', { gap })}>
+          {children}
+        </div>
+      </div>
+    </>
+  )
+}
+
+type VoteColors = { up: string; down: string; downWeak: string; downWeakFg: string }
+
+export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin }: { d: Person; loggedIn: boolean; colors: VoteColors; onVote: (dir: 1 | -1) => void; onClose: () => void; onLogin: () => void }) {
+  return (
+    <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle="border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));animation:sheetUp 400ms cubic-bezier(0.22,1,0.36,1) both">
+      {handle}
+      {loggedIn ? (
+        <>
+          <div style={css('padding:24px 24px 0;display:flex;flex-direction:column;gap:4px')}>
+            <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{d.name}님에게 투표할까요?</span>
+            <span style={css('font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684')}>{d.v !== 0 ? '이미 투표했어요. 같은 버튼을 한 번 더 누르면 취소돼요' : `지금 ${d.rank}위 · ${d.scoreLabel}점`}</span>
+          </div>
+          <div style={css('padding:20px 24px 0;display:flex;flex-direction:column;gap:8px')}>
+            <div style={css('display:flex;justify-content:space-between;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums')}>
+              <span style={{ color: colors.up }}>추천 {d.upLabel}</span>
+              <span style={{ color: colors.down }}>비추천 {d.downLabel}</span>
+            </div>
+            <div style={css('height:8px;border-radius:4px;overflow:hidden;display:flex;gap:2px')}>
+              <span style={sx('height:100%;border-radius:4px;transition:width 400ms cubic-bezier(0.22,1,0.36,1)', { width: Math.round(d.upN / (d.upN + d.downN) * 100) + '%', background: colors.up })} />
+              <span style={sx('height:100%;border-radius:4px;flex:1', { background: colors.down })} />
+            </div>
+          </div>
+          <div style={css('padding:24px 20px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
+            <button className="pr-96" onClick={() => onVote(-1)} style={sx(bigBtn + ';transition:transform 150ms,background 200ms', { background: d.v === -1 ? '#f2f4f6' : colors.downWeak, color: d.v === -1 ? '#4e5968' : colors.downWeakFg })}>{d.v === -1 ? '비추천 취소' : '비추천'}</button>
+            <button className="pr-96" onClick={() => onVote(1)} style={sx(bigBtn + ';transition:transform 150ms,background 200ms', { background: d.v === 1 ? '#f2f4f6' : colors.up, color: d.v === 1 ? '#4e5968' : '#ffffff' })}>{d.v === 1 ? '추천 취소' : '추천'}</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={css('padding:24px 24px 0;display:flex;flex-direction:column;gap:4px')}>
+            <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>로그인하면 투표할 수 있어요</span>
+            <span style={css('font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684')}>{d.name}님에게 추천이나 비추천을 남겨보세요</span>
+          </div>
+          <div style={css('padding:24px 20px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
+            <button data-g="secondary" className="pr-96" onClick={onClose} style={css(bigBtn + ';background:#f2f4f6;color:#4e5968;transition:transform 150ms')}>닫기</button>
+            <button data-g="primary" className="pr-96" onClick={onLogin} style={css(bigBtn + ';background:#3182f6;color:#ffffff;transition:transform 150ms')}>로그인하기</button>
+          </div>
+        </>
+      )}
+    </BottomSheet>
+  )
+}
+
+export function ProfileSheet({ d, onClose, onCta }: { d: Person; onClose: () => void; onCta: () => void }) {
+  const medal = MEDALS[d.rank - 1]
+  const stat = (k: string, v: string) => (
+    <div data-g="l1" style={css('padding:14px 16px;border-radius:16px;background:#f9fafb;display:flex;flex-direction:column;gap:2px')}>
+      <span style={css('font-size:12px;color:#6b7684')}>{k}</span>
+      <span style={css('font-size:17px;font-weight:700;color:#191f28;font-variant-numeric:tabular-nums')}>{v}</span>
+    </div>
+  )
+  return (
+    <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.32)" sheetStyle="border-radius:28px 28px 0 0;overflow:hidden;padding-bottom:calc(20px + env(safe-area-inset-bottom));animation:sheetUp 420ms cubic-bezier(0.22,1,0.36,1) both">
+      <div style={sx('position:relative;height:108px', { background: BANNERS[d.frame] || BANNERS.none })}>
+        <div style={css('position:absolute;top:8px;left:50%;margin-left:-18px;width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,0.7)')} />
+        <button className="pr-94" onClick={onClose} aria-label="닫기" style={css('position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,0.28);display:flex;align-items:center;justify-content:center')}><CloseIcon size={18} stroke="#fff" width={2.6} /></button>
+      </div>
+      <div style={css('position:relative;padding:0 24px')}>
+        <div data-g="clear" style={css('position:absolute;top:-52px;left:18px;width:104px;height:104px;border-radius:9999px;background:#ffffff;display:flex;align-items:center;justify-content:center')}>
+          <span style={css('width:88px;height:88px')}><Avatar frame={d.frame} photo={d.photoCss} size={88} /></span>
+        </div>
+        <div style={css('display:flex;justify-content:flex-end;padding-top:12px;min-height:52px')}>
+          <span style={sx('height:30px;padding:0 12px;border-radius:9999px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums', { background: medal ? medal[0] : '#f2f4f6', color: medal ? medal[1] : '#4e5968' })}>{d.rank}위</span>
+        </div>
+        <div style={css('padding-top:8px;height:64px')}>
+          <Nameplate kind={d.plate} person={d.name} sub={d.bio || '아직 소개가 없어요'} frame={d.frame} photo={d.photoCss} showAvatar={false} style={{ width: '100%', height: 56 }} />
+        </div>
+        <div style={css('margin-top:16px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px')}>
+          {stat('점수', d.scoreLabel)}{stat('추천', d.upLabel)}{stat('비추천', d.downLabel)}
+        </div>
+        <button data-g="primary" className="pr-96" onClick={onCta} style={css('margin-top:20px;width:100%;height:56px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms')}>{d.isMe ? '내 프로필 꾸미기' : '홈에서 투표하기'}</button>
+      </div>
+    </BottomSheet>
+  )
+}
+
+export function RuleDialog({ checked, onToggle, onConfirm, onNudge }: { checked: boolean; onToggle: () => void; onConfirm: () => void; onNudge: () => void }) {
+  return (
+    <Dialog onScrim={onNudge} labelledBy="rule-title" gap={20}>
+      <div style={css('padding:0 4px;display:flex;flex-direction:column;gap:12px')}>
+        <span style={css('width:44px;height:44px;border-radius:9999px;background:#fff0f1;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#f04452')}>!</span>
+        <span id="rule-title" style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>반드시 본인 실명으로<br />적어주세요</span>
+        <span style={css('font-size:15px;line-height:22.5px;color:#4e5968')}>닉네임이나 가명으로는 가입할 수 없어요. 실명이 아니면 투표가 무효 처리돼요.</span>
+      </div>
+      <button onClick={onToggle} role="checkbox" aria-checked={checked} style={sx('display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:14px;text-align:left;transition:background 200ms,box-shadow 200ms', { background: checked ? '#e8f3ff' : '#f9fafb', boxShadow: checked ? 'inset 0 0 0 1.5px #3182f6' : 'none' })}>
+        <span style={sx('width:24px;height:24px;border-radius:7px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#ffffff;transition:background 200ms,box-shadow 200ms', { background: checked ? '#3182f6' : '#ffffff', boxShadow: checked ? 'none' : 'inset 0 0 0 2px #d1d6db' })}>{checked ? '✓' : ''}</span>
+        <span style={css('font-size:15px;line-height:22.5px;font-weight:600;color:#191f28')}>위 규칙을 읽고 이해했어요</span>
+      </button>
+      <button data-g="primary" className="pr-96" onClick={() => checked && onConfirm()} disabled={!checked} style={sx('height:54px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms,opacity 200ms', { opacity: checked ? 1 : 0.4 })}>확인</button>
+    </Dialog>
+  )
+}
+
+export type BuyState = { title: string; desc: string; price: string; remain: string; can: boolean; cta: string }
+
+export function BuyDialog({ b, onClose, onConfirm }: { b: BuyState; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <Dialog onScrim={onClose} gap={20}>
+      <div style={css('padding:0 4px;display:flex;flex-direction:column;gap:8px')}>
+        <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{b.title}</span>
+        <span style={css('font-size:15px;line-height:22.5px;color:#4e5968')}>{b.desc}</span>
+      </div>
+      <div data-g="l1" style={css('padding:14px 16px;border-radius:14px;background:#f9fafb;display:flex;flex-direction:column;gap:8px;font-size:15px;font-variant-numeric:tabular-nums')}>
+        <span style={css('display:flex;justify-content:space-between')}><span style={{ color: '#6b7684' }}>가격</span><span style={css('font-weight:700;color:#191f28')}>{b.price}</span></span>
+        <span style={css('display:flex;justify-content:space-between')}><span style={{ color: '#6b7684' }}>사고 남는 포인트</span><span style={{ fontWeight: 700, color: b.can ? '#191f28' : '#f04452' }}>{b.remain}</span></span>
+      </div>
+      <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
+        <button data-g="secondary" className="pr-96" onClick={onClose} style={css('height:54px;border-radius:16px;background:#f2f4f6;color:#4e5968;font-size:17px;font-weight:600')}>닫기</button>
+        <button data-g="primary" className="pr-96" onClick={() => b.can && onConfirm()} disabled={!b.can} style={sx('height:54px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:16px;font-weight:600;transition:opacity 200ms', { opacity: b.can ? 1 : 0.4 })}>{b.cta}</button>
+      </div>
+    </Dialog>
+  )
+}
+
+export function ThemeSheet({ theme, onPick, onClose }: { theme: string; onPick: (k: string, label: string) => void; onClose: () => void }) {
+  return (
+    <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.25)" sheetStyle="border-radius:28px 28px 0 0;padding:8px 0 calc(24px + env(safe-area-inset-bottom));animation:sheetUp 420ms cubic-bezier(0.22,1,0.36,1) both">
+      {handle}
+      <div style={css('padding:20px 24px 16px;display:flex;flex-direction:column;gap:4px')}>
+        <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>테마</span>
+        <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>앱 전체의 재질과 분위기를 바꿔요</span>
+      </div>
+      <div style={css('padding:0 20px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px')}>
+        {THEMES.map(([k, l]) => {
+          const on = theme === k
+          return (
+            <button key={k} data-g="l2" className="pr-97" onClick={() => onPick(k, l)} aria-pressed={on} style={sx('position:relative;padding:8px;border-radius:20px;display:flex;flex-direction:column;gap:10px;text-align:left;transition:transform 200ms cubic-bezier(0.34,1.4,0.64,1),box-shadow 200ms;background:#ffffff', { boxShadow: on ? '0 0 0 2px #3182f6' : '0 0 0 1px #e5e8eb' })}>
+              {k === 'default' ? (
+                <span style={css('display:flex;flex-direction:column;gap:6px;height:112px;border-radius:14px;background:#f2f4f6;padding:12px')}>
+                  <span style={css('height:28px;border-radius:8px;background:#ffffff')} />
+                  <span style={css('height:28px;border-radius:8px;background:#ffffff')} />
+                  <span data-g="primary" style={css('margin-top:auto;align-self:flex-end;width:56px;height:18px;border-radius:6px;background:#3182f6')} />
+                </span>
+              ) : (
+                <span style={css('position:relative;display:block;height:112px;border-radius:14px;overflow:hidden;background:radial-gradient(70% 60% at 10% 10%,#ffd8c4,rgba(255,216,196,0) 70%),radial-gradient(60% 60% at 95% 30%,#d9d2ff,rgba(217,210,255,0) 70%),radial-gradient(70% 60% at 30% 100%,#c7efe3,rgba(199,239,227,0) 70%),#eef1f6')}>
+                  <span style={css('position:absolute;left:12px;right:12px;top:14px;height:36px;border-radius:12px;background:rgba(255,255,255,0.42);-webkit-backdrop-filter:blur(8px) saturate(170%);backdrop-filter:blur(8px) saturate(170%);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.7),inset 0 1px 0 #fff,0 8px 18px -10px rgba(30,40,90,0.3)')} />
+                  <span style={css('position:absolute;left:24px;right:24px;bottom:12px;height:28px;border-radius:9999px;background:rgba(255,255,255,0.5);-webkit-backdrop-filter:blur(10px) saturate(180%);backdrop-filter:blur(10px) saturate(180%);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.8),inset 0 1px 0 #fff,0 10px 20px -10px rgba(30,40,90,0.35)')} />
+                </span>
+              )}
+              <span style={css('padding:0 6px 4px;display:flex;align-items:center;justify-content:space-between')}>
+                <span style={css('font-size:15px;font-weight:700;color:#191f28')}>{l}</span>
+                {on && <span data-g="primary" style={css('width:20px;height:20px;border-radius:9999px;background:#3182f6;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800')}>✓</span>}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </BottomSheet>
+  )
+}
+
+export function Toast({ msg }: { msg: string }) {
+  return (
+    <div style={css('position:fixed;left:0;right:0;bottom:84px;z-index:200;display:flex;justify-content:center;pointer-events:none;padding:0 20px')}>
+      <div data-g="l3" style={css('max-width:375px;padding:12px 20px;border-radius:9999px;background:#ffffff;box-shadow:0 2px 30px 0 rgba(0,27,55,0.1);font-size:15px;line-height:22.5px;font-weight:600;color:rgba(0,12,30,0.8);animation:toastIn 300ms cubic-bezier(0.22,1,0.36,1) both')}>{msg}</div>
+    </div>
+  )
+}
