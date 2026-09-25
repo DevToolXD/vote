@@ -28,10 +28,10 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
       - name: Deploy Firestore rules
         run: node .github/scripts/deploy-firestore-rules.mjs
       - name: Check Authentication settings
