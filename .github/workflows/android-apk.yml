@@ -15,6 +15,7 @@ on:
       - '.github/scripts/android-branding.sh'
       - '.github/workflows/android-apk.yml'
       - '.github/scripts/android-firebase-config.mjs'
+      - '.github/scripts/android-signing.sh'
   workflow_dispatch:
 
 permissions:
@@ -51,14 +52,26 @@ jobs:
         run: node ../.github/scripts/android-firebase-config.mjs android/app/google-services.json
       - name: Sync Capacitor plugins
         run: npx cap sync android
-      - name: Build APK
-        working-directory: app/android
-        run: ./gradlew assembleDebug --no-daemon
+      - name: Version (so each APK installs as an update)
+        run: |
+          sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -E "versionCode|versionName" android/app/build.gradle
+      - name: Signing key (same key every build)
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash ../.github/scripts/android-signing.sh
+      - name: Build signed release APK
+        run: |
+          npx cap build android --androidreleasetype APK \
+            --keystorepath "$RUNNER_TEMP/release.keystore" --keystorepass "$KEY_PASS" \
+            --keystorealias vote --keystorealiaspass "$KEY_PASS"
       - name: Publish to the android-latest release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk popular-vote.apk
+          cp "$(ls android/app/build/outputs/apk/release/*.apk | grep -v unsigned | head -1)" popular-vote.apk
+          ls -la popular-vote.apk
           if gh release view android-latest >/dev/null 2>&1; then
             gh release upload android-latest popular-vote.apk --clobber
           else

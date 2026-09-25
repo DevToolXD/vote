@@ -273,11 +273,23 @@ export function InstallSheet({ onClose, onToast }: { onClose: () => void; onToas
             <><b>출처를 알 수 없는 앱</b> 안내가 뜨면 <b>설정</b> → <b>이 출처 허용</b>을 켜요</>,
             <><b>설치</b>를 누르면 끝이에요</>,
           ]} />
-          <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1')}>스토어 밖에서 받는 앱이라 안내가 떠요. 앱 화면은 이 사이트를 그대로 보여줘서, 업데이트도 자동으로 반영돼요</span>
-          {canPrompt && (
+          <details style={css('border-radius:14px;background:#f9fafb;padding:14px 16px')}>
+            <summary style={css('font-size:15px;font-weight:600;color:#333d4b;cursor:pointer')}>설치가 막히면 이렇게 해보세요</summary>
+            <div style={css('margin-top:10px;display:flex;flex-direction:column;gap:8px;font-size:14px;line-height:21px;color:#4e5968')}>
+              <span>• <b>Chrome</b>이 "유해할 수 있는 파일"이라고 하면 <b>다운로드</b>(또는 <b>무시하고 다운로드</b>)를 눌러요</span>
+              <span>• <b>Play 프로텍트</b> 경고가 뜨면 <b>세부정보 더보기</b> → <b>무시하고 설치</b>를 눌러요</span>
+              <span>• 삼성 <b>자동 차단</b>이 켜져 있으면 설정 → 보안 및 개인정보 보호 → <b>자동 차단</b>을 잠시 꺼요</span>
+              <span>• 백신 앱(V3 등)이 막으면 그 앱에서 이 파일을 <b>허용</b>해요</span>
+              <span>• 예전에 받은 앱이 있는데 "앱이 설치되지 않았어요"가 뜨면, 예전 앱을 한 번 지우고 다시 설치해요 (서명이 바뀌어서 딱 한 번만 필요해요)</span>
+            </div>
+          </details>
+          <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1')}>스토어 밖에서 받는 앱이라 안내가 떠요. 앱 화면은 이 사이트를 그대로 보여줘서, 업데이트도 자동으로 반영돼요. 막는 프로그램이 있으면 아래 <b>홈 화면에 추가</b>로도 똑같이 쓸 수 있어요</span>
+          {canPrompt ? (
             <button data-g="secondary" className="pr-96" onClick={async () => { if (await promptInstall()) onClose() }} style={css('height:48px;border-radius:14px;background:#f2f4f6;color:#4e5968;font-size:15px;font-weight:600')}>
               파일 없이 홈 화면에 바로 추가하기
             </button>
+          ) : (
+            <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1')}>파일 없이 쓰려면 Chrome 메뉴(⋮) → <b>홈 화면에 추가</b>(또는 <b>앱 설치</b>)를 눌러요. 알림도 똑같이 받을 수 있어요</span>
           )}
         </div>
       )}
