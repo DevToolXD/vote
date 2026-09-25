@@ -3,14 +3,16 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   setPersistence,
+  signInAnonymously,
   signOut,
+  updatePassword,
   browserLocalPersistence,
   browserSessionPersistence,
   indexedDBLocalPersistence,
   updateProfile,
   type User,
 } from 'firebase/auth'
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
+import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { isBanned } from './admin'
 import { newCandidateDoc } from './candidateDoc'
@@ -109,4 +111,24 @@ export function authErrorMessage(err: unknown): string {
     // Keep the raw code visible so the next unexpected failure can be diagnosed from a screenshot.
     default: return `문제가 생겼어요. 잠시 후 다시 시도해주세요 (${code || 'unknown'})`
   }
+}
+
+/** For 상담 without an account: a throwaway anonymous login (not treated as signed in by the app). */
+export async function signInForSupport() {
+  if (!auth) throw new Error('firebase-not-configured')
+  if (auth.currentUser) return auth.currentUser
+  return (await signInAnonymously(auth)).user
+}
+
+/** After logging in with an admin-issued one-time code: is a new password required? */
+export async function needsNewPassword(uid: string) {
+  if (!db) return false
+  try { return (await getDoc(doc(db, 'pwResets', uid))).data()?.status === 'done' } catch { return false }
+}
+
+/** Sets the password the person chose, then clears the reset. */
+export async function chooseNewPassword(pw: string) {
+  if (!auth?.currentUser || !db) throw new Error('not-signed-in')
+  await updatePassword(auth.currentUser, pw)
+  await deleteDoc(doc(db, 'pwResets', auth.currentUser.uid)).catch(() => {})
 }

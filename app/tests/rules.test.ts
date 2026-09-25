@@ -9,11 +9,12 @@ import {
   collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore,
   serverTimestamp, setDoc, updateDoc, writeBatch, type Firestore,
 } from 'firebase/firestore'
-import { deleteAccount, grantPoints, renameUser, resetSeason, runAdminOp, setSeasonName, type AdminProgress } from '../src/backend/admin'
+import { deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, castVote, equipItem, pointsOf, updateMyProfile } from '../src/backend/candidates'
 import { createGroup, dmId, inviteMembers, leaveGroup, loadImage, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
+import { markSupportRead, sendSupport } from '../src/backend/support'
 import type { CandidateDoc } from '../src/backend/types'
 import { priceOf } from '../src/data'
 
@@ -489,6 +490,39 @@ describe('chat extras', () => {
     await denied(setGroupInfo(a, id, { photo: 'x'.repeat(200_001) }))
     await denied(setGroupInfo(a, id, { name: 'x'.repeat(31) }))
     await denied(setGroupInfo(a, await openDm(a, 'a', 'd'), { name: 'x' }))
+  })
+})
+
+describe('상담 and password reset', () => {
+  test('상담: anonymous user ↔ admin; nobody else can read or pose as the admin', async () => {
+    const anon = dbAs({ uid: 'anon1' }); const other = await signUp('b'); const admin = dbAs(ADMIN)
+    await sendSupport(anon, 'anon1', 'user', '비밀번호를 잊었어요', { exists: false, name: '김철수', loginId: 'Alice1' })
+    const t = (await getDoc(doc(admin, 'support', 'anon1'))).data()!
+    assert.deepEqual([t.loginId, t.name, t.last.text, t.adminRead], ['alice1', '김철수', '비밀번호를 잊었어요', false])
+    await sendSupport(admin, 'anon1', 'admin', '확인해볼게요', { exists: true })
+    await markSupportRead(anon, 'anon1', 'user')
+    assert.equal((await getDocs(collection(anon, 'support', 'anon1', 'messages'))).size, 2)
+    assert.equal((await getDocs(collection(admin, 'support'))).size, 1)
+    await denied(getDoc(doc(other, 'support', 'anon1')))
+    await denied(getDocs(collection(other, 'support')))
+    await assert.rejects(sendSupport(anon, 'anon1', 'admin', '관리자인 척', { exists: true }))
+    await assert.rejects(sendSupport(other, 'anon1', 'user', '끼어들기', { exists: true }))
+    await denied(setDoc(doc(other, 'support', 'anon1', 'messages', 'x'), { from: 'user', text: 'x', at: serverTimestamp() }))
+  })
+  test('reset: admin-only 3-token op; the worker applies it; the owner clears it after choosing a password', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
+    await assert.rejects(resetPassword(b, 'b', 'a'))
+    const code = await resetPassword(admin, ADMIN.uid, 'a')
+    assert.match(code, /^[0-9]{8}$/)
+    assert.equal((await getDoc(doc(a, 'pwResets', 'a'))).data()!.status, 'pending')
+    await denied(getDoc(doc(b, 'pwResets', 'a')))
+    await denied(deleteDoc(doc(a, 'pwResets', 'a'))) // not applied yet
+    await denied(setDoc(doc(a, 'pwResets', 'a'), { code: '11111111', by: 'a', at: serverTimestamp(), status: 'pending' }))
+    await new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
+      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '0', SETTLE_MS: '0' },
+    }, (err, stdout, stderr) => err ? reject(new Error(stderr || stdout)) : resolve()))
+    assert.equal((await getDoc(doc(a, 'pwResets', 'a'))).data()!.status, 'done')
+    await deleteDoc(doc(a, 'pwResets', 'a'))
   })
 })
 

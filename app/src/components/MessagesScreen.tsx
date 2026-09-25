@@ -197,7 +197,7 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
  * the keyboard doesn't scroll the page and show whatever is underneath (the
  * "screen tearing open" feeling on iPhone). The input stays right above the keyboard.
  */
-function useKeyboardSafeBox() {
+export function useKeyboardSafeBox() {
   const [box, setBox] = useState(() => ({ top: 0, height: typeof window === 'undefined' ? 0 : (window.visualViewport?.height ?? window.innerHeight) }))
   useEffect(() => {
     const y = window.scrollY

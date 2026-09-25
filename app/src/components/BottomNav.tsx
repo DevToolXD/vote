@@ -13,7 +13,7 @@ const icons: Record<Tab, JSX.Element> = {
 }
 
 /** 홈 · 계정 · 랭킹 · 메시지, plus 관리 for the admin. `unread` badges 메시지. */
-export function BottomNav({ tab, onGo, isAdmin = false, unread = 0 }: { tab: Tab; onGo: (t: Tab) => void; isAdmin?: boolean; unread?: number }) {
+export function BottomNav({ tab, onGo, isAdmin = false, unread = 0, adminUnread = 0 }: { tab: Tab; onGo: (t: Tab) => void; isAdmin?: boolean; unread?: number; adminUnread?: number }) {
   const tabs = isAdmin ? [...BASE_TABS, ADMIN_TAB] : BASE_TABS
   const idx = tabs.findIndex(([k]) => k === tab)
   const w = 100 / tabs.length
@@ -25,8 +25,8 @@ export function BottomNav({ tab, onGo, isAdmin = false, unread = 0 }: { tab: Tab
         <button key={k} className="pr-96" onClick={() => onGo(k)} style={sx('height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:color 200ms,transform 150ms', { color: tab === k ? '#191f28' : '#b0b8c1' })}>
           <span style={css('position:relative;display:flex')}>
             {icons[k]}
-            {k === 'msg' && unread > 0 && (
-              <span aria-label={`읽지 않은 대화 ${unread}개`} style={css('position:absolute;top:-5px;left:14px;min-width:18px;height:18px;padding:0 5px;border-radius:9999px;background:#f04452;color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center;box-shadow:0 0 0 2px #fff')}>{unread > 99 ? '99+' : unread}</span>
+            {(k === 'msg' ? unread : k === 'admin' ? adminUnread : 0) > 0 && (
+              <span aria-label={`읽지 않은 대화 ${k === 'msg' ? unread : adminUnread}개`} style={css('position:absolute;top:-5px;left:14px;min-width:18px;height:18px;padding:0 5px;border-radius:9999px;background:#f04452;color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center;box-shadow:0 0 0 2px #fff')}>{(k === 'msg' ? unread : adminUnread) > 99 ? '99+' : (k === 'msg' ? unread : adminUnread)}</span>
             )}
           </span>
           <span style={css('font-size:11px;line-height:14px;font-weight:500')}>{l}</span>

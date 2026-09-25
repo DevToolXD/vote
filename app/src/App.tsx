@@ -1,7 +1,7 @@
 import type { User } from 'firebase/auth'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { authErrorMessage, logIn, logOut, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
-import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
+import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
+import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetPassword, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, castVote, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, inviteMembers, isUnread, leaveGroup, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
@@ -16,10 +16,12 @@ import { GlassFilters } from './components/GlassFilters'
 import { HomeScreen } from './components/HomeScreen'
 import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScreen'
 import { NotifySettings } from './components/NotifySettings'
-import { BuyDialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
+import { SupportFlow, SupportRoom } from './components/SupportScreen'
+import { sendSupport, subscribeTickets, type Ticket } from './backend/support'
+import { BuyDialog, Dialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
-import { css } from './css'
+import { css, sx } from './css'
 import { BLUE, fmt, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab } from './data'
 import { db as maybeDb, firebaseConfigured } from './firebase'
 import { isInstalledApp } from './install'
@@ -29,6 +31,8 @@ export type AppProps = {
   startTab?: Tab
   /** Open this chat on launch (from a notification tap). */
   startChat?: string | null
+  /** Admin: open this 상담 on launch (from a notification tap). */
+  startSupport?: string | null
   /** Swap vote colours to red = 추천, blue = 비추천. */
   swapPalette?: boolean
 }
@@ -47,7 +51,7 @@ function loadTheme() {
 }
 
 /** Real backend: Firebase Auth for accounts, Firestore for the live leaderboard/votes/shop. See app/README.md. */
-export function App({ startTab = 'home', startChat = null, swapPalette = false }: AppProps) {
+export function App({ startTab = 'home', startChat = null, startSupport = null, swapPalette = false }: AppProps) {
   const [tab, setTab] = useState<Tab>(startTab)
   const [homeQuery, setHomeQuery] = useState('')
   const [query, setQuery] = useState('')
@@ -91,6 +95,11 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
   const [notify, setNotify] = useState<NotifyPrefs>(DEFAULT_NOTIFY)
   const [pushOn, setPushOn] = useState(deviceRegistered)
   const [pushBusy, setPushBusy] = useState(false)
+  const [supportOpen, setSupportOpen] = useState(false)
+  const [tickets, setTickets] = useState<Ticket[]>([])
+  const [ticketId, setTicketId] = useState<string | null>(startSupport)
+  const [mustChangePw, setMustChangePw] = useState(false)
+  const [newPw, setNewPw] = useState({ a: '', b: '', busy: false })
   const [newChatOpen, setNewChatOpen] = useState(false)
 
   const toastTimer = useRef<ReturnType<typeof setTimeout>>()
@@ -107,9 +116,13 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
 
   useEffect(() => { setTab(startTab) }, [startTab])
 
-  useEffect(() => onAuthChange(u => { setAuthUser(u); setAuthReady(true) }), [])
+  // An anonymous login is only for 상담 (forgot password); the app treats it as signed out.
+  useEffect(() => onAuthChange(u => { setAuthUser(u && !u.isAnonymous ? u : null); setAuthReady(true) }), [])
   useEffect(() => (db ? subscribeCandidates(db, setRows) : undefined), [])
   useEffect(() => (db ? subscribeSeason(db, setSeason) : undefined), [])
+
+  // Logged in with an admin-issued one-time code → choose a new password first.
+  useEffect(() => { if (authUser) needsNewPassword(authUser.uid).then(setMustChangePw); else setMustChangePw(false) }, [authUser])
 
   useEffect(() => {
     if (!authUser || !db) { setNotify(DEFAULT_NOTIFY); return }
@@ -160,7 +173,11 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
   const byId = useMemo(() => new Map(all.map(p => [p.id, p])), [all])
   const unreadChats = authUser ? chats.filter(c => isUnread(c, authUser.uid)).length : 0
   const openChat = chats.find(c => c.id === chatId)
-  useEffect(() => { if (tab === 'admin' && !isAdmin) setTab('home') }, [tab, isAdmin])
+  useEffect(() => { if (tab === 'admin' && !isAdmin && authReady) setTab('home') }, [tab, isAdmin, authReady])
+  useEffect(() => (isAdmin && db ? subscribeTickets(db, setTickets) : setTickets([])), [isAdmin])
+  const openTicket = tickets.find(t => t.id === ticketId)
+  const ticketAccount = openTicket ? all.find(p => p.loginId && p.loginId === openTicket.loginId) : undefined
+  const unreadTickets = tickets.filter(t => t.last?.from === 'user' && !t.adminRead).length
 
   // 300P for opening the installed app (home-screen app or Galaxy app), once per account.
   const bonusTried = useRef(false)
@@ -419,6 +436,7 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
               openEdit={() => setEditOpen(true)}
               openTheme={() => setThemeOpen(true)}
               goHome={() => go('home')}
+              onForgot={() => setSupportOpen(true)}
               notifySlot={
                 <NotifySettings
                   support={pushSupport()} on={pushOn && notify.notify} busy={pushBusy} settings={notify}
@@ -437,6 +455,8 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
           {tab === 'admin' && isAdmin && authUser && (
             <AdminScreen
               all={all}
+              tickets={tickets}
+              onOpenTicket={setTicketId}
               season={season}
               run={runAdmin}
               grantPoints={(t, n, p) => grantPoints(db!, authUser.uid, t, n, p)}
@@ -449,7 +469,7 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
           )}
         </main>
 
-        <BottomNav tab={tab === 'admin' && !isAdmin ? 'home' : tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} />
+        <BottomNav tab={tab === 'admin' && !isAdmin ? 'home' : tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} adminUnread={unreadTickets} />
 
         {sheetPerson && (
           <VoteSheet d={sheetPerson} loggedIn={loggedIn} colors={colors} onVote={kind => vote(sheetPerson.id, kind)} onClose={() => setSheet(null)} onLogin={() => go('acct')} />
@@ -544,6 +564,45 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
             }}
           />
           </div>
+        )}
+        {supportOpen && db && (
+          <SupportFlow db={db} loginId={login.id} onClose={() => setSupportOpen(false)} onError={failToast} />
+        )}
+        {openTicket && isAdmin && authUser && db && (
+          <SupportRoom
+            db={db} ticketUid={openTicket.id} as="admin" exists
+            title={`${openTicket.name || '이름 없음'} @${openTicket.loginId || '?'}`}
+            subtitle={ticketAccount ? `가입한 계정이 있어요 · ${ticketAccount.name}` : '이 아이디로 가입한 계정을 찾지 못했어요'}
+            onBack={() => setTicketId(null)} onError={failToast}
+            tools={ticketAccount && (
+              <div style={css('flex:none;margin:0 16px 8px;padding:12px 14px;border-radius:14px;background:#f9fafb;display:flex;align-items:center;gap:10px')}>
+                <span style={css('flex:1;min-width:0;font-size:13px;line-height:19.5px;color:#4e5968')}>본인이 맞으면 임시 비밀번호를 보내요. 그 번호로 로그인하면 새 비밀번호를 정해요</span>
+                <button className="pr-96" onClick={async () => {
+                  let code = ''
+                  const ok = await runAdmin('비밀번호 초기화', async p => { code = await resetPassword(db, authUser.uid, ticketAccount.id, p) })
+                  if (ok && code) await sendSupport(db, openTicket.id, 'admin', `임시 비밀번호는 ${code}이에요. 아이디 ${ticketAccount.loginId}와 이 번호로 로그인하면 새 비밀번호를 정할 수 있어요. 1분쯤 뒤에 로그인해주세요.`, { exists: true }).catch(e => failToast('안내를 보내지 못했어요', e))
+                }} style={css('flex:none;height:36px;padding:0 12px;border-radius:10px;background:#e8f3ff;color:#1b64da;font-size:14px;font-weight:600')}>비밀번호 초기화</button>
+              </div>
+            )}
+          />
+        )}
+        {mustChangePw && authUser && (
+          <Dialog onScrim={() => {}} gap={20}>
+            <div style={css('padding:0 4px;display:flex;flex-direction:column;gap:12px')}>
+              <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>새 비밀번호를 정해주세요</span>
+              <span style={css('font-size:15px;line-height:22.5px;color:#4e5968')}>임시 비밀번호로 로그인했어요. 앞으로 쓸 비밀번호를 적어주세요</span>
+              <input type="password" autoComplete="new-password" className="box-focus" value={newPw.a} onChange={e => setNewPw(s => ({ ...s, a: e.target.value }))} placeholder="8자 이상" style={css('height:48px;border:0;outline:none;border-radius:14px;background-color:#f2f4f6;padding:0 14px;font-size:17px;color:#191f28')} />
+              <input type="password" autoComplete="new-password" className="box-focus" value={newPw.b} onChange={e => setNewPw(s => ({ ...s, b: e.target.value }))} placeholder="한 번 더 입력" style={css('height:48px;border:0;outline:none;border-radius:14px;background-color:#f2f4f6;padding:0 14px;font-size:17px;color:#191f28')} />
+              {newPw.b.length > 0 && newPw.a !== newPw.b && <span style={css('font-size:13px;color:#f04452;font-weight:600')}>비밀번호가 서로 달라요</span>}
+            </div>
+            <button data-g="primary" className="pr-96" disabled={newPw.a.length < 8 || newPw.a !== newPw.b || newPw.busy}
+              onClick={async () => {
+                setNewPw(s => ({ ...s, busy: true }))
+                try { await chooseNewPassword(newPw.a); setMustChangePw(false); setNewPw({ a: '', b: '', busy: false }); showToast('새 비밀번호로 바꿨어요') }
+                catch (e) { setNewPw(s => ({ ...s, busy: false })); failToast('바꾸지 못했어요', e) }
+              }}
+              style={sx('height:54px;border-radius:16px;background:#3182f6;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms', { opacity: newPw.a.length >= 8 && newPw.a === newPw.b && !newPw.busy ? 1 : 0.3 })}>바꾸기</button>
+          </Dialog>
         )}
         {installOpen && <InstallSheet onClose={() => setInstallOpen(false)} onToast={showToast} />}
         {adminBusy && <AdminProgressOverlay label={adminBusy.label} p={adminBusy.p} />}

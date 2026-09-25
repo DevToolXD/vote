@@ -18,6 +18,9 @@ rules_version = '2';
 //   pushTokens/{token}            one device's push token { uid, token, platform, updatedAt }
 //   settings/{uid}                private notification settings { notify, notifyMsg, notifyVote }
 //   meta/notifyCursor             the notification sender's progress (service account only)
+//   support/{uid}                 a 상담 (support chat) with the admin; uid may be an anonymous login
+//   support/{uid}/messages/{id}   { from: 'user'|'admin', text, at }
+//   pwResets/{uid}                admin password reset: one-time code the worker sets as the password
 //
 // Admin operations (grant points, set season name, reset season, delete account)
 // Only the admin account (id "admin", i.e. admin@vote.local, or a user with the
@@ -58,6 +61,8 @@ service cloud.firestore {
                 && validSeasonName(p.name) && p.nextNumber is int)
           || (action == 'renameUser' && p.keys().hasOnly(['target', 'name']) && p.keys().hasAll(['target', 'name'])
                 && p.target is string && validPersonName(p.name))
+          || (action == 'resetPassword' && p.keys().hasOnly(['target', 'code']) && p.keys().hasAll(['target', 'code'])
+                && p.target is string && p.code is string && p.code.matches('[0-9]{8}'))
           || (action == 'deleteAccount' && p.keys().hasOnly(['target']) && p.target is string && p.target != request.auth.uid);
     }
     function validSeasonName(n) { return n is string && n.size() >= 1 && n.size() <= 20; }
@@ -95,7 +100,7 @@ service cloud.firestore {
         && request.resource.data.used == false
         && request.resource.data.createdAt == request.time
         && request.resource.data.seq in [1, 2, 3]
-        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser']
+        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser', 'resetPassword']
         && request.resource.data.payload is map;
       // Burned only together with a lock that lists it.
       allow update: if isAdmin()
@@ -500,6 +505,56 @@ service cloud.firestore {
         && request.resource.data.get('notifyMsg', true) is bool
         && request.resource.data.get('notifyVote', true) is bool;
       allow delete: if false;
+    }
+
+    // ---- 상담 (support) and password resets ---------------------------------------
+    // Someone who forgot their password signs in anonymously and chats with the
+    // admin. The admin can reset an account's password (3-token op): the worker
+    // sets it to the one-time code, and the user picks a new one right after
+    // logging in with it.
+
+    match /support/{uid} {
+      function supportText(t) { return t is string && t.size() >= 1 && t.size() <= 1000; }
+      function asUser() { return request.auth.uid == uid; }
+      allow read: if signedIn() && (asUser() || isAdmin());
+      allow create: if signedIn() && asUser()
+        && request.resource.data.keys().hasOnly(['loginId', 'name', 'createdAt', 'updatedAt', 'last', 'adminRead', 'userRead'])
+        && request.resource.data.loginId is string && request.resource.data.loginId.size() <= 20
+        && request.resource.data.name is string && request.resource.data.name.size() <= 20
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time
+        && request.resource.data.last.keys().hasOnly(['from', 'text', 'at'])
+        && request.resource.data.last.from == 'user' && request.resource.data.last.at == request.time
+        && supportText(request.resource.data.last.text);
+      allow update: if signedIn() && (asUser() || isAdmin())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['last', 'updatedAt', 'adminRead', 'userRead'])
+        && (!('last' in request.resource.data.diff(resource.data).affectedKeys())
+            || (request.resource.data.last.keys().hasOnly(['from', 'text', 'at'])
+                && request.resource.data.last.at == request.time && request.resource.data.updatedAt == request.time
+                && supportText(request.resource.data.last.text)
+                && ((asUser() && request.resource.data.last.from == 'user') || (isAdmin() && request.resource.data.last.from == 'admin'))));
+      allow delete: if false;
+
+      match /messages/{msgId} {
+        allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['from', 'text', 'at'])
+          && request.resource.data.at == request.time
+          && request.resource.data.text is string && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 1000
+          && ((request.auth.uid == uid && request.resource.data.from == 'user') || (isAdmin() && request.resource.data.from == 'admin'));
+        allow update, delete: if false;
+      }
+    }
+
+    match /pwResets/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update: if adminOp('resetPassword') && lock().payload.target == uid
+        && request.resource.data.keys().hasOnly(['code', 'by', 'at', 'status'])
+        && request.resource.data.code == lock().payload.code
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.at == request.time
+        && request.resource.data.status == 'pending';
+      // After logging in with the code and choosing a new password.
+      allow delete: if signedIn() && request.auth.uid == uid && resource.data.status == 'done';
     }
   }
 }

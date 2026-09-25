@@ -26,7 +26,7 @@ import { DEFAULT_SEASON, type CandidateDoc, type Season, type VoteDoc } from './
 export const ADMIN_EMAIL = 'admin@vote.local'
 export const isAdminEmail = (email: string | null | undefined) => email === ADMIN_EMAIL
 
-export type AdminAction = 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount' | 'renameUser'
+export type AdminAction = 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount' | 'renameUser' | 'resetPassword'
 export type AdminProgress = { batch: number; batches: number; verified: number }
 
 /** Keep each batch's rule evaluation well under Firestore's per-request document-access limit. */
@@ -112,6 +112,19 @@ export async function renameUser(db: Firestore, adminUid: string, target: string
   await runAdminOp(db, adminUid, 'renameUser', { target, name }, [
     b => { b.update(doc(db, 'candidates', target), { name }); return 1 },
   ], onProgress)
+}
+
+/**
+ * Password reset: records an 8-digit one-time code for the account; the background
+ * worker sets it as the password (usually within seconds). Give the code to the
+ * person (e.g. in 상담); after logging in with it they choose a new password.
+ */
+export async function resetPassword(db: Firestore, adminUid: string, target: string, onProgress?: (p: AdminProgress) => void) {
+  const code = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => String(b % 10)).join('')
+  await runAdminOp(db, adminUid, 'resetPassword', { target, code }, [
+    b => { b.set(doc(db, 'pwResets', target), { code, by: adminUid, at: serverTimestamp(), status: 'pending' }); return 1 },
+  ], onProgress)
+  return code
 }
 
 export async function getSeason(db: Firestore): Promise<Season & { exists: boolean }> {

@@ -36,6 +36,7 @@ type Props = {
   openEdit: () => void
   openTheme: () => void
   goHome: () => void
+  onForgot: () => void
   /** 알림 settings section, rendered above 로그아웃. */
   notifySlot?: ReactNode
 }
@@ -76,7 +77,7 @@ export function AccountScreen(p: Props) {
   )
 }
 
-function LoginView({ login, onLoginField, onLogin, onView, authBusy }: Props) {
+function LoginView({ login, onLoginField, onLogin, onView, authBusy, onForgot }: Props) {
   const cant = !(login.id.trim() && login.pw) || authBusy
   return (
     <>
@@ -96,7 +97,8 @@ function LoginView({ login, onLoginField, onLogin, onView, authBusy }: Props) {
       </div>
       <div style={css('padding:28px 24px 0;display:flex;flex-direction:column;gap:8px')}>
         <button data-g="primary" className="pr-96" onClick={() => !cant && onLogin()} disabled={cant} style={sx(primaryBtn + ';transition:transform 150ms,opacity 200ms', { opacity: cant ? 0.5 : 1 })}>{authBusy ? '확인 중…' : '로그인'}</button>
-        <div style={css('margin:16px 0 32px;display:flex;justify-content:center;align-items:center;gap:4px;font-size:15px;color:#6b7684')}>
+        <button className="pr-dim" onClick={onForgot} style={css('align-self:center;height:36px;padding:0 10px;border-radius:8px;font-size:15px;font-weight:500;color:#6b7684')}>비밀번호를 잊었어요</button>
+        <div style={css('margin:4px 0 32px;display:flex;justify-content:center;align-items:center;gap:4px;font-size:15px;color:#6b7684')}>
           아직 계정이 없나요?
           <button className="pr-blue" onClick={() => { onView('signup'); window.scrollTo(0, 0) }} style={css('height:36px;padding:0 6px;border-radius:8px;font-size:15px;font-weight:600;color:#2272eb')}>회원가입</button>
         </div>

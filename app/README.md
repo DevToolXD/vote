@@ -53,11 +53,15 @@ The **메시지** tab (paper-plane icon, red badge = chats with unread messages)
 
 For local end-to-end testing, build with `VITE_USE_EMULATORS=1` and run the Auth + Firestore emulators (`firebase.json` has both).
 
+## 상담 and password reset
+
+로그인 → **비밀번호를 잊었어요** opens a chat with the admin (상담) without an account: the app signs in anonymously (`setup-auth.mjs` turns anonymous sign-in on) and asks for name and id once. The admin sees 상담 in the 관리 tab (badge + push), replies, and — when the id matches an account — taps **비밀번호 초기화**: a 3-token admin op writes an 8-digit one-time code to `pwResets/{uid}`, the worker sets it as the password (seconds), and the code is sent in the chat. Logging in with it opens **새 비밀번호를 정해주세요**; the new password replaces the code and the reset is cleared.
+
 ## Notifications
 
 계정 → **알림**: 알림 받기 (this device), 새 메시지, 받은 추천·비추천 (never says who voted). A muted chat (≡ → 알림) is skipped. Works in the Galaxy app (native FCM; `android-firebase-config.mjs` registers the Android app in Firebase and fetches `google-services.json` during the APK build), in desktop/Android browsers, and on iPhone only in the app added to the home screen (iOS 16.4+).
 
-Delivery: `.github/workflows/notify.yml` runs every 5 minutes and polls Firestore every 20 s for ~4.5 min (`send-notifications.mjs`), sending through FCM HTTP v1 with the service account; progress is kept in `meta/notifyCursor`, and dead device tokens are removed. Scheduled GitHub runs can start late, so the occasional notification may lag by a few minutes. Instant delivery would need a Cloud Functions trigger (Blaze plan).
+Delivery: `.github/workflows/notify.yml` is a self-restarting worker (GitHub's cron never fired for this repo): each run polls Firestore every 10 s for ~25 min (`send-notifications.mjs`), sending through FCM HTTP v1 with the service account, then dispatches the next run; the backend workflow also kicks it after deploys. Progress is kept in `meta/notifyCursor`, dead device tokens are removed, and there's a short gap between runs. Truly instant delivery would need a Cloud Functions trigger (Blaze plan).
 
 ## Install as an app
 

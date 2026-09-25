@@ -172,7 +172,7 @@ async function passwordResets() {
   })
   for (const r of pending) {
     let status = 'done'
-    if (!LOCAL) {
+    if (!LOCAL || process.env.AUTH_BASE) {
       const up = await call(`${AUTH}/v1/projects/${project}/accounts:update`, { method: 'POST', headers: await headers(), body: JSON.stringify({ localId: r.id, password: r.code }) })
       if (!up.ok) { status = 'error'; warn(`Password reset for ${r.id} failed (${up.status})`) }
     }
