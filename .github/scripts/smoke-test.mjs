@@ -16,6 +16,7 @@ const fsApi = 'https://firestore.googleapis.com/v1'
 // JS value → Firestore REST value.
 function fv(v) {
   if (typeof v === 'string') return { stringValue: v }
+  if (typeof v === 'boolean') return { booleanValue: v }
   if (typeof v === 'number') return { integerValue: String(v) }
   if (v instanceof Date) return { timestampValue: v.toISOString() }
   if (Array.isArray(v)) return { arrayValue: { values: v.map(fv) } }
