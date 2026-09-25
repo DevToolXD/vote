@@ -50,14 +50,24 @@ describe('sign-up', () => {
     const a = await signUp('a')
     assert.equal((await read(a, 'candidates/a')).up, 0)
   })
-  test('refused: someone else’s uid, a pre-filled score, the admin, a banned uid', async () => {
+  test('refused: someone else’s uid, a pre-filled score, pre-owned items', async () => {
     const a = userDb('a')
     await denied(setDoc(doc(a, 'candidates', 'b'), newCandidateDoc('b', 'x')))
     await denied(setDoc(doc(a, 'candidates', 'a'), { ...newCandidateDoc('a', 'x'), up: 50, score: 50 }))
     await denied(setDoc(doc(a, 'candidates', 'a'), { ...newCandidateDoc('a', 'x'), bonus: 999 }))
     await denied(setDoc(doc(a, 'candidates', 'a'), { ...newCandidateDoc('a', 'x'), owned: { frame: ['none', 'crown'], plate: ['none'], skin: ['none'] } }))
+  })
+  test('the admin is a normal participant too: own entry, votes, can’t vote for themselves', async () => {
     const admin = dbAs(ADMIN)
-    await denied(setDoc(doc(admin, 'candidates', ADMIN.uid), newCandidateDoc(ADMIN.uid, '관리자')))
+    await setDoc(doc(admin, 'candidates', ADMIN.uid), newCandidateDoc(ADMIN.uid, '관리자'))
+    const b = await signUp('b')
+    await castVote(admin, ADMIN.uid, 'b', 1)
+    await castVote(b, 'b', ADMIN.uid, 1)
+    assert.equal((await read(admin, `candidates/${ADMIN.uid}`)).up, 1)
+    await assert.rejects(castVote(admin, ADMIN.uid, ADMIN.uid, 1))
+    await grantPoints(admin, ADMIN.uid, ADMIN.uid, 100)
+    assert.equal((await read(admin, `candidates/${ADMIN.uid}`)).bonus, 100)
+    await assert.rejects(deleteAccount(admin, ADMIN.uid, ADMIN.uid))
   })
 })
 

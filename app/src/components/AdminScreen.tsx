@@ -120,14 +120,14 @@ export function AdminScreen({ all, season, run, grantPoints, setSeasonName, rese
               })}
               style={sx('height:48px;padding:0 18px;border-radius:14px;background:#3182f6;color:#fff;font-size:15px;font-weight:600;flex:none;transition:opacity 200ms', { opacity: amountOk ? 1 : 0.4 })}>지급</button>
           </div>
-          <button className="pr-96"
+          {!person.isMe && <button className="pr-96"
             onClick={() => setConfirm({
               title: `${person.name}님 계정을 삭제할까요?`,
               desc: '랭킹에서 사라지고, 이 사람이 남긴 투표는 모두 취소돼요. 같은 아이디로는 다시 가입할 수 없어요. 되돌릴 수 없어요.',
               cta: '삭제하기', danger: true,
               go: async () => { if (await run('계정 삭제', p => deleteAccount(person.id, p))) setPicked(null) },
             })}
-            style={css('height:44px;border-radius:14px;background:#fff0f1;color:#e42939;font-size:15px;font-weight:600')}>계정 삭제</button>
+            style={css('height:44px;border-radius:14px;background:#fff0f1;color:#e42939;font-size:15px;font-weight:600')}>계정 삭제</button>}
         </section>
       )}
 

@@ -22,3 +22,23 @@ createRoot(document.getElementById('root')!).render(
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}) })
 }
+
+// Remote updates: the Galaxy APK and the iPhone home-screen app both load this site, so a
+// deploy updates them too. When the app comes back to the foreground, compare the deployed
+// index.html's bundle with the one running and reload onto the new version if it changed.
+if (import.meta.env.PROD) {
+  const bundleOf = (html: string) => html.match(/<script[^>]+src="([^"]*assets\/index-[^"]+\.js)"/)?.[1]
+  const running = bundleOf(document.documentElement.outerHTML)
+  let last = 0
+  const check = async () => {
+    if (document.visibilityState !== 'visible' || Date.now() - last < 60_000 || !running) return
+    last = Date.now()
+    try {
+      const html = await (await fetch('./index.html', { cache: 'no-store' })).text()
+      const deployed = bundleOf(html)
+      if (deployed && deployed !== running) location.reload()
+    } catch { /* offline — try again next time */ }
+  }
+  document.addEventListener('visibilitychange', check)
+  setInterval(check, 5 * 60_000)
+}

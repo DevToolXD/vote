@@ -152,7 +152,6 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
 
   const vote = async (id: string, dir: 1 | -1) => {
     if (!authUser) return
-    if (isAdmin) { showToast('관리자는 투표할 수 없어요'); return }
     const d = all.find(x => x.id === id)
     if (!d) return
     setSheet(null)

@@ -8,7 +8,7 @@ import {
 } from 'firebase/auth'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
-import { isAdminEmail, isBanned } from './admin'
+import { isBanned } from './admin'
 import { newCandidateDoc } from './candidateDoc'
 
 /** Firebase Auth has no username concept, so a login id becomes `id@vote.local` under the hood. */
@@ -29,8 +29,6 @@ export function onAuthChange(cb: (user: User | null) => void) {
  */
 async function ensureCandidateDoc(user: User, name: string) {
   if (!db) throw new Error('firebase-not-configured')
-  // The admin runs the site; they aren't on the leaderboard.
-  if (isAdminEmail(user.email)) return
   if (await isBanned(db, user.uid)) {
     await signOut(auth!)
     throw new Error('account-deleted')

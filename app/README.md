@@ -32,7 +32,7 @@ For local dev, copy `.env.example` to `.env.local` and fill in the same values (
 
 ## Admin
 
-Sign up in the app with the id **admin** (admin@vote.local) — that account gets a **관리** tab and isn't on the leaderboard. Do this before anyone else can take the id; the `Firebase backend` workflow warns while no admin account exists.
+Sign up in the app with the id **admin** (admin@vote.local) — that account gets a **관리** tab on top of everything a normal account has (it stays on the leaderboard, votes and gets votes; it just can’t delete itself). Do this before anyone else can take the id; the `Firebase backend` workflow warns while no admin account exists.
 
 - **시즌**: rename the season, or start a new one (all tallies → 0, all votes cleared, each person's recommendations this season carry over as points).
 - **사람 관리**: give or take points (any amount, ±1,000,000 max), or delete an account (their votes are taken back, their entry removed, the uid banned from re-joining; `purge-deleted-accounts.yml` then deletes the login itself, hourly).
@@ -50,6 +50,8 @@ The Home tab has an **앱 설치하기** card (hidden when already running as an
 
 - **아이폰**: steps for Safari's 홈 화면에 추가. The site is a PWA (`public/manifest.webmanifest`, icons in `public/icons/`, a no-cache `public/sw.js`), so it opens full-screen with its own icon. Apple doesn't allow installing apps from outside the App Store, so this is the free option on iPhone.
 - **갤럭시**: a download button for `popular-vote.apk` from the `android-latest` GitHub release, plus Chrome's own "add to home screen" when available. `.github/workflows/android-apk.yml` builds it: a Capacitor shell (`capacitor.config.json`) that loads the live site, so site updates reach the app without a new APK. It only rebuilds when the shell changes (config, `android-res/` icons, `package.json`).
+Updates are remote: both apps load the deployed site, and `src/main.tsx` checks the deployed `index.html` whenever the app comes back to the foreground (and every 5 minutes), reloading onto the new bundle if it changed. Only changing the app icon or name needs a new APK.
+
 
 The APK is debug-signed with a key generated per CI run, so it's fine for sideloading, but a rebuilt APK can't install over an older one (uninstall first). Since the app shows the live site, that rarely matters. For stable signing (or the Play Store), add a release keystore as a secret and switch the build to `assembleRelease`.
 
