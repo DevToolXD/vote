@@ -208,6 +208,10 @@ const ShareGlyph = () => (
   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#3182f6" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: '-3px', margin: '0 2px' }}><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5" /><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8" /></svg>
 )
 
+const DotsGlyph = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="#3182f6" style={{ verticalAlign: '-3px', margin: '0 2px' }}><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
+)
+
 /** "앱 설치하기": iPhone → Safari's 홈 화면에 추가, Galaxy/Android → download the APK (or Chrome's own install prompt). */
 export function InstallSheet({ onClose, onToast }: { onClose: () => void; onToast: (msg: string) => void }) {
   const [device, setDevice] = useState<Device>(detectPlatform() === 'ios' ? 'ios' : 'android')
@@ -240,9 +244,10 @@ export function InstallSheet({ onClose, onToast }: { onClose: () => void; onToas
           )}
           <Steps items={[
             <>Safari로 이 페이지를 열어요</>,
-            <>화면 아래 가운데의 공유 버튼<ShareGlyph />을 눌러요</>,
-            <>메뉴를 올려서 <b>홈 화면에 추가</b>를 눌러요</>,
-            <>오른쪽 위 <b>추가</b>를 누르면 끝이에요</>,
+            <>화면 아래 주소창 오른쪽의 점 세 개 버튼<DotsGlyph />을 눌러요</>,
+            <><b>공유</b><ShareGlyph />를 눌러요</>,
+            <>메뉴를 아래로 내려 <b>홈 화면에 추가</b>를 눌러요 (안 보이면 <b>더 보기</b>)</>,
+            <><b>웹 앱으로 열기</b>는 켠 채로, 오른쪽 위 <b>추가</b>를 누르면 끝이에요</>,
           ]} />
           <button data-g="primary" className="pr-96" onClick={onClose} style={css(bigBtn + ';margin-top:4px;background:#3182f6;color:#ffffff;transition:transform 150ms')}>확인</button>
         </div>
