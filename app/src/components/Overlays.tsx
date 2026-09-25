@@ -287,7 +287,7 @@ export function InstallSheet({ onClose, onToast }: { onClose: () => void; onToas
 
 export function Toast({ msg }: { msg: string }) {
   return (
-    <div style={css('position:fixed;left:0;right:0;bottom:84px;z-index:200;display:flex;justify-content:center;pointer-events:none;padding:0 20px')}>
+    <div style={css('position:fixed;left:0;right:0;bottom:84px;z-index:400;display:flex;justify-content:center;pointer-events:none;padding:0 20px')}>
       <div data-g="l3" style={css('max-width:375px;padding:12px 20px;border-radius:9999px;background:#ffffff;box-shadow:0 2px 30px 0 rgba(0,27,55,0.1);font-size:15px;line-height:22.5px;font-weight:600;color:rgba(0,12,30,0.8);animation:toastIn 300ms cubic-bezier(0.22,1,0.36,1) both')}>{msg}</div>
     </div>
   )

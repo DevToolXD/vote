@@ -12,7 +12,7 @@ import {
 import { deleteAccount, grantPoints, renameUser, resetSeason, runAdminOp, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, castVote, equipItem, pointsOf, updateMyProfile } from '../src/backend/candidates'
-import { createGroup, dmId, leaveGroup, markRead, openDm, sendMessage, setChatMuted, setMessagesOff } from '../src/backend/messages'
+import { createGroup, dmId, inviteMembers, leaveGroup, loadImage, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import type { CandidateDoc } from '../src/backend/types'
 import { priceOf } from '../src/data'
@@ -442,6 +442,53 @@ describe('messages', () => {
     for (const m of many) await signUp(m)
     await assert.rejects(createGroup(a, 'a', many, '11명'))
     await createGroup(a, 'a', many.slice(0, 9), '10명')
+  })
+})
+
+describe('chat extras', () => {
+  const IMG = 'data:image/jpeg;base64,' + 'A'.repeat(1000)
+  test('invite: members add people who accept messages, up to 10; outsiders can’t', async () => {
+    const a = await signUp('a'); await signUp('b'); await signUp('c'); const d = await signUp('d'); await signUp('e')
+    const id = await createGroup(a, 'a', ['b', 'c'], '모임')
+    await inviteMembers(a, 'a', id, ['d'], '이름a님이 이름d님을 초대했어요')
+    const chat = (await getDoc(doc(d, 'chats', id))).data()!
+    assert.deepEqual(chat.members, ['a', 'b', 'c', 'd'])
+    assert.equal(chat.last.text, '이름a님이 이름d님을 초대했어요')
+    await denied(updateDoc(doc(userDb('e'), 'chats', id), { members: ['a', 'b', 'c', 'd', 'e'] }))
+    await setMessagesOff(userDb('e'), 'e', true)
+    await assert.rejects(inviteMembers(a, 'a', id, ['e'], 'x'))
+    await denied(updateDoc(doc(a, 'chats', id), { members: ['a', 'b', 'd'] })) // can't remove others
+    const many = Array.from({ length: 7 }, (_, i) => `m${i}`)
+    for (const m of many) await signUp(m)
+    await assert.rejects(inviteMembers(a, 'a', id, many, 'x')) // 11 people
+    await inviteMembers(a, 'a', id, many.slice(0, 6), 'x') // 10
+    const dm = await openDm(a, 'a', 'b')
+    await assert.rejects(inviteMembers(a, 'a', dm, ['c'], 'x')) // not in 1:1 chats
+  })
+  test('photos: sent with their media doc, readable only by members', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
+    const id = await openDm(a, 'a', 'b')
+    await sendImage(a, 'a', id, IMG)
+    const msgs = await getDocs(collection(b, 'chats', id, 'messages'))
+    const m = msgs.docs[0]
+    assert.equal(m.data().kind, 'image')
+    assert.equal(await loadImage(b, id, m.id), IMG)
+    await denied(getDoc(doc(c, 'chats', id, 'media', m.id)))
+    await denied(setDoc(doc(collection(a, 'chats', id, 'messages')), { uid: 'a', text: '', kind: 'image', at: serverTimestamp() })) // no media
+    await assert.rejects(sendImage(a, 'a', id, 'data:text/html;base64,AAAA'))
+    await assert.rejects(sendImage(a, 'a', id, 'data:image/jpeg;base64,' + 'A'.repeat(700_001)))
+    await setMessagesOff(b, 'b', true)
+    await assert.rejects(sendImage(a, 'a', id, IMG))
+  })
+  test('group icon and name: members only, small images only, not for 1:1', async () => {
+    const a = await signUp('a'); await signUp('b'); const c = await signUp('c'); await signUp('d')
+    const id = await createGroup(a, 'a', ['b', 'c'], '모임')
+    await setGroupInfo(c, id, { photo: IMG, name: '새 이름' })
+    assert.equal((await getDoc(doc(a, 'chats', id))).data()!.name, '새 이름')
+    await denied(setGroupInfo(userDb('d'), id, { photo: IMG }))
+    await denied(setGroupInfo(a, id, { photo: 'x'.repeat(200_001) }))
+    await denied(setGroupInfo(a, id, { name: 'x'.repeat(31) }))
+    await denied(setGroupInfo(a, await openDm(a, 'a', 'd'), { name: 'x' }))
   })
 })
 

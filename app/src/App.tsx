@@ -3,11 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, logIn, logOut, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, castVote, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
-import { createGroup, isUnread, leaveGroup, openDm, sendMessage, setChatMuted, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
+import { createGroup, inviteMembers, isUnread, leaveGroup, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
 import { DEFAULT_SEASON, type MyVote, type Season } from './backend/types'
 import { deviceRegistered, disablePush, enablePush, pushErrorMessage, pushSupport, refreshPush } from './push'
-import { fileToPhotoDataUrl } from './backend/image'
+import { fileToChatImage, fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
 import { AdminProgressOverlay, AdminScreen } from './components/AdminScreen'
 import { BottomNav } from './components/BottomNav'
@@ -454,18 +454,6 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
         {sheetPerson && (
           <VoteSheet d={sheetPerson} loggedIn={loggedIn} colors={colors} onVote={kind => vote(sheetPerson.id, kind)} onClose={() => setSheet(null)} onLogin={() => go('acct')} />
         )}
-        {profilePerson && (
-          <ProfileSheet
-            d={profilePerson.isMe ? { ...profilePerson, bio: bioDraft } : profilePerson}
-            onClose={() => setProfile(null)}
-            canMessage={!profilePerson.msgOff && !me?.msgOff}
-            onMessage={() => startDm(profilePerson.id)}
-            onCta={() => {
-              setProfile(null)
-              if (profilePerson.isMe) { setTab('acct'); setEditOpen(true) } else { setTab('home'); setSheet(profilePerson.id) }
-            }}
-          />
-        )}
         {ruleOpen && (
           <RuleDialog
             checked={ruleCheck}
@@ -510,7 +498,22 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
         {newChatOpen && me && <NewChatSheet me={me} all={all} onClose={() => setNewChatOpen(false)} onCreate={createChat} />}
         {openChat && me && authUser && (
           <ChatRoom
-            db={db!} chat={openChat} me={me} byId={byId}
+            db={db!} chat={openChat} me={me} all={all} byId={byId}
+            onOpenProfile={setProfile}
+            onSendImage={async file => {
+              try { await sendImage(db!, authUser.uid, openChat.id, await fileToChatImage(file)); return true } catch (e) { failToast('사진을 보내지 못했어요', e); return false }
+            }}
+            onInvite={async ids => {
+              const names = ids.map(id => byId.get(id)?.name ?? '').filter(Boolean).join(', ')
+              try { await inviteMembers(db!, authUser.uid, openChat.id, ids, `${me.name}님이 ${names}님을 초대했어요`); showToast('초대했어요'); return true } catch (e) { failToast('초대하지 못했어요. 상대가 메시지를 껐을 수 있어요', e); return false }
+            }}
+            onGroupInfo={async ({ photoFile, name }) => {
+              try {
+                if (photoFile) await setGroupInfo(db!, openChat.id, { photo: await fileToPhotoDataUrl(photoFile, 256, 0.8), name: openChat.name })
+                else await setGroupInfo(db!, openChat.id, { name: name ?? '' })
+                showToast(photoFile ? '채팅방 사진을 바꿨어요' : '채팅방 이름을 바꿨어요'); return true
+              } catch (e) { failToast('바꾸지 못했어요', e); return false }
+            }}
             onBack={() => setChatId(null)}
             onError={failToast}
             onSend={async text => {
@@ -525,6 +528,22 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
               try { await leaveGroup(db!, authUser.uid, openChat.id); setChatId(null); showToast('채팅방에서 나왔어요') } catch (e) { failToast('나가지 못했어요', e) }
             }}
           />
+        )}
+        {profilePerson && (
+          // Above an open chat room too (tapping someone in a chat opens their profile).
+          <div style={css('position:relative;z-index:300')}>
+          <ProfileSheet
+            d={profilePerson.isMe ? { ...profilePerson, bio: bioDraft } : profilePerson}
+            onClose={() => setProfile(null)}
+            canMessage={!profilePerson.msgOff && !me?.msgOff}
+            onMessage={() => startDm(profilePerson.id)}
+            onCta={() => {
+              setProfile(null)
+              setChatId(null)
+              if (profilePerson.isMe) { setTab('acct'); setEditOpen(true) } else { setTab('home'); setSheet(profilePerson.id) }
+            }}
+          />
+          </div>
         )}
         {installOpen && <InstallSheet onClose={() => setInstallOpen(false)} onToast={showToast} />}
         {adminBusy && <AdminProgressOverlay label={adminBusy.label} p={adminBusy.p} />}

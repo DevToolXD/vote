@@ -116,6 +116,7 @@ async function messages(from, to) {
       const s = await settingsOf(member)
       if (s.notify === false || s.notifyMsg === false) continue
       const sender = await nameOf(last.uid)
+      if (last.kind === 'image') last.text = '사진을 보냈어요'
       const more = incoming.length > 1 ? ` (+${incoming.length - 1})` : ''
       await push(member, chat.type === 'group'
         ? { title: chat.name || '단톡방', body: `${sender}: ${last.text}${more}`, url: `${SITE}?tab=msg&chat=${chat.id}`, tag: `chat-${chat.id}` }

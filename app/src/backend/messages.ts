@@ -1,5 +1,6 @@
 import {
   arrayRemove,
+  arrayUnion,
   collection,
   doc,
   getDoc,
@@ -35,11 +36,15 @@ export type ChatDoc = {
   updatedAt: Timestamp | null
   last?: { text: string; uid: string; at: Timestamp | null }
   reads?: Record<string, Timestamp | null>
+  /** Group icon (small JPEG data URL). */
+  photo?: string
   /** Members who turned this chat's 알림 off. */
   mutes?: Record<string, boolean>
 }
 export type ChatRow = ChatDoc & { id: string }
-export type MessageRow = { id: string; uid: string; text: string; at: Timestamp | null }
+/** 'image': the photo itself is in chats/{id}/media/{messageId}; 'system': e.g. "A님이 B님을 초대했어요". */
+export type MessageKind = 'text' | 'image' | 'system'
+export type MessageRow = { id: string; uid: string; text: string; at: Timestamp | null; kind?: MessageKind }
 
 export const dmId = (a: string, b: string) => [a, b].sort().join('_')
 const ms = (t: Timestamp | null | undefined) => (t ? t.toMillis() : 0)
@@ -104,6 +109,54 @@ export async function sendMessage(db: Firestore, me: string, chatId: string, tex
     [`reads.${me}`]: serverTimestamp(),
   })
   await b.commit()
+}
+
+/** Sends a photo (a data URL from fileToChatImage): the message plus its media doc, in one batch. */
+export async function sendImage(db: Firestore, me: string, chatId: string, dataUrl: string) {
+  const chatRef = doc(db, 'chats', chatId)
+  const msgRef = doc(collection(chatRef, 'messages'))
+  const b = writeBatch(db)
+  b.set(msgRef, { uid: me, text: '', kind: 'image', at: serverTimestamp() })
+  b.set(doc(chatRef, 'media', msgRef.id), { uid: me, data: dataUrl, at: serverTimestamp() })
+  b.update(chatRef, {
+    last: { text: '사진', uid: me, at: serverTimestamp() },
+    updatedAt: serverTimestamp(),
+    [`reads.${me}`]: serverTimestamp(),
+  })
+  await b.commit()
+}
+
+const imageCache = new Map<string, Promise<string>>()
+/** A photo message's image, loaded once per session. */
+export function loadImage(db: Firestore, chatId: string, messageId: string) {
+  const k = chatId + '/' + messageId
+  let p = imageCache.get(k)
+  if (!p) {
+    p = getDoc(doc(db, 'chats', chatId, 'media', messageId)).then(s => (s.data()?.data as string) ?? '')
+    p.catch(() => imageCache.delete(k))
+    imageCache.set(k, p)
+  }
+  return p
+}
+
+async function postSystem(db: Firestore, me: string, chatId: string, text: string) {
+  const chatRef = doc(db, 'chats', chatId)
+  const b = writeBatch(db)
+  b.set(doc(collection(chatRef, 'messages')), { uid: me, text, kind: 'system', at: serverTimestamp() })
+  b.update(chatRef, { last: { text: text.slice(0, 100), uid: me, at: serverTimestamp() }, updatedAt: serverTimestamp(), [`reads.${me}`]: serverTimestamp() })
+  await b.commit()
+}
+
+/** Adds people to a group chat (up to MAX_GROUP in total) and posts "…님을 초대했어요". */
+export async function inviteMembers(db: Firestore, me: string, chatId: string, ids: string[], notice: string) {
+  if (!ids.length) return
+  await updateDoc(doc(db, 'chats', chatId), { members: arrayUnion(...ids) })
+  await postSystem(db, me, chatId, notice).catch(() => {})
+}
+
+/** Group chat icon / name, shared by everyone in it. */
+export async function setGroupInfo(db: Firestore, chatId: string, patch: { photo?: string; name?: string }) {
+  await updateDoc(doc(db, 'chats', chatId), patch)
 }
 
 export async function markRead(db: Firestore, me: string, chatId: string) {

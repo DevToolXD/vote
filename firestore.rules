@@ -387,7 +387,7 @@ service cloud.firestore {
               && request.resource.data.name is string && request.resource.data.name.size() <= 30));
 
       allow update: if signedIn() && request.auth.uid in resource.data.members
-        && (newMessageSummary() || readReceipt() || muteToggle() || leaveGroup());
+        && (newMessageSummary() || readReceipt() || muteToggle() || leaveGroup() || addMembers() || groupInfo());
       allow delete: if false;
 
       function readsOk() {
@@ -416,6 +416,27 @@ service cloud.firestore {
           && d.mutes.diff(resource.data.get('mutes', {})).affectedKeys().hasOnly([request.auth.uid])
           && d.mutes[request.auth.uid] is bool;
       }
+      // Inviting: only adds people (who accept messages), group stays ≤ 10.
+      function addMembers() {
+        let d = request.resource.data;
+        let o = resource.data;
+        let added = d.members.removeAll(o.members);
+        return o.type == 'group'
+          && d.diff(o).affectedKeys().hasOnly(['members'])
+          && d.members.hasAll(o.members)
+          && d.members.size() <= 10 && d.members.toSet().size() == d.members.size()
+          && added.size() >= 1
+          && memberOn(added, 0) && memberOn(added, 1) && memberOn(added, 2) && memberOn(added, 3) && memberOn(added, 4)
+          && memberOn(added, 5) && memberOn(added, 6) && memberOn(added, 7) && memberOn(added, 8);
+      }
+      // Group icon (small JPEG) and name, editable by any member.
+      function groupInfo() {
+        let d = request.resource.data;
+        return resource.data.type == 'group'
+          && d.diff(resource.data).affectedKeys().hasOnly(['photo', 'name'])
+          && d.get('photo', '') is string && d.get('photo', '').size() <= 200000
+          && d.name is string && d.name.size() <= 30;
+      }
       function leaveGroup() {
         return resource.data.type == 'group'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
@@ -425,11 +446,29 @@ service cloud.firestore {
       match /messages/{msgId} {
         allow read: if signedIn() && request.auth.uid in chatData(chatId).members;
         allow create: if signedIn()
-          && request.resource.data.keys().hasOnly(['uid', 'text', 'at'])
+          && request.resource.data.keys().hasOnly(['uid', 'text', 'at', 'kind'])
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.at == request.time
-          && request.resource.data.text is string
-          && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 500
+          && request.resource.data.text is string && request.resource.data.text.size() <= 500
+          && request.resource.data.get('kind', 'text') in ['text', 'image', 'system']
+          && (request.resource.data.get('kind', 'text') == 'image'
+                ? existsAfter(/databases/$(database)/documents/chats/$(chatId)/media/$(msgId))
+                : request.resource.data.text.size() >= 1)
+          && canSend(chatData(chatId));
+        allow update, delete: if false;
+      }
+
+      // A photo message's image, written in the same batch as the message.
+      match /media/{msgId} {
+        allow read: if signedIn() && request.auth.uid in chatData(chatId).members;
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['uid', 'data', 'at'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.at == request.time
+          && request.resource.data.data is string
+          && request.resource.data.data.size() <= 700000
+          && request.resource.data.data.split(',')[0] in ['data:image/jpeg;base64', 'data:image/png;base64', 'data:image/webp;base64']
+          && getAfter(/databases/$(database)/documents/chats/$(chatId)/messages/$(msgId)).data.uid == request.auth.uid
           && canSend(chatData(chatId));
         allow update, delete: if false;
       }
