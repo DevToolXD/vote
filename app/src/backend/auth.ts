@@ -33,6 +33,7 @@ export async function signUp(name: string, id: string, pw: string) {
     score: 0,
     gender: '',
     bio: '',
+    photoURL: '',
     frame: 'none',
     plate: 'none',
     skin: 'none',

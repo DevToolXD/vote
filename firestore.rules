@@ -9,6 +9,13 @@ service cloud.firestore {
 
     function isSignedIn() { return request.auth != null; }
 
+    // A generous cap on the profile photo data URL — the client always sends a small
+    // resized JPEG (a few KB), this just stops a crafted request from bloating the doc.
+    function photoOk() {
+      return !('photoURL' in request.resource.data) ||
+        (request.resource.data.photoURL is string && request.resource.data.photoURL.size() < 300000);
+    }
+
     match /candidates/{candidateId} {
       // Public leaderboard — anyone can read without logging in.
       allow read: if true;
@@ -27,7 +34,8 @@ service cloud.firestore {
         // The owner editing their own profile/decorations/shop state.
         (request.auth.uid == resource.data.ownerUid &&
          request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['gender', 'bio', 'frame', 'plate', 'skin', 'spent', 'owned'])) ||
+           .hasOnly(['gender', 'bio', 'photoURL', 'frame', 'plate', 'skin', 'spent', 'owned']) &&
+         photoOk()) ||
         // Any other signed-in voter moving the tally by exactly one valid vote transition.
         (request.auth.uid != resource.data.ownerUid &&
          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['up', 'down', 'score']) &&

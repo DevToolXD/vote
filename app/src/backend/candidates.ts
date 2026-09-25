@@ -72,7 +72,7 @@ export async function buyItem(myUid: string, kind: ItemKind, key: string, price:
   })
 }
 
-export async function updateMyProfile(myUid: string, patch: { bio?: string; gender?: string }) {
+export async function updateMyProfile(myUid: string, patch: { bio?: string; gender?: string; photoURL?: string }) {
   if (!db) throw new Error('firebase-not-configured')
   await updateDoc(doc(db, 'candidates', myUid), patch)
 }

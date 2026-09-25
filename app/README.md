@@ -5,7 +5,7 @@ React + TypeScript + Vite build of `project/Popular Vote v2.dc.html` (Claude Des
 - Signing up creates a Firebase Auth account **and** a leaderboard entry for that person — every registered voter is also a candidate others can vote on (that's how the point shop, "받은 추천 1개가 1P", makes sense).
 - Voting, the shop, and profile edits (bio/gender/frame/nameplate/bar skin) are stored in Firestore and update live for everyone.
 - Login uses an "아이디" (username), not email — under the hood it's Firebase Auth email/password with `id@vote.local` as a synthetic email.
-- Profile photos are **not persisted** (no Firebase Storage — see below) — they're a local, this-browser-only preview that clears on refresh.
+- Profile photos are stored too, but not via Firebase Storage (see "Known trade-offs" — that now needs the paid Blaze plan). Instead the client shrinks the photo to a small square JPEG and saves it as a data URL directly on the candidate doc, so it persists and everyone can see it, no billing required.
 - There's no seed/mock data. A fresh Firebase project starts with an empty leaderboard; it fills up as real people sign up.
 
 ## Set up Firebase (one-time)
@@ -54,5 +54,5 @@ Static styles are kept as the prototype's CSS strings through `css()` in `src/cs
 
 ## Known trade-offs
 
-- **Photos aren't stored.** Adding real photo upload needs Firebase Storage, which (as of late 2024) requires the pay-as-you-go Blaze plan even for light use — left out to keep this on the free tier. The UI still lets you preview a photo locally.
+- **Photos are small data-URL JPEGs on the doc, not Firebase Storage.** Real Storage now requires the pay-as-you-go Blaze plan even for light use, so `backend/image.ts` shrinks each photo to ~128px and embeds it as base64 (usually a few KB) instead. This keeps things on the free tier but doesn't scale well: `subscribeCandidates` fetches every candidate doc on every leaderboard load, so with many users each carrying a photo, that listener gets proportionally heavier. Fine for a small/hobby deployment; a real Storage bucket (with thumbnails) would be the fix if this grows.
 - **Anti-cheat is rules-only.** The Firestore rules constrain vote writes to one valid step and block self-voting, but without Cloud Functions (also a Blaze feature) a determined attacker with browser devtools has more surface than a server-validated API would. Reasonable for a hobby/demo deployment, not for a high-stakes contest.

@@ -2,6 +2,7 @@ import type { User } from 'firebase/auth'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, logIn, logOut, onAuthChange, signUp } from './backend/auth'
 import { buyItem, castVote, equipItem, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
 import { BottomNav } from './components/BottomNav'
 import { EditProfile } from './components/EditProfile'
@@ -46,7 +47,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const [rows, setRows] = useState<CandidateRow[]>([])
   const [votes, setVotes] = useState<Record<string, Vote>>({})
 
-  const [photo, setPhoto] = useState<string | null>(null)
+  const [, setPhotoBusy] = useState(false)
   const [bioDraft, setBioDraft] = useState('')
   const [editOpen, setEditOpen] = useState(false)
   const [editTab, setEditTab] = useState<ItemKind>('frame')
@@ -86,8 +87,6 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
     SKIN_FILES.forEach(f => { const i = new Image(); i.decoding = 'async'; i.src = `skins/${f}.png` })
     return () => clearTimeout(toastTimer.current)
   }, [])
-
-  useEffect(() => () => { if (photo) URL.revokeObjectURL(photo) }, [photo])
 
   // Glass theme: pointer-following highlight on the hovered surface, throttled to one update per frame.
   useEffect(() => {
@@ -208,7 +207,24 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
 
   const sheetPerson = sheet != null ? all.find(d => d.id === sheet) : undefined
   const profilePerson = profile != null ? all.find(d => d.id === profile) : undefined
-  const myPhotoCss = photo ? `url(${photo})` : 'none'
+
+  const onPhoto = async (f: File) => {
+    if (!authUser) return
+    setPhotoBusy(true)
+    try {
+      const dataUrl = await fileToPhotoDataUrl(f)
+      await updateMyProfile(authUser.uid, { photoURL: dataUrl })
+      showToast('프로필 사진을 바꿨어요')
+    } catch {
+      showToast('사진을 처리하지 못했어요. 다른 사진으로 시도해주세요')
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+  const onRemovePhoto = () => {
+    if (!authUser) return
+    updateMyProfile(authUser.uid, { photoURL: '' }).catch(() => showToast('사진을 지우지 못했어요'))
+  }
 
   if (!firebaseConfigured) return <SetupNotice />
   if (!authReady) return <div data-g="app" style={css('width:100%;max-width:430px;min-height:100vh;background:#ffffff')} />
@@ -246,9 +262,9 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
               onNameFocus={el => { if (!nameAck) { el.blur(); setRuleOpen(true); setRuleCheck(false) } }}
               onSubmitSignup={doSignup}
               authBusy={authBusy}
-              me={me ? { ...me, photoCss: myPhotoCss, bio: bioDraft } : undefined}
-              onPhoto={f => { setPhoto(URL.createObjectURL(f)); showToast('프로필 사진을 바꿨어요 (새로고침하면 사라져요)') }}
-              onRemovePhoto={() => setPhoto(null)}
+              me={me ? { ...me, bio: bioDraft } : undefined}
+              onPhoto={onPhoto}
+              onRemovePhoto={onRemovePhoto}
               onBio={v => setBioDraft(v.slice(0, 60))}
               onGender={g => authUser && updateMyProfile(authUser.uid, { gender: g }).catch(() => showToast('저장하지 못했어요'))}
               points={points}
@@ -268,7 +284,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
         )}
         {profilePerson && (
           <ProfileSheet
-            d={profilePerson.isMe ? { ...profilePerson, photoCss: myPhotoCss, bio: bioDraft } : profilePerson}
+            d={profilePerson.isMe ? { ...profilePerson, bio: bioDraft } : profilePerson}
             onClose={() => setProfile(null)}
             onCta={() => {
               setProfile(null)
@@ -296,7 +312,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
         )}
         {editOpen && me && (
           <EditProfile
-            name={me.name} bio={bioDraft} photoCss={myPhotoCss} equipped={{ frame: me.frame, plate: me.plate, skin: me.skin }} owned={me.owned} points={points}
+            name={me.name} bio={bioDraft} photoCss={me.photoCss} equipped={{ frame: me.frame, plate: me.plate, skin: me.skin }} owned={me.owned} points={points}
             tab={editTab} onTab={setEditTab} onPick={pickItem} onClose={() => setEditOpen(false)}
           />
         )}

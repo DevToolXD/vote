@@ -29,7 +29,7 @@ export function buildPeople(rows: CandidateRow[], myVotes: Record<string, Vote>,
       scoreLabel: fmt(d.score),
       upLabel: d.up.toLocaleString(),
       downLabel: d.down.toLocaleString(),
-      photoCss: 'none',
+      photoCss: d.photoURL ? `url(${d.photoURL})` : 'none',
       isMe: d.id === myUid,
     }
   })

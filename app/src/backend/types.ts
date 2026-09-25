@@ -10,6 +10,8 @@ export type CandidateDoc = {
   score: number
   gender: string
   bio: string
+  /** Small JPEG data URL (or '' for none) — see backend/image.ts. */
+  photoURL: string
   frame: string
   plate: string
   skin: string
