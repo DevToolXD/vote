@@ -1,6 +1,9 @@
 rules_version = '2';
 
-// Paste this into Firebase Console → Firestore Database → Rules, then Publish.
+// Auto-deployed by .github/workflows/firestore-rules.yml on every push to main
+// that touches this file — edit here and push, no console visit needed.
+// (You can still paste this into Firebase Console → Firestore Database → Rules
+// → Publish by hand if you ever need to.)
 // Data model: candidates/{uid} is a signed-up voter's own leaderboard entry
 // (doc id == their Auth uid). votes/{voterUid}_{candidateId} records one
 // voter's up/down/none choice on one candidate.
