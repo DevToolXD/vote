@@ -32,6 +32,13 @@ export type VoteDoc = {
   updatedAt: unknown
 }
 
-export type Season = { name: string; number: number }
+export type PodiumEntry = { id: string; name: string; score: number; frame: string }
+export type Season = {
+  name: string
+  number: number
+  startedAt?: { toMillis(): number }
+  /** Set by a season reset: the season that just ended and its final TOP 3. */
+  last?: { name: string; top: PodiumEntry[] }
+}
 /** Before the admin ever names or resets a season, the app shows this one. */
 export const DEFAULT_SEASON: Season = { name: 'BETA', number: 1 }

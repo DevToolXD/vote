@@ -255,6 +255,12 @@ describe('admin: single-use tokens ×3', () => {
     assert.equal((await getDocs(collection(admin, 'votes'))).size, 0)
     const s = (await getDoc(doc(admin, 'meta', 'season'))).data()!
     assert.deepEqual([s.name, s.number], ['시즌 2', 2])
+    assert.equal(s.last.name, 'BETA')
+    assert.equal(s.last.top.length, 3)
+    assert.deepEqual([s.last.top[0].id, s.last.top[0].score], ['u0', 11])
+    // Renaming keeps the podium; nobody can forge one.
+    await setSeasonName(admin, ADMIN.uid, '시즌 2+')
+    assert.equal((await getDoc(doc(admin, 'meta', 'season'))).data()!.last.name, 'BETA')
     // New season: voting works again from zero.
     await castVote(dbs[3], 'u3', 'u0', 1)
     assert.equal((await read(admin, 'candidates/u0')).up, 1)

@@ -16,7 +16,10 @@ const PODIUM: [number, number, number, string, string, string, number, number][]
   [2, 3, 72, 'linear-gradient(180deg,#f0bb8f,#b06a3a)', '#4a2a12', 'rgba(224,162,118,0.45)', 56, 1],
 ]
 
-type Props = { top: Person[]; seasonName: string; sound: boolean; onToggleSound: () => void; onClose: () => void }
+/** Just what the podium shows. */
+export type RevealEntry = Pick<Person, 'name' | 'frame' | 'photoCss' | 'scoreLabel'>
+
+type Props = { top: RevealEntry[]; seasonName: string; sound: boolean; onToggleSound: () => void; onClose: () => void }
 
 /** Season TOP 3 reveal: screen darkens, drum zooms in and shakes harder, then 3rd → 2nd → 1st. */
 export function Reveal({ top, seasonName, sound, onToggleSound, onClose }: Props) {

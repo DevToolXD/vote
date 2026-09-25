@@ -12,13 +12,12 @@ type Props = {
   onPick: (id: string) => void
   goRank: () => void
   goAccount: () => void
-  startReveal: () => void
   onInstall: () => void
   myCount: number
   seasonName: string
 }
 
-export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAccount, startReveal, onInstall, myCount, seasonName }: Props) {
+export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAccount, onInstall, myCount, seasonName }: Props) {
   const q = query.trim()
   // You can't vote for yourself, so you never appear in the pick list.
   const votable = all.filter(d => !d.isMe)
@@ -37,18 +36,6 @@ export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAc
         <h1 style={css('margin:4px 0 0;font-size:26px;line-height:35px;font-weight:700;color:#191f28')}>{all.length ? <>지금 1위는<br />{all[0].name}님이에요</> : '아직 등록된 후보가 없어요'}</h1>
       </div>
 
-      {all.length >= 3 && (
-        <button data-g="l2" className="pr-98" onClick={startReveal} style={css('width:calc(100% - 24px);margin:0 12px 12px;background:#ffffff;border-radius:24px;padding:18px 16px 18px 20px;display:flex;align-items:center;gap:14px;text-align:left;transition:transform 150ms')}>
-          <span style={css('width:48px;height:48px;border-radius:16px;flex:none;background:#fff4d6;display:flex;align-items:center;justify-content:center')}>
-            <svg width="30" height="30" viewBox="0 0 32 32"><path d="M7 3.5L14 13M25 3.5L18 13" stroke="#8b5a2b" strokeWidth="2.2" strokeLinecap="round" /><circle cx="6.5" cy="3.2" r="2" fill="#c98a4b" /><circle cx="25.5" cy="3.2" r="2" fill="#c98a4b" /><path d="M4 15v9c0 2.8 5.4 5 12 5s12-2.2 12-5v-9" fill="#f04452" /><path d="M4 18l4 8M10 20l4 9M16 20l4 9M22 20l4 7" stroke="#ffc342" strokeWidth="1.4" /><ellipse cx="16" cy="15" rx="12" ry="4.6" fill="#f9fafb" stroke="#d1d6db" strokeWidth="1.2" /></svg>
-          </span>
-          <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
-            <span style={css('font-size:17px;line-height:25.5px;font-weight:700;color:#191f28')}>시즌 {seasonName} TOP 3 발표</span>
-            <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>두구두구, 3위부터 1위까지 공개해요</span>
-          </span>
-          <ChevronRight />
-        </button>
-      )}
 
       {!isInstalledApp() && (
         <button data-g="l2" className="pr-98" onClick={onInstall} style={css('width:calc(100% - 24px);margin:0 12px 12px;background:#ffffff;border-radius:24px;padding:18px 16px 18px 20px;display:flex;align-items:center;gap:14px;text-align:left;transition:transform 150ms')}>

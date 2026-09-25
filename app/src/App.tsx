@@ -15,7 +15,7 @@ import { BuyDialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, V
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
 import { css } from './css'
-import { BLUE, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab, type Vote } from './data'
+import { BLUE, fmt, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab, type Vote } from './data'
 import { db as maybeDb, firebaseConfigured } from './firebase'
 import { buildPeople } from './model'
 
@@ -31,6 +31,8 @@ type Buy = { kind: ItemKind; key: string; label: string; price: number }
 
 const EMPTY_SIGNUP: SignupForm = { name: '', id: '', pw: '', pw2: '' }
 const freshLogin = (): LoginForm => ({ id: savedLoginId(), pw: '', keep: true })
+/** The TOP 3 reveal pops up for a week after a season ends — not for people joining later. */
+const REVEAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 
 function loadTheme() {
   try { return localStorage.getItem('pv-theme') || 'default' } catch { return 'default' }
@@ -91,6 +93,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   useEffect(() => onAuthChange(u => { setAuthUser(u); setAuthReady(true) }), [])
   useEffect(() => (db ? subscribeCandidates(db, setRows) : undefined), [])
   useEffect(() => (db ? subscribeSeason(db, setSeason) : undefined), [])
+
   useEffect(() => {
     if (!authUser) { setVotes({}); return }
     return db ? subscribeMyVotes(db, authUser.uid, setVotes) : undefined
@@ -127,6 +130,23 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const points = me ? pointsOf(me) : 0
   const isAdmin = isAdminEmail(authUser?.email)
   useEffect(() => { if (tab === 'admin' && !isAdmin) setTab('home') }, [tab, isAdmin])
+
+  // TOP 3 reveal: once per device, right after a season ends (the reset records the final podium).
+  const podium = useMemo(() => {
+    const top = season.last?.top
+    if (!top || top.length < 3) return null
+    return top.map(t => {
+      const photo = all.find(p => p.id === t.id)?.photoURL
+      return { name: t.name, frame: t.frame, photoCss: photo ? `url(${photo})` : 'none', scoreLabel: fmt(t.score) }
+    })
+  }, [season, all])
+  useEffect(() => {
+    if (!podium || !season.startedAt) return
+    if (Date.now() - season.startedAt.toMillis() > REVEAL_WINDOW_MS) return
+    const key = 'vote.revealSeen'
+    try { if (Number(localStorage.getItem(key)) >= season.number) return; localStorage.setItem(key, String(season.number)) } catch { return }
+    setRevealOpen(true)
+  }, [podium, season])
 
   // The bio textarea keeps its own draft so typing stays instant; it's synced from Firestore only when the signed-in user changes, and written back (debounced) below.
   const lastMeId = useRef<string | null>(null)
@@ -271,7 +291,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
           {tab === 'home' && (
             <HomeScreen
               all={all} loggedIn={loggedIn} query={homeQuery} onQuery={setHomeQuery} onPick={setSheet}
-              goRank={() => go('rank')} goAccount={() => go('acct')} startReveal={() => setRevealOpen(true)} onInstall={() => setInstallOpen(true)} myCount={mine.length} seasonName={season.name}
+              goRank={() => go('rank')} goAccount={() => go('acct')} onInstall={() => setInstallOpen(true)} myCount={mine.length} seasonName={season.name}
             />
           )}
           {tab === 'rank' && (
@@ -378,8 +398,8 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
             onConfirm={confirmBuy}
           />
         )}
-        {revealOpen && all.length >= 3 && (
-          <Reveal top={all.slice(0, 3)} seasonName={season.name} sound={sound} onToggleSound={() => setSound(s => !s)} onClose={() => setRevealOpen(false)} />
+        {revealOpen && podium && (
+          <Reveal top={podium} seasonName={season.last!.name} sound={sound} onToggleSound={() => setSound(s => !s)} onClose={() => setRevealOpen(false)} />
         )}
         {installOpen && <InstallSheet onClose={() => setInstallOpen(false)} onToast={showToast} />}
         {adminBusy && <AdminProgressOverlay label={adminBusy.label} p={adminBusy.p} />}

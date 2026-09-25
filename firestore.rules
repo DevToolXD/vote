@@ -6,7 +6,7 @@ rules_version = '2';
 // Data model
 //   candidates/{uid}              a signed-up user's leaderboard entry (doc id == Auth uid)
 //   votes/{voterUid}_{candidateId} one voter's up/down/none choice on one candidate
-//   meta/season                   { name, number, startedAt }
+//   meta/season                   { name, number, startedAt, last? }  last = the ended season's { name, top: [≤3 × {id,name,score,frame}] }
 //   meta/adminLock                the admin operation currently being committed (see below)
 //   adminTokens/{random id}       single-use tokens for admin operations
 //   banned/{uid}                  accounts deleted by the admin; they can't re-join
@@ -98,11 +98,18 @@ service cloud.firestore {
 
     // ---- season -------------------------------------------------------------------
 
+    // The ended season's podium, recorded by the reset so the app can show it once.
+    function lastOk(last, endedName) {
+      return last == null || (last is map && last.keys().hasOnly(['name', 'top']) && last.name == endedName
+        && last.top is list && last.top.size() <= 3);
+    }
+
     match /meta/season {
       allow read: if true;
-      allow write: if request.resource.data.keys().hasOnly(['name', 'number', 'startedAt']) && (
+      allow write: if request.resource.data.keys().hasOnly(['name', 'number', 'startedAt', 'last']) && (
         (adminOp('setSeasonName')
           && request.resource.data.name == lock().payload.name
+          && request.resource.data.get('last', null) == (resource == null ? null : resource.data.get('last', null))
           && (resource == null
                 ? request.resource.data.number == 1 && request.resource.data.startedAt == request.time
                 : request.resource.data.number == resource.data.number && request.resource.data.startedAt == resource.data.startedAt)) ||
@@ -110,7 +117,8 @@ service cloud.firestore {
           && request.resource.data.name == lock().payload.name
           && request.resource.data.number == lock().payload.nextNumber
           && lock().payload.nextNumber == (resource == null ? 1 : resource.data.number) + 1
-          && request.resource.data.startedAt == request.time)
+          && request.resource.data.startedAt == request.time
+          && lastOk(request.resource.data.get('last', null), resource == null ? 'BETA' : resource.data.name))
       );
     }
 

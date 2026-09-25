@@ -148,7 +148,14 @@ export async function resetSeason(db: Firestore, adminUid: string, newName: stri
     groups.push(b => { b.update(c.ref, { up: 0, down: 0, score: 0, bonus: (d.bonus ?? 0) + d.up }); return 1 })
   }
   for (const v of votes.docs) groups.push(b => { b.delete(v.ref); return 1 })
-  groups.push(b => { b.set(doc(db, 'meta', 'season'), { name, number: nextNumber, startedAt: serverTimestamp() }); return 1 })
+  // Final podium of the season that's ending, for the one-time TOP 3 reveal.
+  const top = cands.docs
+    .map(c => ({ id: c.id, ...(c.data() as CandidateDoc) }))
+    .sort((a, b) => b.score - a.score || b.up - a.up)
+    .slice(0, 3)
+    .map(c => ({ id: c.id, name: c.name, score: c.score, frame: c.frame }))
+  const last = { name: cur.name, top }
+  groups.push(b => { b.set(doc(db, 'meta', 'season'), { name, number: nextNumber, startedAt: serverTimestamp(), last }); return 1 })
   await runAdminOp(db, adminUid, 'seasonReset', { name, nextNumber }, groups, onProgress)
 }
 
