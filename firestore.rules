@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Auto-deployed by .github/workflows/firestore-rules.yml on every push to main
+// Auto-deployed by .github/workflows/firebase-backend.yml on every push to main
 // that touches this file — edit here and push, no console visit needed.
 // (You can still paste this into Firebase Console → Firestore Database → Rules
 // → Publish by hand if you ever need to.)

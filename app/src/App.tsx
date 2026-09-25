@@ -72,6 +72,11 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
     setToast(msg)
     toastTimer.current = setTimeout(() => setToast(''), 2000)
   }
+  /** Error toast that keeps the Firebase error code visible, so a screenshot is enough to diagnose it. */
+  const failToast = (msg: string, e: unknown) => {
+    const code = (e as { code?: string })?.code
+    showToast(code ? `${msg} (${code})` : msg)
+  }
 
   useEffect(() => { setTab(startTab) }, [startTab])
 
@@ -120,7 +125,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   }, [me])
   useEffect(() => {
     if (!authUser || !me || bioDraft === me.bio) return
-    const t = setTimeout(() => { updateMyProfile(authUser.uid, { bio: bioDraft }).catch(() => showToast('소개를 저장하지 못했어요')) }, 600)
+    const t = setTimeout(() => { updateMyProfile(authUser.uid, { bio: bioDraft }).catch(e => failToast('소개를 저장하지 못했어요', e)) }, 600)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bioDraft])
@@ -142,15 +147,15 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
     try {
       const next = await castVote(authUser.uid, id, dir)
       showToast(next === 0 ? `${d.name}님 투표를 취소했어요` : `${d.name}님에게 투표했어요`)
-    } catch {
-      showToast('투표하지 못했어요. 다시 시도해주세요')
+    } catch (e) {
+      failToast('투표하지 못했어요. 다시 시도해주세요', e)
     }
   }
 
   const pickItem = (kind: ItemKind, key: string, label: string) => {
     if (!me) return
     if (me.owned[kind].includes(key)) {
-      equipItem(me.id, kind, key).catch(() => showToast('적용하지 못했어요'))
+      equipItem(me.id, kind, key).catch(e => failToast('적용하지 못했어요', e))
     } else {
       setBuy({ kind, key, label, price: priceOf(kind, key) })
     }
@@ -164,8 +169,8 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
       await buyItem(me.id, buy.kind, buy.key, buy.price)
       setBuy(null)
       showToast(buyName + ' 적용했어요')
-    } catch {
-      showToast('구매하지 못했어요. 다시 시도해주세요')
+    } catch (e) {
+      failToast('구매하지 못했어요. 다시 시도해주세요', e)
     }
   }
 
@@ -215,15 +220,15 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
       const dataUrl = await fileToPhotoDataUrl(f)
       await updateMyProfile(authUser.uid, { photoURL: dataUrl })
       showToast('프로필 사진을 바꿨어요')
-    } catch {
-      showToast('사진을 처리하지 못했어요. 다른 사진으로 시도해주세요')
+    } catch (e) {
+      failToast('사진을 처리하지 못했어요. 다른 사진으로 시도해주세요', e)
     } finally {
       setPhotoBusy(false)
     }
   }
   const onRemovePhoto = () => {
     if (!authUser) return
-    updateMyProfile(authUser.uid, { photoURL: '' }).catch(() => showToast('사진을 지우지 못했어요'))
+    updateMyProfile(authUser.uid, { photoURL: '' }).catch(e => failToast('사진을 지우지 못했어요', e))
   }
 
   if (!firebaseConfigured) return <SetupNotice />
@@ -266,7 +271,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
               onPhoto={onPhoto}
               onRemovePhoto={onRemovePhoto}
               onBio={v => setBioDraft(v.slice(0, 60))}
-              onGender={g => authUser && updateMyProfile(authUser.uid, { gender: g }).catch(() => showToast('저장하지 못했어요'))}
+              onGender={g => authUser && updateMyProfile(authUser.uid, { gender: g }).catch(e => failToast('저장하지 못했어요', e))}
               points={points}
               mine={mine}
               onCancelVote={d => vote(d.id, d.v as 1 | -1)}

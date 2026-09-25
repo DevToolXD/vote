@@ -1,0 +1,40 @@
+name: Firebase backend
+
+# Deploys firestore.rules, makes sure Email/Password sign-in is on, then runs an
+# end-to-end smoke test (sign up → save → vote, plus what must be refused)
+# against the live project. Results show up as annotations on the run.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firestore.rules'
+      - '.github/scripts/**'
+      - '.github/workflows/firebase-backend.yml'
+      - 'app/src/backend/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-backend
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    env:
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Deploy Firestore rules
+        run: node .github/scripts/deploy-firestore-rules.mjs
+      - name: Check Authentication settings
+        run: node .github/scripts/setup-auth.mjs
+      - name: End-to-end smoke test
+        run: node .github/scripts/smoke-test.mjs
