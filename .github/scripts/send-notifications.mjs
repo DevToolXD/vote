@@ -129,7 +129,7 @@ async function votes(from, to) {
   const per = {}
   for (const v of changed) {
     if (!v.candidateId) continue
-    const kind = v.lastUpAt && v.lastUpAt === v.updatedAt ? 'up' : v.down ? 'down' : null
+    const kind = v.lastUpAt && v.lastUpAt === v.updatedAt ? 'up' : v.lastDownAt && v.lastDownAt === v.updatedAt ? 'down' : null
     if (!kind) continue
     per[v.candidateId] ??= { up: 0, down: 0 }
     per[v.candidateId][kind]++

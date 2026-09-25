@@ -10,8 +10,9 @@ export type Person = CandidateRow & {
   upReady: boolean
   /** When I can 추천 again, e.g. "3일 후" ('' when ready). */
   upWait: string
-  /** I've used my one 비추천 on them. */
-  downDone: boolean
+  /** Same for 비추천. */
+  downReady: boolean
+  downWait: string
   upN: number
   downN: number
   scoreLabel: string
@@ -37,6 +38,7 @@ export function buildPeople(rows: CandidateRow[], myVotes: Record<string, MyVote
   return rows.map((d, i) => {
     const my = myVotes[d.id]
     const wait = my ? my.nextUpAt - now : 0
+    const downWait = my ? my.nextDownAt - now : 0
     if (i === 0 || d.score !== rows[i - 1].score) rank = i + 1
     return {
       ...d,
@@ -44,7 +46,8 @@ export function buildPeople(rows: CandidateRow[], myVotes: Record<string, MyVote
       my,
       upReady: wait <= 0,
       upWait: waitLabel(wait),
-      downDone: !!my?.down,
+      downReady: downWait <= 0,
+      downWait: waitLabel(downWait),
       upN: d.up,
       downN: d.down,
       scoreLabel: fmt(d.score),

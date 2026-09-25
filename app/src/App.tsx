@@ -153,7 +153,7 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
   const loggedIn = !!authUser
   const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null, Date.now()), [rows, votes, authUser, minute]) // eslint-disable-line react-hooks/exhaustive-deps
   const me = authUser ? all.find(d => d.id === authUser.uid) : undefined
-  const mine = all.filter(d => d.my && (d.my.ups > 0 || d.my.down || !d.upReady))
+  const mine = all.filter(d => d.my && (d.my.ups > 0 || d.my.downs > 0 || !d.upReady || !d.downReady))
   const points = me ? pointsOf(me) : 0
   const isAdmin = isAdminEmail(authUser?.email)
   const byId = useMemo(() => new Map(all.map(p => [p.id, p])), [all])
@@ -210,8 +210,7 @@ export function App({ startTab = 'home', startChat = null, swapPalette = false }
       showToast(kind === 'up' ? `${d.name}님을 추천했어요` : `${d.name}님을 비추천했어요`)
     } catch (e) {
       const m = (e as Error)?.message
-      if (m === 'vote-too-soon') showToast('추천은 7일마다 한 번 할 수 있어요')
-      else if (m === 'already-downvoted') showToast('비추천은 한 사람에게 한 번만 할 수 있어요')
+      if (m === 'vote-too-soon') showToast(`${kind === 'up' ? '추천' : '비추천'}은 7일마다 한 번 할 수 있어요`)
       else failToast('투표하지 못했어요. 다시 시도해주세요', e)
     }
   }

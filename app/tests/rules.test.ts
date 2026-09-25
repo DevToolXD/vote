@@ -86,25 +86,29 @@ async function seed(path: string, fields: Record<string, unknown>) {
 }
 const tally = async (db: Firestore, id: string) => { const c = await read(db, `candidates/${id}`); return [c.up, c.down, c.score] }
 const voteDoc = (uid: string, cand: string, extra: Record<string, unknown>) =>
-  ({ uid, candidateId: cand, season: 1, ups: 0, lastUpAt: null, down: false, downSeason: 0, updatedAt: serverTimestamp(), ...extra })
+  ({ uid, candidateId: cand, season: 1, ups: 0, downs: 0, lastUpAt: null, lastDownAt: null, updatedAt: serverTimestamp(), ...extra })
 
 describe('voting', () => {
-  test('추천 once per 7 days per person; 비추천 once ever; nothing undoes', async () => {
+  test('추천 and 비추천 each once per 7 days per person; nothing undoes', async () => {
     await signUp('a'); const b = await signUp('b'); await signUp('c')
     await castVote(b, 'b', 'a', 'up')
     assert.deepEqual(await tally(b, 'a'), [1, 0, 1])
     await assert.rejects(castVote(b, 'b', 'a', 'up'), /vote-too-soon/)
     await castVote(b, 'b', 'c', 'up') // other people are separate
-    await castVote(b, 'b', 'a', 'down')
+    await castVote(b, 'b', 'a', 'down') // the 비추천 timer is separate from 추천
     assert.deepEqual(await tally(b, 'a'), [1, 1, 0])
-    await assert.rejects(castVote(b, 'b', 'a', 'down'), /already-downvoted/)
-    // Server side too, skipping the client checks: a second 추천 within 7 days, a second 비추천, taking one back.
+    await assert.rejects(castVote(b, 'b', 'a', 'down'), /vote-too-soon/)
+    // Server side too, skipping the client checks: a second vote within 7 days, taking one back.
     const ref = doc(b, 'votes', 'b_a'), cand = doc(b, 'candidates', 'a')
     const tryWrite = (vote: Record<string, unknown>, c: Record<string, unknown>) => { const w = writeBatch(b); w.set(ref, voteDoc('b', 'a', vote)); w.update(cand, c); return w.commit() }
-    const last = (await getDoc(ref)).data()!.lastUpAt
-    await denied(tryWrite({ ups: 2, lastUpAt: serverTimestamp(), down: true, downSeason: 1 }, { up: 2, score: 1 }))
-    await denied(tryWrite({ ups: 1, lastUpAt: last, down: false, downSeason: 0 }, { down: 0, score: 1 }))
-    await denied(tryWrite({ ups: 0, lastUpAt: last, down: true, downSeason: 1 }, { up: 0, score: -1 }))
+    const v = (await getDoc(ref)).data()!
+    await denied(tryWrite({ ups: 2, downs: 1, lastUpAt: serverTimestamp(), lastDownAt: v.lastDownAt }, { up: 2, score: 1 }))
+    await denied(tryWrite({ ups: 1, downs: 2, lastUpAt: v.lastUpAt, lastDownAt: serverTimestamp() }, { down: 2, score: -1 }))
+    await denied(tryWrite({ ups: 0, downs: 1, lastUpAt: v.lastUpAt, lastDownAt: v.lastDownAt }, { up: 0, score: -1 }))
+    // After 7 days, 비추천 works again and adds up.
+    await seed('votes/b_a', { lastDownAt: new Date(Date.now() - 8 * 86400_000) })
+    await castVote(b, 'b', 'a', 'down')
+    assert.deepEqual(await tally(b, 'a'), [1, 2, -1])
   })
   test('after 7 days, 추천 works again and adds up; a back-dated 추천 is refused', async () => {
     await signUp('a'); const b = await signUp('b')
@@ -317,7 +321,7 @@ describe('admin: single-use tokens ×3', () => {
     assert.equal((await getDoc(doc(admin, 'meta', 'season'))).data()!.last.name, 'BETA')
     // New season: the tally starts from zero, but the per-person limits still apply.
     await assert.rejects(castVote(dbs[3], 'u3', 'u0', 'up'), /vote-too-soon/)
-    await assert.rejects(castVote(dbs[3], 'u3', 'u1', 'down'), /already-downvoted/)
+    await assert.rejects(castVote(dbs[3], 'u3', 'u1', 'down'), /vote-too-soon/)
     await seed('votes/u3_u0', { lastUpAt: new Date(Date.now() - 8 * 86400_000) })
     await castVote(dbs[3], 'u3', 'u0', 'up')
     await castVote(dbs[7], 'u7', 'u1', 'down')

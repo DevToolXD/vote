@@ -6,8 +6,8 @@ rules_version = '2';
 // Data model
 //   candidates/{uid}              a signed-up user's leaderboard entry (doc id == Auth uid)
 //   votes/{voterUid}_{candidateId} one voter's history with one candidate:
-//                                 { season, ups (this season), lastUpAt, down, downSeason }
-//                                 추천 once every 7 days (adds up), 비추천 once ever; neither can be undone
+//                                 { season, ups, downs (this season), lastUpAt, lastDownAt }
+//                                 추천 and 비추천 each once every 7 days (they add up); neither can be undone
 //   meta/season                   { name, number, startedAt, last? }  last = the ended season's { name, top: [≤3 × {id,name,score,frame}] }
 //   meta/adminLock                the admin operation currently being committed (see below)
 //   adminTokens/{random id}       single-use tokens for admin operations
@@ -182,7 +182,7 @@ service cloud.firestore {
       return exists(sp) ? get(sp).data.number : 1;
     }
     function upsNow(v, cur) { return v.get('season', 0) == cur ? v.get('ups', 0) : 0; }
-    function downNow(v, cur) { return v.get('down', false) == true && v.get('downSeason', 0) == cur ? 1 : 0; }
+    function downsNow(v, cur) { return v.get('season', 0) == cur ? v.get('downs', 0) : 0; }
 
     // Another user's vote moving the tally — must match their vote doc changing in the same write.
     function voteTally(candidateId) {
@@ -195,7 +195,7 @@ service cloud.firestore {
         && existsAfter(vp)
         && d.diff(o).affectedKeys().hasOnly(['up', 'down', 'score'])
         && d.up == o.up + upsNow(getAfter(vp).data, cur) - upsNow(before, cur)
-        && d.down == o.down + downNow(getAfter(vp).data, cur) - downNow(before, cur)
+        && d.down == o.down + downsNow(getAfter(vp).data, cur) - downsNow(before, cur)
         && (d.up != o.up || d.down != o.down)
         && d.score == d.up - d.down;
     }
@@ -236,7 +236,7 @@ service cloud.firestore {
         && !existsAfter(vp)
         && d.diff(o).affectedKeys().hasOnly(['up', 'down', 'score'])
         && d.up == o.up - upsNow(v, cur)
-        && d.down == o.down - downNow(v, cur)
+        && d.down == o.down - downsNow(v, cur)
         && d.score == d.up - d.down;
     }
 
@@ -274,24 +274,25 @@ service cloud.firestore {
       let cur = curSeason();
       return c0.ownerUid != request.auth.uid
         && c1.up == c0.up + upsNow(request.resource.data, cur) - upsNow(o, cur)
-        && c1.down == c0.down + downNow(request.resource.data, cur) - downNow(o, cur);
+        && c1.down == c0.down + downsNow(request.resource.data, cur) - downsNow(o, cur);
     }
 
-    // 추천: once every 7 days per person, adding up. 비추천: once ever per person. Neither undoes.
+    // 추천 and 비추천: each once every 7 days per person, adding up. Neither undoes.
     function voteAction() {
       let d = request.resource.data;
       let o = resource == null ? {} : resource.data;
       let cur = curSeason();
       let oUps = upsNow(o, cur);
-      let oLast = o.get('lastUpAt', null);
-      let oDown = o.get('down', false);
-      let oDownSeason = o.get('downSeason', 0);
-      return d.season == cur && d.ups is int && d.down is bool && d.downSeason is int
+      let oDowns = downsNow(o, cur);
+      let oLastUp = o.get('lastUpAt', null);
+      let oLastDown = o.get('lastDownAt', null);
+      return d.season == cur && d.ups is int && d.downs is int
         && ((d.ups == oUps + 1 && d.lastUpAt == request.time
-              && (oLast == null || request.time >= oLast + duration.value(7, 'd'))
-              && d.down == oDown && d.downSeason == oDownSeason)
-          || (oDown == false && d.down == true && d.downSeason == cur
-              && d.ups == oUps && d.lastUpAt == oLast));
+              && (oLastUp == null || request.time >= oLastUp + duration.value(7, 'd'))
+              && d.downs == oDowns && d.lastDownAt == oLastDown)
+          || (d.downs == oDowns + 1 && d.lastDownAt == request.time
+              && (oLastDown == null || request.time >= oLastDown + duration.value(7, 'd'))
+              && d.ups == oUps && d.lastUpAt == oLastUp));
     }
 
     match /votes/{voteId} {
@@ -299,7 +300,7 @@ service cloud.firestore {
       allow read: if signedIn() && (isAdmin() || (resource == null ? voteId.split('_')[0] == request.auth.uid : resource.data.uid == request.auth.uid));
 
       allow create, update: if signedIn()
-        && request.resource.data.keys().hasOnly(['uid', 'candidateId', 'season', 'ups', 'lastUpAt', 'down', 'downSeason', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'candidateId', 'season', 'ups', 'downs', 'lastUpAt', 'lastDownAt', 'updatedAt'])
         && request.resource.data.uid == request.auth.uid
         && voteId == request.auth.uid + '_' + request.resource.data.candidateId
         && request.resource.data.updatedAt == request.time

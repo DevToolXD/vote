@@ -14,7 +14,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore'
 import type { ItemKind } from '../data'
-import { UP_EVERY_MS, type CandidateDoc, type MyVote, type VoteDoc } from './types'
+import { VOTE_EVERY_MS, type CandidateDoc, type MyVote, type VoteDoc } from './types'
 
 // Every function takes the Firestore instance so the rules tests (app/tests) run
 // this exact code against the emulator.
@@ -35,7 +35,12 @@ export function subscribeMyVotes(db: Firestore, uid: string, cb: (votes: Record<
     snap.forEach(d => {
       const v = d.data({ serverTimestamps: 'estimate' }) as Partial<VoteDoc>
       if (!v.candidateId) return
-      out[v.candidateId] = { ups: v.ups ?? 0, nextUpAt: v.lastUpAt ? v.lastUpAt.toMillis() + UP_EVERY_MS : 0, down: !!v.down }
+      out[v.candidateId] = {
+        ups: v.ups ?? 0,
+        downs: v.downs ?? 0,
+        nextUpAt: v.lastUpAt ? v.lastUpAt.toMillis() + VOTE_EVERY_MS : 0,
+        nextDownAt: v.lastDownAt ? v.lastDownAt.toMillis() + VOTE_EVERY_MS : 0,
+      }
     })
     cb(out)
   })
@@ -44,9 +49,9 @@ export function subscribeMyVotes(db: Firestore, uid: string, cb: (votes: Record<
 export type VoteKind = 'up' | 'down'
 
 /**
- * 추천 (once every 7 days per person, adds up) or 비추천 (once ever per person).
- * Neither can be undone. Runs in a transaction so concurrent voters can't corrupt
- * the tally; firestore.rules checks the same limits server side.
+ * 추천 or 비추천 — each once every 7 days per person, adding up; neither can be
+ * undone. Runs in a transaction so concurrent voters can't corrupt the tally;
+ * firestore.rules checks the same limits server side.
  */
 export async function castVote(db: Firestore, myUid: string, candidateId: string, kind: VoteKind) {
   if (candidateId === myUid) throw new Error('cannot-vote-self')
@@ -58,18 +63,23 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
     if (!candSnap.exists()) throw new Error('candidate-not-found')
     const cur = seasonSnap.exists() ? (seasonSnap.data().number as number) : 1
     const o = (voteSnap.data() ?? {}) as Partial<VoteDoc>
-    const oUps = o.season === cur ? o.ups ?? 0 : 0
+    const thisSeason = o.season === cur
+    const next = {
+      uid: myUid, candidateId, season: cur, updatedAt: serverTimestamp(),
+      ups: thisSeason ? o.ups ?? 0 : 0, downs: thisSeason ? o.downs ?? 0 : 0,
+      lastUpAt: o.lastUpAt ?? null, lastDownAt: o.lastDownAt ?? null,
+    } as Record<string, unknown> & { ups: number; downs: number }
+    const last = kind === 'up' ? o.lastUpAt : o.lastDownAt
+    if (last && Date.now() < last.toMillis() + VOTE_EVERY_MS) throw new Error('vote-too-soon')
     const c = candSnap.data() as CandidateDoc
-    const base = { uid: myUid, candidateId, season: cur, updatedAt: serverTimestamp() }
     if (kind === 'up') {
-      if (o.lastUpAt && Date.now() < o.lastUpAt.toMillis() + UP_EVERY_MS) throw new Error('vote-too-soon')
-      tx.set(voteRef, { ...base, ups: oUps + 1, lastUpAt: serverTimestamp(), down: o.down ?? false, downSeason: o.downSeason ?? 0 })
+      next.ups += 1; next.lastUpAt = serverTimestamp()
       tx.update(candidateRef, { up: c.up + 1, score: c.up + 1 - c.down })
     } else {
-      if (o.down) throw new Error('already-downvoted')
-      tx.set(voteRef, { ...base, ups: oUps, lastUpAt: o.lastUpAt ?? null, down: true, downSeason: cur })
+      next.downs += 1; next.lastDownAt = serverTimestamp()
       tx.update(candidateRef, { down: c.down + 1, score: c.up - (c.down + 1) })
     }
+    tx.set(voteRef, next)
   })
 }
 

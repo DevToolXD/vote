@@ -17,6 +17,7 @@ const fsApi = 'https://firestore.googleapis.com/v1'
 function fv(v) {
   if (typeof v === 'string') return { stringValue: v }
   if (typeof v === 'boolean') return { booleanValue: v }
+  if (v === null) return { nullValue: null }
   if (typeof v === 'number') return { integerValue: String(v) }
   if (v instanceof Date) return { timestampValue: v.toISOString() }
   if (Array.isArray(v)) return { arrayValue: { values: v.map(fv) } }
@@ -82,7 +83,7 @@ try {
   // B recommends A: same two writes the app's castVote() transaction makes.
   const seasonDoc = await call(`${fsApi}/${dbRoot}/meta/season?key=${apiKey}`)
   const season = seasonDoc.ok ? Number(seasonDoc.json.fields?.number?.integerValue ?? 1) : 1
-  const upVote = (voter, cand, ups) => withServerTime(update(`votes/${voter}_${cand}`, { uid: voter, candidateId: cand, season, ups, down: false, downSeason: 0 }), 'lastUpAt', 'updatedAt')
+  const upVote = (voter, cand, ups) => withServerTime(update(`votes/${voter}_${cand}`, { uid: voter, candidateId: cand, season, ups, downs: 0, lastDownAt: null }), 'lastUpAt', 'updatedAt')
   docs.push(`votes/${b.uid}_${a.uid}`)
   const vote = await commit(b.token, [
     update(`candidates/${a.uid}`, { up: 1, down: 0, score: 1 }, ['up', 'down', 'score']),

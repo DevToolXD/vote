@@ -143,8 +143,8 @@ export async function setSeasonName(db: Firestore, adminUid: string, name: strin
 }
 
 /**
- * Starts a new season: every tally goes to zero (vote docs stay, so the 7-day 추천
- * timer and the one-time 비추천 carry over; they just stop counting), and each
+ * Starts a new season: every tally goes to zero (vote docs stay, so the 7-day
+ * timers carry over; they just stop counting), and each
  * person's recommendations this season carry over as points (bonus) so nobody
  * loses what they can spend in the shop.
  */
@@ -189,7 +189,7 @@ export async function deleteAccount(db: Firestore, adminUid: string, target: str
     if (!vote.candidateId || vote.candidateId === target) continue
     // Only this season's part of the vote is in the tally (see firestore.rules upsNow/downNow).
     const ups = vote.season === cur ? vote.ups ?? 0 : 0
-    const downs = vote.down && vote.downSeason === cur ? 1 : 0
+    const downs = vote.season === cur ? vote.downs ?? 0 : 0
     const candRef = doc(db, 'candidates', vote.candidateId)
     const cand = ups || downs ? await getDoc(candRef) : null
     if (cand?.exists()) {

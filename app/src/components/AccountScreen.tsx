@@ -212,7 +212,7 @@ function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, on
                 <span style={css('font-size:17px;line-height:25.5px;font-weight:500;color:#333d4b')}>{d.name}</span>
               </span>
               <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>
-                {[d.my && d.my.ups > 0 ? `이번 시즌 추천 ${d.my.ups}번` : '', d.downDone ? '비추천함' : ''].filter(Boolean).join(' · ') || `${d.rank}위`}
+                {[d.my && d.my.ups > 0 ? `추천 ${d.my.ups}번` : '', d.my && d.my.downs > 0 ? `비추천 ${d.my.downs}번` : ''].filter(Boolean).join(' · ') || `${d.rank}위`}
               </span>
             </span>
             {d.upReady
