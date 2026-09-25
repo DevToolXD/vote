@@ -20,7 +20,7 @@ type Props = {
 }
 
 /**
- * Vertical net-score chart, 10 per page. Bar length is relative to the page's own max.
+ * Vertical net-score chart, 10 per page. Bar length is each entry's rank-based share of the page (see pageShares).
  * Rows are keyed by slot index so paging animates heights instead of remounting.
  */
 export function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile }: Props) {
@@ -30,13 +30,15 @@ export function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile }:
   const pg = Math.min(page, nPages - 1)
   const slice = filtered.slice(pg * PER, pg * PER + PER)
 
-  const posMax = Math.max(0, ...slice.map(d => d.score)), negMax = Math.max(0, ...slice.map(d => -d.score))
+  const share = pageShares(slice)
+  const mag = (d: Person) => share.get(d.id) ?? 0
+  const posMax = Math.max(0, ...slice.filter(d => d.score >= 0).map(mag)), negMax = Math.max(0, ...slice.filter(d => d.score < 0).map(mag))
   const span = Math.max(1, posMax + negMax)
   const zeroTop = Math.round((posMax > 0 ? LABEL_PAD : 6) + posMax / span * CHART_EFF)
   const chartH = negMax > 0 ? Math.round(zeroTop + Math.max(negMax / span * CHART_EFF, 3) + 60) : zeroTop
 
   const rows = slice.map((d, i) => {
-    const h = Math.max(Math.abs(d.score) / span * CHART_EFF, 3), pos = d.score >= 0
+    const h = Math.max(mag(d) / span * CHART_EFF, 3), pos = d.score >= 0
     const barTop = Math.round(pos ? zeroTop - h : zeroTop), barH = Math.round(h)
     const skin = d.skin !== 'none' ? skinGeom(d.skin, barH, !pos) : null
     return {
@@ -149,4 +151,24 @@ const label = css('position:absolute;left:50%;transform:translateX(-50%)')
 /** Name/avatar/score start at the bar base and ride up with the growing bar, then follow `top` transitions. */
 function ride(delay: string, dy: string) {
   return { animation: RIDE, animationDelay: delay, '--dy': dy, transition: `top ${EASE}` } as CSSProperties
+}
+
+/**
+ * Bar length is a share of 100 points split across the page by rank, not the raw score:
+ * on a 10-person page the top entry gets 10 parts, the next 9, … the last 1, so every page
+ * fills the chart and even all-zero scores still read as a ranking. Tied scores get the same
+ * share. Minus scores go downward, and there the most negative gets the most parts.
+ */
+function pageShares(slice: Person[]): Map<string, number> {
+  const weights = new Map<string, number>()
+  const assign = (list: Person[]) => {
+    list.forEach((d, i) => {
+      const first = list.findIndex(x => x.score === d.score)
+      weights.set(d.id, list.length - (first === -1 ? i : first))
+    })
+  }
+  assign(slice.filter(d => d.score >= 0))
+  assign(slice.filter(d => d.score < 0).reverse())
+  const total = [...weights.values()].reduce((a, b) => a + b, 0) || 1
+  return new Map([...weights].map(([id, w]) => [id, (w / total) * 100]))
 }
