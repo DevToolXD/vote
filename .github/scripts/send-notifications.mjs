@@ -1,10 +1,13 @@
-// Push notification sender. Runs from .github/workflows/notify.yml every few
-// minutes and, for a few minutes each run, polls Firestore for:
+// Background worker. Runs from .github/workflows/notify.yml (which re-starts
+// itself when a run ends) and polls Firestore for:
 //   - new chat messages  → each other member (unless they muted that chat, already
 //     read it, or turned 새 메시지 off)
 //   - new 추천 / 비추천   → the person who received it (never says who voted)
+//   - new 상담 (support) messages from users → the admin
 // and sends them through Firebase Cloud Messaging (HTTP v1) to every device in
 // pushTokens. Progress is kept in meta/notifyCursor so nothing is sent twice.
+// It also applies admin password resets (pwResets/{uid}, status 'pending'):
+// sets the account's password to the one-time code the admin gave the user.
 // Uses the service account (rules don't apply); clients can't read any of it.
 
 import { call, getAccessToken, loadServiceAccount, notice, warn } from './lib/google.mjs'
@@ -21,6 +24,7 @@ const SITE = process.env.SITE_URL || 'https://devtoolxd.github.io/vote/'
 const RUN_FOR_MS = Number(process.env.RUN_FOR_MS ?? 4 * 60_000)
 const POLL_MS = Number(process.env.POLL_MS ?? 20_000)
 const SETTLE_MS = Number(process.env.SETTLE_MS ?? 2000)
+const AUTH = process.env.AUTH_BASE || 'https://identitytoolkit.googleapis.com'
 
 let token = null, tokenAt = 0
 async function headers() {
@@ -140,6 +144,43 @@ async function votes(from, to) {
   }
 }
 
+async function support(from, to) {
+  const tickets = await runQuery(docsRoot, { from: [{ collectionId: 'support' }], where: between('updatedAt', from, to) })
+  const fromUsers = tickets.filter(t => t.last?.from === 'user')
+  if (!fromUsers.length) return
+  const admin = await adminUid()
+  if (!admin) return
+  for (const t of fromUsers) {
+    await push(admin, { title: `상담 · ${t.name || t.loginId || '이름 없음'}`, body: t.last.text, url: `${SITE}?tab=admin&support=${t.id}`, tag: `support-${t.id}` })
+  }
+}
+
+let adminCache
+async function adminUid() {
+  if (adminCache !== undefined) return adminCache
+  if (LOCAL) return (adminCache = process.env.ADMIN_UID || null)
+  const r = await call(`${AUTH}/v1/projects/${project}/accounts:lookup`, { method: 'POST', headers: await headers(), body: JSON.stringify({ email: ['admin@vote.local'] }) })
+  return (adminCache = r.json?.users?.[0]?.localId ?? null)
+}
+
+// Admin password resets: set the password to the one-time code, then mark done.
+async function passwordResets() {
+  const pending = await runQuery(docsRoot, {
+    from: [{ collectionId: 'pwResets' }],
+    where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'pending' } } },
+  })
+  for (const r of pending) {
+    let status = 'done'
+    if (!LOCAL) {
+      const up = await call(`${AUTH}/v1/projects/${project}/accounts:update`, { method: 'POST', headers: await headers(), body: JSON.stringify({ localId: r.id, password: r.code }) })
+      if (!up.ok) { status = 'error'; warn(`Password reset for ${r.id} failed (${up.status})`) }
+    }
+    await call(`${FS}/${r.path}?updateMask.fieldPaths=status`, { method: 'PATCH', headers: await headers(), body: JSON.stringify({ fields: { status: { stringValue: status } } }) })
+    resets++
+  }
+}
+let resets = 0
+
 // ---- main loop ----
 const cursorPath = 'meta/notifyCursor'
 const started = Date.now()
@@ -152,12 +193,14 @@ while (true) {
     cache = {}
     await messages(cursor, to)
     await votes(cursor, to)
+    await support(cursor, to)
     const r = await call(`${api}/${cursorPath}?updateMask.fieldPaths=at`, { method: 'PATCH', headers: await headers(), body: JSON.stringify({ fields: { at: ts(to) } }) })
     if (!r.ok) throw new Error(`Saving the cursor failed (${r.status})`)
     cursor = to
   }
+  await passwordResets()
   polls++
   if (Date.now() - started + POLL_MS > RUN_FOR_MS) break
   await new Promise(res => setTimeout(res, POLL_MS))
 }
-notice(`Notifications: ${polls} polls, ${sent} sent, ${dropped} stale devices removed.`)
+notice(`Worker: ${polls} polls, ${sent} notifications sent, ${dropped} stale devices removed, ${resets} password resets applied.`)

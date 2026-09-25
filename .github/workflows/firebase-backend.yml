@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: firebase-backend
@@ -52,3 +53,8 @@ jobs:
         run: node .github/scripts/setup-auth.mjs
       - name: End-to-end smoke test
         run: node .github/scripts/smoke-test.mjs
+      - name: Make sure the background worker is running
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run notify.yml --ref main --repo "$GITHUB_REPOSITORY" || true

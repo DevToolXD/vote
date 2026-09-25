@@ -31,6 +31,11 @@ if (!email.enabled || !email.passwordRequired) {
   mask.push('signIn.email.enabled', 'signIn.email.passwordRequired')
   patch.signIn = { email: { enabled: true, passwordRequired: true } }
 }
+// Anonymous sign-in: lets someone who forgot their password chat with the admin (상담) from the login screen.
+if (!cfg.json.signIn?.anonymous?.enabled) {
+  mask.push('signIn.anonymous.enabled')
+  patch.signIn = { ...(patch.signIn || {}), anonymous: { enabled: true } }
+}
 if (pagesDomain !== '.github.io' && !domains.includes(pagesDomain)) {
   mask.push('authorizedDomains')
   patch.authorizedDomains = [...domains, pagesDomain]
@@ -43,7 +48,8 @@ if (mask.length) {
 
 const after = (await call(configUrl, { headers: auth })).json
 if (!after.signIn?.email?.enabled || !after.signIn?.email?.passwordRequired) fail('Email/Password sign-in is still not enabled after the update.')
-notice(`Auth ready: Email/Password on; authorized domains = ${(after.authorizedDomains || []).join(', ')}`)
+if (!after.signIn?.anonymous?.enabled) fail('Anonymous sign-in (for 상담) is still not enabled after the update.')
+notice(`Auth ready: Email/Password + anonymous (상담) on; authorized domains = ${(after.authorizedDomains || []).join(', ')}`)
 
 // The admin tab belongs to whoever owns the "admin" id (admin@vote.local). Report
 // whether it exists, so it can be claimed by the owner before anyone else does.

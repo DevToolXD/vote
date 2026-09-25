@@ -1,14 +1,18 @@
 name: Notifications
 
-# Sends push notifications for new messages and received votes
-# (.github/scripts/send-notifications.mjs). Runs every 5 minutes and polls
-# Firestore every 20 seconds for ~4.5 minutes of each run, so a notification
-# usually arrives within a minute (GitHub may start scheduled runs late).
+# Background worker (.github/scripts/send-notifications.mjs): push notifications
+# for new messages, received votes and 상담 messages, plus admin password resets.
+#
+# GitHub's scheduled (cron) runs never fire reliably for this repo, so the worker
+# keeps itself alive instead: each run polls Firestore every 10 s for ~25 minutes,
+# then starts the next run (workflow_dispatch with the built-in token is allowed
+# to trigger workflows). Pushing changes to the worker, the schedule below (when
+# GitHub does run it) and the Firebase backend workflow all (re)start the chain;
+# the concurrency group keeps it to one run plus at most one waiting.
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
-  # Also right after the sender itself changes, as a live check.
+    - cron: '*/30 * * * *'
   push:
     branches: [main]
     paths:
@@ -18,15 +22,16 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: notify
   cancel-in-progress: false
 
 jobs:
-  send:
+  work:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
         with:
@@ -34,8 +39,20 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Send notifications
+      - name: Remove logins of deleted accounts
+        continue-on-error: true
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          RUN_FOR_MS: '270000'
+        run: node .github/scripts/purge-deleted-accounts.mjs
+      - name: Send notifications, apply password resets
+        continue-on-error: true
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          RUN_FOR_MS: '1500000'
+          POLL_MS: '10000'
         run: node .github/scripts/send-notifications.mjs
+      - name: Start the next run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run notify.yml --ref main --repo "$GITHUB_REPOSITORY"
