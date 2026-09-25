@@ -24,7 +24,7 @@ React + TypeScript + Vite build of `project/Popular Vote v2.dc.html` (Claude Des
    - `VITE_FIREBASE_APP_ID`
 
    (These are public client identifiers, not sensitive secrets — using GitHub *secrets* here is just a convenient place to keep build config, not for confidentiality. Firestore security comes entirely from the rules in step 4.)
-7. Push anything to `app/**` on `main` (or re-run the workflow manually from the Actions tab) to rebuild with the new config. Until these are set, the deployed site shows a "Firebase 설정이 필요해요" notice instead of crashing.
+7. Push anything to `app/**` on `main` (or re-run the workflow manually from the Actions tab — `Publish app to GitHub Pages` → `Run workflow`) to rebuild with the new config. Until these are set, the deployed site shows a "Firebase 설정이 필요해요" notice instead of crashing.
 
 For local dev, copy `.env.example` to `.env.local` and fill in the same values (it's git-ignored).
 
