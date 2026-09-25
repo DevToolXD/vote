@@ -26,7 +26,7 @@ import { DEFAULT_SEASON, type CandidateDoc, type Season, type VoteDoc } from './
 export const ADMIN_EMAIL = 'admin@vote.local'
 export const isAdminEmail = (email: string | null | undefined) => email === ADMIN_EMAIL
 
-export type AdminAction = 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount'
+export type AdminAction = 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount' | 'renameUser'
 export type AdminProgress = { batch: number; batches: number; verified: number }
 
 /** Keep each batch's rule evaluation well under Firestore's per-request document-access limit. */
@@ -100,6 +100,17 @@ export async function grantPoints(db: Firestore, adminUid: string, target: strin
   const bonus = ((snap.data() as CandidateDoc).bonus ?? 0) + amount
   await runAdminOp(db, adminUid, 'grantPoints', { target, amount }, [
     b => { b.update(doc(db, 'candidates', target), { bonus }); return 1 },
+  ], onProgress)
+}
+
+/** Renames someone on the leaderboard (their login id stays the same). */
+export async function renameUser(db: Firestore, adminUid: string, target: string, newName: string, onProgress?: (p: AdminProgress) => void) {
+  const name = newName.trim()
+  if (name.length < 1 || name.length > 20) throw new Error('invalid-name')
+  const snap = await getDoc(doc(db, 'candidates', target))
+  if (!snap.exists()) throw new Error('candidate-not-found')
+  await runAdminOp(db, adminUid, 'renameUser', { target, name }, [
+    b => { b.update(doc(db, 'candidates', target), { name }); return 1 },
   ], onProgress)
 }
 

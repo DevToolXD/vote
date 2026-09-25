@@ -40,12 +40,16 @@ service cloud.firestore {
       return isAdmin() && lock().at == request.time && lock().by == request.auth.uid && lock().action == action;
     }
 
+    function validPersonName(n) { return n is string && n.size() >= 1 && n.size() <= 20; }
+
     function validPayload(action, p) {
       return (action == 'grantPoints' && p.keys().hasOnly(['target', 'amount']) && p.keys().hasAll(['target', 'amount'])
                 && p.target is string && p.amount is int && p.amount != 0 && p.amount >= -1000000 && p.amount <= 1000000)
           || (action == 'setSeasonName' && p.keys().hasOnly(['name']) && validSeasonName(p.name))
           || (action == 'seasonReset' && p.keys().hasOnly(['name', 'nextNumber']) && p.keys().hasAll(['name', 'nextNumber'])
                 && validSeasonName(p.name) && p.nextNumber is int)
+          || (action == 'renameUser' && p.keys().hasOnly(['target', 'name']) && p.keys().hasAll(['target', 'name'])
+                && p.target is string && validPersonName(p.name))
           || (action == 'deleteAccount' && p.keys().hasOnly(['target']) && p.target is string && p.target != request.auth.uid);
     }
     function validSeasonName(n) { return n is string && n.size() >= 1 && n.size() <= 20; }
@@ -83,7 +87,7 @@ service cloud.firestore {
         && request.resource.data.used == false
         && request.resource.data.createdAt == request.time
         && request.resource.data.seq in [1, 2, 3]
-        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount']
+        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser']
         && request.resource.data.payload is map;
       // Burned only together with a lock that lists it.
       allow update: if isAdmin()
@@ -182,6 +186,13 @@ service cloud.firestore {
         && d.bonus == resource.data.get('bonus', 0) + lock().payload.amount;
     }
 
+    function adminRename(candidateId) {
+      let d = request.resource.data;
+      return adminOp('renameUser') && lock().payload.target == candidateId
+        && d.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && d.name == lock().payload.name;
+    }
+
     // Season reset: tallies to zero; this season's recommendations carry over as points (bonus).
     function adminSeasonReset() {
       let d = request.resource.data;
@@ -224,7 +235,7 @@ service cloud.firestore {
 
       allow update: if signedIn() && (
         ownerEdit() || voteTally(candidateId) ||
-        adminGrant(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId)
+        adminGrant(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId)
       );
 
       allow delete: if adminOp('deleteAccount') && lock().payload.target == candidateId;

@@ -7,7 +7,7 @@ import {
   collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore,
   serverTimestamp, setDoc, updateDoc, writeBatch, type Firestore,
 } from 'firebase/firestore'
-import { deleteAccount, grantPoints, resetSeason, runAdminOp, setSeasonName, type AdminProgress } from '../src/backend/admin'
+import { deleteAccount, grantPoints, renameUser, resetSeason, runAdminOp, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, castVote, equipItem, pointsOf, updateMyProfile } from '../src/backend/candidates'
 import type { CandidateDoc } from '../src/backend/types'
@@ -156,6 +156,19 @@ describe('admin: single-use tokens ×3', () => {
     assert.equal(tokens.size, 3); assert.ok(tokens.docs.every(t => t.data().used === true))
     await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', -100)
     assert.equal((await read(userDb('a'), 'candidates/a')).bonus, 200)
+  })
+  test('rename: admin changes a name through the tokens; nothing else, and nobody else', async () => {
+    const a = await signUp('a')
+    const admin = dbAs(ADMIN)
+    await renameUser(admin, ADMIN.uid, 'a', '  새이름 ')
+    assert.equal((await read(a, 'candidates/a')).name, '새이름')
+    const ref = doc(admin, 'candidates', 'a')
+    await assert.rejects(runAdminOp(admin, ADMIN.uid, 'renameUser', { target: 'a', name: 'X' }, [b => { b.update(ref, { name: 'X', bonus: 999 }); return 1 }]))
+    await assert.rejects(runAdminOp(admin, ADMIN.uid, 'renameUser', { target: 'a', name: 'X' }, [b => { b.update(ref, { name: 'Y' }); return 1 }]))
+    await assert.rejects(renameUser(admin, ADMIN.uid, 'a', 'x'.repeat(21)))
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { name: '셀프변경' }))
+    await assert.rejects(renameUser(await signUp('b'), 'b', 'a', '해킹'))
+    assert.equal((await read(a, 'candidates/a')).name, '새이름')
   })
   test('the custom-claim admin (set only by a service account) works too', async () => {
     await signUp('a')

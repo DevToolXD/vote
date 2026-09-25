@@ -1,7 +1,7 @@
 import type { User } from 'firebase/auth'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, logIn, logOut, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
-import { deleteAccount, grantPoints, isAdminEmail, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
+import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, castVote, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { DEFAULT_SEASON, type Season } from './backend/types'
 import { fileToPhotoDataUrl } from './backend/image'
@@ -339,6 +339,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
               grantPoints={(t, n, p) => grantPoints(db!, authUser.uid, t, n, p)}
               setSeasonName={(n, p) => setSeasonName(db!, authUser.uid, n, p)}
               resetSeason={(n, p) => resetSeason(db!, authUser.uid, n, p)}
+              renameUser={(t, n, p) => renameUser(db!, authUser.uid, t, n, p)}
               deleteAccount={(t, p) => deleteAccount(db!, authUser.uid, t, p)}
               onLogout={doLogout}
             />

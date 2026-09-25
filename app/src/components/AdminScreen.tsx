@@ -16,6 +16,7 @@ type Props = {
   grantPoints: (target: string, amount: number, onProgress: (p: AdminProgress) => void) => Promise<void>
   setSeasonName: (name: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   resetSeason: (name: string, onProgress: (p: AdminProgress) => void) => Promise<void>
+  renameUser: (target: string, name: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   deleteAccount: (target: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   onLogout: () => void
 }
@@ -27,17 +28,19 @@ const gap = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
 
 type Confirm = { title: string; desc: string; cta: string; danger?: boolean; go: () => void }
 
-export function AdminScreen({ all, season, run, grantPoints, setSeasonName, resetSeason, deleteAccount, onLogout }: Props) {
+export function AdminScreen({ all, season, run, grantPoints, setSeasonName, resetSeason, renameUser, deleteAccount, onLogout }: Props) {
   const [nameDraft, setNameDraft] = useState('')
   const [q, setQ] = useState('')
   const [picked, setPicked] = useState<string | null>(null)
   const [amount, setAmount] = useState('')
+  const [rename, setRename] = useState('')
   const [confirm, setConfirm] = useState<Confirm | null>(null)
 
   const person = all.find(p => p.id === picked)
   const list = (q.trim() ? all.filter(p => p.name.includes(q.trim())) : all).slice(0, 30)
   const amt = Number(amount)
   const amountOk = amount.trim() !== '' && Number.isInteger(amt) && amt !== 0 && Math.abs(amt) <= 1_000_000
+  const renameOk = !!person && rename.trim().length >= 1 && rename.trim().length <= 20 && rename.trim() !== person.name
   const nameOk = nameDraft.trim().length >= 1 && nameDraft.trim().length <= 20
 
   return (
@@ -88,7 +91,7 @@ export function AdminScreen({ all, season, run, grantPoints, setSeasonName, rese
         {list.map(p => {
           const on = p.id === picked
           return (
-            <button key={p.id} className="pr-dim" onClick={() => setPicked(on ? null : p.id)}
+            <button key={p.id} className="pr-dim" onClick={() => { setPicked(on ? null : p.id); setRename('') }}
               style={sx('width:100%;text-align:left;padding:10px 12px;display:flex;align-items:center;gap:12px;border-radius:14px;transition:background 150ms', { background: on ? '#e8f3ff' : 'transparent' })}>
               <Avatar frame={p.frame} photo={p.photoCss} size={36} />
               <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
@@ -119,6 +122,17 @@ export function AdminScreen({ all, season, run, grantPoints, setSeasonName, rese
                 go: async () => { if (await run('포인트 지급', p => grantPoints(person.id, amt, p))) setAmount('') },
               })}
               style={sx('height:48px;padding:0 18px;border-radius:14px;background:#3182f6;color:#fff;font-size:15px;font-weight:600;flex:none;transition:opacity 200ms', { opacity: amountOk ? 1 : 0.4 })}>지급</button>
+          </div>
+          <div style={css('display:flex;gap:8px')}>
+            <input data-g="l1" className="ring-focus" value={rename} maxLength={20} onChange={e => setRename(e.target.value)} placeholder="새 이름" style={sx(field, { flex: 1 })} />
+            <button data-g="primary" className="pr-96" disabled={!renameOk}
+              onClick={() => setConfirm({
+                title: `이름을 ${rename.trim()}(으)로 바꿀까요?`,
+                desc: `${person.name} → ${rename.trim()}. 아이디와 점수, 포인트는 그대로예요.`,
+                cta: '바꾸기',
+                go: async () => { if (await run('이름 변경', p => renameUser(person.id, rename.trim(), p))) setRename('') },
+              })}
+              style={sx('height:48px;padding:0 18px;border-radius:14px;background:#3182f6;color:#fff;font-size:15px;font-weight:600;flex:none;transition:opacity 200ms', { opacity: renameOk ? 1 : 0.4 })}>변경</button>
           </div>
           {!person.isMe && <button className="pr-96"
             onClick={() => setConfirm({
