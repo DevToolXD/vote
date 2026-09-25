@@ -1,0 +1,61 @@
+rules_version = '2';
+
+// Paste this into Firebase Console → Firestore Database → Rules, then Publish.
+// Data model: candidates/{uid} is a signed-up voter's own leaderboard entry
+// (doc id == their Auth uid). votes/{voterUid}_{candidateId} records one
+// voter's up/down/none choice on one candidate.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+
+    match /candidates/{candidateId} {
+      // Public leaderboard — anyone can read without logging in.
+      allow read: if true;
+
+      // A voter can only create the candidate doc that matches their own uid,
+      // and only with a fresh, untouched scoreboard.
+      allow create: if isSignedIn()
+        && request.auth.uid == candidateId
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.up == 0
+        && request.resource.data.down == 0
+        && request.resource.data.score == 0
+        && request.resource.data.spent == 0;
+
+      allow update: if isSignedIn() && (
+        // The owner editing their own profile/decorations/shop state.
+        (request.auth.uid == resource.data.ownerUid &&
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['gender', 'bio', 'frame', 'plate', 'skin', 'spent', 'owned'])) ||
+        // Any other signed-in voter moving the tally by exactly one valid vote transition.
+        (request.auth.uid != resource.data.ownerUid &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['up', 'down', 'score']) &&
+         request.resource.data.score == request.resource.data.up - request.resource.data.down &&
+         (
+           (request.resource.data.up == resource.data.up + 1 && request.resource.data.down == resource.data.down) ||
+           (request.resource.data.up == resource.data.up - 1 && request.resource.data.down == resource.data.down) ||
+           (request.resource.data.down == resource.data.down + 1 && request.resource.data.up == resource.data.up) ||
+           (request.resource.data.down == resource.data.down - 1 && request.resource.data.up == resource.data.up) ||
+           (request.resource.data.up == resource.data.up - 1 && request.resource.data.down == resource.data.down + 1) ||
+           (request.resource.data.up == resource.data.up + 1 && request.resource.data.down == resource.data.down - 1)
+         ))
+      );
+
+      allow delete: if false;
+    }
+
+    match /votes/{voteId} {
+      // Only the voter who cast it can read their own vote doc.
+      allow read: if isSignedIn() && request.auth.uid == resource.data.uid;
+
+      allow create, update: if isSignedIn()
+        && request.auth.uid == request.resource.data.uid
+        && voteId == request.auth.uid + '_' + request.resource.data.candidateId
+        && request.resource.data.value in [-1, 0, 1]
+        && request.auth.uid != get(/databases/$(database)/documents/candidates/$(request.resource.data.candidateId)).data.ownerUid;
+
+      allow delete: if false;
+    }
+  }
+}

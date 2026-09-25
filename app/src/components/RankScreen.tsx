@@ -16,7 +16,7 @@ type Props = {
   onQuery: (q: string) => void
   page: number
   onPage: (p: number) => void
-  onOpenProfile: (id: number) => void
+  onOpenProfile: (id: string) => void
 }
 
 /**
@@ -127,11 +127,17 @@ export function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile }:
           </div>
         </div>
       </div>
-      {filtered.length === 0 && (
+      {filtered.length === 0 && q && (
         <div style={css('padding:72px 24px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center')}>
           <span style={css('font-size:40px;line-height:1;margin-bottom:12px')}>🔍</span>
           <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#333d4b')}>‘{query}’ 후보가 없어요</span>
           <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>다른 이름으로 찾아보세요</span>
+        </div>
+      )}
+      {filtered.length === 0 && !q && (
+        <div style={css('padding:72px 24px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center')}>
+          <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#333d4b')}>아직 등록된 후보가 없어요</span>
+          <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>회원가입하면 랭킹에 참여할 수 있어요</span>
         </div>
       )}
     </div>

@@ -1,15 +1,19 @@
 import type { RefObject } from 'react'
 import { css, sx } from '../css'
+import { ID_PATTERN } from '../backend/auth'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
 import { BackIcon } from './icons'
 
 export type SignupForm = { name: string; id: string; pw: string; pw2: string }
+export type LoginForm = { id: string; pw: string }
 
 type Props = {
   loggedIn: boolean
   view: 'login' | 'signup'
   onView: (v: 'login' | 'signup') => void
+  login: LoginForm
+  onLoginField: (patch: Partial<LoginForm>) => void
   onLogin: () => void
   onLogout: () => void
   signup: SignupForm
@@ -18,7 +22,8 @@ type Props = {
   nameRef: RefObject<HTMLInputElement>
   onNameFocus: (el: HTMLInputElement) => void
   onSubmitSignup: () => void
-  me: Person
+  authBusy: boolean
+  me?: Person
   onPhoto: (f: File) => void
   onRemovePhoto: () => void
   onBio: (bio: string) => void
@@ -49,12 +54,15 @@ export function AccountScreen(p: Props) {
         </button>
       </div>
       {!p.loggedIn && (p.view === 'login' ? <LoginView {...p} /> : <SignupView {...p} />)}
-      {p.loggedIn && <Profile {...p} />}
+      {p.loggedIn && (p.me ? <Profile {...p} me={p.me} /> : (
+        <div style={css('padding:80px 24px;text-align:center;font-size:15px;color:#6b7684')}>불러오는 중이에요…</div>
+      ))}
     </div>
   )
 }
 
-function LoginView({ onLogin, onView }: Props) {
+function LoginView({ login, onLoginField, onLogin, onView, authBusy }: Props) {
+  const cant = !(login.id.trim() && login.pw) || authBusy
   return (
     <>
       <div style={css('padding:8px 24px 24px;display:flex;flex-direction:column;gap:4px')}>
@@ -62,11 +70,11 @@ function LoginView({ onLogin, onView }: Props) {
         <p style={css('margin:0;font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684')}>투표는 로그인한 회원만 할 수 있어요</p>
       </div>
       <div style={css('padding:8px 24px 0;display:flex;flex-direction:column;gap:20px')}>
-        <label style={css('display:flex;flex-direction:column;gap:8px')}><span style={css(fieldLabel)}>아이디</span><input data-g="l1" className="ring-focus" type="text" autoComplete="username" placeholder="아이디 입력" style={css(field)} /></label>
-        <label style={css('display:flex;flex-direction:column;gap:8px')}><span style={css(fieldLabel)}>비밀번호</span><input data-g="l1" className="ring-focus" type="password" autoComplete="current-password" placeholder="비밀번호 입력" style={css(field)} /></label>
+        <label style={css('display:flex;flex-direction:column;gap:8px')}><span style={css(fieldLabel)}>아이디</span><input data-g="l1" className="ring-focus" type="text" autoComplete="username" placeholder="아이디 입력" value={login.id} onChange={e => onLoginField({ id: e.target.value })} style={css(field)} /></label>
+        <label style={css('display:flex;flex-direction:column;gap:8px')}><span style={css(fieldLabel)}>비밀번호</span><input data-g="l1" className="ring-focus" type="password" autoComplete="current-password" placeholder="비밀번호 입력" value={login.pw} onChange={e => onLoginField({ pw: e.target.value })} style={css(field)} /></label>
       </div>
       <div style={css('padding:28px 24px 0;display:flex;flex-direction:column;gap:8px')}>
-        <button data-g="primary" className="pr-96" onClick={onLogin} style={css(primaryBtn + ';transition:transform 150ms')}>로그인</button>
+        <button data-g="primary" className="pr-96" onClick={() => !cant && onLogin()} disabled={cant} style={sx(primaryBtn + ';transition:transform 150ms,opacity 200ms', { opacity: cant ? 0.5 : 1 })}>{authBusy ? '확인 중…' : '로그인'}</button>
         <div style={css('margin:16px 0 32px;display:flex;justify-content:center;align-items:center;gap:4px;font-size:15px;color:#6b7684')}>
           아직 계정이 없나요?
           <button className="pr-blue" onClick={() => { onView('signup'); window.scrollTo(0, 0) }} style={css('height:36px;padding:0 6px;border-radius:8px;font-size:15px;font-weight:600;color:#2272eb')}>회원가입</button>
@@ -76,9 +84,9 @@ function LoginView({ onLogin, onView }: Props) {
   )
 }
 
-function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus, onSubmitSignup }: Props) {
-  const pwOk = s.pw.length >= 8, match = s.pw2.length > 0 && s.pw2 === s.pw
-  const cant = !(s.name.trim() && s.id.trim().length >= 4 && pwOk && match && nameAck)
+function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus, onSubmitSignup, authBusy }: Props) {
+  const pwOk = s.pw.length >= 8, idOk = ID_PATTERN.test(s.id.trim()), match = s.pw2.length > 0 && s.pw2 === s.pw
+  const cant = !(s.name.trim() && idOk && pwOk && match && nameAck) || authBusy
   return (
     <>
       <div style={css('padding:0 12px')}>
@@ -110,13 +118,13 @@ function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus
         </label>
       </div>
       <div style={css('padding:28px 24px 32px;display:flex;flex-direction:column;gap:8px')}>
-        <button data-g="primary" className="pr-96" onClick={() => !cant && onSubmitSignup()} disabled={cant} style={sx(primaryBtn + ';transition:transform 150ms,opacity 200ms', { opacity: cant ? 0.4 : 1 })}>가입하기</button>
+        <button data-g="primary" className="pr-96" onClick={() => !cant && onSubmitSignup()} disabled={cant} style={sx(primaryBtn + ';transition:transform 150ms,opacity 200ms', { opacity: cant ? 0.4 : 1 })}>{authBusy ? '가입하는 중…' : '가입하기'}</button>
       </div>
     </>
   )
 }
 
-function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, onCancelVote, onLogout, goHome }: Props) {
+function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, onCancelVote, onLogout, goHome }: Props & { me: Person }) {
   const hasPhoto = me.photoCss !== 'none'
   const sep = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
   return (

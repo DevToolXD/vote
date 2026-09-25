@@ -8,7 +8,7 @@ type Props = {
   loggedIn: boolean
   query: string
   onQuery: (q: string) => void
-  onPick: (id: number) => void
+  onPick: (id: string) => void
   goRank: () => void
   goAccount: () => void
   startReveal: () => void
@@ -17,7 +17,9 @@ type Props = {
 
 export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAccount, startReveal, myCount }: Props) {
   const q = query.trim()
-  const list = q ? all.filter(d => d.name.includes(q)) : all.slice(0, 5)
+  // You can't vote for yourself, so you never appear in the pick list.
+  const votable = all.filter(d => !d.isMe)
+  const list = q ? votable.filter(d => d.name.includes(q)) : votable.slice(0, 5)
   return (
     <div data-g="clear" style={css('flex:1;background:#f2f4f6;padding-bottom:24px')}>
       <header data-g="head" style={css('position:sticky;top:0;z-index:20;height:56px;padding:0 12px 0 24px;display:flex;align-items:center;justify-content:space-between;background:#f2f4f6')}>
@@ -29,19 +31,21 @@ export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAc
 
       <div style={css('padding:12px 24px 24px')}>
         <div style={css('font-size:13px;line-height:19.5px;font-weight:700;color:#6b7684')}>시즌 BETA · 실시간</div>
-        <h1 style={css('margin:4px 0 0;font-size:26px;line-height:35px;font-weight:700;color:#191f28')}>지금 1위는<br />{all[0].name}님이에요</h1>
+        <h1 style={css('margin:4px 0 0;font-size:26px;line-height:35px;font-weight:700;color:#191f28')}>{all.length ? <>지금 1위는<br />{all[0].name}님이에요</> : '아직 등록된 후보가 없어요'}</h1>
       </div>
 
-      <button data-g="l2" className="pr-98" onClick={startReveal} style={css('width:calc(100% - 24px);margin:0 12px 12px;background:#ffffff;border-radius:24px;padding:18px 16px 18px 20px;display:flex;align-items:center;gap:14px;text-align:left;transition:transform 150ms')}>
-        <span style={css('width:48px;height:48px;border-radius:16px;flex:none;background:#fff4d6;display:flex;align-items:center;justify-content:center')}>
-          <svg width="30" height="30" viewBox="0 0 32 32"><path d="M7 3.5L14 13M25 3.5L18 13" stroke="#8b5a2b" strokeWidth="2.2" strokeLinecap="round" /><circle cx="6.5" cy="3.2" r="2" fill="#c98a4b" /><circle cx="25.5" cy="3.2" r="2" fill="#c98a4b" /><path d="M4 15v9c0 2.8 5.4 5 12 5s12-2.2 12-5v-9" fill="#f04452" /><path d="M4 18l4 8M10 20l4 9M16 20l4 9M22 20l4 7" stroke="#ffc342" strokeWidth="1.4" /><ellipse cx="16" cy="15" rx="12" ry="4.6" fill="#f9fafb" stroke="#d1d6db" strokeWidth="1.2" /></svg>
-        </span>
-        <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
-          <span style={css('font-size:17px;line-height:25.5px;font-weight:700;color:#191f28')}>시즌 BETA TOP 3 발표</span>
-          <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>두구두구, 3위부터 1위까지 공개해요</span>
-        </span>
-        <ChevronRight />
-      </button>
+      {all.length >= 3 && (
+        <button data-g="l2" className="pr-98" onClick={startReveal} style={css('width:calc(100% - 24px);margin:0 12px 12px;background:#ffffff;border-radius:24px;padding:18px 16px 18px 20px;display:flex;align-items:center;gap:14px;text-align:left;transition:transform 150ms')}>
+          <span style={css('width:48px;height:48px;border-radius:16px;flex:none;background:#fff4d6;display:flex;align-items:center;justify-content:center')}>
+            <svg width="30" height="30" viewBox="0 0 32 32"><path d="M7 3.5L14 13M25 3.5L18 13" stroke="#8b5a2b" strokeWidth="2.2" strokeLinecap="round" /><circle cx="6.5" cy="3.2" r="2" fill="#c98a4b" /><circle cx="25.5" cy="3.2" r="2" fill="#c98a4b" /><path d="M4 15v9c0 2.8 5.4 5 12 5s12-2.2 12-5v-9" fill="#f04452" /><path d="M4 18l4 8M10 20l4 9M16 20l4 9M22 20l4 7" stroke="#ffc342" strokeWidth="1.4" /><ellipse cx="16" cy="15" rx="12" ry="4.6" fill="#f9fafb" stroke="#d1d6db" strokeWidth="1.2" /></svg>
+          </span>
+          <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
+            <span style={css('font-size:17px;line-height:25.5px;font-weight:700;color:#191f28')}>시즌 BETA TOP 3 발표</span>
+            <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>두구두구, 3위부터 1위까지 공개해요</span>
+          </span>
+          <ChevronRight />
+        </button>
+      )}
 
       <div data-g="l2" style={css('margin:0 12px;background:#ffffff;border-radius:24px;padding:20px 0 12px')}>
         <div style={css('padding:0 24px 12px;display:flex;flex-direction:column;gap:2px')}>
@@ -67,6 +71,7 @@ export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAc
           </button>
         ))}
         {q && list.length === 0 && <div style={css('padding:24px;text-align:center;font-size:15px;color:#6b7684')}>‘{query}’ 후보가 없어요</div>}
+        {!q && votable.length === 0 && <div style={css('padding:24px;text-align:center;font-size:15px;color:#6b7684')}>아직 투표할 다른 후보가 없어요</div>}
         {!q && (
           <div style={css('padding:4px 16px 0')}>
             <button className="pr-dim" onClick={goRank} style={css('width:100%;height:48px;border-radius:12px;font-size:15px;font-weight:600;color:#4e5968;display:flex;align-items:center;justify-content:center;gap:4px')}>

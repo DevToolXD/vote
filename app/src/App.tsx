@@ -1,5 +1,8 @@
+import type { User } from 'firebase/auth'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AccountScreen, type SignupForm } from './components/AccountScreen'
+import { authErrorMessage, logIn, logOut, onAuthChange, signUp } from './backend/auth'
+import { buyItem, castVote, equipItem, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
 import { BottomNav } from './components/BottomNav'
 import { EditProfile } from './components/EditProfile'
 import { GlassFilters } from './components/GlassFilters'
@@ -8,12 +11,11 @@ import { BuyDialog, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } fro
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
 import { css } from './css'
-import { BLUE, KIND_NAME, ME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab, type Vote } from './data'
+import { BLUE, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab, type Vote } from './data'
+import { firebaseConfigured } from './firebase'
 import { buildPeople } from './model'
 
 export type AppProps = {
-  /** Start signed in (preview option). */
-  loggedIn?: boolean
   startTab?: Tab
   /** Swap vote colours to red = 추천, blue = 비추천. */
   swapPalette?: boolean
@@ -22,34 +24,36 @@ export type AppProps = {
 type Buy = { kind: ItemKind; key: string; label: string; price: number }
 
 const EMPTY_SIGNUP: SignupForm = { name: '', id: '', pw: '', pw2: '' }
+const EMPTY_LOGIN: LoginForm = { id: '', pw: '' }
 
 function loadTheme() {
   try { return localStorage.getItem('pv-theme') || 'default' } catch { return 'default' }
 }
 
-/** UI-only prototype: all data is mock and nothing is persisted except the theme. */
-export function App({ loggedIn: initialLoggedIn = false, startTab = 'home', swapPalette = false }: AppProps) {
+/** Real backend: Firebase Auth for accounts, Firestore for the live leaderboard/votes/shop. See app/README.md. */
+export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const [tab, setTab] = useState<Tab>(startTab)
-  const [loggedIn, setLoggedIn] = useState(initialLoggedIn)
-  const [votes, setVotes] = useState<Record<number, Vote>>({})
   const [homeQuery, setHomeQuery] = useState('')
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
-  const [sheet, setSheet] = useState<number | null>(null)
-  const [profile, setProfile] = useState<number | null>(null)
+  const [sheet, setSheet] = useState<string | null>(null)
+  const [profile, setProfile] = useState<string | null>(null)
   const [toast, setToast] = useState('')
 
+  const [authUser, setAuthUser] = useState<User | null>(null)
+  const [authReady, setAuthReady] = useState(false)
+  const [authBusy, setAuthBusy] = useState(false)
+  const [rows, setRows] = useState<CandidateRow[]>([])
+  const [votes, setVotes] = useState<Record<string, Vote>>({})
+
   const [photo, setPhoto] = useState<string | null>(null)
-  const [bio, setBio] = useState('')
-  const [gender, setGender] = useState('')
-  const [equipped, setEquipped] = useState<Record<ItemKind, string>>({ frame: 'none', plate: 'none', skin: 'none' })
-  const [owned, setOwned] = useState<Record<ItemKind, string[]>>({ frame: ['none'], plate: ['none'], skin: ['none'] })
-  const [spent, setSpent] = useState(0)
+  const [bioDraft, setBioDraft] = useState('')
   const [editOpen, setEditOpen] = useState(false)
   const [editTab, setEditTab] = useState<ItemKind>('frame')
   const [buy, setBuy] = useState<Buy | null>(null)
 
   const [acctView, setAcctView] = useState<'login' | 'signup'>('login')
+  const [login, setLogin] = useState<LoginForm>(EMPTY_LOGIN)
   const [signup, setSignup] = useState<SignupForm>(EMPTY_SIGNUP)
   const [nameAck, setNameAck] = useState(false)
   const [ruleOpen, setRuleOpen] = useState(false)
@@ -68,8 +72,14 @@ export function App({ loggedIn: initialLoggedIn = false, startTab = 'home', swap
     toastTimer.current = setTimeout(() => setToast(''), 2000)
   }
 
-  useEffect(() => { setLoggedIn(initialLoggedIn) }, [initialLoggedIn])
   useEffect(() => { setTab(startTab) }, [startTab])
+
+  useEffect(() => onAuthChange(u => { setAuthUser(u); setAuthReady(true) }), [])
+  useEffect(() => subscribeCandidates(setRows), [])
+  useEffect(() => {
+    if (!authUser) { setVotes({}); return }
+    return subscribeMyVotes(authUser.uid, setVotes)
+  }, [authUser])
 
   // Warm the skin images so towers appear together with the bar-grow animation.
   useEffect(() => {
@@ -97,13 +107,24 @@ export function App({ loggedIn: initialLoggedIn = false, startTab = 'home', swap
     return () => { document.removeEventListener('pointermove', onMove); cancelAnimationFrame(raf) }
   }, [theme])
 
-  const all = useMemo(
-    () => buildPeople(votes, { ...equipped, gender, bio, photo }),
-    [votes, equipped, gender, bio, photo],
-  )
-  const me = all.find(d => d.name === ME)!
+  const loggedIn = !!authUser
+  const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null), [rows, votes, authUser])
+  const me = authUser ? all.find(d => d.id === authUser.uid) : undefined
   const mine = all.filter(d => d.v !== 0)
-  const points = me.upN - spent
+  const points = me ? me.up - me.spent : 0
+
+  // The bio textarea keeps its own draft so typing stays instant; it's synced from Firestore only when the signed-in user changes, and written back (debounced) below.
+  const lastMeId = useRef<string | null>(null)
+  useEffect(() => {
+    if (me && me.id !== lastMeId.current) { lastMeId.current = me.id; setBioDraft(me.bio) }
+    if (!me) lastMeId.current = null
+  }, [me])
+  useEffect(() => {
+    if (!authUser || !me || bioDraft === me.bio) return
+    const t = setTimeout(() => { updateMyProfile(authUser.uid, { bio: bioDraft }).catch(() => showToast('소개를 저장하지 못했어요')) }, 600)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bioDraft])
 
   const colors = swapPalette
     ? { up: RED, down: BLUE, downWeak: 'rgba(49,130,246,0.16)', downWeakFg: '#1b64da' }
@@ -114,32 +135,83 @@ export function App({ loggedIn: initialLoggedIn = false, startTab = 'home', swap
     window.scrollTo(0, 0)
   }
 
-  const vote = (id: number, dir: 1 | -1) => {
-    const d = all.find(x => x.id === id)!
-    const next: Vote = d.v === dir ? 0 : dir
-    setVotes(v => ({ ...v, [id]: next }))
+  const vote = async (id: string, dir: 1 | -1) => {
+    if (!authUser) return
+    const d = all.find(x => x.id === id)
+    if (!d) return
     setSheet(null)
-    showToast(next === 0 ? `${d.name}님 투표를 취소했어요` : `${d.name}님에게 투표했어요`)
+    try {
+      const next = await castVote(authUser.uid, id, dir)
+      showToast(next === 0 ? `${d.name}님 투표를 취소했어요` : `${d.name}님에게 투표했어요`)
+    } catch {
+      showToast('투표하지 못했어요. 다시 시도해주세요')
+    }
   }
 
   const pickItem = (kind: ItemKind, key: string, label: string) => {
-    if (owned[kind].includes(key)) setEquipped(e => ({ ...e, [kind]: key }))
-    else setBuy({ kind, key, label, price: priceOf(kind, key) })
+    if (!me) return
+    if (me.owned[kind].includes(key)) {
+      equipItem(me.id, kind, key).catch(() => showToast('적용하지 못했어요'))
+    } else {
+      setBuy({ kind, key, label, price: priceOf(kind, key) })
+    }
   }
 
   const buyName = buy ? buy.label + (KIND_NAME[buy.kind] ? ' ' + KIND_NAME[buy.kind] : '') : ''
   const canBuy = !!buy && points >= buy.price
-  const confirmBuy = () => {
-    if (!buy || !canBuy) return
-    setSpent(s => s + buy.price)
-    setOwned(o => ({ ...o, [buy.kind]: [...o[buy.kind], buy.key] }))
-    setEquipped(e => ({ ...e, [buy.kind]: buy.key }))
-    setBuy(null)
-    showToast(buyName + ' 적용했어요')
+  const confirmBuy = async () => {
+    if (!buy || !canBuy || !me) return
+    try {
+      await buyItem(me.id, buy.kind, buy.key, buy.price)
+      setBuy(null)
+      showToast(buyName + ' 적용했어요')
+    } catch {
+      showToast('구매하지 못했어요. 다시 시도해주세요')
+    }
+  }
+
+  const doLogin = async () => {
+    if (authBusy) return
+    setAuthBusy(true)
+    try {
+      await logIn(login.id.trim(), login.pw)
+      setLogin(EMPTY_LOGIN)
+      showToast('로그인했어요')
+    } catch (e) {
+      showToast(authErrorMessage(e))
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  const doLogout = async () => {
+    await logOut()
+    setVotes({})
+    showToast('로그아웃했어요')
+  }
+
+  const doSignup = async () => {
+    if (authBusy) return
+    setAuthBusy(true)
+    try {
+      await signUp(signup.name.trim(), signup.id.trim(), signup.pw)
+      setAcctView('login')
+      setSignup(EMPTY_SIGNUP)
+      setNameAck(false)
+      showToast('가입했어요. 환영해요!')
+    } catch (e) {
+      showToast(authErrorMessage(e))
+    } finally {
+      setAuthBusy(false)
+    }
   }
 
   const sheetPerson = sheet != null ? all.find(d => d.id === sheet) : undefined
   const profilePerson = profile != null ? all.find(d => d.id === profile) : undefined
+  const myPhotoCss = photo ? `url(${photo})` : 'none'
+
+  if (!firebaseConfigured) return <SetupNotice />
+  if (!authReady) return <div data-g="app" style={css('width:100%;max-width:430px;min-height:100vh;background:#ffffff')} />
 
   return (
     <div data-theme={theme} style={css("min-height:100vh;display:flex;justify-content:center;font-family:'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;color:#191f28;word-break:keep-all")}>
@@ -163,19 +235,22 @@ export function App({ loggedIn: initialLoggedIn = false, startTab = 'home', swap
               loggedIn={loggedIn}
               view={acctView}
               onView={setAcctView}
-              onLogin={() => { setLoggedIn(true); showToast('로그인했어요') }}
-              onLogout={() => { setLoggedIn(false); setVotes({}); showToast('로그아웃했어요') }}
+              login={login}
+              onLoginField={patch => setLogin(s => ({ ...s, ...patch }))}
+              onLogin={doLogin}
+              onLogout={doLogout}
               signup={signup}
               onSignup={patch => setSignup(s => ({ ...s, ...patch }))}
               nameAck={nameAck}
               nameRef={nameRef}
               onNameFocus={el => { if (!nameAck) { el.blur(); setRuleOpen(true); setRuleCheck(false) } }}
-              onSubmitSignup={() => { setLoggedIn(true); setAcctView('login'); setSignup(EMPTY_SIGNUP); showToast('가입했어요. 환영해요!') }}
-              me={me}
-              onPhoto={f => { setPhoto(URL.createObjectURL(f)); showToast('프로필 사진을 바꿨어요') }}
+              onSubmitSignup={doSignup}
+              authBusy={authBusy}
+              me={me ? { ...me, photoCss: myPhotoCss, bio: bioDraft } : undefined}
+              onPhoto={f => { setPhoto(URL.createObjectURL(f)); showToast('프로필 사진을 바꿨어요 (새로고침하면 사라져요)') }}
               onRemovePhoto={() => setPhoto(null)}
-              onBio={setBio}
-              onGender={setGender}
+              onBio={v => setBioDraft(v.slice(0, 60))}
+              onGender={g => authUser && updateMyProfile(authUser.uid, { gender: g }).catch(() => showToast('저장하지 못했어요'))}
               points={points}
               mine={mine}
               onCancelVote={d => vote(d.id, d.v as 1 | -1)}
@@ -193,7 +268,7 @@ export function App({ loggedIn: initialLoggedIn = false, startTab = 'home', swap
         )}
         {profilePerson && (
           <ProfileSheet
-            d={profilePerson}
+            d={profilePerson.isMe ? { ...profilePerson, photoCss: myPhotoCss, bio: bioDraft } : profilePerson}
             onClose={() => setProfile(null)}
             onCta={() => {
               setProfile(null)
@@ -219,9 +294,9 @@ export function App({ loggedIn: initialLoggedIn = false, startTab = 'home', swap
             }}
           />
         )}
-        {editOpen && (
+        {editOpen && me && (
           <EditProfile
-            name={ME} bio={bio} photoCss={me.photoCss} equipped={equipped} owned={owned} points={points}
+            name={me.name} bio={bioDraft} photoCss={myPhotoCss} equipped={{ frame: me.frame, plate: me.plate, skin: me.skin }} owned={me.owned} points={points}
             tab={editTab} onTab={setEditTab} onPick={pickItem} onClose={() => setEditOpen(false)}
           />
         )}
@@ -239,10 +314,23 @@ export function App({ loggedIn: initialLoggedIn = false, startTab = 'home', swap
             onConfirm={confirmBuy}
           />
         )}
-        {revealOpen && (
+        {revealOpen && all.length >= 3 && (
           <Reveal top={all.slice(0, 3)} sound={sound} onToggleSound={() => setSound(s => !s)} onClose={() => setRevealOpen(false)} />
         )}
         {toast && <Toast msg={toast} />}
+      </div>
+    </div>
+  )
+}
+
+function SetupNotice() {
+  return (
+    <div style={css('min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px;background:#f2f4f6;font-family:Pretendard,system-ui,sans-serif')}>
+      <div style={css('max-width:420px;display:flex;flex-direction:column;gap:12px;text-align:center')}>
+        <span style={css('font-size:20px;font-weight:700;color:#191f28')}>Firebase 설정이 필요해요</span>
+        <span style={css('font-size:15px;line-height:22.5px;color:#4e5968')}>
+          이 앱은 로그인·투표·랭킹을 Firebase(Auth + Firestore)로 저장해요. 아직 <code>VITE_FIREBASE_*</code> 환경 변수가 설정되지 않아 화면을 열 수 없어요. <code>app/README.md</code>의 안내대로 Firebase 프로젝트를 연결해주세요.
+        </span>
       </div>
     </div>
   )
