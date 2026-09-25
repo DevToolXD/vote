@@ -8,6 +8,12 @@ name: Notifications
 on:
   schedule:
     - cron: '*/5 * * * *'
+  # Also right after the sender itself changes, as a live check.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/notify.yml'
+      - '.github/scripts/send-notifications.mjs'
   workflow_dispatch:
 
 permissions:
