@@ -14,6 +14,7 @@ on:
       - 'app/package.json'
       - '.github/scripts/android-branding.sh'
       - '.github/workflows/android-apk.yml'
+      - '.github/scripts/android-firebase-config.mjs'
   workflow_dispatch:
 
 permissions:
@@ -43,7 +44,13 @@ jobs:
       - name: Install and build web assets
         run: npm ci && npm run build
       - name: Generate Android project
-        run: npx cap add android && bash ../.github/scripts/android-branding.sh && npx cap sync android
+        run: npx cap add android && bash ../.github/scripts/android-branding.sh
+      - name: Firebase config for push notifications
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node ../.github/scripts/android-firebase-config.mjs android/app/google-services.json
+      - name: Sync Capacitor plugins
+        run: npx cap sync android
       - name: Build APK
         working-directory: app/android
         run: ./gradlew assembleDebug --no-daemon

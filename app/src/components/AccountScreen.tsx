@@ -1,4 +1,4 @@
-import type { RefObject } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import { css, sx } from '../css'
 import { ID_PATTERN } from '../backend/auth'
 import type { Person } from '../model'
@@ -36,6 +36,8 @@ type Props = {
   openEdit: () => void
   openTheme: () => void
   goHome: () => void
+  /** 알림 settings section, rendered above 로그아웃. */
+  notifySlot?: ReactNode
 }
 
 const field = 'height:52px;border:0;border-radius:14px;background:#f2f4f6;padding:0 16px;font-size:17px;color:#191f28'
@@ -157,7 +159,7 @@ function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus
   )
 }
 
-function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, onOpenVote, onLogout, goHome }: Props & { me: Person }) {
+function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, onOpenVote, onLogout, goHome, notifySlot }: Props & { me: Person }) {
   const hasPhoto = me.photoCss !== 'none'
   const sep = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
   return (
@@ -228,6 +230,7 @@ function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, on
           <button className="pr-96" onClick={goHome} style={css('margin-top:16px;height:38px;padding:0 16px;border-radius:10px;background:rgba(100,168,255,0.15);color:#2272eb;font-size:15px;font-weight:600;transition:transform 150ms')}>투표하러 가기</button>
         </div>
       )}
+      {notifySlot && <>{sep}{notifySlot}</>}
       {sep}
       <button className="pr-dim" onClick={onLogout} style={css('width:100%;text-align:left;padding:16px 24px;font-size:17px;font-weight:500;color:#4e5968;border-radius:12px')}>로그아웃</button>
       <div style={{ height: 24 }} />

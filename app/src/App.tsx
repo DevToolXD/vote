@@ -4,7 +4,9 @@ import { authErrorMessage, logIn, logOut, onAuthChange, saveLoginId, savedLoginI
 import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, castVote, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, isUnread, leaveGroup, openDm, sendMessage, setChatMuted, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
+import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
 import { DEFAULT_SEASON, type MyVote, type Season } from './backend/types'
+import { deviceRegistered, disablePush, enablePush, pushErrorMessage, pushSupport, refreshPush } from './push'
 import { fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
 import { AdminProgressOverlay, AdminScreen } from './components/AdminScreen'
@@ -13,6 +15,7 @@ import { EditProfile } from './components/EditProfile'
 import { GlassFilters } from './components/GlassFilters'
 import { HomeScreen } from './components/HomeScreen'
 import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScreen'
+import { NotifySettings } from './components/NotifySettings'
 import { BuyDialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
@@ -23,6 +26,8 @@ import { buildPeople } from './model'
 
 export type AppProps = {
   startTab?: Tab
+  /** Open this chat on launch (from a notification tap). */
+  startChat?: string | null
   /** Swap vote colours to red = 추천, blue = 비추천. */
   swapPalette?: boolean
 }
@@ -41,7 +46,7 @@ function loadTheme() {
 }
 
 /** Real backend: Firebase Auth for accounts, Firestore for the live leaderboard/votes/shop. See app/README.md. */
-export function App({ startTab = 'home', swapPalette = false }: AppProps) {
+export function App({ startTab = 'home', startChat = null, swapPalette = false }: AppProps) {
   const [tab, setTab] = useState<Tab>(startTab)
   const [homeQuery, setHomeQuery] = useState('')
   const [query, setQuery] = useState('')
@@ -81,7 +86,10 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const [adminBusy, setAdminBusy] = useState<{ label: string; p: AdminProgress } | null>(null)
   const [sound, setSound] = useState(true)
   const [chats, setChats] = useState<ChatRow[]>([])
-  const [chatId, setChatId] = useState<string | null>(null)
+  const [chatId, setChatId] = useState<string | null>(startChat)
+  const [notify, setNotify] = useState<NotifyPrefs>(DEFAULT_NOTIFY)
+  const [pushOn, setPushOn] = useState(deviceRegistered)
+  const [pushBusy, setPushBusy] = useState(false)
   const [newChatOpen, setNewChatOpen] = useState(false)
 
   const toastTimer = useRef<ReturnType<typeof setTimeout>>()
@@ -101,6 +109,12 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   useEffect(() => onAuthChange(u => { setAuthUser(u); setAuthReady(true) }), [])
   useEffect(() => (db ? subscribeCandidates(db, setRows) : undefined), [])
   useEffect(() => (db ? subscribeSeason(db, setSeason) : undefined), [])
+
+  useEffect(() => {
+    if (!authUser || !db) { setNotify(DEFAULT_NOTIFY); return }
+    refreshPush(db, authUser.uid).then(() => setPushOn(deviceRegistered()))
+    return subscribeNotifySettings(db, authUser.uid, setNotify)
+  }, [authUser])
 
   useEffect(() => {
     if (!authUser) { setChats([]); setChatId(null); return }
@@ -240,6 +254,9 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   }
 
   const doLogout = async () => {
+    // This device stops getting the old account's notifications.
+    if (db) await disablePush(db)
+    setPushOn(false)
     await logOut()
     setVotes({})
     showToast('로그아웃했어요')
@@ -324,6 +341,26 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
       .catch(e => failToast('바꾸지 못했어요', e))
   }
 
+  const togglePush = async (on: boolean) => {
+    if (!authUser || !db) return
+    setPushBusy(true)
+    try {
+      if (on) {
+        await enablePush(db, authUser.uid)
+        await saveNotifySettings(db, authUser.uid, { notify: true })
+        showToast('알림을 켰어요')
+      } else {
+        await disablePush(db)
+        showToast('이 기기의 알림을 껐어요')
+      }
+    } catch (e) {
+      showToast(pushErrorMessage(e))
+    } finally {
+      setPushOn(deviceRegistered())
+      setPushBusy(false)
+    }
+  }
+
   if (!firebaseConfigured) return <SetupNotice />
   if (!authReady) return <div data-g="app" style={css('width:100%;max-width:430px;min-height:100vh;background:#ffffff')} />
 
@@ -373,6 +410,13 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
               openEdit={() => setEditOpen(true)}
               openTheme={() => setThemeOpen(true)}
               goHome={() => go('home')}
+              notifySlot={
+                <NotifySettings
+                  support={pushSupport()} on={pushOn && notify.notify} busy={pushBusy} settings={notify}
+                  onToggle={togglePush}
+                  onChange={patch => authUser && saveNotifySettings(db!, authUser.uid, patch).catch(e => failToast('저장하지 못했어요', e))}
+                />
+              }
             />
           )}
           {tab === 'msg' && (

@@ -53,6 +53,12 @@ The **메시지** tab (paper-plane icon, red badge = chats with unread messages)
 
 For local end-to-end testing, build with `VITE_USE_EMULATORS=1` and run the Auth + Firestore emulators (`firebase.json` has both).
 
+## Notifications
+
+계정 → **알림**: 알림 받기 (this device), 새 메시지, 받은 추천·비추천 (never says who voted). A muted chat (≡ → 알림) is skipped. Works in the Galaxy app (native FCM; `android-firebase-config.mjs` registers the Android app in Firebase and fetches `google-services.json` during the APK build), in desktop/Android browsers, and on iPhone only in the app added to the home screen (iOS 16.4+).
+
+Delivery: `.github/workflows/notify.yml` runs every 5 minutes and polls Firestore every 20 s for ~4.5 min (`send-notifications.mjs`), sending through FCM HTTP v1 with the service account; progress is kept in `meta/notifyCursor`, and dead device tokens are removed. Scheduled GitHub runs can start late, so the occasional notification may lag by a few minutes. Instant delivery would need a Cloud Functions trigger (Blaze plan).
+
 ## Install as an app
 
 The Home tab has an **앱 설치하기** card (hidden when already running as an app) that opens a sheet with two tabs:

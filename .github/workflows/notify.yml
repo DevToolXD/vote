@@ -1,0 +1,35 @@
+name: Notifications
+
+# Sends push notifications for new messages and received votes
+# (.github/scripts/send-notifications.mjs). Runs every 5 minutes and polls
+# Firestore every 20 seconds for ~4.5 minutes of each run, so a notification
+# usually arrives within a minute (GitHub may start scheduled runs late).
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notify
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Send notifications
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          RUN_FOR_MS: '270000'
+        run: node .github/scripts/send-notifications.mjs

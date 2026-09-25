@@ -15,6 +15,9 @@ rules_version = '2';
 //   chats/{chatId}                1:1 (id = sorted uids joined by '_') or group chat (≤10 members);
 //                                 reads/mutes maps hold each member's read time / 알림 off
 //   chats/{chatId}/messages/{id}  { uid, text, at }
+//   pushTokens/{token}            one device's push token { uid, token, platform, updatedAt }
+//   settings/{uid}                private notification settings { notify, notifyMsg, notifyVote }
+//   meta/notifyCursor             the notification sender's progress (service account only)
 //
 // Admin operations (grant points, set season name, reset season, delete account)
 // Only the admin account (id "admin", i.e. admin@vote.local, or a user with the
@@ -409,6 +412,34 @@ service cloud.firestore {
           && canSend(chatData(chatId));
         allow update, delete: if false;
       }
+    }
+
+    // ---- notifications ----------------------------------------------------------
+    // Sent by .github/scripts/send-notifications.mjs with the service account
+    // (rules don't apply to it). Clients only register their own device and
+    // settings; nobody can read another person's tokens or settings.
+
+    match /pushTokens/{token} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      // The doc id is the token itself, so holding the token (i.e. the device) is what lets you claim it.
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'token', 'platform', 'updatedAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.token == token
+        && token.size() <= 1024
+        && request.resource.data.platform in ['web', 'android']
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /settings/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['notify', 'notifyMsg', 'notifyVote'])
+        && request.resource.data.get('notify', true) is bool
+        && request.resource.data.get('notifyMsg', true) is bool
+        && request.resource.data.get('notifyVote', true) is bool;
+      allow delete: if false;
     }
   }
 }

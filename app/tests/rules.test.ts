@@ -1,6 +1,8 @@
 // Security-rule tests: the app's own backend code (src/backend) against the
 // Firestore emulator running ../firestore.rules. Run with `npm run test:rules`.
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
+import { createServer } from 'node:http'
 import { after, beforeEach, describe, test } from 'node:test'
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app'
 import {
@@ -11,6 +13,7 @@ import { deleteAccount, grantPoints, renameUser, resetSeason, runAdminOp, setSea
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, castVote, equipItem, pointsOf, updateMyProfile } from '../src/backend/candidates'
 import { createGroup, dmId, leaveGroup, markRead, openDm, sendMessage, setChatMuted, setMessagesOff } from '../src/backend/messages'
+import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import type { CandidateDoc } from '../src/backend/types'
 import { priceOf } from '../src/data'
 
@@ -418,5 +421,68 @@ describe('messages', () => {
     for (const m of many) await signUp(m)
     await assert.rejects(createGroup(a, 'a', many, '11명'))
     await createGroup(a, 'a', many.slice(0, 9), '10명')
+  })
+})
+
+describe('notifications', () => {
+  test('push tokens and settings are private to their owner', async () => {
+    const a = await signUp('a'); const b = await signUp('b')
+    await savePushToken(a, 'a', 'tok-a', 'web')
+    await denied(getDoc(doc(b, 'pushTokens', 'tok-a')))
+    await denied(setDoc(doc(b, 'pushTokens', 'tok-x'), { uid: 'a', token: 'tok-x', platform: 'web', updatedAt: serverTimestamp() }))
+    await denied(setDoc(doc(b, 'pushTokens', 'tok-y'), { uid: 'b', token: 'other', platform: 'web', updatedAt: serverTimestamp() }))
+    await denied(removePushToken(b, 'tok-a'))
+    await saveNotifySettings(a, 'a', { notifyVote: false })
+    await denied(getDoc(doc(b, 'settings', 'a')))
+    await denied(setDoc(doc(b, 'settings', 'a'), { notify: false }))
+    await denied(setDoc(doc(a, 'settings', 'a'), { notify: 'no' }))
+    await denied(getDoc(doc(a, 'meta', 'notifyCursor')))
+    await removePushToken(a, 'tok-a')
+  })
+
+  test('the sender delivers messages and votes, honoring mutes, reads and settings', async () => {
+    const a = await signUp('a'), b = await signUp('b'), c = await signUp('c')
+    for (const [db, u] of [[a, 'a'], [b, 'b'], [c, 'c']] as const) await savePushToken(db, u, `tok-${u}`, u === 'c' ? 'android' : 'web')
+    const dm = await openDm(a, 'a', 'b')
+    await sendMessage(a, 'a', dm, '안녕 b')
+    const group = await createGroup(a, 'a', ['b', 'c'], '모임')
+    await setChatMuted(c, 'c', group, true)
+    await sendMessage(b, 'b', group, '단톡 첫 메시지')
+    await castVote(b, 'b', 'c', 'up')
+    await castVote(c, 'c', 'a', 'down')
+    await saveNotifySettings(a, 'a', { notifyVote: false })
+
+    const got: { token: string; title: string; body: string }[] = []
+    const fcm = createServer((req, res) => {
+      let body = ''
+      req.on('data', ch => { body += ch })
+      req.on('end', () => {
+        const m = JSON.parse(body).message
+        got.push({ token: m.token, title: m.data?.title ?? m.notification.title, body: m.data?.body ?? m.notification.body })
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}')
+      })
+    })
+    await new Promise<void>(r => fcm.listen(0, '127.0.0.1', r))
+    const port = (fcm.address() as { port: number }).port
+    await new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
+      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: `http://127.0.0.1:${port}`, PROJECT_ID: PROJECT, RUN_FOR_MS: '0', SETTLE_MS: '0', SITE_URL: 'https://x/' },
+    }, (err, stdout, stderr) => err ? reject(new Error(stderr || stdout)) : resolve()))
+    fcm.close()
+
+    const to = (t: string) => got.filter(g => g.token === t).map(g => `${g.title}|${g.body}`).sort()
+    assert.deepEqual(to('tok-b'), ['이름a|안녕 b'], JSON.stringify(got))
+    assert.ok(!to('tok-b').some(x => x.includes('단톡 첫 메시지')), 'b sent it, b must not be notified')
+    assert.ok(to('tok-a').includes('모임|이름b: 단톡 첫 메시지'))
+    assert.ok(!to('tok-a').some(x => x.includes('비추천')), 'a turned vote notifications off')
+    assert.deepEqual(to('tok-c'), ['인기투표|누군가 회원님을 추천했어요'], 'c muted the group, so only the vote')
+    // Nothing is sent twice: a second run finds nothing new.
+    got.length = 0
+    const fcm2 = createServer((req, res) => { got.push({ token: 'x', title: '', body: '' }); req.resume(); res.end('{}') })
+    await new Promise<void>(r => fcm2.listen(port, '127.0.0.1', r))
+    await new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
+      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: `http://127.0.0.1:${port}`, PROJECT_ID: PROJECT, RUN_FOR_MS: '0', SETTLE_MS: '0' },
+    }, err => err ? reject(err) : resolve()))
+    fcm2.close()
+    assert.equal(got.length, 0)
   })
 })
