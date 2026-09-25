@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Pretendard";src:url("fonts/Pretendard-Regular.subset.woff2") format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Pretendard";src:url("fonts/Pretendard-Medium.subset.woff2") format("woff2");font-weight:500;font-display:swap}
+@font-face{font-family:"Pretendard";src:url("fonts/Pretendard-SemiBold.subset.woff2") format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:"Pretendard";src:url("fonts/Pretendard-Bold.subset.woff2") format("woff2");font-weight:700;font-display:swap}
+body{margin:0;background:#f6f7f9;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+a{color:#2272eb;text-decoration:none}a:hover{color:#1b64da}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit}input::placeholder{color:#8b95a1}input:focus{outline:none}
+button:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #3182f6}
+@keyframes drumL{0%{transform:rotate(-38deg)}100%{transform:rotate(-8deg)}}
+@keyframes drumR{0%{transform:rotate(8deg)}100%{transform:rotate(38deg)}}
+@keyframes drumShake{0%,100%{transform:translate(0,0)}25%{transform:translate(-1.5px,1px)}75%{transform:translate(1.5px,-1px)}}
+@keyframes syl{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes glowPulse{0%,100%{opacity:.55;transform:scale(.92)}50%{opacity:1;transform:scale(1.05)}}
+@keyframes rvShake{0.0%{transform:translate(0px,0.00px) rotate(0.00deg)}2.5%{transform:translate(0px,0.00px) rotate(0.00deg)}5.0%{transform:translate(-0.02px,0.01px) rotate(-0.00deg)}7.5%{transform:translate(0.04px,-0.02px) rotate(-0.01deg)}10.0%{transform:translate(-0.07px,0.00px) rotate(0.02deg)}12.5%{transform:translate(0.11px,0.07px) rotate(0.03deg)}15.0%{transform:translate(-0.16px,-0.10px) rotate(-0.04deg)}17.5%{transform:translate(0.21px,0.00px) rotate(-0.05deg)}20.0%{transform:translate(-0.28px,0.17px) rotate(0.06deg)}22.5%{transform:translate(0.35px,-0.21px) rotate(0.08deg)}25.0%{transform:translate(-0.44px,0.00px) rotate(-0.10deg)}27.5%{transform:translate(0.53px,0.32px) rotate(-0.12deg)}30.0%{transform:translate(-0.63px,-0.38px) rotate(0.14deg)}32.5%{transform:translate(0.74px,0.00px) rotate(0.17deg)}35.0%{transform:translate(-0.86px,0.52px) rotate(-0.20deg)}37.5%{transform:translate(0.98px,-0.59px) rotate(-0.23deg)}40.0%{transform:translate(-1.12px,0.00px) rotate(0.26deg)}42.5%{transform:translate(1.26px,0.76px) rotate(0.29deg)}45.0%{transform:translate(-1.42px,-0.85px) rotate(-0.32deg)}47.5%{transform:translate(1.58px,0.00px) rotate(-0.36deg)}50.0%{transform:translate(-1.75px,1.05px) rotate(0.40deg)}52.5%{transform:translate(1.93px,-1.16px) rotate(0.44deg)}55.0%{transform:translate(-2.12px,0.00px) rotate(-0.48deg)}57.5%{transform:translate(2.31px,1.39px) rotate(-0.53deg)}60.0%{transform:translate(-2.52px,-1.51px) rotate(0.58deg)}62.5%{transform:translate(2.73px,0.00px) rotate(0.63deg)}65.0%{transform:translate(-2.96px,1.78px) rotate(-0.68deg)}67.5%{transform:translate(3.19px,-1.91px) rotate(-0.73deg)}70.0%{transform:translate(-3.43px,0.00px) rotate(0.78deg)}72.5%{transform:translate(3.68px,2.21px) rotate(0.84deg)}75.0%{transform:translate(-3.94px,-2.36px) rotate(-0.90deg)}77.5%{transform:translate(4.2px,0.00px) rotate(-0.96deg)}80.0%{transform:translate(-4.48px,2.69px) rotate(1.02deg)}82.5%{transform:translate(4.76px,-2.86px) rotate(1.09deg)}85.0%{transform:translate(-5.06px,0.00px) rotate(-1.16deg)}87.5%{transform:translate(5.36px,3.22px) rotate(-1.23deg)}90.0%{transform:translate(-5.67px,-3.40px) rotate(1.30deg)}92.5%{transform:translate(5.99px,0.00px) rotate(1.37deg)}95.0%{transform:translate(-6.32px,3.79px) rotate(-1.44deg)}97.5%{transform:translate(6.65px,-3.99px) rotate(-1.52deg)}100.0%{transform:translate(-7px,0.00px) rotate(1.60deg)}}
+@keyframes rvZoom{0%{transform:scale(.82)}100%{transform:scale(1.42)}}
+@keyframes rvDark{0%{background-color:#ffffff}100%{background-color:#07080c}}
+@keyframes rvSpot{0%{opacity:0}100%{opacity:1}}
+@keyframes rvFade{0%{opacity:0}100%{opacity:1}}
+@keyframes rvFlashA{0%{opacity:.85}100%{opacity:0}}
+@keyframes rvFlashB{0%{opacity:.85}100%{opacity:0}}
+@keyframes stickL{0%{transform:rotate(-15deg)}100%{transform:rotate(4deg)}}
+@keyframes stickR{0%{transform:rotate(15deg)}100%{transform:rotate(-4deg)}}
+@keyframes headHit{0%{opacity:.9;transform:scale(.4)}100%{opacity:0;transform:scale(1.25)}}
+@keyframes skGrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes skGrow2{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes growY{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes labelRide{from{transform:translateX(-50%) translateY(var(--dy))}to{transform:translateX(-50%) translateY(0)}}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes popIn{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:none}}
+[data-theme="glass"] [data-g="app"]{background:radial-gradient(70% 45% at 8% 4%,#ffd8c4 0%,rgba(255,216,196,0) 70%),radial-gradient(60% 45% at 96% 22%,#d9d2ff 0%,rgba(217,210,255,0) 70%),radial-gradient(70% 50% at 18% 72%,#c7efe3 0%,rgba(199,239,227,0) 70%),radial-gradient(60% 45% at 96% 96%,#ffe6a6 0%,rgba(255,230,166,0) 70%),#eef1f6 !important;background-attachment:fixed !important}
+[data-theme="glass"] :is([data-g="clear"],[data-g="gap"]){background:transparent !important}
+[data-theme="glass"] [data-g="gap"]{height:8px !important}
+[data-theme="glass"] [data-g="head"]{background:rgba(238,241,246,0.3) !important;-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%)}
+[data-theme="glass"] :is([data-g="l1"],[data-g="l2"],[data-g="l3"],[data-g="l4"],[data-g="nav"],[data-g="primary"],[data-g="secondary"],[data-g="bar"],[data-g="navpill"]){position:relative;isolation:isolate;background:transparent !important}
+[data-theme="glass"] :is([data-g="l1"],[data-g="l2"],[data-g="l3"],[data-g="l4"],[data-g="nav"],[data-g="primary"],[data-g="secondary"],[data-g="bar"],[data-g="navpill"])::before,[data-theme="glass"] :is([data-g="l1"],[data-g="l2"],[data-g="l3"],[data-g="l4"],[data-g="nav"],[data-g="primary"],[data-g="secondary"],[data-g="bar"],[data-g="navpill"])::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none}
+[data-theme="glass"] :is([data-g="l1"],[data-g="l2"],[data-g="l3"],[data-g="l4"],[data-g="nav"],[data-g="primary"],[data-g="secondary"],[data-g="bar"],[data-g="navpill"])::before{z-index:-2}
+[data-theme="glass"] :is([data-g="l1"],[data-g="l2"],[data-g="l3"],[data-g="l4"],[data-g="nav"],[data-g="primary"],[data-g="secondary"],[data-g="bar"],[data-g="navpill"])::after{z-index:-1;background:radial-gradient(160px circle at var(--mx,30%) var(--my,0%),rgba(255,255,255,0.4),rgba(255,255,255,0) 70%),linear-gradient(180deg,rgba(255,255,255,0.32),rgba(255,255,255,0) 30%)}
+[data-theme="glass"] [data-g="l1"]::before{background:rgba(255,255,255,0.34);-webkit-backdrop-filter:blur(8px) saturate(150%);backdrop-filter:blur(8px) saturate(150%)}
+[data-theme="glass"] [data-g="l1"]{box-shadow:inset 0 0 0 1px rgba(255,255,255,0.55),inset 0 1px 0 rgba(255,255,255,0.85) !important}
+[data-theme="glass"] [data-g="l1"]:focus-within{box-shadow:inset 0 0 0 1px rgba(255,255,255,0.95),inset 0 1px 14px rgba(255,255,255,0.7),0 0 0 4px rgba(49,130,246,0.16) !important}
+[data-theme="glass"] [data-g="l2"]::before{background:rgba(255,255,255,0.4);-webkit-backdrop-filter:blur(14px) saturate(170%);backdrop-filter:blur(14px) saturate(170%)}
+[data-theme="glass"] [data-g="l2"]{border-color:rgba(255,255,255,0.55) !important;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.6),inset 0 1px 0 rgba(255,255,255,0.95),inset 0 -1px 0 rgba(255,255,255,0.25),0 12px 30px -14px rgba(30,40,90,0.22) !important}
+[data-theme="glass"] [data-g="l3"]::before,[data-theme="glass"] [data-g="nav"]::before{background:rgba(255,255,255,0.44);-webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%);filter:url(#lg-l3)}
+[data-theme="glass"] :is([data-g="l3"],[data-g="nav"]){box-shadow:inset 0 0 0 1px rgba(255,255,255,0.65),inset 0 1.5px 0 #fff,0 18px 40px -16px rgba(30,40,90,0.3),0 2px 6px rgba(30,40,90,0.06) !important}
+[data-theme="glass"] [data-g="l4"]::before{background:rgba(255,255,255,0.56);-webkit-backdrop-filter:blur(26px) saturate(190%);backdrop-filter:blur(26px) saturate(190%);filter:url(#lg-l4)}
+[data-theme="glass"] [data-g="l4"]{box-shadow:inset 0 0 0 1px rgba(255,255,255,0.7),inset 0 2px 0 #fff,0 30px 70px -24px rgba(20,30,70,0.4) !important}
+[data-theme="glass"] [data-g="nav"]{margin:0 14px 12px;border-radius:30px;bottom:12px !important;overflow:hidden}
+[data-theme="glass"] [data-g="nav"] button{position:relative;z-index:1}
+[data-theme="glass"] [data-g="navpill"]{display:block !important;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.85),inset 0 1px 0 #fff,0 6px 14px -6px rgba(30,40,90,0.3) !important}
+[data-theme="glass"] [data-g="navpill"]::before{background:rgba(255,255,255,0.55);-webkit-backdrop-filter:blur(6px) saturate(180%);backdrop-filter:blur(6px) saturate(180%)}
+[data-theme="glass"] [data-g="bar"]{border:1px solid rgba(255,255,255,0.9) !important;box-shadow:inset 0 1px 0 #fff,0 8px 18px -10px rgba(30,40,90,0.35) !important}
+[data-theme="glass"] [data-g="bar"]::before{background:rgba(255,255,255,0.46);-webkit-backdrop-filter:blur(6px) saturate(170%);backdrop-filter:blur(6px) saturate(170%)}
+[data-theme="glass"] [data-g="primary"]::before{background:linear-gradient(180deg,rgba(84,158,255,0.94),rgba(38,112,238,0.94));-webkit-backdrop-filter:blur(10px) saturate(180%);backdrop-filter:blur(10px) saturate(180%)}
+[data-theme="glass"] [data-g="primary"]{box-shadow:inset 0 1px 0 rgba(255,255,255,0.55),inset 0 0 0 1px rgba(255,255,255,0.22),0 12px 26px -12px rgba(49,130,246,0.65) !important}
+[data-theme="glass"] [data-g="primary"]:active{box-shadow:inset 0 2px 10px rgba(0,30,100,0.35),inset 0 0 0 1px rgba(255,255,255,0.2) !important}
+[data-theme="glass"] [data-g="secondary"]::before{background:rgba(255,255,255,0.4);-webkit-backdrop-filter:blur(10px) saturate(160%);backdrop-filter:blur(10px) saturate(160%);transition:background 300ms}
+[data-theme="glass"] [data-g="secondary"]{box-shadow:inset 0 0 0 1px rgba(255,255,255,0.6),inset 0 1px 0 #fff,0 6px 16px -10px rgba(30,40,90,0.25) !important}
+[data-theme="glass"] [data-g="secondary"]:hover::before{background:rgba(255,255,255,0.58)}
+[data-theme="glass"] [data-g="secondary"]:active{box-shadow:inset 0 2px 8px rgba(30,40,90,0.14),inset 0 0 0 1px rgba(255,255,255,0.5) !important}
+[data-theme="glass"] button:is([data-g="primary"],[data-g="secondary"]){transition:transform 420ms cubic-bezier(0.34,1.4,0.64,1),box-shadow 300ms ease !important}
+[data-theme="glass"] button:is([data-g="primary"],[data-g="secondary"]):not(:disabled):hover{transform:scale(1.015)}
+[data-theme="glass"] button:is([data-g="primary"],[data-g="secondary"]):not(:disabled):active{transform:scale(0.965)}
+[data-theme="glass"] button:disabled{opacity:0.45;transform:none !important}
+[data-theme="glass"] [data-g="scrim"]{background:rgba(228,233,242,0.3) !important;-webkit-backdrop-filter:blur(8px) saturate(120%);backdrop-filter:blur(8px) saturate(120%)}
+[data-theme="glass"] :focus-visible{outline:none;box-shadow:0 0 0 2px rgba(255,255,255,0.95),0 0 0 4px rgba(49,130,246,0.6) !important}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){[data-theme="glass"] [data-g="l1"]::before{background:rgba(255,255,255,0.72)}[data-theme="glass"] :is([data-g="l2"],[data-g="bar"],[data-g="secondary"])::before{background:rgba(255,255,255,0.8)}[data-theme="glass"] :is([data-g="l3"],[data-g="nav"])::before{background:rgba(255,255,255,0.86)}[data-theme="glass"] [data-g="l4"]::before{background:rgba(255,255,255,0.93)}}
+@media (max-width:480px){[data-theme="glass"] [data-g="l3"]::before{filter:none}}
+@media (prefers-reduced-motion:reduce){[data-theme="glass"] *{transition-duration:1ms !important;animation-duration:1ms !important}[data-theme="glass"] [data-g]::before{filter:none !important}}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px) scale(0.96)}to{opacity:1;transform:none}}
+</style>
+<link rel="preload" as="image" href="skins/namsan-cap.png">
+<link rel="preload" as="image" href="skins/namsan-mid.png">
+<link rel="preload" as="image" href="skins/eiffel-cap.png">
+<link rel="preload" as="image" href="skins/eiffel-mid.png">
+<link rel="preload" as="image" href="skins/eiffel-base.png">
+<link rel="preload" as="image" href="skins/bigben-cap.png">
+<link rel="preload" as="image" href="skins/bigben-mid.png">
+<link rel="preload" as="image" href="skins/victory-cap.png">
+<link rel="preload" as="image" href="skins/victory-mid.png">
+<link rel="preload" as="image" href="skins/victory-base.png">
+</helmet>
+<div data-theme="{{ theme }}" style="min-height:100vh;display:flex;justify-content:center;font-family:'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;color:#191f28;word-break:keep-all">
+<svg width="0" height="0" aria-hidden="true" style="position:absolute;width:0;height:0"><defs><filter id="lg-l3" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.006 0.011" numOctaves="2" seed="7" result="n"></feTurbulence><feGaussianBlur in="n" stdDeviation="2" result="nb"></feGaussianBlur><feDisplacementMap in="SourceGraphic" in2="nb" scale="12" xChannelSelector="R" yChannelSelector="G" result="dr"></feDisplacementMap><feDisplacementMap in="SourceGraphic" in2="nb" scale="13.5" xChannelSelector="R" yChannelSelector="G" result="dg"></feDisplacementMap><feDisplacementMap in="SourceGraphic" in2="nb" scale="15" xChannelSelector="R" yChannelSelector="G" result="db"></feDisplacementMap><feColorMatrix in="dr" type="matrix" values="1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0" result="r"></feColorMatrix><feColorMatrix in="dg" type="matrix" values="0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0" result="g"></feColorMatrix><feColorMatrix in="db" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0" result="b"></feColorMatrix><feBlend in="r" in2="g" mode="screen" result="rg"></feBlend><feBlend in="rg" in2="b" mode="screen"></feBlend></filter><filter id="lg-l4" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.006 0.011" numOctaves="2" seed="7" result="n"></feTurbulence><feGaussianBlur in="n" stdDeviation="2" result="nb"></feGaussianBlur><feDisplacementMap in="SourceGraphic" in2="nb" scale="20" xChannelSelector="R" yChannelSelector="G" result="dr"></feDisplacementMap><feDisplacementMap in="SourceGraphic" in2="nb" scale="21.5" xChannelSelector="R" yChannelSelector="G" result="dg"></feDisplacementMap><feDisplacementMap in="SourceGraphic" in2="nb" scale="23" xChannelSelector="R" yChannelSelector="G" result="db"></feDisplacementMap><feColorMatrix in="dr" type="matrix" values="1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0" result="r"></feColorMatrix><feColorMatrix in="dg" type="matrix" values="0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0" result="g"></feColorMatrix><feColorMatrix in="db" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0" result="b"></feColorMatrix><feBlend in="r" in2="g" mode="screen" result="rg"></feBlend><feBlend in="rg" in2="b" mode="screen"></feBlend></filter></defs></svg>
+<div data-g="app" style="width:100%;max-width:430px;min-height:100vh;background:#ffffff;position:relative;display:flex;flex-direction:column">
+
+<main style="flex:1;display:flex;flex-direction:column">
+
+  <!-- HOME -->
+  <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+    <div data-g="clear" style="flex:1;background:#f2f4f6;padding-bottom:24px">
+      <header data-g="head" style="position:sticky;top:0;z-index:20;height:56px;padding:0 12px 0 24px;display:flex;align-items:center;justify-content:space-between;background:#f2f4f6">
+        <span style="font-size:20px;line-height:29px;font-weight:700;color:#191f28">인기투표</span>
+        <button onClick="{{ goRank }}" aria-label="검색" style="width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#6b7684" style-active="background:rgba(2,32,71,0.05)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg>
+        </button>
+      </header>
+
+      <div style="padding:12px 24px 24px">
+        <div style="font-size:13px;line-height:19.5px;font-weight:700;color:#6b7684">시즌 BETA · 실시간</div>
+        <h1 style="margin:4px 0 0;font-size:26px;line-height:35px;font-weight:700;color:#191f28">지금 1위는<br>{{ leaderName }}님이에요</h1>
+      </div>
+
+      <button data-g="l2" onClick="{{ startReveal }}" style="width:calc(100% - 24px);margin:0 12px 12px;background:#ffffff;border-radius:24px;padding:18px 16px 18px 20px;display:flex;align-items:center;gap:14px;text-align:left;transition:transform 150ms" style-active="transform:scale(0.98)">
+        <span style="width:48px;height:48px;border-radius:16px;flex:none;background:#fff4d6;display:flex;align-items:center;justify-content:center">
+          <svg width="30" height="30" viewBox="0 0 32 32"><path d="M7 3.5L14 13M25 3.5L18 13" stroke="#8b5a2b" stroke-width="2.2" stroke-linecap="round"></path><circle cx="6.5" cy="3.2" r="2" fill="#c98a4b"></circle><circle cx="25.5" cy="3.2" r="2" fill="#c98a4b"></circle><path d="M4 15v9c0 2.8 5.4 5 12 5s12-2.2 12-5v-9" fill="#f04452"></path><path d="M4 18l4 8M10 20l4 9M16 20l4 9M22 20l4 7" stroke="#ffc342" stroke-width="1.4"></path><ellipse cx="16" cy="15" rx="12" ry="4.6" fill="#f9fafb" stroke="#d1d6db" stroke-width="1.2"></ellipse></svg>
+        </span>
+        <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+          <span style="font-size:17px;line-height:25.5px;font-weight:700;color:#191f28">시즌 BETA TOP 3 발표</span>
+          <span style="font-size:13px;line-height:19.5px;color:#6b7684">두구두구, 3위부터 1위까지 공개해요</span>
+        </span>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b0b8c1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"></path></svg>
+      </button>
+
+      <div data-g="l2" style="margin:0 12px;background:#ffffff;border-radius:24px;padding:20px 0 12px">
+        <div style="padding:0 24px 12px;display:flex;flex-direction:column;gap:2px">
+          <span style="font-size:17px;line-height:25.5px;font-weight:700;color:#191f28">누구에게 투표할까요?</span>
+          <span style="font-size:13px;line-height:19.5px;color:#6b7684">지금 TOP 5 후보예요. 눌러서 추천이나 비추천을 남겨요</span>
+        </div>
+        <div style="padding:0 16px 8px">
+          <label data-g="l1" style="height:44px;border-radius:12px;background:#f2f4f6;padding:0 8px 0 12px;display:flex;align-items:center;gap:8px" style-focus-within="box-shadow:inset 0 0 0 1.5px #3182f6">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b95a1" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg>
+            <input value="{{ homeQuery }}" onChange="{{ onHomeSearch }}" placeholder="이름으로 찾기" style="flex:1;min-width:0;height:100%;border:0;background:transparent;font-size:16px;color:#191f28">
+          </label>
+        </div>
+        <sc-for list="{{ pickList }}" as="t" hint-placeholder-count="5">
+          <button onClick="{{ t.openSheet }}" style="width:100%;text-align:left;padding:10px 20px 10px 24px;display:flex;align-items:center;gap:14px;border-radius:12px;transition:background 150ms" style-active="background:rgba(2,32,71,0.05)">
+            <span style="width:40px;height:40px;flex:none;margin:4px"><dc-import name="Avatar" frame="{{ t.frame }}" photo="{{ t.photoCss }}" hint-size="40px,40px" style="display:block;width:40px;height:40px"></dc-import></span>
+            <span style="flex:1;min-width:0;display:flex;flex-direction:column">
+              <span style="font-size:17px;line-height:25.5px;font-weight:500;color:#333d4b">{{ t.name }}</span>
+              <span style="font-size:13px;line-height:19.5px;color:#6b7684;font-variant-numeric:tabular-nums">{{ t.sub }}</span>
+            </span>
+            <sc-if value="{{ t.hasVote }}" hint-placeholder-val="{{ false }}"><span style="height:24px;padding:0 10px;border-radius:9999px;font-size:12px;font-weight:600;display:flex;align-items:center;background:{{ t.badgeBg }};color:{{ t.badgeFg }}">{{ t.badgeLabel }}</span></sc-if>
+            <sc-if value="{{ t.noVote }}" hint-placeholder-val="{{ true }}"><span style="height:32px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:600;display:flex;align-items:center;background:rgba(100,168,255,0.15);color:#2272eb">투표</span></sc-if>
+          </button>
+        </sc-for>
+        <sc-if value="{{ pickEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:24px;text-align:center;font-size:15px;color:#6b7684">‘{{ homeQuery }}’ 후보가 없어요</div></sc-if>
+        <sc-if value="{{ showAllLink }}" hint-placeholder-val="{{ true }}"><div style="padding:4px 16px 0"><button onClick="{{ goRank }}" style="width:100%;height:48px;border-radius:12px;font-size:15px;font-weight:600;color:#4e5968;display:flex;align-items:center;justify-content:center;gap:4px" style-active="background:rgba(2,32,71,0.05)">전체 순위 보기<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"></path></svg></button></div></sc-if>
+      </div>
+
+      <sc-if value="{{ loggedOut }}" hint-placeholder-val="{{ true }}">
+        <div data-g="l2" style="margin:12px 12px 0;background:#ffffff;border-radius:24px;padding:24px;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:17px;line-height:25.5px;font-weight:700;color:#191f28">로그인하면 투표할 수 있어요</span>
+            <span style="font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684">후보마다 추천이나 비추천을 한 번씩 남길 수 있어요</span>
+          </div>
+          <button data-g="primary" onClick="{{ goAccount }}" style="height:48px;border-radius:14px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms" style-active="transform:scale(0.96)">로그인하기</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ loggedIn }}" hint-placeholder-val="{{ false }}">
+        <button data-g="l2" onClick="{{ goAccount }}" style="width:calc(100% - 24px);margin:12px 12px 0;background:#ffffff;border-radius:24px;padding:20px 16px 20px 24px;display:flex;align-items:center;gap:12px;text-align:left" style-active="transform:scale(0.98)">
+          <span style="flex:1;display:flex;flex-direction:column;gap:2px">
+            <span style="font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684">내 투표</span>
+            <span style="font-size:20px;line-height:29px;font-weight:700;color:#191f28">{{ myCountLabel }}</span>
+          </span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b0b8c1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"></path></svg>
+        </button>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <!-- RANKING -->
+  <sc-if value="{{ isRank }}" hint-placeholder-val="{{ false }}">
+    <div data-g="clear" style="flex:1;background:#ffffff;padding-bottom:32px">
+      <div style="height:8px"></div>
+      <div style="padding:24px 24px 20px;display:flex;flex-direction:column;gap:4px">
+        <h1 style="margin:0;font-size:22px;line-height:31px;font-weight:700;color:#191f28">실시간 랭킹</h1>
+        <p style="margin:0;font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684">추천에서 비추천을 뺀 점수로 순위를 매겨요</p>
+      </div>
+      <div style="padding:0 24px">
+        <label data-g="l1" style="height:48px;border-radius:14px;background:#f2f4f6;padding:0 8px 0 14px;display:flex;align-items:center;gap:8px" style-focus-within="box-shadow:inset 0 0 0 1.5px #3182f6">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b95a1" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"></circle><path d="m20 20-4-4"></path></svg>
+          <input value="{{ query }}" onChange="{{ onSearch }}" placeholder="이름으로 찾기" style="flex:1;min-width:0;height:100%;border:0;background:transparent;font-size:17px;color:#191f28">
+          <sc-if value="{{ hasQuery }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ clearSearch }}" aria-label="지우기" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center">
+              <svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#b0b8c1"></circle><path d="m9 9 6 6M15 9l-6 6" stroke="#fff" stroke-width="2" stroke-linecap="round"></path></svg>
+            </button>
+          </sc-if>
+        </label>
+      </div>
+
+      <div style="padding:20px 24px 8px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <span style="font-size:13px;line-height:19.5px;color:#6b7684">{{ rangeLabel }}</span>
+        <sc-if value="{{ hasPages }}" hint-placeholder-val="{{ true }}"><span style="font-size:13px;line-height:19.5px;font-weight:600;color:#4e5968;font-variant-numeric:tabular-nums">{{ pageLabel }}</span></sc-if>
+      </div>
+
+      <div style="padding:8px 8px 0">
+        <div data-g="l2" style="position:relative;border:1px solid #e5e8eb;border-radius:20px;background:#ffffff;padding:14px 24px 14px">
+          <button onClick="{{ prevPage }}" disabled="{{ prevDisabled }}" aria-label="이전 페이지" style="position:absolute;left:0;top:0;bottom:0;width:24px;display:flex;align-items:center;justify-content:center;border-radius:20px 0 0 20px;transition:color 200ms;color:{{ prevColor }}" style-active="background:rgba(2,32,71,0.05)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"></path></svg></button>
+          <button onClick="{{ nextPage }}" disabled="{{ nextDisabled }}" aria-label="다음 페이지" style="position:absolute;right:0;top:0;bottom:0;width:24px;display:flex;align-items:center;justify-content:center;border-radius:0 20px 20px 0;transition:color 200ms;color:{{ nextColor }}" style-active="background:rgba(2,32,71,0.05)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"></path></svg></button>
+          <div style="position:relative;display:flex;align-items:stretch;gap:0;transition:height 550ms cubic-bezier(0.22,1,0.36,1);height:{{ chartH }}px">
+            <div style="position:absolute;left:0;right:0;height:1px;background:#d1d6db;transition:top 550ms cubic-bezier(0.22,1,0.36,1);top:{{ zeroTop }}px"></div>
+            <sc-for list="{{ pageRows }}" as="r" hint-placeholder-count="10">
+              <button onClick="{{ r.openProfile }}" aria-label="{{ r.name }} 프로필" style="flex:0 0 10%;min-width:0;position:relative;height:100%;padding:0;border-radius:10px;transition:background 150ms" style-hover="background:rgba(2,32,71,0.03)" style-active="background:rgba(2,32,71,0.06)">
+                <span data-g="{{ r.barG }}" style="position:absolute;left:3px;right:3px;border-radius:6px;box-sizing:border-box;border:{{ r.barBorder }};transition:top 550ms cubic-bezier(0.22,1,0.36,1),height 550ms cubic-bezier(0.22,1,0.36,1);background:{{ r.barBg }};top:{{ r.barTop }}px;height:{{ r.barH }}px;overflow:{{ r.barOv }};display:flex;flex-direction:column;align-items:center;justify-content:{{ r.nameJustify }};transform-origin:{{ r.barOrigin }};animation:{{ r.barAnim }} 600ms cubic-bezier(0.22,1,0.36,1) both;animation-delay:{{ r.delay }}">
+                  <sc-if value="{{ r.skinned }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;inset:0;pointer-events:none;transform:{{ r.sk.tf }}">
+                    <span style="position:absolute;inset:0;transform-origin:50% 100%;will-change:transform;animation:{{ r.skAnim }} 600ms cubic-bezier(0.22,1,0.36,1) both;animation-delay:{{ r.delay }}">
+                    <span style="position:absolute;left:50%;bottom:0;display:flex;flex-direction:column;transform-origin:50% 100%;transition:height 550ms cubic-bezier(0.22,1,0.36,1),transform 550ms cubic-bezier(0.22,1,0.36,1);margin-left:{{ r.sk.ml }}px;width:{{ r.sk.w }}px;height:{{ r.sk.H }}px;transform:scale({{ r.sk.k }});filter:drop-shadow(0 1px 1.5px rgba(0,0,0,0.18))">
+                      <span style="display:block;width:100%;flex:none;background-repeat:no-repeat;background-size:100% 100%;height:{{ r.sk.capH }}px;background-image:{{ r.sk.capUrl }}"></span>
+                      <span style="display:block;flex:1;min-height:0;background-repeat:no-repeat;background-position:center;background-size:100% 100%;background-image:{{ r.sk.mid }}"></span>
+                      <sc-if value="{{ r.sk.hasBase }}" hint-placeholder-val="{{ false }}"><span style="display:block;width:100%;flex:none;background-repeat:no-repeat;background-size:100% 100%;height:{{ r.sk.baseH }}px;background-image:{{ r.sk.baseUrl }}"></span></span></sc-if>
+                    </span>
+                  </span></sc-if>
+                </span>
+                <span style="position:absolute;left:50%;transform:translateX(-50%);font-size:10px;line-height:12px;font-weight:600;letter-spacing:-0.3px;white-space:nowrap;color:#191f28;animation:labelRide 600ms cubic-bezier(0.22,1,0.36,1) both;animation-delay:{{ r.delay }};--dy:{{ r.dy }};transition:top 550ms cubic-bezier(0.22,1,0.36,1);top:{{ r.nameTop }}px">{{ r.name }}</span>
+                <span style="position:absolute;left:50%;transform:translateX(-50%);width:20px;height:20px;animation:labelRide 600ms cubic-bezier(0.22,1,0.36,1) both;animation-delay:{{ r.delay }};--dy:{{ r.dy }};transition:top 550ms cubic-bezier(0.22,1,0.36,1);top:{{ r.avTop }}px">
+                  <dc-import name="Avatar" frame="{{ r.frame }}" photo="{{ r.photoCss }}" hint-size="20px,20px" style="display:block;width:20px;height:20px"></dc-import>
+                </span>
+                <span style="position:absolute;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:-0.4px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;animation:labelRide 600ms cubic-bezier(0.22,1,0.36,1) both;animation-delay:{{ r.delay }};--dy:{{ r.dy }};transition:top 550ms cubic-bezier(0.22,1,0.36,1);color:#191f28;top:{{ r.scoreTop }}px">{{ r.scoreShort }}</span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:0;padding-top:8px">
+            <sc-for list="{{ pageRows }}" as="r" hint-placeholder-count="10">
+              <div style="flex:0 0 10%;min-width:0;display:flex;justify-content:center">
+                <span style="width:26px;height:26px;border-radius:9999px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;background:{{ r.rankBg }};color:{{ r.rankFg }};box-shadow:{{ r.rankRing }}">{{ r.rank }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+      <sc-if value="{{ noResults }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:72px 24px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center">
+          <span style="font-size:40px;line-height:1;margin-bottom:12px">🔍</span>
+          <span style="font-size:17px;line-height:25.5px;font-weight:600;color:#333d4b">‘{{ query }}’ 후보가 없어요</span>
+          <span style="font-size:15px;line-height:22.5px;color:#6b7684">다른 이름으로 찾아보세요</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <!-- ACCOUNT -->
+  <sc-if value="{{ isAcct }}" hint-placeholder-val="{{ false }}">
+    <div data-g="clear" style="flex:1;background:#ffffff">
+      <div style="height:56px;padding:6px 8px 0 12px;display:flex;justify-content:flex-end;align-items:center;gap:4px">
+        <sc-if value="{{ loggedIn }}" hint-placeholder-val="{{ false }}">
+          <button data-g="secondary" onClick="{{ openEdit }}" style="height:36px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:6px;background:#f2f4f6;color:#333d4b;font-size:14px;font-weight:600" style-active="transform:scale(0.96)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"></path><path d="m13.5 6.5 4 4"></path></svg>프로필 편집</button>
+        </sc-if>
+        <button onClick="{{ openTheme }}" aria-label="테마 바꾸기" style="width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;color:#333d4b" style-active="background:rgba(2,32,71,0.05)">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3.5"></rect><circle cx="9" cy="9.5" r="1.8"></circle><path d="m21 15.5-4.6-4.6a1.5 1.5 0 0 0-2.1 0L5 20"></path></svg>
+        </button>
+      </div>
+      <sc-if value="{{ loggedOut }}" hint-placeholder-val="{{ true }}">
+        <sc-if value="{{ isLoginView }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:8px 24px 24px;display:flex;flex-direction:column;gap:4px">
+            <h1 style="margin:0;font-size:22px;line-height:31px;font-weight:700;color:#191f28">로그인하고<br>투표를 시작해요</h1>
+            <p style="margin:0;font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684">투표는 로그인한 회원만 할 수 있어요</p>
+          </div>
+          <div style="padding:8px 24px 0;display:flex;flex-direction:column;gap:20px">
+            <label style="display:flex;flex-direction:column;gap:8px"><span style="font-size:13px;line-height:19.5px;font-weight:500;color:#6b7684">아이디</span><input data-g="l1" type="text" autocomplete="username" placeholder="아이디 입력" style="height:52px;border:0;border-radius:14px;background:#f2f4f6;padding:0 16px;font-size:17px;color:#191f28" style-focus="box-shadow:inset 0 0 0 1.5px #3182f6"></label>
+            <label style="display:flex;flex-direction:column;gap:8px"><span style="font-size:13px;line-height:19.5px;font-weight:500;color:#6b7684">비밀번호</span><input data-g="l1" type="password" autocomplete="current-password" placeholder="비밀번호 입력" style="height:52px;border:0;border-radius:14px;background:#f2f4f6;padding:0 16px;font-size:17px;color:#191f28" style-focus="box-shadow:inset 0 0 0 1.5px #3182f6"></label>
+          </div>
+          <div style="padding:28px 24px 0;display:flex;flex-direction:column;gap:8px">
+            <button data-g="primary" onClick="{{ login }}" style="height:56px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms" style-active="transform:scale(0.96)">로그인</button>
+            <div style="margin:16px 0 32px;display:flex;justify-content:center;align-items:center;gap:4px;font-size:15px;color:#6b7684">아직 계정이 없나요?<button onClick="{{ goSignup }}" style="height:36px;padding:0 6px;border-radius:8px;font-size:15px;font-weight:600;color:#2272eb" style-active="background:rgba(49,130,246,0.1)">회원가입</button></div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isSignupView }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:0 12px"><button onClick="{{ goLogin }}" aria-label="뒤로" style="width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28" style-active="background:rgba(2,32,71,0.05)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"></path></svg></button></div>
+          <div style="padding:4px 24px 24px;display:flex;flex-direction:column;gap:4px">
+            <h1 style="margin:0;font-size:22px;line-height:31px;font-weight:700;color:#191f28">회원가입</h1>
+            <p style="margin:0;font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684">투표에 참여할 계정을 만들어요</p>
+          </div>
+          <div style="padding:0 24px;display:flex;flex-direction:column;gap:20px">
+            <label style="display:flex;flex-direction:column;gap:8px"><span style="font-size:13px;line-height:19.5px;font-weight:500;color:#6b7684">이름 (실명)</span><input data-g="l1" ref="{{ nameRef }}" type="text" autocomplete="name" placeholder="예) 홍길동" value="{{ su.name }}" onFocus="{{ onNameFocus }}" onChange="{{ su.onName }}" style="height:52px;border:0;border-radius:14px;background:#f2f4f6;padding:0 16px;font-size:17px;color:#191f28" style-focus="box-shadow:inset 0 0 0 1.5px #3182f6"><span style="font-size:13px;line-height:19.5px;color:#8b95a1">본인 실명만 쓸 수 있어요</span></label>
+            <label style="display:flex;flex-direction:column;gap:8px"><span style="font-size:13px;line-height:19.5px;font-weight:500;color:#6b7684">아이디</span><input data-g="l1" type="text" autocomplete="username" placeholder="영문, 숫자 4자 이상" value="{{ su.id }}" onChange="{{ su.onId }}" style="height:52px;border:0;border-radius:14px;background:#f2f4f6;padding:0 16px;font-size:17px;color:#191f28" style-focus="box-shadow:inset 0 0 0 1.5px #3182f6"></label>
+            <label style="display:flex;flex-direction:column;gap:8px"><span style="font-size:13px;line-height:19.5px;font-weight:500;color:#6b7684">비밀번호</span><input data-g="l1" type="password" autocomplete="new-password" placeholder="8자 이상" value="{{ su.pw }}" onChange="{{ su.onPw }}" style="height:52px;border:0;border-radius:14px;background:#f2f4f6;padding:0 16px;font-size:17px;color:#191f28" style-focus="box-shadow:inset 0 0 0 1.5px #3182f6"><sc-if value="{{ su.hasPwMsg }}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;line-height:19.5px;color:{{ su.pwColor }}">{{ su.pwMsg }}</span></sc-if></label>
+            <label style="display:flex;flex-direction:column;gap:8px"><span style="font-size:13px;line-height:19.5px;font-weight:500;color:#6b7684">비밀번호 확인</span><input data-g="l1" type="password" autocomplete="new-password" placeholder="비밀번호를 한 번 더 입력" value="{{ su.pw2 }}" onChange="{{ su.onPw2 }}" style="height:52px;border:0;border-radius:14px;background:#f2f4f6;padding:0 16px;font-size:17px;color:#191f28" style-focus="box-shadow:inset 0 0 0 1.5px #3182f6"><sc-if value="{{ su.hasPw2Msg }}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;line-height:19.5px;font-weight:600;color:{{ su.pw2Color }}">{{ su.pw2Msg }}</span></sc-if></label>
+          </div>
+          <div style="padding:28px 24px 32px;display:flex;flex-direction:column;gap:8px">
+            <button data-g="primary" onClick="{{ su.submit }}" disabled="{{ su.cant }}" style="height:56px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms,opacity 200ms;opacity:{{ su.op }}" style-active="transform:scale(0.96)">가입하기</button>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ loggedIn }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px;display:flex;align-items:center;gap:16px">
+          <label style="position:relative;width:76px;height:76px;flex:none;cursor:pointer;margin:6px">
+            <dc-import name="Avatar" frame="{{ me.frame }}" photo="{{ me.photoCss }}" hint-size="76px,76px" style="display:block;width:76px;height:76px"></dc-import>
+            <span style="position:absolute;right:-4px;bottom:-4px;width:28px;height:28px;border-radius:9999px;background:#191f28;box-shadow:0 0 0 3px #fff;display:flex;align-items:center;justify-content:center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.4-2h4.6l1.4 2h1.8A2.5 2.5 0 0 1 20 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z"></path><circle cx="12" cy="13" r="3.5"></circle></svg></span>
+            <input type="file" accept="image/*" onChange="{{ onPhoto }}" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+          </label>
+          <span style="display:flex;flex-direction:column">
+            <span style="display:flex;align-items:center;gap:6px"><span style="font-size:20px;line-height:29px;font-weight:700;color:#191f28">{{ me.name }}님</span><sc-if value="{{ me.hasGender }}" hint-placeholder-val="{{ false }}"><span style="height:22px;padding:0 8px;border-radius:9999px;background:#f2f4f6;color:#4e5968;font-size:12px;font-weight:600;display:flex;align-items:center">{{ me.gender }}</span></sc-if></span>
+            <span style="font-size:15px;line-height:22.5px;color:#6b7684">{{ me.rankLine }}</span>
+            <sc-if value="{{ me.hasPhoto }}" hint-placeholder-val="{{ false }}"><button data-g="secondary" onClick="{{ removePhoto }}" style="align-self:flex-start;margin-top:4px;height:28px;padding:0 10px;border-radius:8px;background:#f2f4f6;color:#4e5968;font-size:13px;font-weight:600" style-active="transform:scale(0.96)">사진 삭제</button></sc-if>
+          </span>
+        </div>
+        <div style="padding:0 24px 24px;display:flex;flex-direction:column;gap:20px">
+          <label style="display:flex;flex-direction:column;gap:8px">
+            <span style="display:flex;justify-content:space-between;font-size:13px;line-height:19.5px;font-weight:500;color:#6b7684"><span>소개</span><span style="font-variant-numeric:tabular-nums">{{ me.bioCount }}</span></span>
+            <textarea data-g="l1" value="{{ me.bio }}" onChange="{{ onBio }}" maxLength="60" rows="2" placeholder="자신을 더 잘 알 수 있게 써주세요" style="resize:none;border:0;border-radius:14px;background:#f2f4f6;padding:14px 16px;font:inherit;font-size:16px;line-height:24px;color:#191f28;outline:none" style-focus="box-shadow:inset 0 0 0 1.5px #3182f6"></textarea>
+          </label>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font-size:13px;line-height:19.5px;font-weight:500;color:#6b7684">성별</span>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border-radius:14px;background:#f2f4f6">
+              <sc-for list="{{ genders }}" as="g" hint-placeholder-count="3">
+                <button onClick="{{ g.pick }}" style="height:40px;border-radius:10px;font-size:15px;font-weight:600;transition:background 200ms,color 200ms,box-shadow 200ms;background:{{ g.bg }};color:{{ g.fg }};box-shadow:{{ g.shadow }}">{{ g.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div data-g="gap" style="height:16px;background:#f2f4f6"></div>
+        <div style="height:24px"></div>
+        <div style="padding:0 24px 24px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+          <sc-for list="{{ stats }}" as="s" hint-placeholder-count="3">
+            <div data-g="l1" style="background:#f9fafb;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:13px;line-height:19.5px;color:#6b7684">{{ s.k }}</span>
+              <span style="font-size:22px;line-height:31px;font-weight:700;color:#191f28">{{ s.v }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div data-g="gap" style="height:16px;background:#f2f4f6"></div>
+        <div style="padding:24px 24px 8px;font-size:17px;line-height:25.5px;font-weight:700;color:#191f28">내 투표</div>
+        <sc-for list="{{ myVotes }}" as="mv" hint-placeholder-count="3">
+          <div>
+            <div style="padding:14px 16px 14px 24px;display:flex;align-items:center;gap:12px">
+              <span style="width:40px;height:40px;border-radius:9999px;background:#f2f4f6;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#6b7684;flex:none">{{ mv.initial }}</span>
+              <span style="flex:1;min-width:0;display:flex;flex-direction:column">
+                <span style="display:flex;align-items:center;gap:6px"><span style="font-size:17px;line-height:25.5px;font-weight:500;color:#333d4b">{{ mv.name }}</span><span style="height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:600;display:flex;align-items:center;background:{{ mv.badgeBg }};color:{{ mv.badgeFg }}">{{ mv.label }}</span></span>
+                <span style="font-size:13px;line-height:19.5px;color:#6b7684">{{ mv.sub }}</span>
+              </span>
+              <button data-g="secondary" onClick="{{ mv.cancel }}" style="height:32px;padding:0 12px;border-radius:8px;background:#f2f4f6;color:#4e5968;font-size:13px;font-weight:600;transition:transform 150ms" style-active="transform:scale(0.96)">취소</button>
+            </div>
+            <div style="height:0.5px;margin-left:24px;background:rgba(0,0,33,0.07)"></div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ noVotes }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:40px 24px 48px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center">
+            <span style="font-size:40px;line-height:1;margin-bottom:12px">🗳️</span>
+            <span style="font-size:17px;line-height:25.5px;font-weight:600;color:#333d4b">아직 투표한 후보가 없어요</span>
+            <span style="font-size:15px;line-height:22.5px;color:#6b7684">홈에서 후보를 골라 투표해보세요</span>
+            <button onClick="{{ goHome }}" style="margin-top:16px;height:38px;padding:0 16px;border-radius:10px;background:rgba(100,168,255,0.15);color:#2272eb;font-size:15px;font-weight:600;transition:transform 150ms" style-active="transform:scale(0.96)">투표하러 가기</button>
+          </div>
+        </sc-if>
+        <div data-g="gap" style="height:16px;background:#f2f4f6"></div>
+        <button onClick="{{ logout }}" style="width:100%;text-align:left;padding:16px 24px;font-size:17px;font-weight:500;color:#4e5968;border-radius:12px" style-active="background:rgba(2,32,71,0.05)">로그아웃</button>
+        <div style="height:24px"></div>
+      </sc-if>
+    </div>
+  </sc-if>
+</main>
+
+<nav data-g="nav" style="position:sticky;bottom:0;z-index:50;background:#ffffff;box-shadow:0 -0.5px 0 rgba(0,0,33,0.07);display:grid;grid-template-columns:repeat(3,1fr);padding-bottom:env(safe-area-inset-bottom)">
+  <span data-g="navpill" aria-hidden="true" style="display:none;position:absolute;top:6px;bottom:6px;width:calc(33.333% - 12px);border-radius:24px;transition:left 520ms cubic-bezier(0.34,1.4,0.64,1);left:{{ navPillLeft }}"></span>
+  <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+    <button onClick="{{ t.go }}" style="height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:color 200ms,transform 150ms;color:{{ t.fg }}" style-active="transform:scale(0.96)">
+      <sc-if value="{{ t.isHome }}" hint-placeholder-val="{{ false }}"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M10.6 3.5a2 2 0 0 1 2.8 0l6.9 6.4c.4.4.7 1 .7 1.5V19a2 2 0 0 1-2 2h-3.5a1 1 0 0 1-1-1v-4.5a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1V20a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2v-7.6c0-.6.3-1.1.7-1.5z"></path></svg></sc-if>
+      <sc-if value="{{ t.isAcct }}" hint-placeholder-val="{{ false }}"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5"></circle><path d="M3.5 19.5C3.5 15.9 7.3 14 12 14s8.5 1.9 8.5 5.5c0 .8-.7 1.5-1.5 1.5H5c-.8 0-1.5-.7-1.5-1.5z"></path></svg></sc-if>
+      <sc-if value="{{ t.isRank }}" hint-placeholder-val="{{ false }}"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="11" width="5" height="10" rx="1.5"></rect><rect x="9.5" y="4" width="5" height="17" rx="1.5"></rect><rect x="16" y="14" width="5" height="7" rx="1.5"></rect></svg></sc-if>
+      <span style="font-size:11px;line-height:14px;font-weight:500">{{ t.label }}</span>
+    </button>
+  </sc-for>
+</nav>
+
+<sc-if value="{{ sheetOpen }}" hint-placeholder-val="{{ false }}">
+  <div data-g="scrim" onClick="{{ closeSheet }}" style="position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.2);animation:fade 200ms ease both"></div>
+  <div style="position:fixed;left:0;right:0;bottom:0;z-index:101;display:flex;justify-content:center;pointer-events:none">
+    <div data-g="l4" style="width:100%;max-width:430px;background:#ffffff;border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));pointer-events:auto;animation:sheetUp 400ms cubic-bezier(0.22,1,0.36,1) both">
+      <div style="width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto"></div>
+      <sc-if value="{{ loggedIn }}" hint-placeholder-val="{{ true }}">
+        <div style="padding:24px 24px 0;display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:20px;line-height:29px;font-weight:700;color:#191f28">{{ sheet.name }}님에게 투표할까요?</span>
+          <span style="font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684">{{ sheet.hint }}</span>
+        </div>
+        <div style="padding:20px 24px 0;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums">
+            <span style="color:{{ upColor }}">추천 {{ sheet.upLabel }}</span>
+            <span style="color:{{ downColor }}">비추천 {{ sheet.downLabel }}</span>
+          </div>
+          <div style="height:8px;border-radius:4px;overflow:hidden;display:flex;gap:2px">
+            <span style="height:100%;border-radius:4px;transition:width 400ms cubic-bezier(0.22,1,0.36,1);width:{{ sheet.upPct }};background:{{ upColor }}"></span>
+            <span style="height:100%;border-radius:4px;flex:1;background:{{ downColor }}"></span>
+          </div>
+        </div>
+        <div style="padding:24px 20px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button onClick="{{ sheet.voteDown }}" style="height:56px;border-radius:16px;font-size:17px;font-weight:600;transition:transform 150ms,background 200ms;background:{{ sheet.downBg }};color:{{ sheet.downFg }}" style-active="transform:scale(0.96)">{{ sheet.downText }}</button>
+          <button onClick="{{ sheet.voteUp }}" style="height:56px;border-radius:16px;font-size:17px;font-weight:600;transition:transform 150ms,background 200ms;background:{{ sheet.upBg }};color:{{ sheet.upFg }}" style-active="transform:scale(0.96)">{{ sheet.upText }}</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ loggedOut }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:24px 24px 0;display:flex;flex-direction:column;gap:4px">
+          <span style="font-size:20px;line-height:29px;font-weight:700;color:#191f28">로그인하면 투표할 수 있어요</span>
+          <span style="font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684">{{ sheet.name }}님에게 추천이나 비추천을 남겨보세요</span>
+        </div>
+        <div style="padding:24px 20px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button data-g="secondary" onClick="{{ closeSheet }}" style="height:56px;border-radius:16px;background:#f2f4f6;color:#4e5968;font-size:17px;font-weight:600;transition:transform 150ms" style-active="transform:scale(0.96)">닫기</button>
+          <button data-g="primary" onClick="{{ sheetLogin }}" style="height:56px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms" style-active="transform:scale(0.96)">로그인하기</button>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ profileOpen }}" hint-placeholder-val="{{ false }}">
+  <div data-g="scrim" onClick="{{ closeProfile }}" style="position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.32);animation:fade 200ms ease both"></div>
+  <div style="position:fixed;left:0;right:0;bottom:0;z-index:101;display:flex;justify-content:center;pointer-events:none">
+    <div data-g="l4" style="width:100%;max-width:430px;background:#ffffff;border-radius:28px 28px 0 0;overflow:hidden;pointer-events:auto;padding-bottom:calc(20px + env(safe-area-inset-bottom));animation:sheetUp 420ms cubic-bezier(0.22,1,0.36,1) both">
+      <div style="position:relative;height:108px;background:{{ pf.banner }}">
+        <div style="position:absolute;top:8px;left:50%;margin-left:-18px;width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,0.7)"></div>
+        <button onClick="{{ closeProfile }}" aria-label="닫기" style="position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,0.28);display:flex;align-items:center;justify-content:center" style-active="transform:scale(0.94)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+      </div>
+      <div style="position:relative;padding:0 24px">
+        <div data-g="clear" style="position:absolute;top:-52px;left:18px;width:104px;height:104px;border-radius:9999px;background:#ffffff;display:flex;align-items:center;justify-content:center">
+          <span style="width:88px;height:88px"><dc-import name="Avatar" frame="{{ pf.frame }}" photo="{{ pf.photoCss }}" hint-size="88px,88px" style="display:block;width:88px;height:88px"></dc-import></span>
+        </div>
+        <div style="display:flex;justify-content:flex-end;padding-top:12px;min-height:52px">
+          <span style="height:30px;padding:0 12px;border-radius:9999px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;background:{{ pf.rankBg }};color:{{ pf.rankFg }}">{{ pf.rankLabel }}</span>
+        </div>
+        <div style="padding-top:8px;height:64px"><dc-import name="Nameplate" kind="{{ pf.plate }}" person="{{ pf.name }}" sub="{{ pf.bio }}" frame="{{ pf.frame }}" photo="{{ pf.photoCss }}" show-avatar="{{ false }}" hint-size="100%,56px" style="display:block;width:100%;height:56px"></dc-import></div>
+        
+        <div style="margin-top:16px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+          <div data-g="l1" style="padding:14px 16px;border-radius:16px;background:#f9fafb;display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#6b7684">점수</span><span style="font-size:17px;font-weight:700;color:#191f28;font-variant-numeric:tabular-nums">{{ pf.score }}</span></div>
+          <div data-g="l1" style="padding:14px 16px;border-radius:16px;background:#f9fafb;display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#6b7684">추천</span><span style="font-size:17px;font-weight:700;color:#191f28;font-variant-numeric:tabular-nums">{{ pf.up }}</span></div>
+          <div data-g="l1" style="padding:14px 16px;border-radius:16px;background:#f9fafb;display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;color:#6b7684">비추천</span><span style="font-size:17px;font-weight:700;color:#191f28;font-variant-numeric:tabular-nums">{{ pf.down }}</span></div>
+        </div>
+        <button data-g="primary" onClick="{{ pf.goVote }}" style="margin-top:20px;width:100%;height:56px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms" style-active="transform:scale(0.96)">{{ pf.cta }}</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ ruleOpen }}" hint-placeholder-val="{{ false }}">
+  <div data-g="scrim" onClick="{{ ruleNudge }}" style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.4);animation:fade 200ms ease both"></div>
+  <div style="position:fixed;inset:0;z-index:301;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:none">
+    <div role="dialog" aria-modal="true" aria-labelledby="rule-title" data-g="l4" style="width:100%;max-width:340px;background:#ffffff;border-radius:24px;padding:28px 20px 20px;pointer-events:auto;display:flex;flex-direction:column;gap:20px;animation:popIn 360ms cubic-bezier(0.34,1.4,0.64,1) both">
+      <div style="padding:0 4px;display:flex;flex-direction:column;gap:12px">
+        <span style="width:44px;height:44px;border-radius:9999px;background:#fff0f1;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#f04452">!</span>
+        <span id="rule-title" style="font-size:20px;line-height:29px;font-weight:700;color:#191f28">반드시 본인 실명으로<br>적어주세요</span>
+        <span style="font-size:15px;line-height:22.5px;color:#4e5968">닉네임이나 가명으로는 가입할 수 없어요. 실명이 아니면 투표가 무효 처리돼요.</span>
+      </div>
+      <button onClick="{{ toggleRule }}" role="checkbox" aria-checked="{{ ruleCheck }}" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:14px;text-align:left;transition:background 200ms,box-shadow 200ms;background:{{ ruleRowBg }};box-shadow:{{ ruleRowRing }}">
+        <span style="width:24px;height:24px;border-radius:7px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#ffffff;transition:background 200ms,box-shadow 200ms;background:{{ ruleBoxBg }};box-shadow:{{ ruleBoxRing }}">{{ ruleTick }}</span>
+        <span style="font-size:15px;line-height:22.5px;font-weight:600;color:#191f28">위 규칙을 읽고 이해했어요</span>
+      </button>
+      <button data-g="primary" onClick="{{ confirmRule }}" disabled="{{ ruleDisabled }}" style="height:54px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms,opacity 200ms;opacity:{{ ruleOp }}" style-active="transform:scale(0.96)">확인</button>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ themeOpen }}" hint-placeholder-val="{{ false }}">
+  <div data-g="scrim" onClick="{{ closeTheme }}" style="position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.25);animation:fade 200ms ease both"></div>
+  <div style="position:fixed;left:0;right:0;bottom:0;z-index:101;display:flex;justify-content:center;pointer-events:none">
+    <div data-g="l4" style="width:100%;max-width:430px;background:#ffffff;border-radius:28px 28px 0 0;padding:8px 0 calc(24px + env(safe-area-inset-bottom));pointer-events:auto;animation:sheetUp 420ms cubic-bezier(0.22,1,0.36,1) both">
+      <div style="width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto"></div>
+      <div style="padding:20px 24px 16px;display:flex;flex-direction:column;gap:4px">
+        <span style="font-size:20px;line-height:29px;font-weight:700;color:#191f28">테마</span>
+        <span style="font-size:15px;line-height:22.5px;color:#6b7684">앱 전체의 재질과 분위기를 바꿔요</span>
+      </div>
+      <div style="padding:0 20px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+        <sc-for list="{{ themes }}" as="t" hint-placeholder-count="2">
+          <button data-g="l2" onClick="{{ t.pick }}" aria-pressed="{{ t.on }}" style="position:relative;padding:8px;border-radius:20px;display:flex;flex-direction:column;gap:10px;text-align:left;transition:transform 200ms cubic-bezier(0.34,1.4,0.64,1),box-shadow 200ms;background:#ffffff;box-shadow:{{ t.ring }}" style-active="transform:scale(0.97)">
+            <sc-if value="{{ t.isDefault }}" hint-placeholder-val="{{ true }}">
+              <span style="display:flex;flex-direction:column;gap:6px;height:112px;border-radius:14px;background:#f2f4f6;padding:12px">
+                <span style="height:28px;border-radius:8px;background:#ffffff"></span>
+                <span style="height:28px;border-radius:8px;background:#ffffff"></span>
+                <span data-g="primary" style="margin-top:auto;align-self:flex-end;width:56px;height:18px;border-radius:6px;background:#3182f6"></span>
+              </span>
+            </sc-if>
+            <sc-if value="{{ t.isGlass }}" hint-placeholder-val="{{ false }}">
+              <span style="position:relative;display:block;height:112px;border-radius:14px;overflow:hidden;background:radial-gradient(70% 60% at 10% 10%,#ffd8c4,rgba(255,216,196,0) 70%),radial-gradient(60% 60% at 95% 30%,#d9d2ff,rgba(217,210,255,0) 70%),radial-gradient(70% 60% at 30% 100%,#c7efe3,rgba(199,239,227,0) 70%),#eef1f6">
+                <span style="position:absolute;left:12px;right:12px;top:14px;height:36px;border-radius:12px;background:rgba(255,255,255,0.42);-webkit-backdrop-filter:blur(8px) saturate(170%);backdrop-filter:blur(8px) saturate(170%);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.7),inset 0 1px 0 #fff,0 8px 18px -10px rgba(30,40,90,0.3)"></span>
+                <span style="position:absolute;left:24px;right:24px;bottom:12px;height:28px;border-radius:9999px;background:rgba(255,255,255,0.5);-webkit-backdrop-filter:blur(10px) saturate(180%);backdrop-filter:blur(10px) saturate(180%);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.8),inset 0 1px 0 #fff,0 10px 20px -10px rgba(30,40,90,0.35)"></span>
+              </span>
+            </sc-if>
+            <span style="padding:0 6px 4px;display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:15px;font-weight:700;color:#191f28">{{ t.label }}</span>
+              <sc-if value="{{ t.on }}" hint-placeholder-val="{{ false }}"><span data-g="primary" style="width:20px;height:20px;border-radius:9999px;background:#3182f6;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">✓</span></sc-if>
+            </span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ editOpen }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:150;display:flex;justify-content:center;background:rgba(0,0,0,0.2);animation:fade 200ms ease both">
+    <div data-g="app" style="width:100%;max-width:430px;height:100%;overflow-y:auto;background:#ffffff;animation:sheetUp 420ms cubic-bezier(0.22,1,0.36,1) both">
+      <div data-g="head" style="position:sticky;top:0;z-index:5;height:56px;padding:0 16px 0 8px;display:flex;align-items:center;gap:4px;background:#ffffff">
+        <button onClick="{{ closeEdit }}" aria-label="닫기" style="width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28" style-active="background:rgba(2,32,71,0.05)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"></path></svg></button>
+        <span style="flex:1;font-size:17px;font-weight:700;color:#191f28">프로필 편집</span>
+        <span style="height:32px;padding:0 12px;border-radius:9999px;background:#fff4d6;color:#8a5a00;font-size:14px;font-weight:700;display:flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums"><span style="width:16px;height:16px;border-radius:9999px;background:#ffc342;color:#5c3d00;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center">P</span>{{ pointsLabel }}</span>
+      </div>
+      <div style="padding:12px 24px 8px;display:flex;flex-direction:column;gap:12px">
+        <div style="height:60px"><dc-import name="Nameplate" kind="{{ plate }}" person="{{ me.name }}" sub="{{ myBioLine }}" frame="{{ me.frame }}" photo="{{ me.photoCss }}" hint-size="100%,60px" style="display:block;width:100%;height:60px"></dc-import></div>
+        <span style="font-size:13px;line-height:19.5px;color:#6b7684">받은 추천 1개가 1P예요. 포인트로 꾸미기 아이템을 살 수 있어요</span>
+      </div>
+      <div style="padding:8px 24px 16px"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border-radius:14px;background:#f2f4f6">
+              <sc-for list="{{ editTabs }}" as="et" hint-placeholder-count="3">
+                <button onClick="{{ et.pick }}" style="height:40px;border-radius:10px;font-size:15px;font-weight:600;transition:background 200ms,color 200ms,box-shadow 200ms;background:{{ et.bg }};color:{{ et.fg }};box-shadow:{{ et.shadow }}">{{ et.label }}</button>
+              </sc-for>
+            </div></div>
+
+      <sc-if value="{{ isFrameTab }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 24px 32px">
+          <sc-for list="{{ frames }}" as="f" hint-placeholder-count="6">
+            <button onClick="{{ f.pick }}" style="position:relative;padding:22px 0 12px;border-radius:16px;display:flex;flex-direction:column;align-items:center;gap:12px;transition:transform 150ms,background 200ms,box-shadow 200ms;background:{{ f.bg }};box-shadow:{{ f.ring }}" style-active="transform:scale(0.96)">
+              <span style="width:52px;height:52px"><dc-import name="Avatar" frame="{{ f.key }}" photo="{{ f.photoCss }}" hint-size="52px,52px" style="display:block;width:52px;height:52px"></dc-import></span>
+              <span style="font-size:13px;font-weight:600;color:{{ f.fg }}">{{ f.label }}</span>
+              <sc-if value="{{ f.locked }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:8px;left:8px;z-index:3;height:20px;padding:0 7px;border-radius:9999px;background:#191f28;color:#ffffff;font-size:11px;font-weight:700;display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums"><svg width="9" height="9" viewBox="0 0 24 24" fill="#ffffff"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2 0h6V7a3 3 0 0 0-6 0z"></path></svg>{{ f.price }}</span></sc-if><sc-if value="{{ f.on }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:8px;right:8px;z-index:3;width:20px;height:20px;border-radius:9999px;background:#3182f6;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">✓</span></sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isPlateTab }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:8px;padding:0 24px 32px">
+          <sc-for list="{{ plates }}" as="p" hint-placeholder-count="6">
+            <button onClick="{{ p.pick }}" aria-pressed="{{ p.on }}" style="position:relative;display:block;width:100%;height:60px;padding:2px;border-radius:17px;transition:transform 300ms cubic-bezier(0.34,1.4,0.64,1),box-shadow 200ms;box-shadow:{{ p.ring }}" style-active="transform:scale(0.98)">
+              <dc-import name="Nameplate" kind="{{ p.key }}" person="{{ p.name }}" sub="{{ p.label }}" frame="{{ p.frame }}" photo="{{ p.photoCss }}" hint-size="100%,56px" style="display:block;width:100%;height:56px"></dc-import>
+              <sc-if value="{{ p.locked }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:50%;right:14px;margin-top:-12px;z-index:3;height:24px;padding:0 9px;border-radius:9999px;background:#191f28;color:#ffffff;box-shadow:0 0 0 2px rgba(255,255,255,0.9);font-size:12px;font-weight:700;display:flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums"><svg width="10" height="10" viewBox="0 0 24 24" fill="#ffffff"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2 0h6V7a3 3 0 0 0-6 0z"></path></svg>{{ p.price }}</span></sc-if>
+              <sc-if value="{{ p.on }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:50%;right:14px;margin-top:-11px;z-index:3;width:22px;height:22px;border-radius:9999px;background:#3182f6;color:#ffffff;box-shadow:0 0 0 2px #ffffff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">✓</span></sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isSkinTab }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:0 24px 8px;font-size:13px;line-height:19.5px;color:#6b7684">랭킹 그래프에서 내 막대가 이 모양으로 보여요. 마이너스면 거꾸로 뒤집혀요</div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 24px 32px">
+          <sc-for list="{{ skins }}" as="s" hint-placeholder-count="5">
+            <button onClick="{{ s.pick }}" aria-pressed="{{ s.on }}" aria-label="{{ s.label }} 스킨" style="position:relative;height:200px;border-radius:16px;padding:12px 0 12px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:10px;transition:transform 300ms cubic-bezier(0.34,1.4,0.64,1),background 200ms,box-shadow 200ms;background:{{ s.bg }};box-shadow:{{ s.ring }}" style-active="transform:scale(0.97)">
+              <span style="position:relative;width:32px;height:132px;flex:none">
+                <sc-if value="{{ s.plain }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:2px;right:2px;bottom:0;height:86px;border:1.5px solid #191f28;border-radius:6px;background:#ffffff;box-sizing:border-box"></span></sc-if>
+                <sc-if value="{{ s.skinned }}" hint-placeholder-val="{{ true }}"><span style="position:absolute;inset:0;pointer-events:none;transform:{{ s.sk.tf }}">
+                    <span style="position:absolute;left:50%;bottom:0;display:flex;flex-direction:column;transform-origin:50% 100%;margin-left:{{ s.sk.ml }}px;width:{{ s.sk.w }}px;height:{{ s.sk.H }}px;transform:scale({{ s.sk.k }});filter:drop-shadow(0 1px 1.5px rgba(0,0,0,0.18))">
+                      <span style="display:block;width:100%;flex:none;background-repeat:no-repeat;background-size:100% 100%;height:{{ s.sk.capH }}px;background-image:{{ s.sk.capUrl }}"></span>
+                      <span style="display:block;flex:1;min-height:0;background-repeat:no-repeat;background-position:center;background-size:100% 100%;background-image:{{ s.sk.mid }}"></span>
+                      <sc-if value="{{ s.sk.hasBase }}" hint-placeholder-val="{{ false }}"><span style="display:block;width:100%;flex:none;background-repeat:no-repeat;background-size:100% 100%;height:{{ s.sk.baseH }}px;background-image:{{ s.sk.baseUrl }}"></span></sc-if>
+                    </span>
+                  </span></sc-if>
+              </span>
+              <span style="width:44px;height:1px;background:#d1d6db;flex:none"></span>
+              <span style="font-size:13px;line-height:18px;font-weight:600;text-align:center;word-break:keep-all;color:{{ s.fg }}">{{ s.label }}</span>
+              <sc-if value="{{ s.locked }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:8px;left:8px;z-index:3;height:20px;padding:0 7px;border-radius:9999px;background:#191f28;color:#ffffff;font-size:11px;font-weight:700;display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums"><svg width="9" height="9" viewBox="0 0 24 24" fill="#ffffff"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zm2 0h6V7a3 3 0 0 0-6 0z"></path></svg>{{ s.price }}</span></sc-if><sc-if value="{{ s.on }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:8px;right:8px;z-index:3;width:20px;height:20px;border-radius:9999px;background:#3182f6;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">✓</span></sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ buyOpen }}" hint-placeholder-val="{{ false }}">
+  <div data-g="scrim" onClick="{{ closeBuy }}" style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.4);animation:fade 200ms ease both"></div>
+  <div style="position:fixed;inset:0;z-index:301;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:none">
+    <div role="dialog" aria-modal="true" data-g="l4" style="width:100%;max-width:340px;background:#ffffff;border-radius:24px;padding:28px 20px 20px;pointer-events:auto;display:flex;flex-direction:column;gap:20px;animation:popIn 360ms cubic-bezier(0.34,1.4,0.64,1) both">
+      <div style="padding:0 4px;display:flex;flex-direction:column;gap:8px">
+        <span style="font-size:20px;line-height:29px;font-weight:700;color:#191f28">{{ buy.title }}</span>
+        <span style="font-size:15px;line-height:22.5px;color:#4e5968">{{ buy.desc }}</span>
+      </div>
+      <div data-g="l1" style="padding:14px 16px;border-radius:14px;background:#f9fafb;display:flex;flex-direction:column;gap:8px;font-size:15px;font-variant-numeric:tabular-nums">
+        <span style="display:flex;justify-content:space-between"><span style="color:#6b7684">가격</span><span style="font-weight:700;color:#191f28">{{ buy.price }}</span></span>
+        <span style="display:flex;justify-content:space-between"><span style="color:#6b7684">사고 남는 포인트</span><span style="font-weight:700;color:{{ buy.remainColor }}">{{ buy.remain }}</span></span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button data-g="secondary" onClick="{{ closeBuy }}" style="height:54px;border-radius:16px;background:#f2f4f6;color:#4e5968;font-size:17px;font-weight:600" style-active="transform:scale(0.96)">닫기</button>
+        <button data-g="primary" onClick="{{ confirmBuy }}" disabled="{{ buy.cant }}" style="height:54px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:16px;font-weight:600;transition:opacity 200ms;opacity:{{ buy.op }}" style-active="transform:scale(0.96)">{{ buy.cta }}</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ rvOpen }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:400;display:flex;justify-content:center;background:#07080c;animation:fade 300ms ease both">
+    <div style="position:relative;width:100%;max-width:430px;height:100%;display:flex;flex-direction:column;overflow-x:hidden;overflow-y:auto;color:#ffffff;animation:rvDark 1600ms cubic-bezier(.5,0,.2,1) both">
+      <div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(60% 42% at 50% 44%,rgba(255,214,140,0.22),rgba(255,214,140,0) 70%),radial-gradient(120% 80% at 50% 50%,rgba(0,0,0,0) 40%,rgba(0,0,0,0.75) 100%);animation:rvSpot 2400ms ease-in 600ms both"></div>
+      <div style="position:absolute;inset:0;pointer-events:none;z-index:5;background:#ffffff;opacity:0;animation:{{ rvFlash }} 700ms ease-out both"></div>
+      <div style="position:relative;z-index:2;height:56px;padding:0 8px;display:flex;align-items:center;justify-content:space-between">
+        <button onClick="{{ toggleSound }}" aria-label="소리" style="height:36px;padding:0 12px;border-radius:10px;font-size:13px;font-weight:600;color:#b0b8c1;display:flex;align-items:center;gap:6px" style-active="background:rgba(255,255,255,0.08)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"></path><sc-if value="{{ soundOn }}" hint-placeholder-val="{{ true }}"><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"></path></sc-if><sc-if value="{{ soundOff }}" hint-placeholder-val="{{ false }}"><path d="m16 9 5 6M21 9l-5 6"></path></sc-if></svg>{{ soundLabel }}</button>
+        <button onClick="{{ closeReveal }}" aria-label="닫기" style="width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#ffffff" style-active="background:rgba(255,255,255,0.08)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+      </div>
+      <div style="position:relative;z-index:2;padding:8px 24px 0;display:flex;flex-direction:column;gap:4px;animation:rvFade 800ms ease 700ms both">
+        <span style="font-size:13px;line-height:19.5px;font-weight:700;color:#64a8ff">시즌 BETA 결과</span>
+        <span style="font-size:26px;line-height:35px;font-weight:700;color:#ffffff;min-height:70px">{{ rvTitle }}</span>
+      </div>
+      <div style="position:relative;z-index:2;flex:1 0 auto;min-height:220px;padding:12px 0 20px;display:flex;align-items:center;justify-content:center">
+        <sc-if value="{{ rvDrumming }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:22px;will-change:transform;animation:rvZoom 4600ms cubic-bezier(.55,0,.85,.4) both">
+            <div style="will-change:transform;animation:rvShake 4600ms linear both">
+            <svg width="200" height="160" viewBox="0 0 240 190" style="display:block;overflow:visible" aria-hidden="true">
+              <defs>
+                <linearGradient id="dr-shell" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#3a040a"></stop><stop offset=".14" stop-color="#9c0f21"></stop><stop offset=".3" stop-color="#ff7482"></stop><stop offset=".36" stop-color="#e02a40"></stop><stop offset=".62" stop-color="#b3142a"></stop><stop offset=".86" stop-color="#6a0714"></stop><stop offset="1" stop-color="#2c0207"></stop></linearGradient>
+                <linearGradient id="dr-chrome" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#6b737c"></stop><stop offset=".22" stop-color="#ffffff"></stop><stop offset=".4" stop-color="#9aa3ad"></stop><stop offset=".6" stop-color="#e9edf1"></stop><stop offset=".82" stop-color="#7c858f"></stop><stop offset="1" stop-color="#3f454c"></stop></linearGradient>
+                <linearGradient id="dr-hoop" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#ffffff"></stop><stop offset=".45" stop-color="#b9c1c9"></stop><stop offset="1" stop-color="#59616a"></stop></linearGradient>
+                <radialGradient id="dr-head" cx=".42" cy=".38" r=".7"><stop offset="0" stop-color="#ffffff"></stop><stop offset=".55" stop-color="#f1efe8"></stop><stop offset="1" stop-color="#cfcbc0"></stop></radialGradient>
+                <linearGradient id="dr-wood" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#8a5a2f"></stop><stop offset=".5" stop-color="#e4b47c"></stop><stop offset="1" stop-color="#b37a45"></stop></linearGradient>
+                <radialGradient id="dr-tip" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff4de"></stop><stop offset="1" stop-color="#c79660"></stop></radialGradient>
+                
+              </defs>
+              <ellipse cx="120" cy="178" rx="92" ry="10" fill="#000000" opacity=".55"></ellipse>
+              <path d="M50 98V158A70 16 0 0 0 190 158V98z" fill="url(#dr-shell)"></path>
+              
+              <path d="M68 104V162" stroke="#ffffff" stroke-width="3" opacity=".35" stroke-linecap="round"></path>
+              <path d="M76 106V163" stroke="#ffffff" stroke-width="1" opacity=".25"></path>
+              <rect x="112" y="130" width="16" height="10" rx="2" fill="url(#dr-chrome)" stroke="#4a5058" stroke-width=".6"></rect>
+              <circle cx="120" cy="135" r="2.2" fill="#2a2f35"></circle>
+              <line x1="62" y1="106.4" x2="62" y2="166.4" stroke="url(#dr-chrome)" stroke-width="2"></line><rect x="58.6" y="126.4" width="6.8" height="18" rx="3.4" fill="url(#dr-chrome)" stroke="#5c636b" stroke-width=".6"></rect><line x1="90" y1="111.6" x2="90" y2="171.6" stroke="url(#dr-chrome)" stroke-width="2"></line><rect x="86.6" y="131.6" width="6.8" height="18" rx="3.4" fill="url(#dr-chrome)" stroke="#5c636b" stroke-width=".6"></rect><line x1="120" y1="113.0" x2="120" y2="173.0" stroke="url(#dr-chrome)" stroke-width="2"></line><rect x="116.6" y="133.0" width="6.8" height="18" rx="3.4" fill="url(#dr-chrome)" stroke="#5c636b" stroke-width=".6"></rect><line x1="150" y1="111.6" x2="150" y2="171.6" stroke="url(#dr-chrome)" stroke-width="2"></line><rect x="146.6" y="131.6" width="6.8" height="18" rx="3.4" fill="url(#dr-chrome)" stroke="#5c636b" stroke-width=".6"></rect><line x1="178" y1="106.4" x2="178" y2="166.4" stroke="url(#dr-chrome)" stroke-width="2"></line><rect x="174.6" y="126.4" width="6.8" height="18" rx="3.4" fill="url(#dr-chrome)" stroke="#5c636b" stroke-width=".6"></rect>
+              <path d="M48 156A72 17 0 0 0 192 156V161A72 17 0 0 1 48 161z" fill="url(#dr-hoop)"></path>
+              <ellipse cx="120" cy="98" rx="72" ry="17" fill="url(#dr-hoop)"></ellipse>
+              <ellipse cx="120" cy="98" rx="72" ry="17" fill="none" stroke="#3f454c" stroke-width=".8"></ellipse>
+              <ellipse cx="120" cy="97" rx="66.5" ry="14.2" fill="url(#dr-head)"></ellipse>
+              
+              <ellipse cx="120" cy="97" rx="16" ry="4" fill="#000" opacity=".05"></ellipse>
+              <ellipse cx="106" cy="93" rx="30" ry="6" fill="#ffffff" opacity=".6"></ellipse>
+              <g style="transform-box:fill-box;transform-origin:center;animation:headHit 190ms ease-out infinite"><ellipse cx="120" cy="96" rx="20" ry="4.6" fill="none" stroke="#ffffff" stroke-width="1.4"></ellipse></g>
+              <g style="transform-box:view-box;transform-origin:14px 18px;animation:stickL 95ms ease-in infinite alternate">
+                <line x1="14" y1="18" x2="108" y2="92" stroke="url(#dr-wood)" stroke-width="6.5" stroke-linecap="round"></line>
+                <line x1="16" y1="17" x2="106" y2="90" stroke="#fff3dc" stroke-width="1.2" stroke-linecap="round" opacity=".55"></line>
+                <line x1="14" y1="18" x2="40" y2="38.5" stroke="#3a2415" stroke-width="7.4" stroke-linecap="round" opacity=".55"></line>
+                <ellipse cx="109" cy="93" rx="4.4" ry="3.6" fill="url(#dr-tip)"></ellipse>
+              </g>
+              <g style="transform-box:view-box;transform-origin:226px 18px;animation:stickR 95ms ease-in infinite alternate-reverse">
+                <line x1="226" y1="18" x2="132" y2="92" stroke="url(#dr-wood)" stroke-width="6.5" stroke-linecap="round"></line>
+                <line x1="224" y1="17" x2="134" y2="90" stroke="#fff3dc" stroke-width="1.2" stroke-linecap="round" opacity=".55"></line>
+                <line x1="226" y1="18" x2="200" y2="38.5" stroke="#3a2415" stroke-width="7.4" stroke-linecap="round" opacity=".55"></line>
+                <ellipse cx="131" cy="93" rx="4.4" ry="3.6" fill="url(#dr-tip)"></ellipse>
+              </g>
+            </svg>
+            </div>
+            <div style="display:flex;gap:2px;font-size:28px;font-weight:800;letter-spacing:-0.5px;color:#ffffff;text-shadow:0 0 18px rgba(255,200,120,0.55)">
+              <sc-for list="{{ rvSyll }}" as="sy" hint-placeholder-count="8"><span style="display:inline-block;animation:syl 380ms ease-in-out infinite;animation-delay:{{ sy.d }}">{{ sy.t }}</span></sc-for>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ rvDone }}" hint-placeholder-val="{{ false }}">
+          <span style="padding:0 24px;text-align:center;font-size:15px;line-height:22.5px;color:#b0b8c1;animation:rvFade 600ms ease both">응원해주셔서 고마워요. 다음 시즌도 기대해주세요</span>
+        </sc-if>
+      </div>
+      <div style="position:relative;z-index:2;flex:none;padding:24px 20px 0;display:flex;align-items:flex-end;gap:8px;transition:opacity 600ms;opacity:{{ rvPodiumOp }}">
+        <sc-for list="{{ podium }}" as="p" hint-placeholder-count="3">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:10px">
+            <div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:6px">
+              <sc-if value="{{ p.hidden }}" hint-placeholder-val="{{ true }}"><span style="border-radius:9999px;background:#1c1f26;color:#4e5968;font-size:26px;font-weight:800;display:flex;align-items:center;justify-content:center;width:{{ p.av }}px;height:{{ p.av }}px">?</span><span style="height:40px"></span></sc-if>
+              <sc-if value="{{ p.shown }}" hint-placeholder-val="{{ false }}">
+                <span style="position:absolute;top:-24px;left:50%;margin-left:-70px;width:140px;height:140px;border-radius:9999px;background:radial-gradient(circle,{{ p.glow }},rgba(0,0,0,0) 65%);animation:glowPulse 1.8s ease-in-out infinite"></span>
+                <span style="position:relative;animation:popIn 620ms cubic-bezier(0.34,1.4,0.64,1) both;width:{{ p.av }}px;height:{{ p.av }}px"><dc-import name="Avatar" frame="{{ p.frame }}" photo="{{ p.photoCss }}" hint-size="64px,64px" style="display:block;width:100%;height:100%"></dc-import></span>
+                <span style="position:relative;display:flex;flex-direction:column;align-items:center;animation:popIn 620ms cubic-bezier(0.34,1.4,0.64,1) 140ms both">
+                  <span style="font-size:16px;line-height:22px;font-weight:700;color:#ffffff;white-space:nowrap">{{ p.name }}</span>
+                  <span style="font-size:13px;line-height:18px;font-weight:600;color:#b0b8c1;font-variant-numeric:tabular-nums">{{ p.score }}점</span>
+                </span>
+              </sc-if>
+            </div>
+            <div style="width:100%;border-radius:14px 14px 0 0;display:flex;justify-content:center;padding-top:10px;font-size:22px;font-weight:800;transition:background 500ms,box-shadow 500ms;height:{{ p.h }}px;background:{{ p.bg }};color:{{ p.fg }};box-shadow:{{ p.shadow }}">{{ p.rank }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <sc-if value="{{ rvDone }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;z-index:2;flex:none;padding:16px 20px calc(16px + env(safe-area-inset-bottom));display:grid;grid-template-columns:1fr 1fr;gap:8px;animation:rvFade 500ms ease both">
+          <button onClick="{{ startReveal }}" style="height:56px;border-radius:16px;background:#2c313a;color:#ffffff;font-size:17px;font-weight:600" style-active="transform:scale(0.96)">다시 보기</button>
+          <button onClick="{{ closeReveal }}" style="height:56px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600" style-active="transform:scale(0.96)">확인</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ rvRunning }}" hint-placeholder-val="{{ true }}"><div style="flex:none;height:calc(88px + env(safe-area-inset-bottom))"></div></sc-if>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;left:0;right:0;bottom:84px;z-index:200;display:flex;justify-content:center;pointer-events:none;padding:0 20px">
+    <div data-g="l3" style="max-width:375px;padding:12px 20px;border-radius:9999px;background:#ffffff;box-shadow:0 2px 30px 0 rgba(0,27,55,0.1);font-size:15px;line-height:22.5px;font-weight:600;color:rgba(0,12,30,0.8);animation:toastIn 300ms cubic-bezier(0.22,1,0.36,1) both">{{ toast }}</div>
+  </div>
+</sc-if>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;loggedIn&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;미리보기&quot;},&quot;startTab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;home&quot;,&quot;acct&quot;,&quot;rank&quot;],&quot;default&quot;:&quot;home&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;미리보기&quot;},&quot;palette&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;파랑 추천 · 빨강 비추천&quot;,&quot;빨강 추천 · 파랑 비추천&quot;],&quot;default&quot;:&quot;파랑 추천 · 빨강 비추천&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;막대 색&quot;}}">
+const RAW=[['이지우','',980,300],['한서윤','가수',1840,212],['도하준','배우',1702,301],['강리아','크리에이터',1590,188],['윤태오','운동선수',1433,260],['서지안','가수',1391,344],['차은호','배우',1288,295],['민세라','크리에이터',1204,310],['유건','가수',1150,402],['백나래','배우',1022,288],['정시우','운동선수',990,351],['오하린','가수',921,330],['임도윤','크리에이터',860,402],['권채아','배우',812,390],['남궁현','운동선수',744,361],['표예린','가수',690,352],['신우진','배우',640,371],['홍다온','크리에이터',588,340],['구민재','가수',520,318],['엄소율','배우',471,305],['진하람','운동선수',420,296],['류아인','크리에이터',366,280],['방준서','가수',311,262],['염가을','배우',260,248],['석이안','운동선수',212,230],['피연우','크리에이터',180,241],['탁서하','가수',150,262],['마로운','배우',131,298],['변주원','운동선수',120,344],['하윤슬','크리에이터',98,371],['송태린','가수',80,402],['설재희','배우',66,455],['곽노을','크리에이터',40,512]];
+const DATA=RAW.map((r,i)=>({id:i,name:r[0],up:r[2],down:r[3]})).sort((a,b)=>(b.up-b.down)-(a.up-a.down)).map((d,i)=>({...d,rank:i+1}));
+const PER=10;
+const ME='이지우';
+const FRAMES=[['none','기본'],['neon','네온'],['crown','왕관'],['sakura','벚꽃'],['cat','고양이'],['stars','별빛'],['flame','불꽃'],['ocean','파도'],['bunny','토끼'],['halo','천사'],['devil','악마'],['butterfly','나비']];
+const BANNERS={flame:'linear-gradient(135deg,#3a0c00,#ff5a00)',ocean:'linear-gradient(135deg,#032a40,#0b8fb0)',bunny:'linear-gradient(135deg,#fff3f7,#ffc9da)',halo:'linear-gradient(135deg,#fffbea,#ffe08a)',devil:'linear-gradient(135deg,#1a0003,#8a0016)',butterfly:'linear-gradient(135deg,#efe9ff,#cfeaff)',none:'linear-gradient(135deg,#e8f3ff,#c9e2ff)',neon:'linear-gradient(135deg,#0d0f2b,#3a1c71 55%,#7c1e8f)',crown:'linear-gradient(135deg,#fff1c2,#f5b400)',sakura:'linear-gradient(135deg,#ffeef4,#ffb3cb)',cat:'linear-gradient(135deg,#2b2d31,#56596a)',stars:'linear-gradient(135deg,#140f38,#4b3ab8)'};
+const PROFILES={'차은호':['flame','남자','액션 신은 대역 없이 찍어요'],'민세라':['butterfly','여자','봄 브이로그 준비 중'],'정시우':['ocean','남자','서핑 대회 나가요'],'오하린':['bunny','여자',''],'임도윤':['devil','남자','장난은 제 전문이에요'],'권채아':['halo','여자','늘 감사해요'],'한서윤':['crown','여자','무대 위에서 제일 행복해요. 응원해주셔서 고마워요'],'도하준':['neon','남자','새 작품 촬영 중이에요'],'강리아':['sakura','여자','매주 금요일 저녁에 영상 올려요'],'윤태오':['stars','남자','다음 시즌도 부상 없이 달려볼게요'],'서지안':['cat','여자',''],'유건':['neon','남자',''],'백나래':['sakura','여자','']};
+const CHART_H=300;
+const SKINS=[['none','기본'],['namsan','남산타워'],['eiffel','에펠탑'],['bigben','빅벤'],['victory','전승기념탑']];
+const SKIN_OF={'한서윤':'eiffel','도하준':'bigben','강리아':'namsan','윤태오':'victory','서지안':'eiffel','유건':'bigben','백나래':'namsan','차은호':'victory'};
+const SK={namsan:{w:24,cap:97.67,base:0},eiffel:{w:32,cap:9.67,base:28.33},bigben:{w:30,cap:90.67,base:0},victory:{w:32,cap:21,base:26.67}};
+const SKIN_FILES=["namsan-cap","namsan-mid","eiffel-cap","eiffel-mid","eiffel-base","bigben-cap","bigben-mid","victory-cap","victory-mid","victory-base"];
+const skinGeom=(s,h,neg)=>{const m=SK[s];if(!m)return {};const mn=m.cap+m.base+12,H=Math.max(h,mn),k=h<mn?h/mn:1;return {tf:neg?'scaleY(-1)':'none',w:m.w,ml:-m.w/2,H,k:k.toFixed(4),cap:'skins/'+s+'-cap.png',capH:m.cap,capUrl:'url(skins/'+s+'-cap.png)',mid:'url(skins/'+s+'-mid.png)',hasBase:m.base>0,baseUrl:m.base>0?'url(skins/'+s+'-base.png)':'none',baseH:m.base};};
+const PRICE={frame:{neon:120,crown:180,sakura:100,cat:100,stars:140,flame:160,ocean:120,bunny:100,halo:150,devil:150,butterfly:120},skin:{namsan:200,eiffel:250,bigben:250,victory:220}};
+const priceOf=(kind,k)=>k==='none'?0:kind==='plate'?(PRICE.frame[k]||120)+30:(PRICE[kind][k]||150);
+const KIND_NAME={frame:'프레임',plate:'',skin:'막대 스킨'};
+const THEMES=[['default','기본'],['glass','글라스']];
+const fmt=n=>(n>0?'+':n<0?'−':'')+Math.abs(n).toLocaleString();
+const BLUE='#3182f6',RED='#f04452';
+
+class Component extends DCLogic {
+  state={tab:this.props.startTab??'home',loggedIn:this.props.loggedIn??false,votes:{},query:'',homeQuery:'',photo:null,frame:'none',plate:'none',skin:'none',owned:{frame:['none'],plate:['none'],skin:['none']},spent:0,editOpen:false,editTab:'frame',buy:null,rv:{open:false,step:0,flash:0},sound:true,bio:'',gender:'',profile:null,theme:(()=>{try{return localStorage.getItem('pv-theme')||'default'}catch(e){return 'default'}})(),themeOpen:false,acctView:'login',su:{name:'',id:'',pw:'',pw2:''},nameAck:false,ruleOpen:false,ruleCheck:false,page:0,sheet:null,toast:''};
+  componentDidUpdate(pp){
+    if(pp.loggedIn!==this.props.loggedIn)this.setState({loggedIn:!!this.props.loggedIn});
+    if(pp.startTab!==this.props.startTab)this.setState({tab:this.props.startTab});
+  }
+  nameRef=React.createRef();
+  componentDidMount(){this._raf=0;this._pre=SKIN_FILES.map(f=>{const i=new Image();i.decoding='async';i.src='skins/'+f+'.png';return i;});this._pm=e=>{if(this.state.theme!=='glass'||this._raf)return;this._raf=requestAnimationFrame(()=>{this._raf=0;});const el=e.target&&e.target.closest&&e.target.closest('[data-g]');if(!el)return;const r=el.getBoundingClientRect();if(!r.width)return;el.style.setProperty('--mx',((e.clientX-r.left)/r.width*100).toFixed(1)+'%');el.style.setProperty('--my',((e.clientY-r.top)/r.height*100).toFixed(1)+'%');};document.addEventListener('pointermove',this._pm,{passive:true});}
+  setSu(k,v){this.setState(s=>({su:{...s.su,[k]:v}}));}
+  clearRv(){(this._rv||[]).forEach(clearTimeout);this._rv=[];}
+  audio(){try{this.ac=this.ac||new (window.AudioContext||window.webkitAudioContext)();if(this.ac.state==='suspended')this.ac.resume();return this.ac;}catch(e){return null;}}
+  noise(ctx){if(!this.nb){const b=ctx.createBuffer(1,Math.floor(ctx.sampleRate*1.5),ctx.sampleRate),d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;this.nb=b;}return this.nb;}
+  roll(ms){if(!this.state.sound)return;const ctx=this.audio();if(!ctx)return;const t0=ctx.currentTime+0.02,n=Math.floor(ms/52);
+    for(let i=0;i<n;i++){const t=t0+i*0.052,v=0.04+0.4*Math.pow(i/n,1.6),s=ctx.createBufferSource();s.buffer=this.noise(ctx);const f=ctx.createBiquadFilter();f.type='bandpass';f.frequency.value=1900;f.Q.value=0.7;const g=ctx.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(v,t+0.004);g.gain.exponentialRampToValueAtTime(0.0001,t+0.075);s.connect(f);f.connect(g);g.connect(ctx.destination);s.start(t,Math.random()*0.5,0.1);
+      const o=ctx.createOscillator(),og=ctx.createGain();o.frequency.setValueAtTime(190,t);o.frequency.exponentialRampToValueAtTime(120,t+0.06);og.gain.setValueAtTime(v*0.5,t);og.gain.exponentialRampToValueAtTime(0.0001,t+0.07);o.connect(og);og.connect(ctx.destination);o.start(t);o.stop(t+0.08);}}
+  crash(v=1){if(!this.state.sound)return;const ctx=this.audio();if(!ctx)return;const t=ctx.currentTime+0.01;
+    const o=ctx.createOscillator(),og=ctx.createGain();o.type='sine';o.frequency.setValueAtTime(95,t);o.frequency.exponentialRampToValueAtTime(48,t+0.35);og.gain.setValueAtTime(0.0001,t);og.gain.exponentialRampToValueAtTime(0.7*v,t+0.008);og.gain.exponentialRampToValueAtTime(0.0001,t+0.5);o.connect(og);og.connect(ctx.destination);o.start(t);o.stop(t+0.55);}
+  startReveal(){this.clearRv();this.setState({rv:{open:true,step:0,flash:0}});this.roll(4600);
+    [[4600,1,0.6],[6600,2,0.75],[8800,3,1],[10000,4,0]].forEach(([t,st,v])=>this._rv.push(setTimeout(()=>{this.setState(s=>({rv:{open:true,step:st,flash:v?s.rv.flash+1:s.rv.flash}}));if(v)this.crash(v);},t)));}
+  componentWillUnmount(){this.clearRv();document.removeEventListener('pointermove',this._pm);clearTimeout(this._t);if(this.state.photo)URL.revokeObjectURL(this.state.photo);}
+  go(tab){this.setState({tab,sheet:null,profile:null,editOpen:false});window.scrollTo(0,0);}
+  look(d){const me=d.name===ME,p=PROFILES[d.name]||['none','',''];
+    return {skin:me?this.state.skin:(SKIN_OF[d.name]||'none'),frame:me?this.state.frame:p[0],plate:me?this.state.plate:p[0],gender:me?this.state.gender:p[1],bio:me?this.state.bio:p[2],photoCss:me&&this.state.photo?'url('+this.state.photo+')':'none',isMe:me};}
+  showToast(msg){clearTimeout(this._t);this.setState({toast:msg});this._t=setTimeout(()=>this.setState({toast:''}),2000);}
+  vote(d,dir){
+    const cur=this.state.votes[d.id]||0,next=cur===dir?0:dir;
+    this.setState(s=>({votes:{...s.votes,[d.id]:next},sheet:null}));
+    this.showToast(next===0?`${d.name}님 투표를 취소했어요`:`${d.name}님에게 투표했어요`);
+  }
+  colors(){const swap=this.props.palette==='빨강 추천 · 파랑 비추천';return swap?{up:RED,down:BLUE}:{up:BLUE,down:RED};}
+  view(d){
+    const v=this.state.votes[d.id]||0,c=this.colors();
+    const up=d.up+(v===1?1:0),down=d.down+(v===-1?1:0),score=up-down;
+    return {...d,v,upN:up,downN:down,score,scoreLabel:fmt(score),scoreColor:'#191f28',
+      upLabel:up.toLocaleString(),downLabel:down.toLocaleString(),initial:d.name[0],
+      openSheet:()=>this.setState({sheet:d.id}),openProfile:()=>this.setState({profile:d.id}),...this.look(d)};
+  }
+  renderVals(){
+    const {tab,loggedIn,query,page,sheet,votes,toast}=this.state;
+    const c=this.colors();
+    const upWeak=c.up===BLUE?'rgba(49,130,246,0.16)':'rgba(244,67,54,0.16)',upWeakFg=c.up===BLUE?'#1b64da':'#d22030';
+    const dnWeak=c.down===BLUE?'rgba(49,130,246,0.16)':'rgba(244,67,54,0.16)',dnWeakFg=c.down===BLUE?'#1b64da':'#d22030';
+    const all=DATA.map(d=>this.view(d));
+    const q=query.trim();
+    const filtered=q?all.filter(d=>d.name.includes(q)):all;
+    const nPages=Math.max(1,Math.ceil(filtered.length/PER));
+    const pg=Math.min(page,nPages-1);
+    const pageSlice=filtered.slice(pg*PER,pg*PER+PER);
+    const LABEL_PAD=60,CHART_EFF=CHART_H-LABEL_PAD;
+    const posMax=Math.max(0,...pageSlice.map(d=>d.score)),negMax=Math.max(0,...pageSlice.map(d=>-d.score));
+    const span=Math.max(1,posMax+negMax);
+    const zeroTop=Math.round((posMax>0?LABEL_PAD:6)+posMax/span*CHART_EFF);
+    const chartH=negMax>0?Math.round(zeroTop+Math.max(negMax/span*CHART_EFF,3)+60):zeroTop;
+    const rows=pageSlice.map((d,i)=>{
+      const h=Math.max(Math.abs(d.score)/span*CHART_EFF,3),pos=d.score>=0;
+      const barTop=pos?zeroTop-h:zeroTop;
+      const n=d.name.length,fs=Math.min(14,Math.floor((h-18)/(n+0.3))),fits=fs>=9&&h>=n*(fs+1)+16,nameLen=n*13+2;
+      const medal=[['#ffc342','#5c3d00'],['#d1d6db','#333d4b'],['#e0a276','#4a2a12']][d.rank-1];
+      const sk=d.skin&&d.skin!=='none';
+      return {...d,skAnim:'none',barAnim:'growY',skinned:sk,sk:sk?skinGeom(d.skin,Math.round(h),!pos):{},neg:!pos,barG:sk?'skin':'bar',barBorder:sk?'0':'1.5px solid #191f28',barBg:sk?'transparent':'#ffffff',barOv:sk?'visible':'hidden',barTop:Math.round(barTop),barH:Math.round(h),barOrigin:pos?'bottom':'top',
+        nameJustify:pos?'flex-end':'flex-start',nameMargin:pos?'0 0 6px':'6px 0 0',
+        nameIn:fits,nameOut:!fits,nameFs:fs,rankBg:medal?medal[0]:'#f2f4f6',rankFg:medal?medal[1]:'#4e5968',rankRing:medal?'inset 0 0 0 1px rgba(0,0,0,0.08)':'none',dy:(pos?Math.round(h):-Math.round(h))+'px',scoreShort:d.score>0?d.score.toLocaleString():d.scoreLabel,nameTop:pos?Math.round(barTop-42):Math.round(barTop+h+30),
+        scoreTop:pos?Math.round(barTop-56):Math.round(barTop+h+44),
+        avTop:pos?Math.round(barTop-27):Math.round(barTop+h+6),
+        delay:(i*0.04).toFixed(2)+'s',
+        hasVote:d.v!==0,badgeLabel:d.v===1?'추천함':'비추천함',badgeBg:d.v===1?upWeak:dnWeak,badgeFg:d.v===1?upWeakFg:dnWeakFg};
+    });
+    const sd=sheet!=null?all.find(d=>d.id===sheet):null;
+    const sheetVals=sd?{
+      name:sd.name,upLabel:sd.upLabel,downLabel:sd.downLabel,
+      upPct:Math.round(sd.upN/(sd.upN+sd.downN)*100)+'%',
+      hint:sd.v!==0?'이미 투표했어요. 같은 버튼을 한 번 더 누르면 취소돼요':`지금 ${sd.rank}위 · ${sd.scoreLabel}점`,
+      upText:sd.v===1?'추천 취소':'추천',downText:sd.v===-1?'비추천 취소':'비추천',
+      upBg:sd.v===1?'#f2f4f6':c.up,upFg:sd.v===1?'#4e5968':'#ffffff',
+      downBg:sd.v===-1?'#f2f4f6':dnWeak,downFg:sd.v===-1?'#4e5968':dnWeakFg,
+      voteUp:()=>this.vote(sd,1),voteDown:()=>this.vote(sd,-1)
+    }:{};
+    const tabDefs=[['home','홈'],['acct','계정'],['rank','랭킹']];
+    const mine=all.filter(d=>d.v!==0);
+    return {
+      isHome:tab==='home',isRank:tab==='rank',isAcct:tab==='acct',loggedIn,loggedOut:!loggedIn,
+      goHome:()=>this.go('home'),goRank:()=>this.go('rank'),goAccount:()=>this.go('acct'),
+      login:()=>{this.setState({loggedIn:true});this.showToast('로그인했어요');},
+      logout:()=>{this.setState({loggedIn:false,votes:{}});this.showToast('로그아웃했어요');},
+      leaderName:all[0].name,
+      homeQuery:this.state.homeQuery,onHomeSearch:e=>this.setState({homeQuery:e.target.value}),
+      showAllLink:!this.state.homeQuery.trim(),
+      pickList:(()=>{const hq=this.state.homeQuery.trim();return (hq?all.filter(d=>d.name.includes(hq)):all.slice(0,5)).map(d=>({...d,sub:d.rank+'위 · '+d.scoreLabel+'점',hasVote:d.v!==0,noVote:d.v===0,badgeLabel:'✓ 투표함',badgeBg:'#03b26c',badgeFg:'#ffffff'}));})(),
+      pickEmpty:!!this.state.homeQuery.trim()&&!all.some(d=>d.name.includes(this.state.homeQuery.trim())),
+      myCountLabel:mine.length?`${mine.length}명에게 투표했어요`:'아직 투표하지 않았어요',
+      upColor:c.up,downColor:c.down,
+      query,hasQuery:!!q,onSearch:e=>this.setState({query:e.target.value,page:0}),clearSearch:()=>this.setState({query:'',page:0}),
+      pageRows:rows,noResults:filtered.length===0,hasPages:filtered.length>PER,zeroTop,chartH,pageLabel:(pg+1)+' / '+nPages,
+      prevDisabled:pg===0,nextDisabled:pg>=nPages-1,prevColor:pg>0?'#191f28':'#d1d6db',nextColor:pg<nPages-1?'#191f28':'#d1d6db',
+      rangeLabel:filtered.length?`${pg*PER+1}~${Math.min(filtered.length,pg*PER+PER)}위 · ${q?'검색 결과 ':'총 '}${filtered.length}명`:'검색 결과 0명',
+      pages:Array.from({length:nPages},(_,i)=>({label:i+1,bg:i===pg?'#e8f3ff':'transparent',fg:i===pg?'#2272eb':'#6b7684',go:()=>this.setState({page:i})})),
+      prevPage:()=>pg>0&&this.setState({page:pg-1}),nextPage:()=>pg<nPages-1&&this.setState({page:pg+1}),
+      prevOp:pg>0?1:0.3,nextOp:pg<nPages-1?1:0.3,
+      sheetOpen:!!sd,sheet:sheetVals,closeSheet:()=>this.setState({sheet:null}),
+      sheetLogin:()=>this.go('acct'),
+      hasToast:!!toast,toast,
+      me:(()=>{const d=all.find(x=>x.name===ME);return {name:ME,frame:this.state.frame,hasPhoto:!!this.state.photo,photoCss:this.state.photo?'url('+this.state.photo+')':'none',bio:this.state.bio,bioCount:this.state.bio.length+'/60',gender:this.state.gender,hasGender:!!this.state.gender,rankLine:d.rank+'위 · '+d.scoreLabel+'점'};})(),
+      onBio:e=>this.setState({bio:e.target.value.slice(0,60)}),
+      genders:['남자','여자','비공개'].map(g=>{const on=(this.state.gender||'비공개')===g;return {label:g,bg:on?'#ffffff':'transparent',fg:on?'#191f28':'#6b7684',shadow:on?'0 1px 3px rgba(0,27,55,0.1)':'none',pick:()=>this.setState({gender:g==='비공개'?'':g})};}),
+      theme:this.state.theme,navPillLeft:'calc('+(['home','acct','rank'].indexOf(tab)*33.333)+'% + 6px)',
+      openTheme:()=>this.setState({themeOpen:true}),closeTheme:()=>this.setState({themeOpen:false}),themeOpen:this.state.themeOpen,
+      themes:THEMES.map(([k,l])=>{const on=this.state.theme===k;return {label:l,on,isDefault:k==='default',isGlass:k==='glass',ring:on?'0 0 0 2px #3182f6':'0 0 0 1px #e5e8eb',pick:()=>{try{localStorage.setItem('pv-theme',k)}catch(e){}this.setState({theme:k,themeOpen:false});this.showToast(l+' 테마로 바꿨어요');}};}),
+      isLoginView:this.state.acctView==='login',isSignupView:this.state.acctView==='signup',
+      goSignup:()=>{this.setState({acctView:'signup'});window.scrollTo(0,0);},goLogin:()=>this.setState({acctView:'login'}),
+      nameRef:this.nameRef,
+      onNameFocus:e=>{if(!this.state.nameAck){e.target.blur();this.setState({ruleOpen:true,ruleCheck:false});}},
+      ruleOpen:this.state.ruleOpen,ruleCheck:this.state.ruleCheck,
+      toggleRule:()=>this.setState(s=>({ruleCheck:!s.ruleCheck})),
+      ruleTick:this.state.ruleCheck?'✓':'',ruleBoxBg:this.state.ruleCheck?'#3182f6':'#ffffff',ruleBoxRing:this.state.ruleCheck?'none':'inset 0 0 0 2px #d1d6db',
+      ruleRowBg:this.state.ruleCheck?'#e8f3ff':'#f9fafb',ruleRowRing:this.state.ruleCheck?'inset 0 0 0 1.5px #3182f6':'none',
+      ruleDisabled:!this.state.ruleCheck,ruleOp:this.state.ruleCheck?1:0.4,
+      ruleNudge:()=>this.showToast('규칙을 읽고 체크해주세요'),
+      confirmRule:()=>{if(!this.state.ruleCheck)return;this.setState({ruleOpen:false,nameAck:true},()=>{this.nameRef.current&&this.nameRef.current.focus();});},
+      su:(()=>{const s=this.state.su,pwOk=s.pw.length>=8,match=s.pw2.length>0&&s.pw2===s.pw;
+        const cant=!(s.name.trim()&&s.id.trim().length>=4&&pwOk&&match&&this.state.nameAck);
+        return {...s,onName:e=>this.setSu('name',e.target.value),onId:e=>this.setSu('id',e.target.value),onPw:e=>this.setSu('pw',e.target.value),onPw2:e=>this.setSu('pw2',e.target.value),
+          hasPwMsg:s.pw.length>0,pwMsg:pwOk?'✓ 사용할 수 있어요':'8자 이상 입력해주세요',pwColor:pwOk?'#03b26c':'#8b95a1',
+          hasPw2Msg:s.pw2.length>0,pw2Msg:match?'✓ 비밀번호가 일치해요':'비밀번호가 서로 달라요',pw2Color:match?'#03b26c':'#f04452',
+          cant,op:cant?0.4:1,submit:()=>{if(cant)return;this.setState({loggedIn:true,acctView:'login',su:{name:'',id:'',pw:'',pw2:''}});this.showToast('가입했어요. 환영해요!');}};})(),
+      profileOpen:this.state.profile!=null,closeProfile:()=>this.setState({profile:null}),
+      pf:(()=>{const d=all.find(x=>x.id===this.state.profile);if(!d)return {};const medal=[['#ffc342','#5c3d00'],['#d1d6db','#333d4b'],['#e0a276','#4a2a12']][d.rank-1];
+        return {name:d.name,frame:d.frame,plate:d.plate,plateSub:[d.gender,d.isMe?'나':''].filter(Boolean).join(' · ')||d.rank+'위',photoCss:d.photoCss,banner:BANNERS[d.frame]||BANNERS.none,isMe:d.isMe,gender:d.gender,hasGender:!!d.gender,
+          bio:d.bio||'아직 소개가 없어요',bioColor:d.bio?'#333d4b':'#8b95a1',rankLabel:d.rank+'위',rankBg:medal?medal[0]:'#f2f4f6',rankFg:medal?medal[1]:'#4e5968',
+          score:d.scoreLabel,up:d.upLabel,down:d.downLabel,cta:d.isMe?'내 프로필 꾸미기':'홈에서 투표하기',
+          goVote:()=>{if(d.isMe){this.setState({tab:'acct',profile:null,editOpen:true});}else{this.setState({tab:'home',profile:null,sheet:d.id});}}};})(),
+      onPhoto:e=>{const f=e.target.files&&e.target.files[0];if(!f)return;if(this.state.photo)URL.revokeObjectURL(this.state.photo);this.setState({photo:URL.createObjectURL(f)});e.target.value='';this.showToast('프로필 사진을 바꿨어요');},
+      removePhoto:()=>{if(this.state.photo)URL.revokeObjectURL(this.state.photo);this.setState({photo:null});},
+      ...(()=>{const st=this.state,ph=st.photo?'url('+st.photo+')':'none';
+        const meRow=all.find(x=>x.name===ME),points=meRow.upN-st.spent;
+        const mk=(kind,k,label)=>{const owned=st.owned[kind].includes(k),on=st[kind]===k,price=priceOf(kind,k);return {key:k,label,on,owned,locked:!owned,price:price+'P',pick:()=>owned?this.setState({[kind]:k}):this.setState({buy:{kind,key:k,label,price}})};};
+        const b=st.buy,bp=b?b.price:0,can=b?points>=bp:false,bName=b?(b.label+(KIND_NAME[b.kind]?' '+KIND_NAME[b.kind]:'')):'';
+        return {points,pointsLabel:points.toLocaleString()+'P',plate:st.plate,myBioLine:st.bio||'소개를 적으면 이름표에 보여요',
+          editOpen:st.editOpen,openEdit:()=>this.setState({editOpen:true}),closeEdit:()=>this.setState({editOpen:false}),
+          isFrameTab:st.editTab==='frame',isPlateTab:st.editTab==='plate',isSkinTab:st.editTab==='skin',
+          editTabs:[['frame','프레임'],['plate','이름표'],['skin','막대 스킨']].map(([k,l])=>{const on=st.editTab===k;return {label:l,bg:on?'#ffffff':'transparent',fg:on?'#191f28':'#6b7684',shadow:on?'0 1px 3px rgba(0,27,55,0.1)':'none',pick:()=>this.setState({editTab:k})};}),
+          frames:FRAMES.map(([k,l])=>{const it=mk('frame',k,l);return {...it,photoCss:ph,bg:it.on?'#e8f3ff':'#f9fafb',ring:it.on?'inset 0 0 0 1.5px #3182f6':'none',fg:it.on?'#1b64da':'#4e5968'};}),
+          plates:FRAMES.map(([k,l])=>{const it=mk('plate',k,l+' 이름표');return {...it,name:ME,frame:st.frame,photoCss:ph,ring:it.on?'0 0 0 2px #3182f6':'none'};}),
+          skins:SKINS.map(([k,l])=>{const it=mk('skin',k,l);return {...it,plain:k==='none',skinned:k!=='none',sk:skinGeom(k,132,false),bg:it.on?'#e8f3ff':'#f9fafb',ring:it.on?'inset 0 0 0 1.5px #3182f6':'none',fg:it.on?'#1b64da':'#4e5968'};}),
+          buyOpen:!!b,closeBuy:()=>this.setState({buy:null}),
+          buy:b?{title:bName+'을 살까요?',desc:can?'사면 바로 내 프로필에 적용돼요':'받은 추천이 더 쌓이면 살 수 있어요',price:bp.toLocaleString()+'P',remain:(points-bp).toLocaleString()+'P',remainColor:can?'#191f28':'#f04452',cant:!can,op:can?1:0.4,cta:can?bp.toLocaleString()+'P로 사기':'포인트가 부족해요'}:{},
+          confirmBuy:()=>{if(!b||!can)return;this.setState(s=>({spent:s.spent+bp,owned:{...s.owned,[b.kind]:[...s.owned[b.kind],b.key]},[b.kind]:b.key,buy:null}));this.showToast(bName+' 적용했어요');},
+          rvOpen:st.rv.open,startReveal:()=>this.startReveal(),closeReveal:()=>{this.clearRv();this.setState({rv:{open:false,step:0,flash:0}});},
+          rvDrumming:st.rv.step===0,rvDone:st.rv.step>=4,rvRunning:st.rv.step<4,rvPodiumOp:st.rv.step===0?0.35:1,
+          rvFlash:st.rv.flash?(st.rv.flash%2?'rvFlashA':'rvFlashB'):'none',
+          rvTitle:(()=>{const s=st.rv.step,t=all;return ['이번 시즌 TOP 3는…',`3위는 ${t[2].name}님이에요`,`2위는 ${t[1].name}님이에요`,`1위는 ${t[0].name}님이에요`,`1위는 ${t[0].name}님이에요`][s];})(),
+          rvSyll:'두구두구두구두구'.split('').map((c,i)=>({t:c,d:(i*0.05).toFixed(2)+'s'})),
+          podium:[[1,2,96,'linear-gradient(180deg,#f4f6f8,#aab3bc)','#333d4b','rgba(200,210,220,0.45)',60,2],[0,1,132,'linear-gradient(180deg,#ffe38a,#e0a100)','#5c3d00','rgba(255,195,66,0.6)',76,3],[2,3,72,'linear-gradient(180deg,#f0bb8f,#b06a3a)','#4a2a12','rgba(224,162,118,0.45)',56,1]].map(([idx,rk,hh,bg,fg,glow,av,need])=>{const d=all[idx],shown=st.rv.step>=need;return {rank:rk,h:hh,bg:shown?bg:'#1c1f26',fg:shown?fg:'#4e5968',shadow:shown?'0 -8px 40px -6px '+glow:'none',glow,av,shown,hidden:!shown,name:d.name,score:d.scoreLabel,frame:d.frame,photoCss:d.photoCss};}),
+          soundOn:st.sound,soundOff:!st.sound,soundLabel:st.sound?'소리 켜짐':'소리 꺼짐',toggleSound:()=>this.setState(s=>({sound:!s.sound}))};})(),
+      stats:[{k:'투표',v:mine.length+'명'},{k:'순위',v:(all.find(x=>x.name===ME)||{}).rank+'위'},{k:'포인트',v:((all.find(x=>x.name===ME)||{}).upN-this.state.spent).toLocaleString()+'P'}],
+      myVotes:mine.map(d=>({name:d.name,initial:d.name[0],sub:`${d.rank}위 · ${d.scoreLabel}점`,label:'✓ 투표함',badgeBg:'#03b26c',badgeFg:'#ffffff',cancel:()=>this.vote(d,d.v)})),
+      noVotes:mine.length===0,
+      tabs:tabDefs.map(([k,l])=>({label:l,isHome:k==='home',isAcct:k==='acct',isRank:k==='rank',fg:tab===k?'#191f28':'#b0b8c1',go:()=>this.go(k)}))
+    };
+  }
+}
+</script>
+</body>
+</html>

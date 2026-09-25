@@ -1,0 +1,14 @@
+<!-- @dsCard group="Status" height=150 subtitle="6 colors · weak · fill · 4 sizes" -->
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>Badge</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var T = window.TossStyle, h = React.createElement;
+  var cs = ['blue', 'teal', 'green', 'red', 'yellow', 'elephant'], lab = { blue: '혜택', teal: '추천', green: '완료', red: 'D-3', yellow: '이벤트', elephant: '종료' };
+  function Row(v, s) { return h('div', { className: 'ts-row-wrap' }, cs.map(function (c) { return h(T.Badge, { key: c, color: c, variant: v, size: s }, lab[c]); })); }
+  ReactDOM.createRoot(document.getElementById('root')).render(h('div', null, Row('weak', 'small'), Row('fill', 'small'), Row('weak', 'large')));
+</script>
+</body>
+</html>

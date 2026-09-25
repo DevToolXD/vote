@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="position:absolute;inset:0;pointer-events:none;transform:{{ tf }}">
+  <sc-if value="{{ on }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;left:50%;bottom:0;display:flex;flex-direction:column;transform-origin:50% 100%;margin-left:{{ ml }}px;width:{{ w }}px;height:{{ H }}px;transform:scale({{ k }});filter:drop-shadow(0 1px 1.5px rgba(0,0,0,0.18))">
+      <img src="{{ cap }}" alt="" style="display:block;width:100%;flex:none;height:{{ capH }}px">
+      <div style="flex:1;min-height:0;background-repeat:no-repeat;background-position:center;background-size:100% 100%;background-image:{{ mid }}"></div>
+      <sc-if value="{{ hasBase }}" hint-placeholder-val="{{ false }}"><img src="{{ base }}" alt="" style="display:block;width:100%;flex:none;height:{{ baseH }}px"></sc-if>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:60,&quot;height&quot;:240},&quot;skin&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;namsan&quot;,&quot;eiffel&quot;,&quot;bigben&quot;,&quot;victory&quot;],&quot;default&quot;:&quot;eiffel&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;neg&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;h&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:220,&quot;min&quot;:20,&quot;max&quot;:300,&quot;tsType&quot;:&quot;number&quot;}}">
+const SK={
+  namsan:{w:24,cap:97.67,base:0},
+  eiffel:{w:32,cap:9.67,base:28.33},
+  bigben:{w:30,cap:90.67,base:0},
+  victory:{w:32,cap:21,base:26.67}
+};
+class Component extends DCLogic {
+  renderVals(){
+    const s=this.props.skin,m=SK[s],neg=!!this.props.neg,h=Math.max(1,Number(this.props.h)||118);
+    if(!m)return {on:false,tf:'none'};
+    const mn=m.cap+m.base+12,H=Math.max(h,mn),k=h<mn?h/mn:1;
+    return {on:true,tf:neg?'scaleY(-1)':'none',w:m.w,ml:-m.w/2,H,k:k.toFixed(4),
+      cap:`skins/${s}-cap.png`,capH:m.cap,mid:`url(skins/${s}-mid.png)`,
+      hasBase:m.base>0,base:m.base>0?`skins/${s}-base.png`:'',baseH:m.base};
+  }
+}
+</script>
+</body>
+</html>

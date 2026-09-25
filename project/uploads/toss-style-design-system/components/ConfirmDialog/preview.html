@@ -1,0 +1,12 @@
+<!-- @dsCard group="Overlays" height=460 subtitle="제목 · 설명 · [닫기][행동]" -->
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>ConfirmDialog</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var T = window.TossStyle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(T.ConfirmDialog, { open: true, title: '카드를 해지할까요?', description: '해지하면 남은 포인트 1,200원이 사라져요.\n포인트를 먼저 쓰는 걸 추천해요.', confirmLabel: '해지하기', danger: true, onConfirm: function () {}, onClose: function () {} }));
+</script>
+</body>
+</html>

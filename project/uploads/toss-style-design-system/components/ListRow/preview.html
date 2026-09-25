@@ -1,0 +1,19 @@
+<!-- @dsCard group="Lists" height=330 subtitle="left · title/description · right · arrow, 눌림 하이라이트" -->
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>ListRow</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var T = window.TossStyle, h = React.createElement;
+  var A = T.Avatar;
+  ReactDOM.createRoot(document.getElementById('root')).render(h('div', { className: 'ts-list' },
+    h(T.ListRow, { left: h(A, null, '생'), title: '생활비 통장', description: '주 계좌', right: '1,250,000원', arrow: true, divider: true, onClick: function () {} }),
+    h(T.ListRow, { left: h(A, null, '김'), title: '김하늘', description: '9월 24일 · 50,000원 보냄', right: h(T.Badge, { color: 'blue' }, '자주'), divider: true, onClick: function () {} }),
+    h(T.Border, { variant: 'height16' }),
+    h(T.ListRow, { title: '잔액 숨기기', description: '홈에서 금액을 가려요', right: h(T.Switch, { defaultChecked: true, 'aria-label': '잔액 숨기기' }) }),
+    h(T.ListRow, { title: '주식 수익률', right: h('span', { style: { color: 'var(--red500)' } }, '+2.4%'), divider: false })
+  ));
+</script>
+</body>
+</html>

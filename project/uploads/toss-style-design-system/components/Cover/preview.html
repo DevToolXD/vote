@@ -1,0 +1,55 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>토스 스타일 레퍼런스</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--background); color: var(--grey900); font-family: var(--font-sans); overflow: hidden; }
+  .cover { position: relative; width: 960px; height: 288px; overflow: hidden; }
+  .art { position: absolute; top: 0; left: 480px; width: 480px; height: 288px; overflow: hidden; }
+  .art svg { display: block; width: 480px; height: 288px; }
+  .brand { fill: var(--blue500); }
+  .tint { fill: var(--blue50); }
+  .deep { fill: var(--grey900); }
+  .signal { fill: var(--red500); }
+  .cut { fill: var(--background); }
+  .words { position: absolute; left: 24px; bottom: 24px; max-width: 440px; }
+  .name { margin: 0; font-size: 80px; line-height: 0.95; font-weight: 700; letter-spacing: -0.02em; color: var(--grey900); }
+  .tag { margin: 16px 0 0 2px; font-size: 14px; line-height: 20px; font-weight: 500; color: var(--grey600); }
+</style>
+</head>
+<body>
+<div class="cover">
+<div class="art" aria-hidden="true">
+<svg viewBox="0 0 480 288" width="480" height="288">
+<!--
+  blocks      blue500 200x240 slab bled off the top (the one accent, largest) · blue50 160x192 tint · grey900 96x96 bled off the right edge · red500 48x16 pill once (it only means a rise) - about 31% of 960x288
+  arrangement one tall blue slab with two satellites, bottoms staggered on the 24px gutter, 16px gutters between blocks
+  pattern     discs and pills from "크게 둥글려요 / radius-full": a 56px-pitch column of list rows (16px disc + two pills) cut into the tint, and one 48px button shape (radius-button-large) cut out of the slab
+  scales      sides in 8px steps; gutters space-16 and gutter 24; corners radius-dialog 24, radius-sheet 28, radius-button-xlarge 16, radius-button-large 14; pills radius-full
+-->
+<rect class="brand" x="24" y="-24" width="200" height="240" rx="24"/>
+<rect class="cut" x="44" y="148" width="160" height="48" rx="14"/>
+<rect class="tint" x="240" y="48" width="160" height="192" rx="28"/>
+<circle class="brand" cx="272" cy="92" r="16"/>
+<rect class="cut" x="300" y="82" width="72" height="8" rx="4"/>
+<rect class="cut" x="300" y="96" width="48" height="6" rx="3"/>
+<circle class="brand" cx="272" cy="148" r="16"/>
+<rect class="cut" x="300" y="138" width="80" height="8" rx="4"/>
+<rect class="cut" x="300" y="152" width="40" height="6" rx="3"/>
+<circle class="brand" cx="272" cy="204" r="16"/>
+<rect class="cut" x="300" y="194" width="64" height="8" rx="4"/>
+<rect class="cut" x="300" y="208" width="56" height="6" rx="3"/>
+<rect class="deep" x="416" y="120" width="96" height="96" rx="16"/>
+<rect class="signal" x="416" y="232" width="48" height="16" rx="8"/>
+</svg>
+</div>
+<div class="words">
+<h1 class="name">토스 스타일<br>레퍼런스</h1>
+<p class="tag">한 화면에 한 가지, 쉬운 말로, 파랑 하나로.</p>
+</div>
+</div>
+</body>
+</html>

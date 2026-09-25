@@ -1,0 +1,2 @@
+- Organic 디자인 시스템은 무시하고, 모든 UI는 토스 스타일(`uploads/toss-style-design-system/README.md`, README.md의 "디자인 지침")을 따른다.
+- 모바일 기준, 웹/앱 둘 다 고려. 실제 기능 없이 UI만.

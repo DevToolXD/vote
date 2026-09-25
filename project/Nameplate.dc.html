@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@keyframes npDash{to{stroke-dashoffset:-48}}
+@keyframes npTw{0%,100%{opacity:.2;transform:scale(.5)}50%{opacity:1;transform:scale(1)}}
+@keyframes npFall{0%{transform:translate(0,-8px) rotate(0deg);opacity:0}15%{opacity:1}100%{transform:translate(-46px,64px) rotate(260deg);opacity:0}}
+@keyframes npRise{0%{transform:translateY(8px);opacity:0}20%{opacity:1}100%{transform:translateY(-52px);opacity:0}}
+@keyframes npFlick{0%{transform:scaleY(.78) skewX(-6deg)}100%{transform:scaleY(1.12) skewX(6deg)}}
+@keyframes npWave{to{transform:translateX(-80px)}}
+@keyframes npShoot{0%{transform:translate(0,0);opacity:0}8%{opacity:1}35%,100%{transform:translate(-130px,44px);opacity:0}}
+@keyframes npFlap{0%{transform:scaleX(1)}100%{transform:scaleX(.28)}}
+@keyframes npFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes npBlink{0%,90%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
+@keyframes npWag{0%,100%{transform:rotate(-14deg)}50%{transform:rotate(14deg)}}
+@keyframes npDrift{0%,100%{transform:translateX(0)}50%{transform:translateX(-12px)}}
+@keyframes npSpin{to{transform:rotate(360deg)}}
+@keyframes npShine{0%{transform:translateX(-120%) skewX(-20deg)}55%,100%{transform:translateX(420%) skewX(-20deg)}}
+</style>
+</helmet>
+<div style="position:relative;width:100%;height:100%;border-radius:14px;overflow:hidden;isolation:isolate;background:{{ bg }}">
+
+  <sc-if value="{{ isNeon }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">
+      <g stroke="rgba(124,77,255,0.18)" stroke-width="1"><path d="M140 56 L200 0 M180 56 L230 0 M220 56 L260 0 M260 56 L290 0 M300 56 L320 0"></path><path d="M120 14 H320 M120 28 H320 M120 42 H320"></path></g>
+      <path d="M120 40 C150 18 172 18 200 34 S252 54 282 30 S312 14 340 22" fill="none" stroke="#00e5ff" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="16 10" style="filter:drop-shadow(0 0 4px #00e5ff);animation:npDash 1.8s linear infinite"></path>
+      <path d="M130 20 C160 40 184 42 212 24 S262 6 292 26 S318 44 340 36" fill="none" stroke="#ff3dcb" stroke-width="2" stroke-linecap="round" stroke-dasharray="12 14" style="filter:drop-shadow(0 0 4px #ff3dcb);animation:npDash 2.4s linear infinite reverse"></path>
+      <g transform="translate(300 12)"><circle r="2" fill="#ffffff" style="transform-box:fill-box;transform-origin:center;animation:npTw 1.6s ease-in-out infinite"></circle></g>
+      <g transform="translate(236 44)"><circle r="1.6" fill="#00e5ff" style="transform-box:fill-box;transform-origin:center;animation:npTw 1.6s ease-in-out .6s infinite"></circle></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isCrown }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">
+      <g fill="none" stroke="#e6b84a" stroke-width="1.4" stroke-linecap="round" opacity="0.75">
+        <path d="M170 50 C180 34 200 34 204 44 C207 52 196 54 194 46"></path><path d="M206 8 C216 22 236 22 240 12 C243 4 232 2 230 10"></path>
+        <path d="M236 52 C246 36 266 38 268 46"></path><path d="M150 6 C160 16 176 14 176 6"></path>
+      </g>
+      <g transform="translate(284 30)"><g style="animation:npFloat 2.8s ease-in-out infinite">
+        <path d="M-18 9 L-21 -10 L-9 -1 L0 -16 L9 -1 L21 -10 L18 9 Z" fill="#ffc83d" stroke="#7a4e00" stroke-width="2" stroke-linejoin="round"></path>
+        <path d="M-14 4 L-16 -4 L-8 2 Z M0 -9 L-4 1 L4 1 Z" fill="#fff1b8"></path>
+        <rect x="-18.5" y="7" width="37" height="7" rx="2.5" fill="#f5a800" stroke="#7a4e00" stroke-width="2"></rect>
+        <circle cx="0" cy="-16" r="3" fill="#ff4d6d" stroke="#7a4e00" stroke-width="1.5"></circle><circle cx="-21" cy="-10" r="2.4" fill="#4dd2ff" stroke="#7a4e00" stroke-width="1.4"></circle><circle cx="21" cy="-10" r="2.4" fill="#4dd2ff" stroke="#7a4e00" stroke-width="1.4"></circle>
+      </g></g>
+      <g transform="translate(250 14)"><path d="M0 -6 C.8 -1.6 1.6 -.8 6 0 C1.6 .8 .8 1.6 0 6 C-.8 1.6 -1.6 .8 -6 0 C-1.6 -.8 -.8 -1.6 0 -6Z" fill="#ffe7a3" style="transform-box:fill-box;transform-origin:center;animation:npTw 1.8s ease-in-out infinite"></path></g>
+      <g transform="translate(312 48)"><path d="M0 -4 C.5 -1 1 -.5 4 0 C1 .5 .5 1 0 4 C-.5 1 -1 .5 -4 0 C-1 -.5 -.5 -1 0 -4Z" fill="#ffe7a3" style="transform-box:fill-box;transform-origin:center;animation:npTw 1.8s ease-in-out .8s infinite"></path></g>
+      <g transform="translate(222 40)"><circle r="1.6" fill="#ffd84d" style="transform-box:fill-box;transform-origin:center;animation:npTw 1.4s ease-in-out .4s infinite"></circle></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isSakura }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">
+      <path d="M330 4 C300 10 276 18 250 34 C236 42 222 44 206 42 M268 24 C272 12 282 6 292 4 M240 38 C236 48 238 54 244 58" fill="none" stroke="#8a5a4a" stroke-width="3" stroke-linecap="round"></path>
+      <g transform="translate(292 4)"><circle r="7" fill="#ffc2d6"></circle><circle r="3" fill="#ff6f9c"></circle></g>
+      <g transform="translate(262 28)"><g style="transform-box:fill-box;transform-origin:center;animation:npFloat 3s ease-in-out infinite"><ellipse cx="0" cy="-6" rx="4.5" ry="7" fill="#ffb7cf" stroke="#ff6f9c" stroke-width="1"></ellipse><ellipse cx="0" cy="-6" rx="4.5" ry="7" fill="#ffb7cf" stroke="#ff6f9c" stroke-width="1" transform="rotate(72)"></ellipse><ellipse cx="0" cy="-6" rx="4.5" ry="7" fill="#ffb7cf" stroke="#ff6f9c" stroke-width="1" transform="rotate(144)"></ellipse><ellipse cx="0" cy="-6" rx="4.5" ry="7" fill="#ffb7cf" stroke="#ff6f9c" stroke-width="1" transform="rotate(216)"></ellipse><ellipse cx="0" cy="-6" rx="4.5" ry="7" fill="#ffb7cf" stroke="#ff6f9c" stroke-width="1" transform="rotate(288)"></ellipse><circle r="2.6" fill="#ff5c8a"></circle></g></g>
+      <g transform="translate(222 44) scale(0.75)"><ellipse cx="0" cy="-6" rx="4.5" ry="7" fill="#ffd1e0" stroke="#ff6f9c" stroke-width="1"></ellipse><ellipse cx="0" cy="-6" rx="4.5" ry="7" fill="#ffd1e0" stroke="#ff6f9c" stroke-width="1" transform="rotate(72)"></ellipse><ellipse cx="0" cy="-6" rx="4.5" ry="7" fill="#ffd1e0" stroke="#ff6f9c" stroke-width="1" transform="rotate(144)"></ellipse><ellipse cx="0" cy="-6" rx="4.5" ry="7" fill="#ffd1e0" stroke="#ff6f9c" stroke-width="1" transform="rotate(216)"></ellipse><ellipse cx="0" cy="-6" rx="4.5" ry="7" fill="#ffd1e0" stroke="#ff6f9c" stroke-width="1" transform="rotate(288)"></ellipse><circle r="2.6" fill="#ff5c8a"></circle></g>
+      <g transform="translate(300 10)"><ellipse rx="3" ry="4.4" fill="#ff9dbd" style="animation:npFall 4s ease-in infinite"></ellipse></g>
+      <g transform="translate(250 0)"><ellipse rx="2.6" ry="3.8" fill="#ffb7cf" style="animation:npFall 4s ease-in 1.3s infinite"></ellipse></g>
+      <g transform="translate(206 4)"><ellipse rx="2.4" ry="3.6" fill="#ff9dbd" style="animation:npFall 4s ease-in 2.6s infinite"></ellipse></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isCat }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">
+      <g fill="rgba(255,255,255,0.12)">
+        <g transform="translate(160 40) rotate(-20)"><ellipse rx="4" ry="3.4"></ellipse><circle cx="-4" cy="-5" r="1.6"></circle><circle cx="0" cy="-6.5" r="1.6"></circle><circle cx="4" cy="-5" r="1.6"></circle></g>
+        <g transform="translate(188 22) rotate(-20)"><ellipse rx="4" ry="3.4"></ellipse><circle cx="-4" cy="-5" r="1.6"></circle><circle cx="0" cy="-6.5" r="1.6"></circle><circle cx="4" cy="-5" r="1.6"></circle></g>
+        <g transform="translate(216 38) rotate(-20)"><ellipse rx="4" ry="3.4"></ellipse><circle cx="-4" cy="-5" r="1.6"></circle><circle cx="0" cy="-6.5" r="1.6"></circle><circle cx="4" cy="-5" r="1.6"></circle></g>
+      </g>
+      <g transform="translate(250 56)"><g style="transform-box:fill-box;transform-origin:0% 100%;animation:npWag 2s ease-in-out infinite"><path d="M0 0 C-6 -14 -2 -30 10 -34" fill="none" stroke="#111214" stroke-width="7" stroke-linecap="round"></path></g></g>
+      <g transform="translate(290 58)">
+        <path d="M-26 0 C-26 -20 -16 -30 0 -30 C16 -30 26 -20 26 0 Z" fill="#111214"></path>
+        <path d="M-22 -18 L-20 -40 L-6 -28 Z M22 -18 L20 -40 L6 -28 Z" fill="#111214" stroke="#111214" stroke-width="2" stroke-linejoin="round"></path>
+        <path d="M-18 -22 L-17 -34 L-9 -27 Z M18 -22 L17 -34 L9 -27 Z" fill="#ff9ec7"></path>
+        <g style="transform-box:fill-box;transform-origin:center;animation:npBlink 4s ease-in-out infinite"><ellipse cx="-9" cy="-14" rx="3.6" ry="4.4" fill="#ffd84d"></ellipse><ellipse cx="9" cy="-14" rx="3.6" ry="4.4" fill="#ffd84d"></ellipse><ellipse cx="-9" cy="-14" rx="1.2" ry="3.4" fill="#111214"></ellipse><ellipse cx="9" cy="-14" rx="1.2" ry="3.4" fill="#111214"></ellipse></g>
+        <path d="M-2 -7 L2 -7 L0 -5 Z" fill="#ff9ec7"></path>
+      </g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isStars }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">
+      <g transform="translate(292 20)"><circle r="12" fill="#ffe8a3"></circle><circle cx="5" cy="-4" r="11" fill="#2d1f7a"></circle></g>
+      <g fill="#ffffff">
+        <g transform="translate(170 12)"><circle r="1.4" style="transform-box:fill-box;transform-origin:center;animation:npTw 2s ease-in-out infinite"></circle></g>
+        <g transform="translate(206 40)"><circle r="1.2" style="transform-box:fill-box;transform-origin:center;animation:npTw 2s ease-in-out .5s infinite"></circle></g>
+        <g transform="translate(236 16)"><path d="M0 -6 C.8 -1.6 1.6 -.8 6 0 C1.6 .8 .8 1.6 0 6 C-.8 1.6 -1.6 .8 -6 0 C-1.6 -.8 -.8 -1.6 0 -6Z" fill="#ffe066" style="transform-box:fill-box;transform-origin:center;animation:npTw 2.2s ease-in-out .2s infinite"></path></g>
+        <g transform="translate(262 44)"><path d="M0 -4 C.5 -1 1 -.5 4 0 C1 .5 .5 1 0 4 C-.5 1 -1 .5 -4 0 C-1 -.5 -.5 -1 0 -4Z" fill="#b8a9ff" style="transform-box:fill-box;transform-origin:center;animation:npTw 2.2s ease-in-out 1s infinite"></path></g>
+        <g transform="translate(314 46)"><circle r="1.4" style="transform-box:fill-box;transform-origin:center;animation:npTw 2s ease-in-out 1.4s infinite"></circle></g>
+      </g>
+      <g transform="translate(330 4)"><g style="animation:npShoot 4.5s ease-out 1s infinite"><path d="M0 0 L26 -9" stroke="rgba(255,255,255,0.85)" stroke-width="1.6" stroke-linecap="round"></path><circle r="1.8" fill="#ffffff"></circle></g></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isFlame }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">
+      <g transform="translate(206 60) scale(0.9)"><g style="transform-box:fill-box;transform-origin:50% 100%;animation:npFlick .7s ease-in-out infinite alternate"><path d="M0 0 C-14 -6 -16 -22 -6 -36 C-5 -24 3 -24 2 -44 C16 -30 18 -8 0 0Z" fill="#ff3d00"></path><path d="M0 0 C-8 -3 -8 -14 -3 -20 C-2 -13 3 -13 3 -24 C10 -14 10 -3 0 0Z" fill="#ffb300"></path></g></g>
+      <g transform="translate(246 60) scale(1.2)"><g style="transform-box:fill-box;transform-origin:50% 100%;animation:npFlick .6s ease-in-out .2s infinite alternate"><path d="M0 0 C-14 -6 -16 -22 -6 -36 C-5 -24 3 -24 2 -44 C16 -30 18 -8 0 0Z" fill="#ff5a00"></path><path d="M0 0 C-8 -3 -8 -14 -3 -20 C-2 -13 3 -13 3 -24 C10 -14 10 -3 0 0Z" fill="#ffe066"></path></g></g>
+      <g transform="translate(284 60) scale(1)"><g style="transform-box:fill-box;transform-origin:50% 100%;animation:npFlick .75s ease-in-out .1s infinite alternate"><path d="M0 0 C-14 -6 -16 -22 -6 -36 C-5 -24 3 -24 2 -44 C16 -30 18 -8 0 0Z" fill="#ff3d00"></path><path d="M0 0 C-8 -3 -8 -14 -3 -20 C-2 -13 3 -13 3 -24 C10 -14 10 -3 0 0Z" fill="#ffc233"></path></g></g>
+      <g transform="translate(316 60) scale(0.8)"><g style="transform-box:fill-box;transform-origin:50% 100%;animation:npFlick .65s ease-in-out .3s infinite alternate"><path d="M0 0 C-14 -6 -16 -22 -6 -36 C-5 -24 3 -24 2 -44 C16 -30 18 -8 0 0Z" fill="#ff5a00"></path><path d="M0 0 C-8 -3 -8 -14 -3 -20 C-2 -13 3 -13 3 -24 C10 -14 10 -3 0 0Z" fill="#ffd23f"></path></g></g>
+      <g transform="translate(230 40)"><circle r="1.8" fill="#ffb300" style="animation:npRise 2s ease-out infinite"></circle></g>
+      <g transform="translate(266 44)"><circle r="1.4" fill="#ffe066" style="animation:npRise 2s ease-out .7s infinite"></circle></g>
+      <g transform="translate(298 42)"><circle r="1.6" fill="#ff7a00" style="animation:npRise 2s ease-out 1.3s infinite"></circle></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isOcean }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">
+      <g style="animation:npWave 6s linear infinite"><path d="M120 40 q20 -10 40 0 t40 0 t40 0 t40 0 t40 0 t40 0 V60 H120 Z" fill="rgba(57,208,232,0.35)"></path></g>
+      <g style="animation:npWave 4s linear infinite"><path d="M120 46 q20 -8 40 0 t40 0 t40 0 t40 0 t40 0 t40 0 V60 H120 Z" fill="rgba(26,167,214,0.55)"></path><path d="M120 46 q20 -8 40 0 t40 0 t40 0 t40 0 t40 0 t40 0" fill="none" stroke="rgba(224,253,255,0.8)" stroke-width="1.4"></path></g>
+      <g transform="translate(270 36)"><circle r="4" fill="rgba(255,255,255,0.2)" stroke="#bff6ff" stroke-width="1.3" style="animation:npRise 3s ease-out infinite"></circle></g>
+      <g transform="translate(300 40)"><circle r="2.6" fill="rgba(255,255,255,0.2)" stroke="#bff6ff" stroke-width="1.2" style="animation:npRise 3s ease-out 1s infinite"></circle></g>
+      <g transform="translate(236 42)"><circle r="2" fill="rgba(255,255,255,0.3)" stroke="#bff6ff" stroke-width="1" style="animation:npRise 3s ease-out 2s infinite"></circle></g>
+      <g transform="translate(286 16)"><g style="animation:npDrift 3s ease-in-out infinite"><path d="M0 0 C6 -6 16 -6 20 0 C16 6 6 6 0 0Z" fill="#ffb347"></path><path d="M20 0 L28 -6 L28 6 Z" fill="#ff8a1f"></path><circle cx="5" cy="-1" r="1.4" fill="#021a2b"></circle></g></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isBunny }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">
+      <g transform="translate(212 30)"><path d="M0 4 C-5 0 -8 -3 -8 -7 C-8 -11 -3 -12 0 -8 C3 -12 8 -11 8 -7 C8 -3 5 0 0 4Z" fill="#ff8fb3" style="animation:npRise 3s ease-out infinite"></path></g>
+      <g transform="translate(246 40)"><path d="M0 3 C-4 0 -6 -2 -6 -5 C-6 -8 -2 -9 0 -6 C2 -9 6 -8 6 -5 C6 -2 4 0 0 3Z" fill="#ffb3c9" style="animation:npRise 3s ease-out 1.2s infinite"></path></g>
+      <g transform="translate(286 60)">
+        <g transform="translate(-10 -30) rotate(-12)"><ellipse cx="0" cy="-12" rx="7" ry="18" fill="#ffffff" stroke="#e2cdd5" stroke-width="1.8"></ellipse><ellipse cx="0" cy="-11" rx="3.4" ry="13" fill="#ffbfd2"></ellipse></g>
+        <g transform="translate(10 -30) rotate(14)"><g style="transform-box:fill-box;transform-origin:50% 100%;animation:npWag 3.2s ease-in-out infinite"><ellipse cx="0" cy="-12" rx="7" ry="18" fill="#ffffff" stroke="#e2cdd5" stroke-width="1.8"></ellipse><ellipse cx="0" cy="-11" rx="3.4" ry="13" fill="#ffbfd2"></ellipse></g></g>
+        <ellipse cx="0" cy="-6" rx="24" ry="22" fill="#ffffff" stroke="#e2cdd5" stroke-width="1.8"></ellipse>
+        <g style="transform-box:fill-box;transform-origin:center;animation:npBlink 3.6s ease-in-out infinite"><circle cx="-8" cy="-12" r="2.4" fill="#4a2a35"></circle><circle cx="8" cy="-12" r="2.4" fill="#4a2a35"></circle></g>
+        <ellipse cx="-14" cy="-5" rx="4" ry="2.4" fill="#ffc2d4"></ellipse><ellipse cx="14" cy="-5" rx="4" ry="2.4" fill="#ffc2d4"></ellipse>
+        <path d="M-2 -8 L2 -8 L0 -6 Z" fill="#ff8fb3"></path>
+      </g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isHalo }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">
+      <g transform="translate(300 -6)"><g style="transform-box:fill-box;transform-origin:center;animation:npSpin 24s linear infinite"><path d="M0 0 L-90 30 L-90 40 Z M0 0 L-60 70 L-50 72 Z M0 0 L-110 0 L-110 10 Z M0 0 L-20 80 L-10 80 Z" fill="rgba(255,213,74,0.22)"></path></g></g>
+      <g style="animation:npDrift 6s ease-in-out infinite"><path d="M196 46 C196 38 206 36 210 40 C212 32 226 32 228 40 C234 38 240 42 238 48 Z" fill="#ffffff" stroke="#efe6cf" stroke-width="1.2"></path></g>
+      <g style="animation:npDrift 7s ease-in-out 1s infinite reverse"><path d="M262 30 C262 24 270 22 273 25 C275 19 286 19 288 25 C292 24 297 27 295 31 Z" fill="#ffffff" stroke="#efe6cf" stroke-width="1.2"></path></g>
+      <g transform="translate(296 42)"><g style="animation:npFloat 2.4s ease-in-out infinite;filter:drop-shadow(0 0 3px rgba(255,205,60,0.9))"><ellipse rx="16" ry="4.5" fill="none" stroke="#f5c21b" stroke-width="3.6"></ellipse><ellipse rx="16" ry="4.5" fill="none" stroke="#fff6c2" stroke-width="1.2"></ellipse></g></g>
+      <g transform="translate(246 12)"><path d="M0 -5 C.7 -1.3 1.3 -.7 5 0 C1.3 .7 .7 1.3 0 5 C-.7 1.3 -1.3 .7 -5 0 C-1.3 -.7 -.7 -1.3 0 -5Z" fill="#f5c21b" style="transform-box:fill-box;transform-origin:center;animation:npTw 2s ease-in-out infinite"></path></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isDevil }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">
+      <ellipse cx="290" cy="60" rx="70" ry="22" fill="rgba(255,40,60,0.28)" style="filter:blur(6px)"></ellipse>
+      <g transform="translate(236 18)"><g style="animation:npFloat 2s ease-in-out infinite">
+        <g style="transform-box:fill-box;transform-origin:100% 50%;animation:npFlap .3s ease-in-out infinite alternate"><path d="M0 0 C-4 -6 -12 -8 -18 -4 C-14 -2 -14 2 -16 4 C-12 2 -8 4 -8 6 C-6 2 -3 2 0 2Z" fill="#0a0002"></path></g>
+        <g style="transform-box:fill-box;transform-origin:0% 50%;animation:npFlap .3s ease-in-out infinite alternate"><path d="M0 0 C4 -6 12 -8 18 -4 C14 -2 14 2 16 4 C12 2 8 4 8 6 C6 2 3 2 0 2Z" fill="#0a0002"></path></g>
+        <ellipse cx="0" cy="1" rx="3" ry="4" fill="#0a0002"></ellipse><circle cx="-1.2" cy="0" r="0.8" fill="#ff5c5c"></circle><circle cx="1.2" cy="0" r="0.8" fill="#ff5c5c"></circle>
+      </g></g>
+      <g transform="translate(286 34) scale(0.7)"><g style="animation:npFloat 2.4s ease-in-out .6s infinite">
+        <g style="transform-box:fill-box;transform-origin:100% 50%;animation:npFlap .34s ease-in-out infinite alternate"><path d="M0 0 C-4 -6 -12 -8 -18 -4 C-14 -2 -14 2 -16 4 C-12 2 -8 4 -8 6 C-6 2 -3 2 0 2Z" fill="#0a0002"></path></g>
+        <g style="transform-box:fill-box;transform-origin:0% 50%;animation:npFlap .34s ease-in-out infinite alternate"><path d="M0 0 C4 -6 12 -8 18 -4 C14 -2 14 2 16 4 C12 2 8 4 8 6 C6 2 3 2 0 2Z" fill="#0a0002"></path></g>
+        <ellipse cx="0" cy="1" rx="3" ry="4" fill="#0a0002"></ellipse>
+      </g></g>
+      <g transform="translate(306 20)"><path d="M-8 6 C-12 -2 -10 -10 -2 -14 C-4 -6 0 -2 4 2 Z" fill="#e0142f" stroke="#4a000c" stroke-width="1.6" stroke-linejoin="round"></path></g>
+      <g transform="translate(262 50)"><circle r="1.6" fill="#ff5c5c" style="animation:npRise 2.2s ease-out infinite"></circle></g>
+      <g transform="translate(300 52)"><circle r="1.3" fill="#ffb3b3" style="animation:npRise 2.2s ease-out 1s infinite"></circle></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isButterfly }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">
+      <g fill="#c8b6ff" opacity="0.6"><circle cx="190" cy="44" r="2"></circle><circle cx="222" cy="12" r="1.6"></circle><circle cx="312" cy="40" r="2"></circle></g>
+      <g transform="translate(262 22) rotate(14)"><g style="animation:npFloat 2.4s ease-in-out infinite">
+        <g style="transform-box:fill-box;transform-origin:100% 50%;animation:npFlap .45s ease-in-out infinite alternate"><path d="M0 0 C-6 -13 -19 -13 -17 -2 C-16 4 -6 4 0 0Z" fill="#b58cff" stroke="#4b2a8a" stroke-width="1.3"></path><path d="M0 0 C-4 8 -13 12 -13 5 C-13 2 -6 1 0 0Z" fill="#8fd3ff" stroke="#4b2a8a" stroke-width="1.3"></path><circle cx="-10" cy="-5" r="2" fill="#ffffff" opacity="0.85"></circle></g>
+        <g style="transform-box:fill-box;transform-origin:0% 50%;animation:npFlap .45s ease-in-out infinite alternate"><path d="M0 0 C6 -13 19 -13 17 -2 C16 4 6 4 0 0Z" fill="#b58cff" stroke="#4b2a8a" stroke-width="1.3"></path><path d="M0 0 C4 8 13 12 13 5 C13 2 6 1 0 0Z" fill="#8fd3ff" stroke="#4b2a8a" stroke-width="1.3"></path><circle cx="10" cy="-5" r="2" fill="#ffffff" opacity="0.85"></circle></g>
+        <ellipse rx="1.5" ry="7" fill="#4b2a8a"></ellipse>
+      </g></g>
+      <g transform="translate(302 38) rotate(-16) scale(0.62)"><g style="animation:npFloat 2.8s ease-in-out .5s infinite">
+        <g style="transform-box:fill-box;transform-origin:100% 50%;animation:npFlap .5s ease-in-out infinite alternate"><path d="M0 0 C-6 -13 -19 -13 -17 -2 C-16 4 -6 4 0 0Z" fill="#ffb3e6" stroke="#4b2a8a" stroke-width="1.6"></path><path d="M0 0 C-4 8 -13 12 -13 5 C-13 2 -6 1 0 0Z" fill="#c8b6ff" stroke="#4b2a8a" stroke-width="1.6"></path></g>
+        <g style="transform-box:fill-box;transform-origin:0% 50%;animation:npFlap .5s ease-in-out infinite alternate"><path d="M0 0 C6 -13 19 -13 17 -2 C16 4 6 4 0 0Z" fill="#ffb3e6" stroke="#4b2a8a" stroke-width="1.6"></path><path d="M0 0 C4 8 13 12 13 5 C13 2 6 1 0 0Z" fill="#c8b6ff" stroke="#4b2a8a" stroke-width="1.6"></path></g>
+        <ellipse rx="1.8" ry="7" fill="#4b2a8a"></ellipse>
+      </g></g>
+      <g transform="translate(214 52)"><path d="M0 0 V-12" stroke="#7fbf7f" stroke-width="1.6"></path><circle cx="0" cy="-14" r="4" fill="#ffc8f0"></circle><circle cx="0" cy="-14" r="1.6" fill="#ffd84d"></circle></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ hasShine }}" hint-placeholder-val="{{ true }}">
+    <div style="position:absolute;top:0;bottom:0;left:0;width:30%;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,0.22),rgba(255,255,255,0));animation:npShine 5s ease-in-out infinite;pointer-events:none"></div>
+  </sc-if>
+
+  <div style="position:relative;z-index:1;height:100%;display:flex;align-items:center;gap:10px;padding:0 14px">
+    <sc-if value="{{ showAvatar }}" hint-placeholder-val="{{ true }}">
+      <span style="width:34px;height:34px;flex:none;margin:0 2px"><dc-import name="Avatar" frame="{{ frame }}" photo="{{ photo }}" hint-size="34px,34px" style="display:block;width:34px;height:34px"></dc-import></span>
+    </sc-if>
+    <span style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <span style="font-size:16px;line-height:22px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ fg }};text-shadow:{{ shadow }}">{{ name }}</span>
+      <sc-if value="{{ hasSub }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;line-height:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ subFg }};text-shadow:{{ shadow }}">{{ sub }}</span></sc-if>
+    </span>
+  </div>
+  <div style="position:absolute;inset:0;border-radius:14px;pointer-events:none;z-index:2;box-shadow:{{ edge }}"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:340,&quot;height&quot;:56},&quot;kind&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;neon&quot;,&quot;crown&quot;,&quot;sakura&quot;,&quot;cat&quot;,&quot;stars&quot;,&quot;flame&quot;,&quot;ocean&quot;,&quot;bunny&quot;,&quot;halo&quot;,&quot;devil&quot;,&quot;butterfly&quot;],&quot;default&quot;:&quot;crown&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;person&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;이지우&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;sub&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;1위 · +1,628&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;frame&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;neon&quot;,&quot;crown&quot;,&quot;sakura&quot;,&quot;cat&quot;,&quot;stars&quot;,&quot;flame&quot;,&quot;ocean&quot;,&quot;bunny&quot;,&quot;halo&quot;,&quot;devil&quot;,&quot;butterfly&quot;],&quot;default&quot;:&quot;crown&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;photo&quot;:{&quot;editor&quot;:null,&quot;default&quot;:&quot;none&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;showAvatar&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const PLATES={
+  none:{bg:'#f2f4f6',fg:'#191f28',sub:'#6b7684',dark:false},
+  neon:{bg:'linear-gradient(90deg,#07081a 0%,#0d0f2b 45%,#1c0b3d 100%)',fg:'#ffffff',sub:'#9fe9ff',dark:true},
+  crown:{bg:'linear-gradient(90deg,#2a0612 0%,#5c0f2a 55%,#8a1c3c 100%)',fg:'#ffe7a3',sub:'#f5c88a',dark:true},
+  sakura:{bg:'linear-gradient(90deg,#fff3f7 0%,#ffe0ea 55%,#ffc9da 100%)',fg:'#7a1f3d',sub:'#b0506f',dark:false},
+  cat:{bg:'linear-gradient(90deg,#1f2024 0%,#2b2d31 55%,#3c3f47 100%)',fg:'#ffffff',sub:'#c7c9d1',dark:true},
+  stars:{bg:'linear-gradient(90deg,#0b0826 0%,#1d1552 55%,#2d1f7a 100%)',fg:'#ffffff',sub:'#c9c0ff',dark:true},
+  flame:{bg:'linear-gradient(90deg,#140400 0%,#3a0c00 50%,#6a1800 100%)',fg:'#ffe2c2',sub:'#ffb37a',dark:true},
+  ocean:{bg:'linear-gradient(90deg,#021a2b 0%,#064b6b 60%,#0b7fa0 100%)',fg:'#ffffff',sub:'#bff6ff',dark:true},
+  bunny:{bg:'linear-gradient(90deg,#fff8fa 0%,#ffeaf1 55%,#ffdbe7 100%)',fg:'#6b2a45',sub:'#a8577a',dark:false},
+  halo:{bg:'linear-gradient(90deg,#fffdf6 0%,#fff5d9 60%,#ffeab0 100%)',fg:'#5b4510',sub:'#8a6d1f',dark:false},
+  devil:{bg:'linear-gradient(90deg,#120002 0%,#3a0008 60%,#6b0012 100%)',fg:'#ffd1d1',sub:'#ff8a8a',dark:true},
+  butterfly:{bg:'linear-gradient(90deg,#f6f2ff 0%,#e8ecff 60%,#dff5ff 100%)',fg:'#3b2a78',sub:'#6a58b0',dark:false}
+};
+class Component extends DCLogic {
+  renderVals(){
+    const k=PLATES[this.props.kind]?this.props.kind:'none',p=PLATES[k];
+    const flags={};Object.keys(PLATES).forEach(x=>{flags['is'+x[0].toUpperCase()+x.slice(1)]=k===x;});
+    return {...flags,bg:p.bg,fg:p.fg,subFg:p.sub,name:this.props.person||'',sub:this.props.sub||'',hasSub:!!this.props.sub,
+      shadow:p.dark?'0 1px 2px rgba(0,0,0,0.45)':'none',hasShine:k!=='none',
+      edge:p.dark?'inset 0 0 0 1px rgba(255,255,255,0.12),inset 0 1px 0 rgba(255,255,255,0.14)':'inset 0 0 0 1px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.8)',
+      showAvatar:this.props.showAvatar!==false,frame:this.props.frame||'none',photo:this.props.photo||'none'};
+  }
+}
+</script>
+</body>
+</html>

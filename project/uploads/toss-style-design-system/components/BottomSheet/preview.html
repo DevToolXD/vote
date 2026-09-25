@@ -1,0 +1,18 @@
+<!-- @dsCard group="Overlays" height=440 subtitle="떠 있는 카드 · 손잡이 · 목록 선택" -->
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>BottomSheet</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var T = window.TossStyle, h = React.createElement;
+  var A = T.Avatar;
+  ReactDOM.createRoot(document.getElementById('root')).render(h('div', null,
+    h(T.Top, { title: '보낼 계좌를 골라주세요' }),
+    h(T.BottomSheet, { open: true, title: '어느 계좌에서 보낼까요?', onClose: function () {}, cta: h(T.Button, { display: 'block' }, '확인') },
+      h(T.ListRow, { left: h(A, null, '생'), title: '생활비 통장', description: '1,250,000원', onClick: function () {} }),
+      h(T.ListRow, { left: h(A, null, '월'), title: '월급 통장', description: '3,480,000원', onClick: function () {} }))
+  ));
+</script>
+</body>
+</html>

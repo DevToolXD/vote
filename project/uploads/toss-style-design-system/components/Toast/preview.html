@@ -1,0 +1,16 @@
+<!-- @dsCard group="Feedback" height=210 subtitle="한 줄 알약 · 아이콘 · 여러 줄" -->
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>Toast</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var T = window.TossStyle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h('div', { className: 'ts-stack', style: { gap: '12px', padding: '16px 18px', alignItems: 'flex-start', background: 'var(--greyBackground)' } },
+    h(T.Toast, { open: true, inline: true, text: '계좌번호를 복사했어요' }),
+    h(T.Toast, { open: true, inline: true, icon: h('span', { style: { fontSize: '20px', lineHeight: '24px' } }, '\u2705'), text: '자동이체를 등록했어요' }),
+    h(T.Toast, { open: true, inline: true, multiline: true, text: '영업일 오전 9시에 보내요. 그 전에는 언제든 취소할 수 있어요' })
+  ));
+</script>
+</body>
+</html>

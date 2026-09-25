@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@keyframes avSpin{to{transform:rotate(360deg)}}
+@keyframes avTw{0%,100%{opacity:.2;transform:scale(.45) rotate(0deg)}50%{opacity:1;transform:scale(1) rotate(45deg)}}
+@keyframes avSway{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(10deg)}}
+@keyframes avEar{0%,84%,100%{transform:rotate(0deg)}88%{transform:rotate(-16deg)}92%{transform:rotate(6deg)}96%{transform:rotate(-4deg)}}
+@keyframes avBob{0%,100%{transform:translateY(0) rotate(18deg)}50%{transform:translateY(-3px) rotate(14deg)}}
+@keyframes avFlick{0%{transform:scaleY(0.8) skewX(-5deg)}100%{transform:scaleY(1.14) skewX(5deg)}}
+@keyframes avRise{0%{transform:translateY(0);opacity:0}20%{opacity:1}100%{transform:translateY(-26px);opacity:0}}
+@keyframes avFlap{0%{transform:scaleX(1)}100%{transform:scaleX(0.28)}}
+@keyframes avFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes avWag{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(12deg)}}
+@keyframes avFlop{0%,68%,100%{transform:rotate(0deg)}78%{transform:rotate(24deg)}88%{transform:rotate(14deg)}}
+@keyframes avWing{0%,100%{transform:rotate(0deg)}50%{transform:rotate(-12deg)}}
+@keyframes avFall{0%{transform:translate(0,0) rotate(0deg);opacity:0}15%{opacity:1}100%{transform:translate(-14px,34px) rotate(200deg);opacity:0}}
+</style>
+</helmet>
+<div style="position:relative;width:100%;height:100%;pointer-events:none">
+
+  <sc-if value="{{ isNeon }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:-8%;filter:blur(3px);opacity:0.85">
+      <div style="position:absolute;inset:0;border-radius:50%;background:conic-gradient(#00e5ff,#7c4dff,#ff3dcb,#ffb300,#00e5ff);-webkit-mask:radial-gradient(closest-side,transparent 84%,#000 86%,#000 99%,transparent 100%);mask:radial-gradient(closest-side,transparent 84%,#000 86%,#000 99%,transparent 100%);animation:avSpin 3s linear infinite"></div>
+    </div>
+    <div style="position:absolute;inset:-8%;border-radius:50%;background:conic-gradient(#00e5ff,#7c4dff,#ff3dcb,#ffb300,#00e5ff);-webkit-mask:radial-gradient(closest-side,transparent 85%,#000 86.5%,#000 98.5%,transparent 100%);mask:radial-gradient(closest-side,transparent 85%,#000 86.5%,#000 98.5%,transparent 100%);animation:avSpin 3s linear infinite"></div>
+  </sc-if>
+
+  <sc-if value="{{ isCrown }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:-8%;border-radius:50%;background:conic-gradient(from 200deg,#fff6c9,#f5b400,#b37c00,#ffd84d,#fff6c9,#e0a100,#fff6c9);-webkit-mask:radial-gradient(closest-side,transparent 85%,#000 86.5%,#000 98.5%,transparent 100%);mask:radial-gradient(closest-side,transparent 85%,#000 86.5%,#000 98.5%,transparent 100%);animation:avSpin 8s linear infinite"></div>
+  </sc-if>
+
+  <sc-if value="{{ isSakura }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:-8%;border-radius:50%;background:conic-gradient(#ffd6e4,#ff8fb3,#ffc2d6,#ff6f9c,#ffd6e4);-webkit-mask:radial-gradient(closest-side,transparent 87%,#000 88.5%,#000 98.5%,transparent 100%);mask:radial-gradient(closest-side,transparent 87%,#000 88.5%,#000 98.5%,transparent 100%)"></div>
+  </sc-if>
+
+  <sc-if value="{{ isStars }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:-8%;border-radius:50%;background:conic-gradient(#1b1446,#4b3ab8,#8f7bff,#2a1f73,#1b1446);-webkit-mask:radial-gradient(closest-side,transparent 85%,#000 86.5%,#000 98.5%,transparent 100%);mask:radial-gradient(closest-side,transparent 85%,#000 86.5%,#000 98.5%,transparent 100%);animation:avSpin 12s linear infinite"></div>
+  </sc-if>
+
+  <sc-if value="{{ isCat }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g>
+        <path d="M17 50 C12 30 16 12 26 4 C38 8 50 16 58 26 Z" fill="#2b2d31" stroke="#2b2d31" stroke-width="3" stroke-linejoin="round"></path>
+        <path d="M25 38 C23 26 25 17 29 12 C37 16 44 21 49 27 Z" fill="#ff9ec7"></path>
+      </g>
+      <g style="transform-box:fill-box;transform-origin:50% 100%;animation:avEar 3.6s ease-in-out infinite">
+        <path d="M103 50 C108 30 104 12 94 4 C82 8 70 16 62 26 Z" fill="#2b2d31" stroke="#2b2d31" stroke-width="3" stroke-linejoin="round"></path>
+        <path d="M95 38 C97 26 95 17 91 12 C83 16 76 21 71 27 Z" fill="#ff9ec7"></path>
+      </g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isFlame }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:-8%;filter:blur(3px);opacity:0.8"><div style="position:absolute;inset:0;border-radius:50%;background:conic-gradient(#ffe066,#ff7a00,#ff2d00,#ff9a00,#ffe066);-webkit-mask:radial-gradient(closest-side,transparent 84%,#000 86%,#000 99%,transparent 100%);mask:radial-gradient(closest-side,transparent 84%,#000 86%,#000 99%,transparent 100%);animation:avSpin 4s linear infinite"></div></div>
+    <div style="position:absolute;inset:-8%;border-radius:50%;background:conic-gradient(#ffe066,#ff7a00,#ff2d00,#ff9a00,#ffe066);-webkit-mask:radial-gradient(closest-side,transparent 85%,#000 86.5%,#000 98.5%,transparent 100%);mask:radial-gradient(closest-side,transparent 85%,#000 86.5%,#000 98.5%,transparent 100%);animation:avSpin 4s linear infinite"></div>
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g transform="rotate(-70 60 60) translate(60 11) scale(0.7)"><g style="transform-box:fill-box;transform-origin:50% 100%;animation:avFlick 0.7s ease-in-out infinite alternate"><path d="M0 4 C-9 -1 -10 -11 -4 -20 C-3 -13 2 -13 1 -25 C10 -16 11 -4 0 4Z" fill="#ff5a00"></path><path d="M0 4 C-5 1 -5 -6 -2 -11 C-1 -7 2 -7 2 -13 C6 -8 6 -1 0 4Z" fill="#ffd23f"></path></g></g>
+      <g transform="rotate(-38 60 60) translate(60 10) scale(0.9)"><g style="transform-box:fill-box;transform-origin:50% 100%;animation:avFlick 0.8s ease-in-out 0.2s infinite alternate"><path d="M0 4 C-9 -1 -10 -11 -4 -20 C-3 -13 2 -13 1 -25 C10 -16 11 -4 0 4Z" fill="#ff3d00"></path><path d="M0 4 C-5 1 -5 -6 -2 -11 C-1 -7 2 -7 2 -13 C6 -8 6 -1 0 4Z" fill="#ffb300"></path></g></g>
+      <g transform="rotate(-6 60 60) translate(60 9) scale(1.15)"><g style="transform-box:fill-box;transform-origin:50% 100%;animation:avFlick 0.65s ease-in-out 0.1s infinite alternate"><path d="M0 4 C-9 -1 -10 -11 -4 -20 C-3 -13 2 -13 1 -25 C10 -16 11 -4 0 4Z" fill="#ff5a00"></path><path d="M0 4 C-5 1 -5 -6 -2 -11 C-1 -7 2 -7 2 -13 C6 -8 6 -1 0 4Z" fill="#ffe066"></path></g></g>
+      <g transform="rotate(28 60 60) translate(60 10) scale(0.95)"><g style="transform-box:fill-box;transform-origin:50% 100%;animation:avFlick 0.75s ease-in-out 0.35s infinite alternate"><path d="M0 4 C-9 -1 -10 -11 -4 -20 C-3 -13 2 -13 1 -25 C10 -16 11 -4 0 4Z" fill="#ff3d00"></path><path d="M0 4 C-5 1 -5 -6 -2 -11 C-1 -7 2 -7 2 -13 C6 -8 6 -1 0 4Z" fill="#ffc233"></path></g></g>
+      <g transform="rotate(62 60 60) translate(60 11) scale(0.7)"><g style="transform-box:fill-box;transform-origin:50% 100%;animation:avFlick 0.7s ease-in-out 0.15s infinite alternate"><path d="M0 4 C-9 -1 -10 -11 -4 -20 C-3 -13 2 -13 1 -25 C10 -16 11 -4 0 4Z" fill="#ff5a00"></path><path d="M0 4 C-5 1 -5 -6 -2 -11 C-1 -7 2 -7 2 -13 C6 -8 6 -1 0 4Z" fill="#ffd23f"></path></g></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isOcean }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:-8%;border-radius:50%;background:conic-gradient(#8ff4ff,#1aa7d6,#0b5f8a,#39d0e8,#e0fdff,#8ff4ff);-webkit-mask:radial-gradient(closest-side,transparent 85%,#000 86.5%,#000 98.5%,transparent 100%);mask:radial-gradient(closest-side,transparent 85%,#000 86.5%,#000 98.5%,transparent 100%);animation:avSpin 9s linear infinite"></div>
+  </sc-if>
+
+  <sc-if value="{{ isBunny }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:-6%;border-radius:50%;background:conic-gradient(#ffe3ec,#ffc2d4,#fff,#ffb3c9,#ffe3ec);-webkit-mask:radial-gradient(closest-side,transparent 88%,#000 89.5%,#000 98.5%,transparent 100%);mask:radial-gradient(closest-side,transparent 88%,#000 89.5%,#000 98.5%,transparent 100%)"></div>
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g transform="translate(40 26) rotate(-16)"><ellipse cx="0" cy="-16" rx="10" ry="25" fill="#ffffff" stroke="#e2cdd5" stroke-width="2.2"></ellipse><ellipse cx="0" cy="-14" rx="5" ry="18" fill="#ffbfd2"></ellipse></g>
+      <g transform="translate(80 26) rotate(16)"><g style="transform-box:fill-box;transform-origin:50% 100%;animation:avFlop 4s ease-in-out infinite"><ellipse cx="0" cy="-16" rx="10" ry="25" fill="#ffffff" stroke="#e2cdd5" stroke-width="2.2"></ellipse><ellipse cx="0" cy="-14" rx="5" ry="18" fill="#ffbfd2"></ellipse></g></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isHalo }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:-6%;border-radius:50%;background:conic-gradient(#fff8d6,#ffd54a,#fffdf0,#f2c230,#fff8d6);-webkit-mask:radial-gradient(closest-side,transparent 89%,#000 90.5%,#000 98.5%,transparent 100%);mask:radial-gradient(closest-side,transparent 89%,#000 90.5%,#000 98.5%,transparent 100%)"></div>
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g transform="translate(18 66)"><g style="transform-box:fill-box;transform-origin:100% 80%;animation:avWing 2.6s ease-in-out infinite"><path d="M4 0 C-8 -2 -18 -12 -20 -28 C-12 -22 -6 -22 0 -22 C-8 -18 -10 -12 -10 -8 C-4 -10 0 -10 4 -8 C-2 -6 -4 -4 -4 -2Z" fill="#ffffff" stroke="#d5dbe6" stroke-width="1.8" stroke-linejoin="round"></path></g></g>
+      <g transform="translate(102 66) scale(-1 1)"><g style="transform-box:fill-box;transform-origin:100% 80%;animation:avWing 2.6s ease-in-out infinite"><path d="M4 0 C-8 -2 -18 -12 -20 -28 C-12 -22 -6 -22 0 -22 C-8 -18 -10 -12 -10 -8 C-4 -10 0 -10 4 -8 C-2 -6 -4 -4 -4 -2Z" fill="#ffffff" stroke="#d5dbe6" stroke-width="1.8" stroke-linejoin="round"></path></g></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isDevil }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:-8%;border-radius:50%;background:conic-gradient(#ff3b3b,#7a0010,#ff6b6b,#3a0008,#ff3b3b);-webkit-mask:radial-gradient(closest-side,transparent 85%,#000 86.5%,#000 98.5%,transparent 100%);mask:radial-gradient(closest-side,transparent 85%,#000 86.5%,#000 98.5%,transparent 100%);animation:avSpin 6s linear infinite reverse"></div>
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g transform="translate(30 24)"><path d="M2 12 C-6 2 -4 -12 8 -22 C4 -10 10 -2 18 4 Z" fill="#e0142f" stroke="#4a000c" stroke-width="2.4" stroke-linejoin="round"></path><path d="M3 4 C0 -3 1 -10 6 -15" stroke="#ff8a8a" stroke-width="1.6" fill="none" stroke-linecap="round"></path></g>
+      <g transform="translate(90 24) scale(-1 1)"><path d="M2 12 C-6 2 -4 -12 8 -22 C4 -10 10 -2 18 4 Z" fill="#e0142f" stroke="#4a000c" stroke-width="2.4" stroke-linejoin="round"></path><path d="M3 4 C0 -3 1 -10 6 -15" stroke="#ff8a8a" stroke-width="1.6" fill="none" stroke-linecap="round"></path></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isButterfly }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:-8%;border-radius:50%;background:conic-gradient(#c8b6ff,#8fd3ff,#ffc8f0,#b8a4ff,#c8b6ff);-webkit-mask:radial-gradient(closest-side,transparent 86%,#000 87.5%,#000 98.5%,transparent 100%);mask:radial-gradient(closest-side,transparent 86%,#000 87.5%,#000 98.5%,transparent 100%);animation:avSpin 10s linear infinite"></div>
+  </sc-if>
+
+  <div style="position:absolute;inset:0;border-radius:50%;overflow:hidden;background:#dbdbdb;box-shadow:{{ innerRing }}">
+    <sc-if value="{{ hasPhoto }}" hint-placeholder-val="{{ false }}"><div style="width:100%;height:100%;background-size:cover;background-position:center;background-image:{{ photo }}"></div></sc-if>
+    <sc-if value="{{ noPhoto }}" hint-placeholder-val="{{ true }}"><svg viewBox="0 0 24 24" width="100%" height="100%" style="display:block"><circle cx="12" cy="9.6" r="4.3" fill="#ffffff"></circle><path d="M3.2 23c.9-4.9 4.5-7.4 8.8-7.4s7.9 2.5 8.8 7.4z" fill="#ffffff"></path></svg></sc-if>
+  </div>
+
+  <sc-if value="{{ isCrown }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g transform="translate(88 14)">
+        <g style="transform-box:fill-box;transform-origin:center;animation:avBob 2.4s ease-in-out infinite">
+          <path d="M-18 9 L-21 -10 L-9 -1 L0 -16 L9 -1 L21 -10 L18 9 Z" fill="#ffc83d" stroke="#7a4e00" stroke-width="2.4" stroke-linejoin="round"></path>
+          <path d="M-14 4 L-16 -4 L-8 2 Z M0 -9 L-4 1 L4 1 Z" fill="#fff1b8"></path>
+          <rect x="-18.5" y="7" width="37" height="7" rx="2.5" fill="#f5a800" stroke="#7a4e00" stroke-width="2.4"></rect>
+          <circle cx="0" cy="-16" r="3.2" fill="#ff4d6d" stroke="#7a4e00" stroke-width="1.8"></circle>
+          <circle cx="-21" cy="-10" r="2.6" fill="#4dd2ff" stroke="#7a4e00" stroke-width="1.6"></circle>
+          <circle cx="21" cy="-10" r="2.6" fill="#4dd2ff" stroke="#7a4e00" stroke-width="1.6"></circle>
+          <circle cx="0" cy="10.5" r="2.4" fill="#ff4d6d"></circle>
+        </g>
+      </g>
+      <g transform="translate(20 22)"><path d="M0 -6 C.8 -1.6 1.6 -.8 6 0 C1.6 .8 .8 1.6 0 6 C-.8 1.6 -1.6 .8 -6 0 C-1.6 -.8 -.8 -1.6 0 -6Z" fill="#ffd84d" style="transform-box:fill-box;transform-origin:center;animation:avTw 1.8s ease-in-out infinite"></path></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isSakura }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g transform="translate(20 98)">
+        <g style="transform-box:fill-box;transform-origin:center;animation:avSway 4s ease-in-out infinite">
+          <ellipse cx="0" cy="-8" rx="6" ry="9" fill="#ffb7cf" stroke="#ff6f9c" stroke-width="1.4"></ellipse>
+          <ellipse cx="0" cy="-8" rx="6" ry="9" fill="#ffb7cf" stroke="#ff6f9c" stroke-width="1.4" transform="rotate(72)"></ellipse>
+          <ellipse cx="0" cy="-8" rx="6" ry="9" fill="#ffb7cf" stroke="#ff6f9c" stroke-width="1.4" transform="rotate(144)"></ellipse>
+          <ellipse cx="0" cy="-8" rx="6" ry="9" fill="#ffb7cf" stroke="#ff6f9c" stroke-width="1.4" transform="rotate(216)"></ellipse>
+          <ellipse cx="0" cy="-8" rx="6" ry="9" fill="#ffb7cf" stroke="#ff6f9c" stroke-width="1.4" transform="rotate(288)"></ellipse>
+          <circle r="3.6" fill="#ff5c8a"></circle>
+        </g>
+      </g>
+      <g transform="translate(102 22) scale(0.7)">
+        <g style="transform-box:fill-box;transform-origin:center;animation:avSway 5s ease-in-out infinite reverse">
+          <ellipse cx="0" cy="-8" rx="6" ry="9" fill="#ffd1e0" stroke="#ff6f9c" stroke-width="1.6"></ellipse>
+          <ellipse cx="0" cy="-8" rx="6" ry="9" fill="#ffd1e0" stroke="#ff6f9c" stroke-width="1.6" transform="rotate(72)"></ellipse>
+          <ellipse cx="0" cy="-8" rx="6" ry="9" fill="#ffd1e0" stroke="#ff6f9c" stroke-width="1.6" transform="rotate(144)"></ellipse>
+          <ellipse cx="0" cy="-8" rx="6" ry="9" fill="#ffd1e0" stroke="#ff6f9c" stroke-width="1.6" transform="rotate(216)"></ellipse>
+          <ellipse cx="0" cy="-8" rx="6" ry="9" fill="#ffd1e0" stroke="#ff6f9c" stroke-width="1.6" transform="rotate(288)"></ellipse>
+          <circle r="3.6" fill="#ff5c8a"></circle>
+        </g>
+      </g>
+      <g transform="translate(96 40)"><ellipse rx="3" ry="4.6" fill="#ff9dbd" style="transform-box:fill-box;transform-origin:center;animation:avFall 3.2s ease-in infinite"></ellipse></g>
+      <g transform="translate(110 70)"><ellipse rx="2.4" ry="3.8" fill="#ffb7cf" style="transform-box:fill-box;transform-origin:center;animation:avFall 3.2s ease-in 1.4s infinite"></ellipse></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isStars }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g transform="translate(102 18)"><path d="M0 -10 C1.2 -2.6 2.6 -1.2 10 0 C2.6 1.2 1.2 2.6 0 10 C-1.2 2.6 -2.6 1.2 -10 0 C-2.6 -1.2 -1.2 -2.6 0 -10Z" fill="#ffe066" stroke="#2a1f73" stroke-width="1.4" style="transform-box:fill-box;transform-origin:center;animation:avTw 2.2s ease-in-out infinite"></path></g>
+      <g transform="translate(14 36)"><path d="M0 -7 C.9 -1.8 1.8 -.9 7 0 C1.8 .9 .9 1.8 0 7 C-.9 1.8 -1.8 .9 -7 0 C-1.8 -.9 -.9 -1.8 0 -7Z" fill="#b8a9ff" stroke="#2a1f73" stroke-width="1.2" style="transform-box:fill-box;transform-origin:center;animation:avTw 2.2s ease-in-out .7s infinite"></path></g>
+      <g transform="translate(106 96)"><path d="M0 -6 C.8 -1.6 1.6 -.8 6 0 C1.6 .8 .8 1.6 0 6 C-.8 1.6 -1.6 .8 -6 0 C-1.6 -.8 -.8 -1.6 0 -6Z" fill="#ffffff" stroke="#4b3ab8" stroke-width="1.2" style="transform-box:fill-box;transform-origin:center;animation:avTw 2.2s ease-in-out 1.3s infinite"></path></g>
+      <g transform="translate(22 104)"><circle r="2.4" fill="#ffe066" style="transform-box:fill-box;transform-origin:center;animation:avTw 1.6s ease-in-out .4s infinite"></circle></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isFlame }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g transform="translate(14 70)"><circle r="2.2" fill="#ffb300" style="animation:avRise 1.8s ease-out infinite"></circle></g>
+      <g transform="translate(106 64)"><circle r="1.8" fill="#ff7a00" style="animation:avRise 1.8s ease-out 0.7s infinite"></circle></g>
+      <g transform="translate(100 84)"><circle r="1.4" fill="#ffe066" style="animation:avRise 1.8s ease-out 1.2s infinite"></circle></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isOcean }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <path d="M4 96 q7 -9 14 0 t14 0 t14 0" fill="none" stroke="#1aa7d6" stroke-width="5" stroke-linecap="round"></path>
+      <path d="M6 94 q6 -7 12 0 t12 0 t12 0" fill="none" stroke="#e0fdff" stroke-width="1.8" stroke-linecap="round"></path>
+      <g transform="translate(106 86)"><circle r="5" fill="rgba(255,255,255,0.35)" stroke="#bff6ff" stroke-width="1.8" style="animation:avRise 2.6s ease-out infinite"></circle></g>
+      <g transform="translate(112 66)"><circle r="3.2" fill="rgba(255,255,255,0.35)" stroke="#bff6ff" stroke-width="1.5" style="animation:avRise 2.6s ease-out 0.9s infinite"></circle></g>
+      <g transform="translate(100 50)"><circle r="2.2" fill="rgba(255,255,255,0.5)" stroke="#bff6ff" stroke-width="1.2" style="animation:avRise 2.6s ease-out 1.6s infinite"></circle></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isBunny }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g transform="translate(92 26) rotate(20)"><path d="M0 0 L-12 -8 L-12 8 Z" fill="#ff8fb3" stroke="#c2456f" stroke-width="1.8" stroke-linejoin="round"></path><path d="M0 0 L12 -8 L12 8 Z" fill="#ff8fb3" stroke="#c2456f" stroke-width="1.8" stroke-linejoin="round"></path><circle r="3.6" fill="#ff5c8a" stroke="#c2456f" stroke-width="1.6"></circle></g>
+      <g transform="translate(18 96)"><path d="M0 3 C-4 0 -6 -2 -6 -5 C-6 -8 -2 -9 0 -6 C2 -9 6 -8 6 -5 C6 -2 4 0 0 3Z" fill="#ff8fb3" style="animation:avRise 2.4s ease-out infinite"></path></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isHalo }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g transform="translate(60 4)"><g style="animation:avFloat 2.4s ease-in-out infinite;filter:drop-shadow(0 0 3px rgba(255,205,60,0.9))"><ellipse rx="27" ry="7" fill="none" stroke="#f5c21b" stroke-width="5"></ellipse><ellipse rx="27" ry="7" fill="none" stroke="#fff6c2" stroke-width="1.6"></ellipse></g></g>
+      <g transform="translate(102 32)"><path d="M0 -5 C.7 -1.3 1.3 -.7 5 0 C1.3 .7 .7 1.3 0 5 C-.7 1.3 -1.3 .7 -5 0 C-1.3 -.7 -.7 -1.3 0 -5Z" fill="#ffd54a" style="transform-box:fill-box;transform-origin:center;animation:avTw 2s ease-in-out infinite"></path></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isDevil }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g transform="translate(94 96)"><g style="transform-box:fill-box;transform-origin:0% 0%;animation:avWag 1.6s ease-in-out infinite"><path d="M0 0 C10 8 20 6 18 -6" fill="none" stroke="#4a000c" stroke-width="6" stroke-linecap="round"></path><path d="M0 0 C10 8 20 6 18 -6" fill="none" stroke="#e0142f" stroke-width="3.4" stroke-linecap="round"></path><path d="M12 -6 L24 -12 L22 1 Z" fill="#e0142f" stroke="#4a000c" stroke-width="2" stroke-linejoin="round"></path></g></g>
+      <g transform="translate(14 80)"><circle r="1.8" fill="#ff5c5c" style="animation:avRise 2s ease-out infinite"></circle></g>
+    </svg>
+  </sc-if>
+
+  <sc-if value="{{ isButterfly }}" hint-placeholder-val="{{ false }}">
+    <svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">
+      <g transform="translate(100 20) rotate(20)"><g style="animation:avFloat 2.2s ease-in-out infinite">
+        <g style="transform-box:fill-box;transform-origin:100% 50%;animation:avFlap 0.42s ease-in-out infinite alternate"><path d="M0 0 C-6 -13 -19 -13 -17 -2 C-16 4 -6 4 0 0Z" fill="#b58cff" stroke="#4b2a8a" stroke-width="1.5"></path><path d="M0 0 C-4 8 -13 12 -13 5 C-13 2 -6 1 0 0Z" fill="#8fd3ff" stroke="#4b2a8a" stroke-width="1.5"></path><circle cx="-10" cy="-5" r="2" fill="#ffffff" opacity="0.8"></circle></g>
+        <g style="transform-box:fill-box;transform-origin:0% 50%;animation:avFlap 0.42s ease-in-out infinite alternate"><path d="M0 0 C6 -13 19 -13 17 -2 C16 4 6 4 0 0Z" fill="#b58cff" stroke="#4b2a8a" stroke-width="1.5"></path><path d="M0 0 C4 8 13 12 13 5 C13 2 6 1 0 0Z" fill="#8fd3ff" stroke="#4b2a8a" stroke-width="1.5"></path><circle cx="10" cy="-5" r="2" fill="#ffffff" opacity="0.8"></circle></g>
+        <ellipse rx="1.6" ry="7" fill="#4b2a8a"></ellipse>
+      </g></g>
+      <g transform="translate(18 98) rotate(-18) scale(0.62)"><g style="animation:avFloat 2.6s ease-in-out 0.5s infinite">
+        <g style="transform-box:fill-box;transform-origin:100% 50%;animation:avFlap 0.5s ease-in-out infinite alternate"><path d="M0 0 C-6 -13 -19 -13 -17 -2 C-16 4 -6 4 0 0Z" fill="#ffb3e6" stroke="#4b2a8a" stroke-width="1.8"></path><path d="M0 0 C-4 8 -13 12 -13 5 C-13 2 -6 1 0 0Z" fill="#c8b6ff" stroke="#4b2a8a" stroke-width="1.8"></path></g>
+        <g style="transform-box:fill-box;transform-origin:0% 50%;animation:avFlap 0.5s ease-in-out infinite alternate"><path d="M0 0 C6 -13 19 -13 17 -2 C16 4 6 4 0 0Z" fill="#ffb3e6" stroke="#4b2a8a" stroke-width="1.8"></path><path d="M0 0 C4 8 13 12 13 5 C13 2 6 1 0 0Z" fill="#c8b6ff" stroke="#4b2a8a" stroke-width="1.8"></path></g>
+        <ellipse rx="1.8" ry="7" fill="#4b2a8a"></ellipse>
+      </g></g>
+    </svg>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:120,&quot;height&quot;:120},&quot;frame&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;neon&quot;,&quot;crown&quot;,&quot;sakura&quot;,&quot;cat&quot;,&quot;stars&quot;],&quot;default&quot;:&quot;crown&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;photo&quot;:{&quot;editor&quot;:null,&quot;default&quot;:&quot;none&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals(){
+    const f=this.props.frame||'none',p=this.props.photo;
+    const has=!!p&&p!=='none';
+    return {isFlame:f==='flame',isOcean:f==='ocean',isBunny:f==='bunny',isHalo:f==='halo',isDevil:f==='devil',isButterfly:f==='butterfly',isNeon:f==='neon',isCrown:f==='crown',isSakura:f==='sakura',isStars:f==='stars',isCat:f==='cat',
+      hasPhoto:has,noPhoto:!has,photo:p,
+      innerRing:f==='none'||f==='cat'||f==='bunny'?'none':'0 0 0 1px rgba(255,255,255,0.9)'};
+  }
+}
+</script>
+</body>
+</html>

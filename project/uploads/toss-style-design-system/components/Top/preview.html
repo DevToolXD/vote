@@ -1,0 +1,15 @@
+<!-- @dsCard group="Layout" height=200 subtitle="질문형 화면 제목 + 부제" -->
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>Top</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var T = window.TossStyle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h('div', null,
+    h(T.Top, { title: '누구에게 보낼까요?', subtitle: '최근 보낸 사람을 먼저 보여드려요' }),
+    h(T.Top, { size: 'large', subtitleTop: '9월 자산 리포트', title: '1,250,000원' })
+  ));
+</script>
+</body>
+</html>

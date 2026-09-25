@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>토스 스타일 레퍼런스 — 예시</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components/bundle.css">
+<style>
+  body { max-width: 420px; margin: 0 auto; }
+  section { padding: 16px 0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- React 18 UMD (production build) from cdnjs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="components/bundle.js"></script>
+<script>
+  var T = window.TossStyle;
+  var h = React.createElement;
+  var A = T.Avatar;
+
+  function Demo() {
+    var toast = React.useState(false);
+    return h('div', null,
+      h(T.Top, { title: '누구에게 보낼까요?', subtitle: '최근 보낸 사람을 먼저 보여드려요' }),
+      h('div', { className: 'ts-list' },
+        h(T.ListRow, {
+          left: h(A, null, '생'), title: '생활비 통장', description: '주 계좌',
+          right: '1,250,000원', arrow: true, divider: true, onClick: function () {}
+        }),
+        h(T.ListRow, {
+          left: h(A, null, '김'), title: '김하늘', description: '9월 24일 · 50,000원 보냄',
+          right: h(T.Badge, { color: 'blue' }, '자주'), onClick: function () { toast[1](true); }
+        })
+      ),
+      h('section', { style: { padding: '0 24px' } },
+        h(T.TextField, { variant: 'hero', placeholder: '0', defaultValue: '50,000', suffix: '원', inputMode: 'numeric', 'aria-label': '보낼 금액' })
+      ),
+      h(T.BottomCTA, { fixed: false },
+        h(T.Button, { display: 'block', variant: 'weak', color: 'dark' }, '닫기'),
+        h(T.Button, { display: 'block' }, '다음')
+      ),
+      h(T.Toast, { open: toast[0], text: '계좌번호를 복사했어요', onClose: function () { toast[1](false); } })
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

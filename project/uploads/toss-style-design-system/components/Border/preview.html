@@ -1,0 +1,16 @@
+<!-- @dsCard group="Layout" height=150 subtitle="full · padding24 · height16" -->
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>Border</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var T = window.TossStyle, h = React.createElement;
+  var line = function (t) { return h('div', { style: { padding: '12px 24px', fontSize: '15px', color: 'var(--grey700)' } }, t); };
+  ReactDOM.createRoot(document.getElementById('root')).render(h('div', null,
+    line('padding24: 목록 항목 사이'), h(T.Border, { variant: 'padding24' }), line('height16: 섹션 사이'),
+    h(T.Border, { variant: 'height16' }), line('full: 전체 너비'), h(T.Border, null)
+  ));
+</script>
+</body>
+</html>

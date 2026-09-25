@@ -1,0 +1,17 @@
+<!-- @dsCard group="Inputs" height=400 subtitle="box · line · hero, 포커스 · 오류" -->
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>TextField</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var T = window.TossStyle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h('div', { className: 'ts-stack', style: { gap: '24px', padding: '16px 0' } },
+    h(T.TextField, { variant: 'hero', placeholder: '0', defaultValue: '50,000', suffix: '원', inputMode: 'numeric', 'aria-label': '보낼 금액' }),
+    h(T.TextField, { variant: 'line', label: '받는 분 이름', placeholder: '이름 입력', focused: true }),
+    h(T.TextField, { variant: 'line', label: '계좌번호', defaultValue: '1002-3', hasError: true, help: '계좌번호를 다시 확인해주세요' }),
+    h(T.TextField, { variant: 'box', label: '메모', placeholder: '받는 분에게 보일 메모' })
+  ));
+</script>
+</body>
+</html>

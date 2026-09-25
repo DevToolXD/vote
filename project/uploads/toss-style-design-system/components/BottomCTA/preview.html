@@ -1,0 +1,16 @@
+<!-- @dsCard group="Actions" height=340 subtitle="single · double (닫기 + 확인)" -->
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>BottomCTA</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var T = window.TossStyle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h('div', null,
+    h(T.Top, { title: '얼마를 보낼까요?', subtitle: '생활비 통장에서 출금돼요' }),
+    h(T.BottomCTA, { fixed: false }, h(T.Button, { display: 'block' }, '다음')),
+    h(T.BottomCTA, { fixed: false }, h(T.Button, { display: 'block', variant: 'weak', color: 'dark' }, '닫기'), h(T.Button, { display: 'block' }, '확인'))
+  ));
+</script>
+</body>
+</html>

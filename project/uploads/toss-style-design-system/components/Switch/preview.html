@@ -1,0 +1,14 @@
+<!-- @dsCard group="Inputs" height=96 subtitle="꺼짐 · 켜짐 · 비활성" -->
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>Switch</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var T = window.TossStyle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h('div', { className: 'ts-row-wrap', style: { gap: '16px' } },
+    h(T.Switch, { 'aria-label': '알림' }), h(T.Switch, { defaultChecked: true, 'aria-label': '자동이체' }), h(T.Switch, { disabled: true, 'aria-label': '비활성' }), h(T.Switch, { disabled: true, defaultChecked: true, 'aria-label': '비활성 켜짐' })
+  ));
+</script>
+</body>
+</html>

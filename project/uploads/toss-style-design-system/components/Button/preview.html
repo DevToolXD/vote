@@ -1,0 +1,17 @@
+<!-- @dsCard group="Actions" height=300 subtitle="fill · weak, primary · danger · dark · light, 4 sizes" -->
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><title>Button</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var T = window.TossStyle, h = React.createElement;
+  function Row(p) { return h('div', { className: 'ts-row-wrap' }, p.children); }
+  ReactDOM.createRoot(document.getElementById('root')).render(h('div', { className: 'ts-stack' },
+    h(Row, null, h(T.Button, null, '다음'), h(T.Button, { variant: 'weak' }, '나중에 하기'), h(T.Button, { loading: true }, '보내기')),
+    h(Row, null, h(T.Button, { size: 'large', color: 'danger' }, '해지하기'), h(T.Button, { size: 'large', variant: 'weak', color: 'danger' }, '삭제'), h(T.Button, { size: 'large', variant: 'weak', color: 'dark' }, '닫기')),
+    h(Row, null, h(T.Button, { size: 'medium' }, '확인'), h(T.Button, { size: 'medium', variant: 'weak' }, '더보기'), h(T.Button, { size: 'small', variant: 'weak', color: 'dark' }, '복사'), h(T.Button, { size: 'small', disabled: true }, '비활성'))
+  ));
+</script>
+</body>
+</html>

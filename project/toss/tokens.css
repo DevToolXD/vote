@@ -1,0 +1,646 @@
+/* Generated from tokens.json — do not hand-edit; regenerate instead. */
+
+@font-face {
+  font-family: "Pretendard";
+  src: url("fonts/Pretendard-Regular.subset.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("fonts/Pretendard-Medium.subset.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("fonts/Pretendard-SemiBold.subset.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("fonts/Pretendard-Bold.subset.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root,
+[data-theme="light"] {
+  --background: #ffffff;
+  --greyBackground: #f2f4f6;
+  --layeredBackground: #ffffff;
+  --floatBackground: #ffffff;
+  --backgroundLevel01: #ffffff;
+  --backgroundLevel02: #ffffff;
+  --hairlineBorder: #e5e8eb;
+  --hairline: rgba(0,0,33,0.07);
+  --dimmedBackground: rgba(0,0,0,0.2);
+  --pcScreenBg: #f6f7f9;
+  --white: #ffffff;
+  --grey50: #f9fafb;
+  --grey100: #f2f4f6;
+  --grey200: #e5e8eb;
+  --grey300: #d1d6db;
+  --grey400: #b0b8c1;
+  --grey500: #8b95a1;
+  --grey600: #6b7684;
+  --grey700: #4e5968;
+  --grey800: #333d4b;
+  --grey900: #191f28;
+  --blue50: #e8f3ff;
+  --blue100: #c9e2ff;
+  --blue200: #90c2ff;
+  --blue300: #64a8ff;
+  --blue400: #4593fc;
+  --blue500: #3182f6;
+  --blue600: #2272eb;
+  --blue700: #1b64da;
+  --blue800: #1957c2;
+  --blue900: #194aa6;
+  --red50: #ffeeee;
+  --red100: #ffd4d6;
+  --red200: #feafb4;
+  --red300: #fb8890;
+  --red400: #f66570;
+  --red500: #f04452;
+  --red600: #e42939;
+  --red700: #d22030;
+  --red800: #bc1b2a;
+  --red900: #a51926;
+  --orange50: #fff3e0;
+  --orange100: #ffe0b0;
+  --orange200: #ffcd80;
+  --orange300: #ffbd51;
+  --orange400: #ffa927;
+  --orange500: #fe9800;
+  --orange600: #fb8800;
+  --orange700: #f57800;
+  --orange800: #ed6700;
+  --orange900: #e45600;
+  --yellow50: #fff9e7;
+  --yellow100: #ffefbf;
+  --yellow200: #ffe69b;
+  --yellow300: #ffdd78;
+  --yellow400: #ffd158;
+  --yellow500: #ffc342;
+  --yellow600: #ffb331;
+  --yellow700: #faa131;
+  --yellow800: #ee8f11;
+  --yellow900: #dd7d02;
+  --green50: #f0faf6;
+  --green100: #aeefd5;
+  --green200: #76e4b8;
+  --green300: #3fd599;
+  --green400: #15c47e;
+  --green500: #03b26c;
+  --green600: #02a262;
+  --green700: #029359;
+  --green800: #028450;
+  --green900: #027648;
+  --teal50: #edf8f8;
+  --teal100: #bce9e9;
+  --teal200: #89d8d8;
+  --teal300: #58c7c7;
+  --teal400: #30b6b6;
+  --teal500: #18a5a5;
+  --teal600: #109595;
+  --teal700: #0c8585;
+  --teal800: #097575;
+  --teal900: #076565;
+  --purple50: #f9f0fc;
+  --purple100: #edccf8;
+  --purple200: #da9bef;
+  --purple300: #c770e4;
+  --purple400: #b44bd7;
+  --purple500: #a234c7;
+  --purple600: #9128b4;
+  --purple700: #8222a2;
+  --purple800: #73228e;
+  --purple900: #65237b;
+  --disabledBlue500: #c9e2ff;
+  --greyOpacity50: rgba(0,23,51,0.02);
+  --greyOpacity100: rgba(2,32,71,0.05);
+  --greyOpacity200: rgba(0,27,55,0.1);
+  --greyOpacity300: rgba(0,29,58,0.18);
+  --greyOpacity400: rgba(0,25,54,0.31);
+  --greyOpacity500: rgba(3,24,50,0.46);
+  --greyOpacity600: rgba(0,19,43,0.58);
+  --greyOpacity700: rgba(3,18,40,0.7);
+  --greyOpacity800: rgba(0,12,30,0.8);
+  --greyOpacity900: rgba(2,9,19,0.91);
+  --buttonPrimaryWeak: rgba(100,168,255,0.15);
+  --buttonPrimaryWeakText: #2272eb;
+  --buttonDangerWeak: rgba(251,136,144,0.15);
+  --buttonDangerWeakText: #e42939;
+  --buttonDarkFill: #4e5968;
+  --buttonLightWeak: rgba(222,222,255,0.19);
+  --buttonLightText: #1b64da;
+  --toastBackground: #ffffff;
+  --toastText: rgba(0,12,30,0.8);
+  --badgeBlueWeak: rgba(49,130,246,0.16);
+  --badgeBlueWeakText: #1b64da;
+  --badgeTealWeak: rgba(0,129,138,0.16);
+  --badgeTealWeakText: #0c8585;
+  --badgeGreenWeak: rgba(2,162,98,0.16);
+  --badgeGreenWeakText: #029359;
+  --badgeRedWeak: rgba(244,67,54,0.16);
+  --badgeRedWeakText: #d22030;
+  --badgeYellowWeak: rgba(255,179,49,0.16);
+  --badgeYellowWeakText: #dd7d02;
+  --badgeElephantWeak: rgba(78,89,104,0.16);
+  --badgeElephantWeakText: #4e5968;
+  --shadow-control: 0 1px 3px 0 rgba(0,0,0,0.09);
+  --shadow-float: 0 2px 30px 0 rgba(0,27,55,0.1);
+  --focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px #3182f6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #17171c;
+    --greyBackground: #101013;
+    --layeredBackground: #202027;
+    --floatBackground: #2c2c35;
+    --backgroundLevel01: #202027;
+    --backgroundLevel02: #2c2c35;
+    --hairlineBorder: #3c3c47;
+    --hairline: rgba(222,222,255,0.14);
+    --dimmedBackground: rgba(0,0,0,0.56);
+    --pcScreenBg: #202027;
+    --white: #ffffff;
+    --grey50: #202027;
+    --grey100: #2c2c35;
+    --grey200: #3c3c47;
+    --grey300: #4d4d59;
+    --grey400: #62626d;
+    --grey500: #7e7e87;
+    --grey600: #9e9ea4;
+    --grey700: #c3c3c6;
+    --grey800: #e4e4e5;
+    --grey900: #ffffff;
+    --blue50: #202c4d;
+    --blue100: #23386a;
+    --blue200: #25478c;
+    --blue300: #265ab3;
+    --blue400: #2970d9;
+    --blue500: #3485fa;
+    --blue600: #449bff;
+    --blue700: #61b0ff;
+    --blue800: #8fcdff;
+    --blue900: #c8e7ff;
+    --red50: #3c2020;
+    --red100: #562025;
+    --red200: #7a242d;
+    --red300: #9e2733;
+    --red400: #ca2f3d;
+    --red500: #f04251;
+    --red600: #fa616d;
+    --red700: #fe818b;
+    --red800: #ffa8ad;
+    --red900: #ffd1d3;
+    --orange50: #3d2500;
+    --orange100: #563200;
+    --orange200: #804600;
+    --orange300: #a85f00;
+    --orange400: #cf7200;
+    --orange500: #f18600;
+    --orange600: #fd9528;
+    --orange700: #ffa861;
+    --orange800: #ffc39e;
+    --orange900: #ffe4d6;
+    --yellow50: #3d2d1a;
+    --yellow100: #724c1e;
+    --yellow200: #b56f1d;
+    --yellow300: #eb8b1e;
+    --yellow400: #ffa126;
+    --yellow500: #ffb134;
+    --yellow600: #ffc259;
+    --yellow700: #ffd68a;
+    --yellow800: #ffe5b2;
+    --yellow900: #fff1d4;
+    --green50: #153729;
+    --green100: #135338;
+    --green200: #136d47;
+    --green300: #138a59;
+    --green400: #13a065;
+    --green500: #16bb76;
+    --green600: #26cf88;
+    --green700: #4ee4a6;
+    --green800: #82f6c5;
+    --green900: #ccffea;
+    --teal50: #203537;
+    --teal100: #224e51;
+    --teal200: #226368;
+    --teal300: #247e85;
+    --teal400: #26939a;
+    --teal500: #2eaab2;
+    --teal600: #43bec7;
+    --teal700: #65d4dc;
+    --teal800: #9be8ee;
+    --teal900: #d6fcff;
+    --purple50: #3f2447;
+    --purple100: #522361;
+    --purple200: #66247b;
+    --purple300: #7b2595;
+    --purple400: #962fb5;
+    --purple500: #ae3dd1;
+    --purple600: #c353e5;
+    --purple700: #d77cf2;
+    --purple800: #eaacfc;
+    --purple900: #f6d9ff;
+    --disabledBlue500: rgba(49,130,246,0.2);
+    --greyOpacity50: rgba(209,209,253,0.05);
+    --greyOpacity100: rgba(217,217,255,0.11);
+    --greyOpacity200: rgba(222,222,255,0.19);
+    --greyOpacity300: rgba(224,224,255,0.27);
+    --greyOpacity400: rgba(232,232,253,0.36);
+    --greyOpacity500: rgba(242,242,255,0.47);
+    --greyOpacity600: rgba(248,248,255,0.6);
+    --greyOpacity700: rgba(253,253,255,0.75);
+    --greyOpacity800: rgba(253,253,254,0.89);
+    --greyOpacity900: #ffffff;
+    --buttonPrimaryWeak: rgba(34,114,235,0.22);
+    --buttonPrimaryWeakText: #4593fc;
+    --buttonDangerWeak: rgba(228,41,57,0.22);
+    --buttonDangerWeakText: #f66570;
+    --buttonDarkFill: #4e5968;
+    --buttonLightWeak: rgba(222,222,255,0.19);
+    --buttonLightText: #1b64da;
+    --toastBackground: #3c3c47;
+    --toastText: #ffffff;
+    --badgeBlueWeak: rgba(69,147,252,0.16);
+    --badgeBlueWeakText: #4593fc;
+    --badgeTealWeak: rgba(38,157,166,0.16);
+    --badgeTealWeakText: #30b6b6;
+    --badgeGreenWeak: rgba(21,196,126,0.16);
+    --badgeGreenWeakText: #15c47e;
+    --badgeRedWeak: rgba(239,83,80,0.16);
+    --badgeRedWeakText: #f66570;
+    --badgeYellowWeak: rgba(255,209,88,0.16);
+    --badgeYellowWeakText: #faa131;
+    --badgeElephantWeak: rgba(195,195,198,0.16);
+    --badgeElephantWeakText: #c3c3c6;
+    --shadow-control: 0 1px 3px 0 rgba(0,0,0,0.09);
+    --shadow-float: 0 2px 30px 0 rgba(0,27,55,0.1);
+    --focus-ring: 0 0 0 2px #17171c, 0 0 0 4px #3485fa;
+  }
+}
+
+[data-theme="dark"] {
+  --background: #17171c;
+  --greyBackground: #101013;
+  --layeredBackground: #202027;
+  --floatBackground: #2c2c35;
+  --backgroundLevel01: #202027;
+  --backgroundLevel02: #2c2c35;
+  --hairlineBorder: #3c3c47;
+  --hairline: rgba(222,222,255,0.14);
+  --dimmedBackground: rgba(0,0,0,0.56);
+  --pcScreenBg: #202027;
+  --white: #ffffff;
+  --grey50: #202027;
+  --grey100: #2c2c35;
+  --grey200: #3c3c47;
+  --grey300: #4d4d59;
+  --grey400: #62626d;
+  --grey500: #7e7e87;
+  --grey600: #9e9ea4;
+  --grey700: #c3c3c6;
+  --grey800: #e4e4e5;
+  --grey900: #ffffff;
+  --blue50: #202c4d;
+  --blue100: #23386a;
+  --blue200: #25478c;
+  --blue300: #265ab3;
+  --blue400: #2970d9;
+  --blue500: #3485fa;
+  --blue600: #449bff;
+  --blue700: #61b0ff;
+  --blue800: #8fcdff;
+  --blue900: #c8e7ff;
+  --red50: #3c2020;
+  --red100: #562025;
+  --red200: #7a242d;
+  --red300: #9e2733;
+  --red400: #ca2f3d;
+  --red500: #f04251;
+  --red600: #fa616d;
+  --red700: #fe818b;
+  --red800: #ffa8ad;
+  --red900: #ffd1d3;
+  --orange50: #3d2500;
+  --orange100: #563200;
+  --orange200: #804600;
+  --orange300: #a85f00;
+  --orange400: #cf7200;
+  --orange500: #f18600;
+  --orange600: #fd9528;
+  --orange700: #ffa861;
+  --orange800: #ffc39e;
+  --orange900: #ffe4d6;
+  --yellow50: #3d2d1a;
+  --yellow100: #724c1e;
+  --yellow200: #b56f1d;
+  --yellow300: #eb8b1e;
+  --yellow400: #ffa126;
+  --yellow500: #ffb134;
+  --yellow600: #ffc259;
+  --yellow700: #ffd68a;
+  --yellow800: #ffe5b2;
+  --yellow900: #fff1d4;
+  --green50: #153729;
+  --green100: #135338;
+  --green200: #136d47;
+  --green300: #138a59;
+  --green400: #13a065;
+  --green500: #16bb76;
+  --green600: #26cf88;
+  --green700: #4ee4a6;
+  --green800: #82f6c5;
+  --green900: #ccffea;
+  --teal50: #203537;
+  --teal100: #224e51;
+  --teal200: #226368;
+  --teal300: #247e85;
+  --teal400: #26939a;
+  --teal500: #2eaab2;
+  --teal600: #43bec7;
+  --teal700: #65d4dc;
+  --teal800: #9be8ee;
+  --teal900: #d6fcff;
+  --purple50: #3f2447;
+  --purple100: #522361;
+  --purple200: #66247b;
+  --purple300: #7b2595;
+  --purple400: #962fb5;
+  --purple500: #ae3dd1;
+  --purple600: #c353e5;
+  --purple700: #d77cf2;
+  --purple800: #eaacfc;
+  --purple900: #f6d9ff;
+  --disabledBlue500: rgba(49,130,246,0.2);
+  --greyOpacity50: rgba(209,209,253,0.05);
+  --greyOpacity100: rgba(217,217,255,0.11);
+  --greyOpacity200: rgba(222,222,255,0.19);
+  --greyOpacity300: rgba(224,224,255,0.27);
+  --greyOpacity400: rgba(232,232,253,0.36);
+  --greyOpacity500: rgba(242,242,255,0.47);
+  --greyOpacity600: rgba(248,248,255,0.6);
+  --greyOpacity700: rgba(253,253,255,0.75);
+  --greyOpacity800: rgba(253,253,254,0.89);
+  --greyOpacity900: #ffffff;
+  --buttonPrimaryWeak: rgba(34,114,235,0.22);
+  --buttonPrimaryWeakText: #4593fc;
+  --buttonDangerWeak: rgba(228,41,57,0.22);
+  --buttonDangerWeakText: #f66570;
+  --buttonDarkFill: #4e5968;
+  --buttonLightWeak: rgba(222,222,255,0.19);
+  --buttonLightText: #1b64da;
+  --toastBackground: #3c3c47;
+  --toastText: #ffffff;
+  --badgeBlueWeak: rgba(69,147,252,0.16);
+  --badgeBlueWeakText: #4593fc;
+  --badgeTealWeak: rgba(38,157,166,0.16);
+  --badgeTealWeakText: #30b6b6;
+  --badgeGreenWeak: rgba(21,196,126,0.16);
+  --badgeGreenWeakText: #15c47e;
+  --badgeRedWeak: rgba(239,83,80,0.16);
+  --badgeRedWeakText: #f66570;
+  --badgeYellowWeak: rgba(255,209,88,0.16);
+  --badgeYellowWeakText: #faa131;
+  --badgeElephantWeak: rgba(195,195,198,0.16);
+  --badgeElephantWeakText: #c3c3c6;
+  --shadow-control: 0 1px 3px 0 rgba(0,0,0,0.09);
+  --shadow-float: 0 2px 30px 0 rgba(0,27,55,0.1);
+  --focus-ring: 0 0 0 2px #17171c, 0 0 0 4px #3485fa;
+}
+
+:root {
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-22: 22px;
+  --space-24: 24px;
+  --gutter: 24px;
+  --gutter-cta: 20px;
+  --sheet-inset: 10px;
+  --dialog-inset: 32px;
+  --radius-button-small: 8px;
+  --radius-button-medium: 10px;
+  --radius-press: 12px;
+  --radius-button-large: 14px;
+  --radius-button-xlarge: 16px;
+  --radius-toast-multi: 20px;
+  --radius-dialog: 24px;
+  --radius-sheet: 28px;
+  --radius-full: 9999px;
+  --button-xlarge: 56px;
+  --button-large: 48px;
+  --button-medium: 38px;
+  --button-small: 32px;
+  --icon: 24px;
+  --icon-small: 20px;
+  --dialog-max: 320px;
+  --toast-max: 375px;
+  --cta-fade: 36px;
+  --opacity-disabled: 0.3;
+  --press-scale: 0.96;
+  --z-bottom-cta: 50;
+  --z-overlay: 10000;
+  --z-toast: 30000;
+  --font-sans: "Toss Product Sans", Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+}
+
+.ts-type-t1 {
+  font-size: 30px;
+  line-height: 40px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-t2 {
+  font-size: 26px;
+  line-height: 35px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-t3 {
+  font-size: 22px;
+  line-height: 31px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-t4 {
+  font-size: 20px;
+  line-height: 29px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-t5 {
+  font-size: 17px;
+  line-height: 25.5px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-t6 {
+  font-size: 15px;
+  line-height: 22.5px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-t7 {
+  font-size: 13px;
+  line-height: 19.5px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st1 {
+  font-size: 29px;
+  line-height: 38px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st2 {
+  font-size: 28px;
+  line-height: 37px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st3 {
+  font-size: 27px;
+  line-height: 36px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st4 {
+  font-size: 25px;
+  line-height: 34px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st5 {
+  font-size: 24px;
+  line-height: 33px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st6 {
+  font-size: 23px;
+  line-height: 32px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st7 {
+  font-size: 21px;
+  line-height: 30px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st8 {
+  font-size: 19px;
+  line-height: 28px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st9 {
+  font-size: 18px;
+  line-height: 27px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st10 {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st11 {
+  font-size: 14px;
+  line-height: 21px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st12 {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-st13 {
+  font-size: 11px;
+  line-height: 16.5px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-amount-hero {
+  font-size: 30px;
+  line-height: 40px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+}
+.ts-type-page-title {
+  font-size: 22px;
+  line-height: 31px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+}
+.ts-type-dialog-title {
+  font-size: 20px;
+  line-height: 29px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+}
+.ts-type-list-title {
+  font-size: 17px;
+  line-height: 25.5px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+}
+.ts-type-button-label {
+  font-size: 17px;
+  line-height: 25.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
+.ts-type-input-line {
+  font-size: 22px;
+  line-height: 27.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
+.ts-type-body {
+  font-size: 17px;
+  line-height: 25.5px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-description {
+  font-size: 15px;
+  line-height: 22.5px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+}
+.ts-type-toast {
+  font-size: 15px;
+  line-height: 22.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
+.ts-type-caption {
+  font-size: 13px;
+  line-height: 19.5px;
+  font-weight: 400;
+  font-family: var(--font-sans);
+}
+.ts-type-eyebrow {
+  font-size: 13px;
+  line-height: 19.5px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+}
