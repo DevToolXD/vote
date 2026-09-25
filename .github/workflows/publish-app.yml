@@ -52,12 +52,16 @@ jobs:
       - name: Publish build output to repo root
         run: |
           set -e
-          rm -rf assets index.html skins
+          # Everything the build outputs (index.html, assets, skins, icons, sw.js,
+          # manifest.webmanifest …) goes to the root — not a hand-kept list, which
+          # once left sw.js/manifest/icons unpublished and broke iPhone notifications.
+          published=$(ls -A app/dist)
+          rm -rf $published
           cp -r app/dist/. .
           touch .nojekyll
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A -- index.html assets skins .nojekyll
+          git add -A -- $published .nojekyll
           if git diff --cached --quiet; then
             echo "No changes to publish"
           else
