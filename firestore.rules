@@ -10,6 +10,8 @@ rules_version = '2';
 //   meta/adminLock                the admin operation currently being committed (see below)
 //   adminTokens/{random id}       single-use tokens for admin operations
 //   banned/{uid}                  accounts deleted by the admin; they can't re-join
+//   chats/{chatId}                1:1 (id = sorted uids joined by '_') or group chat (≤10 members)
+//   chats/{chatId}/messages/{id}  { uid, text, at }
 //
 // Admin operations (grant points, set season name, reset season, delete account)
 // Only the admin account (id "admin", i.e. admin@vote.local, or a user with the
@@ -151,7 +153,7 @@ service cloud.firestore {
       let addS = d.owned.skin.removeAll(o.owned.skin);
       let cost = costOf('frame', addF) + costOf('plate', addP) + costOf('skin', addS);
       return request.auth.uid == o.ownerUid
-        && d.diff(o).affectedKeys().hasOnly(['gender', 'bio', 'photoURL', 'frame', 'plate', 'skin', 'spent', 'owned'])
+        && d.diff(o).affectedKeys().hasOnly(['gender', 'bio', 'photoURL', 'frame', 'plate', 'skin', 'spent', 'owned', 'msgOff'])
         && d.owned.keys().hasOnly(['frame', 'plate', 'skin'])
         && d.owned.frame.hasAll(o.owned.frame) && d.owned.plate.hasAll(o.owned.plate) && d.owned.skin.hasAll(o.owned.skin)
         && addF.size() + addP.size() + addS.size() <= 1
@@ -161,6 +163,7 @@ service cloud.firestore {
         && d.frame in d.owned.frame && d.plate in d.owned.plate && d.skin in d.owned.skin
         && d.bio is string && d.bio.size() <= 60
         && d.gender in ['', '남자', '여자']
+        && d.get('msgOff', false) is bool
         && photoOk(d);
     }
 
@@ -280,6 +283,93 @@ service cloud.firestore {
         && request.resource.data.at == request.time
         && request.resource.data.by == request.auth.uid;
       allow update, delete: if false;
+    }
+
+    // ---- messages -----------------------------------------------------------------
+    // 메시지 끄기 (candidates/{uid}.msgOff) means: nobody can open a 1:1 with them or
+    // put them in a new group, and nobody can send in a 1:1 with them; they can't
+    // send either. A deleted account has no candidates doc, so get() fails → refused.
+
+    function msgOn(uid) {
+      return get(/databases/$(database)/documents/candidates/$(uid)).data.get('msgOff', false) != true;
+    }
+    function memberOn(m, i) { return m.size() <= i || msgOn(m[i]); }
+    function membersOk(m) {
+      return m is list && m.size() >= 2 && m.size() <= 10 && m.toSet().size() == m.size()
+        && request.auth.uid in m
+        && memberOn(m, 0) && memberOn(m, 1) && memberOn(m, 2) && memberOn(m, 3) && memberOn(m, 4)
+        && memberOn(m, 5) && memberOn(m, 6) && memberOn(m, 7) && memberOn(m, 8) && memberOn(m, 9);
+    }
+    function dmOther(chat) { return chat.members[0] == request.auth.uid ? chat.members[1] : chat.members[0]; }
+    function canSend(chat) {
+      return request.auth.uid in chat.members && msgOn(request.auth.uid)
+        && (chat.type != 'dm' || msgOn(dmOther(chat)));
+    }
+    function chatData(chatId) { return get(/databases/$(database)/documents/chats/$(chatId)).data; }
+
+    match /chats/{chatId} {
+      // A 1:1 chat id names its members, so checking whether it exists yet is allowed.
+      allow get: if signedIn() && (resource == null
+        ? request.auth.uid in chatId.split('_')
+        : request.auth.uid in resource.data.members);
+      allow list: if signedIn() && request.auth.uid in resource.data.members;
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['type', 'members', 'name', 'createdBy', 'createdAt', 'updatedAt'])
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && membersOk(request.resource.data.members)
+        && ((request.resource.data.type == 'dm'
+              && request.resource.data.members.size() == 2
+              && request.resource.data.name == ''
+              && chatId == (request.resource.data.members[0] < request.resource.data.members[1]
+                  ? request.resource.data.members[0] + '_' + request.resource.data.members[1]
+                  : request.resource.data.members[1] + '_' + request.resource.data.members[0]))
+          || (request.resource.data.type == 'group'
+              && request.resource.data.members.size() >= 3
+              && request.resource.data.name is string && request.resource.data.name.size() <= 30));
+
+      allow update: if signedIn() && request.auth.uid in resource.data.members
+        && (newMessageSummary() || readReceipt() || leaveGroup());
+      allow delete: if false;
+
+      function readsOk() {
+        let d = request.resource.data;
+        let o = resource.data;
+        return !('reads' in d.diff(o).affectedKeys())
+          || (d.reads.diff(o.get('reads', {})).affectedKeys().hasOnly([request.auth.uid])
+              && d.reads[request.auth.uid] == request.time);
+      }
+      // Sending: the chat's last-message preview moves with the message written in the same batch.
+      function newMessageSummary() {
+        let d = request.resource.data;
+        return d.diff(resource.data).affectedKeys().hasOnly(['last', 'updatedAt', 'reads'])
+          && d.last.keys().hasOnly(['text', 'uid', 'at'])
+          && d.last.uid == request.auth.uid && d.last.at == request.time && d.updatedAt == request.time
+          && d.last.text is string && d.last.text.size() >= 1 && d.last.text.size() <= 100
+          && canSend(resource.data) && readsOk();
+      }
+      function readReceipt() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reads']) && readsOk();
+      }
+      function leaveGroup() {
+        return resource.data.type == 'group'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+          && request.resource.data.members == resource.data.members.removeAll([request.auth.uid]);
+      }
+
+      match /messages/{msgId} {
+        allow read: if signedIn() && request.auth.uid in chatData(chatId).members;
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['uid', 'text', 'at'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.at == request.time
+          && request.resource.data.text is string
+          && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 500
+          && canSend(chatData(chatId));
+        allow update, delete: if false;
+      }
     }
   }
 }

@@ -18,6 +18,8 @@ export type CandidateDoc = {
   spent: number
   /** Points added by the admin or carried over from past seasons' recommendations. */
   bonus?: number
+  /** 메시지 끄기: nobody can message them or add them to a chat. */
+  msgOff?: boolean
   owned: Record<ItemKind, string[]>
   createdAt: unknown
 }

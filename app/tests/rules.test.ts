@@ -10,6 +10,7 @@ import {
 import { deleteAccount, grantPoints, renameUser, resetSeason, runAdminOp, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, castVote, equipItem, pointsOf, updateMyProfile } from '../src/backend/candidates'
+import { createGroup, dmId, leaveGroup, markRead, openDm, sendMessage, setMessagesOff } from '../src/backend/messages'
 import type { CandidateDoc } from '../src/backend/types'
 import { priceOf } from '../src/data'
 
@@ -307,5 +308,66 @@ describe('admin: single-use tokens ×3', () => {
     await assert.rejects(deleteAccount(b, 'b', 'a'))
     await denied(deleteDoc(doc(b, 'candidates', 'a')))
     await denied(setDoc(doc(b, 'banned', 'a'), { at: serverTimestamp(), by: 'b' }))
+  })
+})
+
+describe('messages', () => {
+  const msgs = async (db: Firestore, chatId: string) => (await getDocs(collection(db, 'chats', chatId, 'messages'))).docs.map(d => d.data().text)
+
+  test('1:1: open once per pair, both can talk, outsiders can’t read or write', async () => {
+    const a = await signUp('a'), b = await signUp('b'), c = await signUp('c')
+    const id = await openDm(a, 'a', 'b')
+    assert.equal(id, dmId('a', 'b'))
+    assert.equal(await openDm(b, 'b', 'a'), id)
+    await sendMessage(a, 'a', id, ' 안녕 ')
+    await sendMessage(b, 'b', id, '반가워')
+    assert.deepEqual((await msgs(a, id)).sort(), ['반가워', '안녕'])
+    const chat = (await getDoc(doc(a, 'chats', id))).data()!
+    assert.equal(chat.last.text, '반가워')
+    await markRead(a, 'a', id)
+    await denied(getDoc(doc(c, 'chats', id)))
+    await denied(getDocs(collection(c, 'chats', id, 'messages')))
+    await assert.rejects(sendMessage(c, 'c', id, '끼어들기'))
+    await denied(setDoc(doc(c, 'chats', dmId('a', 'c').replace('c', 'b')), { type: 'dm', members: ['a', 'b'], name: '', createdBy: 'c', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
+  })
+
+  test('refused: forged sender, someone else’s read receipt, fake preview, wrong 1:1 id', async () => {
+    const a = await signUp('a'); await signUp('b')
+    const id = await openDm(a, 'a', 'b')
+    await denied(setDoc(doc(collection(a, 'chats', id, 'messages')), { uid: 'b', text: 'x', at: serverTimestamp() }))
+    await denied(updateDoc(doc(a, 'chats', id), { 'reads.b': serverTimestamp() }))
+    await denied(updateDoc(doc(a, 'chats', id), { last: { text: 'x', uid: 'b', at: serverTimestamp() }, updatedAt: serverTimestamp() }))
+    await denied(updateDoc(doc(a, 'chats', id), { members: ['a', 'b', 'z'] }))
+    await denied(setDoc(doc(a, 'chats', 'a_b_c'), { type: 'dm', members: ['a', 'b'], name: '', createdBy: 'a', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
+    await denied(deleteDoc(doc(a, 'chats', id)))
+  })
+
+  test('메시지 끄기: no new 1:1, no sending either way, not addable to groups', async () => {
+    const a = await signUp('a'), b = await signUp('b'); await signUp('c')
+    const id = await openDm(a, 'a', 'b')
+    await setMessagesOff(b, 'b', true)
+    await assert.rejects(sendMessage(a, 'a', id, '보내져?'))
+    await assert.rejects(sendMessage(b, 'b', id, '나도?'))
+    await assert.rejects(openDm(userDb('c'), 'c', 'b'))
+    await assert.rejects(createGroup(a, 'a', ['b', 'c'], '단톡'))
+    await setMessagesOff(b, 'b', false)
+    await sendMessage(a, 'a', id, '이제 돼')
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { msgOff: 'yes' }))
+  })
+
+  test('group: 3–10 people, members talk, leaving works, deleted accounts can’t be added', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); await signUp('c')
+    const id = await createGroup(a, 'a', ['b', 'c'], '우리반')
+    await sendMessage(b, 'b', id, '하이')
+    await leaveGroup(b, 'b', id)
+    await assert.rejects(sendMessage(b, 'b', id, '나갔는데'))
+    await denied(getDoc(doc(b, 'chats', id)))
+    await sendMessage(a, 'a', id, '남은 사람')
+    await assert.rejects(createGroup(a, 'a', ['b', 'ghost'], 'x'))
+    await assert.rejects(createGroup(a, 'a', ['b'], '둘뿐'))
+    const many = Array.from({ length: 10 }, (_, i) => `m${i}`)
+    for (const m of many) await signUp(m)
+    await assert.rejects(createGroup(a, 'a', many, '11명'))
+    await createGroup(a, 'a', many.slice(0, 9), '10명')
   })
 })

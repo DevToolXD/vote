@@ -44,6 +44,14 @@ Every admin write goes through single-use tokens, enforced by `firestore.rules`:
 - `npm run test:rules` (in `app/`): 22 tests of `firestore.rules` on the Firestore emulator (needs Java 21), using the app's own `src/backend` code — sign-up, voting and vote-integrity attacks, the shop's price/points checks, and every admin operation including token replay/forgery. CI runs these before deploying rules.
 - `.github/scripts/smoke-test.mjs`: the same core flows plus a real 3-token admin grant against the live project, with throwaway users that are deleted afterwards.
 
+## Messages
+
+The **메시지** tab (paper-plane icon, red badge = chats with unread messages) holds 1:1 chats and group chats. Start a 1:1 from anyone's profile (랭킹 → profile → 메시지) or with **새 채팅**: pick one person for a 1:1, two or more (up to 9, so 10 with you) for a group with an optional name. Groups can be left; 1:1 chats can't.
+
+**메시지 받기** (switch at the top of the tab) turned off means nobody can open a 1:1 with you, add you to a new group or send in a 1:1 with you, you disappear from the 새 채팅 list, and you can't send either. `firestore.rules` enforces all of this (not just the UI), plus: only members can read a chat, messages can't be edited, forged or deleted, and deleted accounts can't be messaged.
+
+For local end-to-end testing, build with `VITE_USE_EMULATORS=1` and run the Auth + Firestore emulators (`firebase.json` has both).
+
 ## Install as an app
 
 The Home tab has an **앱 설치하기** card (hidden when already running as an app) that opens a sheet with two tabs:

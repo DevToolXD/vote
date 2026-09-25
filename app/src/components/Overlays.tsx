@@ -12,7 +12,7 @@ const handle = <div style={css('width:36px;height:4px;border-radius:2px;backgrou
 const bigBtn = 'height:56px;border-radius:16px;font-size:17px;font-weight:600'
 
 /** Dimmed scrim + bottom sheet shell, centred to the app column. */
-function BottomSheet({ onScrim, scrim, sheetStyle, children }: { onScrim: () => void; scrim: string; sheetStyle: string; children: ReactNode }) {
+export function BottomSheet({ onScrim, scrim, sheetStyle, children }: { onScrim: () => void; scrim: string; sheetStyle: string; children: ReactNode }) {
   return (
     <>
       <div data-g="scrim" onClick={onScrim} style={sx('position:fixed;inset:0;z-index:100;animation:fade 200ms ease both', { background: scrim })} />
@@ -80,7 +80,7 @@ export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin }: { d
   )
 }
 
-export function ProfileSheet({ d, onClose, onCta }: { d: Person; onClose: () => void; onCta: () => void }) {
+export function ProfileSheet({ d, onClose, onCta, onMessage, canMessage }: { d: Person; onClose: () => void; onCta: () => void; onMessage: () => void; canMessage: boolean }) {
   const medal = MEDALS[d.rank - 1]
   const stat = (k: string, v: string) => (
     <div data-g="l1" style={css('padding:14px 16px;border-radius:16px;background:#f9fafb;display:flex;flex-direction:column;gap:2px')}>
@@ -107,7 +107,15 @@ export function ProfileSheet({ d, onClose, onCta }: { d: Person; onClose: () => 
         <div style={css('margin-top:16px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px')}>
           {stat('점수', d.scoreLabel)}{stat('추천', d.upLabel)}{stat('비추천', d.downLabel)}
         </div>
-        <button data-g="primary" className="pr-96" onClick={onCta} style={css('margin-top:20px;width:100%;height:56px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms')}>{d.isMe ? '내 프로필 꾸미기' : '홈에서 투표하기'}</button>
+        <div style={css('margin-top:20px;display:flex;gap:8px')}>
+          {!d.isMe && (
+            <button data-g="secondary" className="pr-96" onClick={onMessage} disabled={!canMessage} aria-label="메시지 보내기" style={sx('height:56px;padding:0 18px;border-radius:16px;background:#e8f3ff;color:#1b64da;font-size:16px;font-weight:600;display:flex;align-items:center;gap:6px;flex:none;transition:transform 150ms', { opacity: canMessage ? 1 : 0.45 })}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round"><path d="M22 3 9.218 10.083" /><path d="M11.698 20.334 22 3.001H2l7.218 7.083z" /></svg>
+              {d.msgOff ? '메시지 꺼둠' : '메시지'}
+            </button>
+          )}
+          <button data-g="primary" className="pr-96" onClick={onCta} style={css('flex:1;min-width:0;height:56px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms')}>{d.isMe ? '내 프로필 꾸미기' : '홈에서 투표하기'}</button>
+        </div>
       </div>
     </BottomSheet>
   )

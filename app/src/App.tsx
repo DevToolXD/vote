@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, logIn, logOut, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, castVote, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { createGroup, isUnread, leaveGroup, openDm, sendMessage, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_SEASON, type Season } from './backend/types'
 import { fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
@@ -11,6 +12,7 @@ import { BottomNav } from './components/BottomNav'
 import { EditProfile } from './components/EditProfile'
 import { GlassFilters } from './components/GlassFilters'
 import { HomeScreen } from './components/HomeScreen'
+import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScreen'
 import { BuyDialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
@@ -75,6 +77,9 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const [installOpen, setInstallOpen] = useState(false)
   const [adminBusy, setAdminBusy] = useState<{ label: string; p: AdminProgress } | null>(null)
   const [sound, setSound] = useState(true)
+  const [chats, setChats] = useState<ChatRow[]>([])
+  const [chatId, setChatId] = useState<string | null>(null)
+  const [newChatOpen, setNewChatOpen] = useState(false)
 
   const toastTimer = useRef<ReturnType<typeof setTimeout>>()
   const showToast = (msg: string) => {
@@ -93,6 +98,11 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   useEffect(() => onAuthChange(u => { setAuthUser(u); setAuthReady(true) }), [])
   useEffect(() => (db ? subscribeCandidates(db, setRows) : undefined), [])
   useEffect(() => (db ? subscribeSeason(db, setSeason) : undefined), [])
+
+  useEffect(() => {
+    if (!authUser) { setChats([]); setChatId(null); return }
+    return db ? subscribeMyChats(db, authUser.uid, setChats, () => {}) : undefined
+  }, [authUser])
 
   useEffect(() => {
     if (!authUser) { setVotes({}); return }
@@ -129,6 +139,9 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const mine = all.filter(d => d.v !== 0)
   const points = me ? pointsOf(me) : 0
   const isAdmin = isAdminEmail(authUser?.email)
+  const byId = useMemo(() => new Map(all.map(p => [p.id, p])), [all])
+  const unreadChats = authUser ? chats.filter(c => isUnread(c, authUser.uid)).length : 0
+  const openChat = chats.find(c => c.id === chatId)
   useEffect(() => { if (tab === 'admin' && !isAdmin) setTab('home') }, [tab, isAdmin])
 
   // TOP 3 reveal: once per device, right after a season ends (the reset records the final podium).
@@ -280,6 +293,31 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
     }
   }
 
+  const startDm = async (other: string) => {
+    if (!authUser) { go('acct'); return }
+    try {
+      const id = await openDm(db!, authUser.uid, other)
+      setProfile(null); setTab('msg'); setChatId(id)
+    } catch (e) {
+      failToast('채팅방을 열지 못했어요', e)
+    }
+  }
+  const createChat = async (ids: string[], name: string) => {
+    if (!authUser) return
+    try {
+      const id = ids.length === 1 ? await openDm(db!, authUser.uid, ids[0]) : await createGroup(db!, authUser.uid, ids, name)
+      setNewChatOpen(false); setChatId(id)
+    } catch (e) {
+      failToast('채팅방을 만들지 못했어요. 상대가 메시지를 껐을 수 있어요', e)
+    }
+  }
+  const toggleMsgOff = (off: boolean) => {
+    if (!authUser) return
+    setMessagesOff(db!, authUser.uid, off)
+      .then(() => showToast(off ? '메시지를 껐어요' : '메시지를 켰어요'))
+      .catch(e => failToast('바꾸지 못했어요', e))
+  }
+
   if (!firebaseConfigured) return <SetupNotice />
   if (!authReady) return <div data-g="app" style={css('width:100%;max-width:430px;min-height:100vh;background:#ffffff')} />
 
@@ -331,6 +369,12 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
               goHome={() => go('home')}
             />
           )}
+          {tab === 'msg' && (
+            <MessagesScreen
+              loggedIn={loggedIn} me={me} chats={chats} byId={byId}
+              onLogin={() => go('acct')} onOpen={setChatId} onNew={() => setNewChatOpen(true)} onToggleOff={toggleMsgOff}
+            />
+          )}
           {tab === 'admin' && isAdmin && authUser && (
             <AdminScreen
               all={all}
@@ -346,7 +390,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
           )}
         </main>
 
-        <BottomNav tab={tab === 'admin' && !isAdmin ? 'home' : tab} onGo={go} isAdmin={isAdmin} />
+        <BottomNav tab={tab === 'admin' && !isAdmin ? 'home' : tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} />
 
         {sheetPerson && (
           <VoteSheet d={sheetPerson} loggedIn={loggedIn} colors={colors} onVote={dir => vote(sheetPerson.id, dir)} onClose={() => setSheet(null)} onLogin={() => go('acct')} />
@@ -355,6 +399,8 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
           <ProfileSheet
             d={profilePerson.isMe ? { ...profilePerson, bio: bioDraft } : profilePerson}
             onClose={() => setProfile(null)}
+            canMessage={!profilePerson.msgOff && !me?.msgOff}
+            onMessage={() => startDm(profilePerson.id)}
             onCta={() => {
               setProfile(null)
               if (profilePerson.isMe) { setTab('acct'); setEditOpen(true) } else { setTab('home'); setSheet(profilePerson.id) }
@@ -401,6 +447,20 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
         )}
         {revealOpen && podium && (
           <Reveal top={podium} seasonName={season.last!.name} sound={sound} onToggleSound={() => setSound(s => !s)} onClose={() => setRevealOpen(false)} />
+        )}
+        {newChatOpen && me && <NewChatSheet me={me} all={all} onClose={() => setNewChatOpen(false)} onCreate={createChat} />}
+        {openChat && me && authUser && (
+          <ChatRoom
+            db={db!} chat={openChat} me={me} byId={byId}
+            onBack={() => setChatId(null)}
+            onError={failToast}
+            onSend={async text => {
+              try { await sendMessage(db!, authUser.uid, openChat.id, text); return true } catch (e) { failToast('보내지 못했어요', e); return false }
+            }}
+            onLeave={async () => {
+              try { await leaveGroup(db!, authUser.uid, openChat.id); setChatId(null); showToast('채팅방에서 나왔어요') } catch (e) { failToast('나가지 못했어요', e) }
+            }}
+          />
         )}
         {installOpen && <InstallSheet onClose={() => setInstallOpen(false)} onToast={showToast} />}
         {adminBusy && <AdminProgressOverlay label={adminBusy.label} p={adminBusy.p} />}

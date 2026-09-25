@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app'
-import { browserLocalPersistence, browserSessionPersistence, indexedDBLocalPersistence, initializeAuth } from 'firebase/auth'
-import { getFirestore } from 'firebase/firestore'
+import { browserLocalPersistence, browserSessionPersistence, connectAuthEmulator, indexedDBLocalPersistence, initializeAuth } from 'firebase/auth'
+import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore'
 
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -20,3 +20,9 @@ export const app = firebaseConfigured ? initializeApp(config) : null
 // a "로그인 상태 유지" off login is found again after a reload in the same tab.
 export const auth = app ? initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence] }) : null
 export const db = app ? getFirestore(app) : null
+
+// Local end-to-end testing only (VITE_USE_EMULATORS=1 at build time): talk to the Firebase emulators.
+if (import.meta.env.VITE_USE_EMULATORS && auth && db) {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })
+  connectFirestoreEmulator(db, '127.0.0.1', 8181)
+}
