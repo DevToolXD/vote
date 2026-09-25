@@ -23,10 +23,9 @@ else
     -storepass "$KEY_PASS" -keypass "$KEY_PASS" -dname "CN=Popular Vote, OU=DevToolXD, O=DevToolXD, C=KR"
   mkdir -p android-signing
   openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in "$out" -out "$enc" -pass env:KEY_PASS
-  git config user.name "github-actions[bot]"
-  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-  git add "$enc"
-  git commit -m "Add encrypted APK signing key [skip ci]"
-  git pull --rebase origin main && git push origin HEAD:main
+  # Commit through the API: the checkout has build changes, and other workflows push meanwhile.
+  gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/app/$enc" \
+    -f message="Add encrypted APK signing key [skip ci]" \
+    -f content="$(base64 -w0 "$enc")" -f branch=main >/dev/null
   echo "::notice::Created the APK signing key (committed encrypted). Phones with the old debug-signed APK need to uninstall it once."
 fi
