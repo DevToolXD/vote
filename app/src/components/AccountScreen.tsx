@@ -23,6 +23,8 @@ type Props = {
   onNameFocus: (el: HTMLInputElement) => void
   onSubmitSignup: () => void
   authBusy: boolean
+  isAdmin: boolean
+  goAdmin: () => void
   me?: Person
   onPhoto: (f: File) => void
   onRemovePhoto: () => void
@@ -44,7 +46,7 @@ export function AccountScreen(p: Props) {
   return (
     <div data-g="clear" style={css('flex:1;background:#ffffff')}>
       <div style={css('height:56px;padding:6px 8px 0 12px;display:flex;justify-content:flex-end;align-items:center;gap:4px')}>
-        {p.loggedIn && (
+        {p.loggedIn && !p.isAdmin && (
           <button data-g="secondary" className="pr-96" onClick={p.openEdit} style={css('height:36px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:6px;background:#f2f4f6;color:#333d4b;font-size:14px;font-weight:600')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" /><path d="m13.5 6.5 4 4" /></svg>프로필 편집
           </button>
@@ -54,7 +56,17 @@ export function AccountScreen(p: Props) {
         </button>
       </div>
       {!p.loggedIn && (p.view === 'login' ? <LoginView {...p} /> : <SignupView {...p} />)}
-      {p.loggedIn && (p.me ? <Profile {...p} me={p.me} /> : (
+      {p.loggedIn && p.isAdmin && (
+        <div style={css('padding:8px 24px 32px;display:flex;flex-direction:column;gap:16px')}>
+          <div style={css('display:flex;flex-direction:column;gap:4px')}>
+            <h1 style={css('margin:0;font-size:22px;line-height:31px;font-weight:700;color:#191f28')}>관리자 계정이에요</h1>
+            <p style={css('margin:0;font-size:15px;line-height:22.5px;color:#6b7684')}>관리자는 랭킹에 참여하지 않아요. 시즌과 사람 관리는 관리 탭에서 해요</p>
+          </div>
+          <button data-g="primary" className="pr-96" onClick={p.goAdmin} style={css(primaryBtn + ';transition:transform 150ms')}>관리 탭으로 가기</button>
+          <button className="pr-dim" onClick={p.onLogout} style={css('height:48px;border-radius:14px;font-size:16px;font-weight:500;color:#4e5968')}>로그아웃</button>
+        </div>
+      )}
+      {p.loggedIn && !p.isAdmin && (p.me ? <Profile {...p} me={p.me} /> : (
         <div style={css('padding:80px 24px;text-align:center;font-size:15px;color:#6b7684')}>불러오는 중이에요…</div>
       ))}
     </div>

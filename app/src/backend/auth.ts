@@ -6,9 +6,10 @@ import {
   updateProfile,
   type User,
 } from 'firebase/auth'
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
-import { DEFAULT_OWNED } from './types'
+import { isAdminEmail, isBanned } from './admin'
+import { newCandidateDoc } from './candidateDoc'
 
 /** Firebase Auth has no username concept, so a login id becomes `id@vote.local` under the hood. */
 const idToEmail = (id: string) => `${id.trim().toLowerCase()}@vote.local`
@@ -28,24 +29,15 @@ export function onAuthChange(cb: (user: User | null) => void) {
  */
 async function ensureCandidateDoc(user: User, name: string) {
   if (!db) throw new Error('firebase-not-configured')
+  // The admin runs the site; they aren't on the leaderboard.
+  if (isAdminEmail(user.email)) return
+  if (await isBanned(db, user.uid)) {
+    await signOut(auth!)
+    throw new Error('account-deleted')
+  }
   const ref = doc(db, 'candidates', user.uid)
   if ((await getDoc(ref)).exists()) return
-  await setDoc(ref, {
-    name,
-    ownerUid: user.uid,
-    up: 0,
-    down: 0,
-    score: 0,
-    gender: '',
-    bio: '',
-    photoURL: '',
-    frame: 'none',
-    plate: 'none',
-    skin: 'none',
-    spent: 0,
-    owned: DEFAULT_OWNED,
-    createdAt: serverTimestamp(),
-  })
+  await setDoc(ref, newCandidateDoc(user.uid, name))
 }
 
 export async function signUp(name: string, id: string, pw: string) {
@@ -95,6 +87,7 @@ export function authErrorMessage(err: unknown): string {
     case 'auth/operation-not-allowed': return '아직 로그인 기능이 켜지지 않았어요 (관리자 설정 필요)'
     case 'permission-denied': return '저장 권한이 없어요 (보안 규칙 확인 필요)'
     case 'firebase-not-configured': return '아직 서버 연결이 설정되지 않았어요'
+    case 'account-deleted': return '관리자가 삭제한 계정이에요'
     // Keep the raw code visible so the next unexpected failure can be diagnosed from a screenshot.
     default: return `문제가 생겼어요. 잠시 후 다시 시도해주세요 (${code || 'unknown'})`
   }

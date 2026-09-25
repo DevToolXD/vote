@@ -1,0 +1,29 @@
+name: Purge deleted accounts
+
+# The admin tab deletes an account's leaderboard entry and bans the uid; this
+# removes the Firebase Auth login itself, which needs service-account access.
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/purge-deleted-accounts.mjs'
+      - '.github/workflows/purge-deleted-accounts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: node .github/scripts/purge-deleted-accounts.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

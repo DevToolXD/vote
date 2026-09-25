@@ -1,9 +1,12 @@
 import type { User } from 'firebase/auth'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, logIn, logOut, onAuthChange, signUp } from './backend/auth'
-import { buyItem, castVote, equipItem, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { deleteAccount, grantPoints, isAdminEmail, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
+import { buyItem, castVote, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { DEFAULT_SEASON, type Season } from './backend/types'
 import { fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
+import { AdminProgressOverlay, AdminScreen } from './components/AdminScreen'
 import { BottomNav } from './components/BottomNav'
 import { EditProfile } from './components/EditProfile'
 import { GlassFilters } from './components/GlassFilters'
@@ -13,7 +16,7 @@ import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
 import { css } from './css'
 import { BLUE, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab, type Vote } from './data'
-import { firebaseConfigured } from './firebase'
+import { db as maybeDb, firebaseConfigured } from './firebase'
 import { buildPeople } from './model'
 
 export type AppProps = {
@@ -21,6 +24,8 @@ export type AppProps = {
   /** Swap vote colours to red = 추천, blue = 비추천. */
   swapPalette?: boolean
 }
+
+const db = maybeDb
 
 type Buy = { kind: ItemKind; key: string; label: string; price: number }
 
@@ -46,6 +51,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const [authBusy, setAuthBusy] = useState(false)
   const [rows, setRows] = useState<CandidateRow[]>([])
   const [votes, setVotes] = useState<Record<string, Vote>>({})
+  const [season, setSeason] = useState<Season>(DEFAULT_SEASON)
 
   const [, setPhotoBusy] = useState(false)
   const [bioDraft, setBioDraft] = useState('')
@@ -65,6 +71,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const [themeOpen, setThemeOpen] = useState(false)
   const [revealOpen, setRevealOpen] = useState(false)
   const [installOpen, setInstallOpen] = useState(false)
+  const [adminBusy, setAdminBusy] = useState<{ label: string; p: AdminProgress } | null>(null)
   const [sound, setSound] = useState(true)
 
   const toastTimer = useRef<ReturnType<typeof setTimeout>>()
@@ -82,10 +89,11 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   useEffect(() => { setTab(startTab) }, [startTab])
 
   useEffect(() => onAuthChange(u => { setAuthUser(u); setAuthReady(true) }), [])
-  useEffect(() => subscribeCandidates(setRows), [])
+  useEffect(() => (db ? subscribeCandidates(db, setRows) : undefined), [])
+  useEffect(() => (db ? subscribeSeason(db, setSeason) : undefined), [])
   useEffect(() => {
     if (!authUser) { setVotes({}); return }
-    return subscribeMyVotes(authUser.uid, setVotes)
+    return db ? subscribeMyVotes(db, authUser.uid, setVotes) : undefined
   }, [authUser])
 
   // Warm the skin images so towers appear together with the bar-grow animation.
@@ -116,7 +124,9 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null), [rows, votes, authUser])
   const me = authUser ? all.find(d => d.id === authUser.uid) : undefined
   const mine = all.filter(d => d.v !== 0)
-  const points = me ? me.up - me.spent : 0
+  const points = me ? pointsOf(me) : 0
+  const isAdmin = isAdminEmail(authUser?.email)
+  useEffect(() => { if (tab === 'admin' && !isAdmin) setTab('home') }, [tab, isAdmin])
 
   // The bio textarea keeps its own draft so typing stays instant; it's synced from Firestore only when the signed-in user changes, and written back (debounced) below.
   const lastMeId = useRef<string | null>(null)
@@ -126,7 +136,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   }, [me])
   useEffect(() => {
     if (!authUser || !me || bioDraft === me.bio) return
-    const t = setTimeout(() => { updateMyProfile(authUser.uid, { bio: bioDraft }).catch(e => failToast('소개를 저장하지 못했어요', e)) }, 600)
+    const t = setTimeout(() => { updateMyProfile(db!, authUser.uid, { bio: bioDraft }).catch(e => failToast('소개를 저장하지 못했어요', e)) }, 600)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bioDraft])
@@ -142,11 +152,12 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
 
   const vote = async (id: string, dir: 1 | -1) => {
     if (!authUser) return
+    if (isAdmin) { showToast('관리자는 투표할 수 없어요'); return }
     const d = all.find(x => x.id === id)
     if (!d) return
     setSheet(null)
     try {
-      const next = await castVote(authUser.uid, id, dir)
+      const next = await castVote(db!, authUser.uid, id, dir)
       showToast(next === 0 ? `${d.name}님 투표를 취소했어요` : `${d.name}님에게 투표했어요`)
     } catch (e) {
       failToast('투표하지 못했어요. 다시 시도해주세요', e)
@@ -156,7 +167,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const pickItem = (kind: ItemKind, key: string, label: string) => {
     if (!me) return
     if (me.owned[kind].includes(key)) {
-      equipItem(me.id, kind, key).catch(e => failToast('적용하지 못했어요', e))
+      equipItem(db!, me.id, kind, key).catch(e => failToast('적용하지 못했어요', e))
     } else {
       setBuy({ kind, key, label, price: priceOf(kind, key) })
     }
@@ -167,7 +178,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const confirmBuy = async () => {
     if (!buy || !canBuy || !me) return
     try {
-      await buyItem(me.id, buy.kind, buy.key, buy.price)
+      await buyItem(db!, me.id, buy.kind, buy.key, buy.price)
       setBuy(null)
       showToast(buyName + ' 적용했어요')
     } catch (e) {
@@ -219,7 +230,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
     setPhotoBusy(true)
     try {
       const dataUrl = await fileToPhotoDataUrl(f)
-      await updateMyProfile(authUser.uid, { photoURL: dataUrl })
+      await updateMyProfile(db!, authUser.uid, { photoURL: dataUrl })
       showToast('프로필 사진을 바꿨어요')
     } catch (e) {
       failToast('사진을 처리하지 못했어요. 다른 사진으로 시도해주세요', e)
@@ -229,7 +240,22 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   }
   const onRemovePhoto = () => {
     if (!authUser) return
-    updateMyProfile(authUser.uid, { photoURL: '' }).catch(e => failToast('사진을 지우지 못했어요', e))
+    updateMyProfile(db!, authUser.uid, { photoURL: '' }).catch(e => failToast('사진을 지우지 못했어요', e))
+  }
+
+  /** Runs an admin op behind the token-progress overlay; true if it finished. */
+  const runAdmin = async (label: string, op: (onProgress: (p: AdminProgress) => void) => Promise<void>) => {
+    setAdminBusy({ label, p: { batch: 1, batches: 1, verified: 0 } })
+    try {
+      await op(p => setAdminBusy({ label, p }))
+      showToast(`${label}을 마쳤어요`)
+      return true
+    } catch (e) {
+      failToast(`${label}에 실패했어요`, e)
+      return false
+    } finally {
+      setAdminBusy(null)
+    }
   }
 
   if (!firebaseConfigured) return <SetupNotice />
@@ -243,7 +269,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
           {tab === 'home' && (
             <HomeScreen
               all={all} loggedIn={loggedIn} query={homeQuery} onQuery={setHomeQuery} onPick={setSheet}
-              goRank={() => go('rank')} goAccount={() => go('acct')} startReveal={() => setRevealOpen(true)} onInstall={() => setInstallOpen(true)} myCount={mine.length}
+              goRank={() => go('rank')} goAccount={() => go('acct')} startReveal={() => setRevealOpen(true)} onInstall={() => setInstallOpen(true)} myCount={mine.length} seasonName={season.name}
             />
           )}
           {tab === 'rank' && (
@@ -268,11 +294,13 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
               onNameFocus={el => { if (!nameAck) { el.blur(); setRuleOpen(true); setRuleCheck(false) } }}
               onSubmitSignup={doSignup}
               authBusy={authBusy}
+              isAdmin={isAdmin}
+              goAdmin={() => go('admin')}
               me={me ? { ...me, bio: bioDraft } : undefined}
               onPhoto={onPhoto}
               onRemovePhoto={onRemovePhoto}
               onBio={v => setBioDraft(v.slice(0, 60))}
-              onGender={g => authUser && updateMyProfile(authUser.uid, { gender: g }).catch(e => failToast('저장하지 못했어요', e))}
+              onGender={g => authUser && updateMyProfile(db!, authUser.uid, { gender: g }).catch(e => failToast('저장하지 못했어요', e))}
               points={points}
               mine={mine}
               onCancelVote={d => vote(d.id, d.v as 1 | -1)}
@@ -281,9 +309,21 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
               goHome={() => go('home')}
             />
           )}
+          {tab === 'admin' && isAdmin && authUser && (
+            <AdminScreen
+              all={all}
+              season={season}
+              run={runAdmin}
+              grantPoints={(t, n, p) => grantPoints(db!, authUser.uid, t, n, p)}
+              setSeasonName={(n, p) => setSeasonName(db!, authUser.uid, n, p)}
+              resetSeason={(n, p) => resetSeason(db!, authUser.uid, n, p)}
+              deleteAccount={(t, p) => deleteAccount(db!, authUser.uid, t, p)}
+              onLogout={doLogout}
+            />
+          )}
         </main>
 
-        <BottomNav tab={tab} onGo={go} />
+        <BottomNav tab={tab === 'admin' && !isAdmin ? 'home' : tab} onGo={go} isAdmin={isAdmin} />
 
         {sheetPerson && (
           <VoteSheet d={sheetPerson} loggedIn={loggedIn} colors={colors} onVote={dir => vote(sheetPerson.id, dir)} onClose={() => setSheet(null)} onLogin={() => go('acct')} />
@@ -337,9 +377,10 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
           />
         )}
         {revealOpen && all.length >= 3 && (
-          <Reveal top={all.slice(0, 3)} sound={sound} onToggleSound={() => setSound(s => !s)} onClose={() => setRevealOpen(false)} />
+          <Reveal top={all.slice(0, 3)} seasonName={season.name} sound={sound} onToggleSound={() => setSound(s => !s)} onClose={() => setRevealOpen(false)} />
         )}
         {installOpen && <InstallSheet onClose={() => setInstallOpen(false)} onToast={showToast} />}
+        {adminBusy && <AdminProgressOverlay label={adminBusy.label} p={adminBusy.p} />}
         {toast && <Toast msg={toast} />}
       </div>
     </div>

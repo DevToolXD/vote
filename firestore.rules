@@ -1,72 +1,266 @@
 rules_version = '2';
 
 // Auto-deployed by .github/workflows/firebase-backend.yml on every push to main
-// that touches this file — edit here and push, no console visit needed.
-// (You can still paste this into Firebase Console → Firestore Database → Rules
-// → Publish by hand if you ever need to.)
-// Data model: candidates/{uid} is a signed-up voter's own leaderboard entry
-// (doc id == their Auth uid). votes/{voterUid}_{candidateId} records one
-// voter's up/down/none choice on one candidate.
+// that touches this file, after tests/rules passes against the emulator.
+//
+// Data model
+//   candidates/{uid}              a signed-up user's leaderboard entry (doc id == Auth uid)
+//   votes/{voterUid}_{candidateId} one voter's up/down/none choice on one candidate
+//   meta/season                   { name, number, startedAt }
+//   meta/adminLock                the admin operation currently being committed (see below)
+//   adminTokens/{random id}       single-use tokens for admin operations
+//   banned/{uid}                  accounts deleted by the admin; they can't re-join
+//
+// Admin operations (grant points, set season name, reset season, delete account)
+// Only the admin account (id "admin", i.e. admin@vote.local, or a user with the
+// `admin` custom claim that only a service account can set) may run them, and
+// every batch of writes must:
+//   1. burn three fresh single-use tokens (seq 1, 2, 3) that the admin created
+//      within the last 2 minutes for exactly this action + payload, and
+//   2. write meta/adminLock with those token ids in the same batch.
+// The lock rule checks the three tokens; every privileged write checks that the
+// lock was written in this very request (lock.at == request.time) for its action.
+// A token can't be reused (used only goes false → true, never deleted), so
+// replaying or tampering with a request fails.
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isSignedIn() { return request.auth != null; }
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && (request.auth.token.email == 'admin@vote.local' || request.auth.token.get('admin', false) == true);
+    }
 
-    // A generous cap on the profile photo data URL — the client always sends a small
-    // resized JPEG (a few KB), this just stops a crafted request from bloating the doc.
-    function photoOk() {
-      return !('photoURL' in request.resource.data) ||
-        (request.resource.data.photoURL is string && request.resource.data.photoURL.size() < 300000);
+    // ---- admin operation plumbing -------------------------------------------------
+
+    function lockPath() { return /databases/$(database)/documents/meta/adminLock; }
+    function lock() { return getAfter(lockPath()).data; }
+    // True only inside the batch that just wrote a valid meta/adminLock for `action`.
+    function adminOp(action) {
+      return isAdmin() && lock().at == request.time && lock().by == request.auth.uid && lock().action == action;
+    }
+
+    function validPayload(action, p) {
+      return (action == 'grantPoints' && p.keys().hasOnly(['target', 'amount']) && p.keys().hasAll(['target', 'amount'])
+                && p.target is string && p.amount is int && p.amount != 0 && p.amount >= -1000000 && p.amount <= 1000000)
+          || (action == 'setSeasonName' && p.keys().hasOnly(['name']) && validSeasonName(p.name))
+          || (action == 'seasonReset' && p.keys().hasOnly(['name', 'nextNumber']) && p.keys().hasAll(['name', 'nextNumber'])
+                && validSeasonName(p.name) && p.nextNumber is int)
+          || (action == 'deleteAccount' && p.keys().hasOnly(['target']) && p.target is string && p.target != request.auth.uid);
+    }
+    function validSeasonName(n) { return n is string && n.size() >= 1 && n.size() <= 20; }
+
+    function tokenOk(id, seq) {
+      let p = /databases/$(database)/documents/adminTokens/$(id);
+      let before = get(p).data;
+      let l = request.resource.data;
+      return before.used == false && getAfter(p).data.used == true
+        && before.uid == request.auth.uid && before.seq == seq
+        && before.action == l.action && before.payload == l.payload
+        && request.time < before.createdAt + duration.value(120, 's');
+    }
+
+    match /meta/adminLock {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['by', 'action', 'payload', 'tokens', 'at'])
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.at == request.time
+        && request.resource.data.tokens is list && request.resource.data.tokens.size() == 3
+        && validPayload(request.resource.data.action, request.resource.data.payload)
+        && tokenOk(request.resource.data.tokens[0], 1)
+        && tokenOk(request.resource.data.tokens[1], 2)
+        && tokenOk(request.resource.data.tokens[2], 3);
+      allow delete: if false;
+    }
+
+    match /adminTokens/{tokenId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && tokenId.size() >= 32
+        && request.resource.data.keys().hasOnly(['uid', 'action', 'payload', 'seq', 'used', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.used == false
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.seq in [1, 2, 3]
+        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount']
+        && request.resource.data.payload is map;
+      // Burned only together with a lock that lists it.
+      allow update: if isAdmin()
+        && resource.data.uid == request.auth.uid
+        && resource.data.used == false
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used'])
+        && request.resource.data.used == true
+        && lock().at == request.time
+        && tokenId in lock().tokens;
+      allow delete: if false;
+    }
+
+    // ---- season -------------------------------------------------------------------
+
+    match /meta/season {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasOnly(['name', 'number', 'startedAt']) && (
+        (adminOp('setSeasonName')
+          && request.resource.data.name == lock().payload.name
+          && (resource == null
+                ? request.resource.data.number == 1 && request.resource.data.startedAt == request.time
+                : request.resource.data.number == resource.data.number && request.resource.data.startedAt == resource.data.startedAt)) ||
+        (adminOp('seasonReset')
+          && request.resource.data.name == lock().payload.name
+          && request.resource.data.number == lock().payload.nextNumber
+          && lock().payload.nextNumber == (resource == null ? 1 : resource.data.number) + 1
+          && request.resource.data.startedAt == request.time)
+      );
+    }
+
+    // ---- candidates ---------------------------------------------------------------
+
+    function photoOk(d) { return d.photoURL is string && d.photoURL.size() < 300000; }
+
+    function price(kind, k) {
+      let frame = {'neon': 120, 'crown': 180, 'sakura': 100, 'cat': 100, 'stars': 140, 'flame': 160, 'ocean': 120, 'bunny': 100, 'halo': 150, 'devil': 150, 'butterfly': 120};
+      let skin = {'namsan': 200, 'eiffel': 250, 'bigben': 250, 'victory': 220};
+      return kind == 'frame' ? frame.get(k, 0) : kind == 'plate' ? frame.get(k, 0) + 30 : skin.get(k, 0);
+    }
+    function buyable(kind, added) {
+      let frameKeys = ['neon', 'crown', 'sakura', 'cat', 'stars', 'flame', 'ocean', 'bunny', 'halo', 'devil', 'butterfly'];
+      let skinKeys = ['namsan', 'eiffel', 'bigben', 'victory'];
+      return added.size() == 0 || (added.size() == 1 && added[0] in (kind == 'skin' ? skinKeys : frameKeys));
+    }
+    function costOf(kind, added) { return added.size() == 1 ? price(kind, added[0]) : 0; }
+
+    // Owner editing their own profile, equipping, or buying one item at its real price.
+    function ownerEdit() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let addF = d.owned.frame.removeAll(o.owned.frame);
+      let addP = d.owned.plate.removeAll(o.owned.plate);
+      let addS = d.owned.skin.removeAll(o.owned.skin);
+      let cost = costOf('frame', addF) + costOf('plate', addP) + costOf('skin', addS);
+      return request.auth.uid == o.ownerUid
+        && d.diff(o).affectedKeys().hasOnly(['gender', 'bio', 'photoURL', 'frame', 'plate', 'skin', 'spent', 'owned'])
+        && d.owned.keys().hasOnly(['frame', 'plate', 'skin'])
+        && d.owned.frame.hasAll(o.owned.frame) && d.owned.plate.hasAll(o.owned.plate) && d.owned.skin.hasAll(o.owned.skin)
+        && addF.size() + addP.size() + addS.size() <= 1
+        && buyable('frame', addF) && buyable('plate', addP) && buyable('skin', addS)
+        && d.spent == o.spent + cost
+        && (cost == 0 || d.spent <= d.up + d.get('bonus', 0))
+        && d.frame in d.owned.frame && d.plate in d.owned.plate && d.skin in d.owned.skin
+        && d.bio is string && d.bio.size() <= 60
+        && d.gender in ['', '남자', '여자']
+        && photoOk(d);
+    }
+
+    // Another user's vote moving the tally — must match their vote doc changing in the same write.
+    function voteTally(candidateId) {
+      let d = request.resource.data;
+      let o = resource.data;
+      let vp = /databases/$(database)/documents/votes/$(request.auth.uid + '_' + candidateId);
+      let before = exists(vp) ? get(vp).data.value : 0;
+      let after = existsAfter(vp) ? getAfter(vp).data.value : 0;
+      return request.auth.uid != o.ownerUid
+        && d.diff(o).affectedKeys().hasOnly(['up', 'down', 'score'])
+        && before != after
+        && d.up == o.up + (after == 1 ? 1 : 0) - (before == 1 ? 1 : 0)
+        && d.down == o.down + (after == -1 ? 1 : 0) - (before == -1 ? 1 : 0)
+        && d.score == d.up - d.down;
+    }
+
+    function adminGrant(candidateId) {
+      let d = request.resource.data;
+      return adminOp('grantPoints') && lock().payload.target == candidateId
+        && d.diff(resource.data).affectedKeys().hasOnly(['bonus'])
+        && d.bonus == resource.data.get('bonus', 0) + lock().payload.amount;
+    }
+
+    // Season reset: tallies to zero; this season's recommendations carry over as points (bonus).
+    function adminSeasonReset() {
+      let d = request.resource.data;
+      let o = resource.data;
+      return adminOp('seasonReset')
+        && d.diff(o).affectedKeys().hasOnly(['up', 'down', 'score', 'bonus'])
+        && d.up == 0 && d.down == 0 && d.score == 0
+        && d.get('bonus', 0) == o.get('bonus', 0) + o.up;
+    }
+
+    // Deleting account T: take back T's vote on this candidate, deleting that vote doc in the same batch.
+    function adminDeleteAdjust(candidateId) {
+      let d = request.resource.data;
+      let o = resource.data;
+      let target = lock().payload.target;
+      let vp = /databases/$(database)/documents/votes/$(target + '_' + candidateId);
+      let v = get(vp).data.value;
+      return adminOp('deleteAccount') && candidateId != target
+        && !existsAfter(vp)
+        && d.diff(o).affectedKeys().hasOnly(['up', 'down', 'score'])
+        && d.up == o.up - (v == 1 ? 1 : 0)
+        && d.down == o.down - (v == -1 ? 1 : 0)
+        && d.score == d.up - d.down;
     }
 
     match /candidates/{candidateId} {
-      // Public leaderboard — anyone can read without logging in.
       allow read: if true;
 
-      // A voter can only create the candidate doc that matches their own uid,
-      // and only with a fresh, untouched scoreboard.
-      allow create: if isSignedIn()
+      allow create: if signedIn() && !isAdmin()
         && request.auth.uid == candidateId
+        && !exists(/databases/$(database)/documents/banned/$(candidateId))
+        && request.resource.data.keys().hasOnly(['name', 'ownerUid', 'up', 'down', 'score', 'gender', 'bio', 'photoURL', 'frame', 'plate', 'skin', 'spent', 'owned', 'createdAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 20
         && request.resource.data.ownerUid == request.auth.uid
-        && request.resource.data.up == 0
-        && request.resource.data.down == 0
-        && request.resource.data.score == 0
-        && request.resource.data.spent == 0;
+        && request.resource.data.up == 0 && request.resource.data.down == 0 && request.resource.data.score == 0
+        && request.resource.data.spent == 0
+        && request.resource.data.gender == '' && request.resource.data.bio == '' && request.resource.data.photoURL == ''
+        && request.resource.data.frame == 'none' && request.resource.data.plate == 'none' && request.resource.data.skin == 'none'
+        && request.resource.data.owned == {'frame': ['none'], 'plate': ['none'], 'skin': ['none']};
 
-      allow update: if isSignedIn() && (
-        // The owner editing their own profile/decorations/shop state.
-        (request.auth.uid == resource.data.ownerUid &&
-         request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['gender', 'bio', 'photoURL', 'frame', 'plate', 'skin', 'spent', 'owned']) &&
-         photoOk()) ||
-        // Any other signed-in voter moving the tally by exactly one valid vote transition.
-        (request.auth.uid != resource.data.ownerUid &&
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['up', 'down', 'score']) &&
-         request.resource.data.score == request.resource.data.up - request.resource.data.down &&
-         (
-           (request.resource.data.up == resource.data.up + 1 && request.resource.data.down == resource.data.down) ||
-           (request.resource.data.up == resource.data.up - 1 && request.resource.data.down == resource.data.down) ||
-           (request.resource.data.down == resource.data.down + 1 && request.resource.data.up == resource.data.up) ||
-           (request.resource.data.down == resource.data.down - 1 && request.resource.data.up == resource.data.up) ||
-           (request.resource.data.up == resource.data.up - 1 && request.resource.data.down == resource.data.down + 1) ||
-           (request.resource.data.up == resource.data.up + 1 && request.resource.data.down == resource.data.down - 1)
-         ))
+      allow update: if signedIn() && (
+        ownerEdit() || voteTally(candidateId) ||
+        adminGrant(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId)
       );
 
-      allow delete: if false;
+      allow delete: if adminOp('deleteAccount') && lock().payload.target == candidateId;
+    }
+
+    // ---- votes --------------------------------------------------------------------
+
+    // The vote doc may only change together with the matching tally change on the candidate.
+    function voteMatchesTally() {
+      let cp = /databases/$(database)/documents/candidates/$(request.resource.data.candidateId);
+      let c0 = get(cp).data;
+      let c1 = getAfter(cp).data;
+      let before = resource == null ? 0 : resource.data.value;
+      let after = request.resource.data.value;
+      return c0.ownerUid != request.auth.uid
+        && before != after
+        && c1.up == c0.up + (after == 1 ? 1 : 0) - (before == 1 ? 1 : 0)
+        && c1.down == c0.down + (after == -1 ? 1 : 0) - (before == -1 ? 1 : 0);
     }
 
     match /votes/{voteId} {
-      // Only the voter who cast it can read their own vote doc.
-      allow read: if isSignedIn() && request.auth.uid == resource.data.uid;
+      // A vote that doesn't exist yet (first vote) is readable by the voter whose uid prefixes its id.
+      allow read: if signedIn() && (isAdmin() || (resource == null ? voteId.split('_')[0] == request.auth.uid : resource.data.uid == request.auth.uid));
 
-      allow create, update: if isSignedIn()
-        && request.auth.uid == request.resource.data.uid
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'candidateId', 'value', 'updatedAt'])
+        && request.resource.data.uid == request.auth.uid
         && voteId == request.auth.uid + '_' + request.resource.data.candidateId
         && request.resource.data.value in [-1, 0, 1]
-        && request.auth.uid != get(/databases/$(database)/documents/candidates/$(request.resource.data.candidateId)).data.ownerUid;
+        && voteMatchesTally();
 
-      allow delete: if false;
+      allow delete: if adminOp('seasonReset')
+        || (adminOp('deleteAccount') && (resource.data.uid == lock().payload.target || resource.data.candidateId == lock().payload.target));
+    }
+
+    // ---- deleted accounts ---------------------------------------------------------
+
+    match /banned/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if adminOp('deleteAccount') && lock().payload.target == uid
+        && request.resource.data.keys().hasOnly(['at', 'by'])
+        && request.resource.data.at == request.time
+        && request.resource.data.by == request.auth.uid;
+      allow update, delete: if false;
     }
   }
 }

@@ -44,3 +44,13 @@ if (mask.length) {
 const after = (await call(configUrl, { headers: auth })).json
 if (!after.signIn?.email?.enabled || !after.signIn?.email?.passwordRequired) fail('Email/Password sign-in is still not enabled after the update.')
 notice(`Auth ready: Email/Password on; authorized domains = ${(after.authorizedDomains || []).join(', ')}`)
+
+// The admin tab belongs to whoever owns the "admin" id (admin@vote.local). Report
+// whether it exists, so it can be claimed by the owner before anyone else does.
+const look = await call(`https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:lookup`, {
+  method: 'POST', headers: auth, body: JSON.stringify({ email: ['admin@vote.local'] }),
+})
+const adminUser = look.json.users?.[0]
+if (adminUser) notice(`Admin account exists (created ${new Date(Number(adminUser.createdAt)).toISOString()}).`)
+else console.log('::warning::No admin account yet — sign up in the app with the id "admin" to claim the admin tab.')
+

@@ -1,8 +1,11 @@
 name: Firebase backend
 
-# Deploys firestore.rules, makes sure Email/Password sign-in is on, then runs an
-# end-to-end smoke test (sign up → save → vote, plus what must be refused)
-# against the live project. Results show up as annotations on the run.
+# 1. Tests firestore.rules against the Firestore emulator using the app's own
+#    backend code (app/tests/rules.test.ts) — nothing deploys if this fails.
+# 2. Deploys the rules, makes sure Email/Password sign-in is on.
+# 3. Runs an end-to-end smoke test against the live project (sign up → save →
+#    vote → admin grant with 3 single-use tokens, plus what must be refused).
+# Results show up as annotations on the run.
 
 on:
   push:
@@ -12,6 +15,8 @@ on:
       - '.github/scripts/**'
       - '.github/workflows/firebase-backend.yml'
       - 'app/src/backend/**'
+      - 'app/tests/**'
+      - 'firebase.json'
   workflow_dispatch:
 
 permissions:
@@ -32,6 +37,13 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Rules tests (emulator)
+        working-directory: app
+        run: npm ci && npm run test:rules
       - name: Deploy Firestore rules
         run: node .github/scripts/deploy-firestore-rules.mjs
       - name: Check Authentication settings

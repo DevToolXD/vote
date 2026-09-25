@@ -16,6 +16,8 @@ export type CandidateDoc = {
   plate: string
   skin: string
   spent: number
+  /** Points added by the admin or carried over from past seasons' recommendations. */
+  bonus?: number
   owned: Record<ItemKind, string[]>
   createdAt: unknown
 }
@@ -29,3 +31,7 @@ export type VoteDoc = {
   value: -1 | 0 | 1
   updatedAt: unknown
 }
+
+export type Season = { name: string; number: number }
+/** Before the admin ever names or resets a season, the app shows this one. */
+export const DEFAULT_SEASON: Season = { name: 'BETA', number: 1 }

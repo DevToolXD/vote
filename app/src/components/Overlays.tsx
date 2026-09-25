@@ -23,8 +23,8 @@ function BottomSheet({ onScrim, scrim, sheetStyle, children }: { onScrim: () => 
   )
 }
 
-/** Centred modal dialog (real-name rule, purchase). */
-function Dialog({ onScrim, labelledBy, gap, children }: { onScrim: () => void; labelledBy?: string; gap: number; children: ReactNode }) {
+/** Centred modal dialog (real-name rule, purchase, admin confirmations). */
+export function Dialog({ onScrim, labelledBy, gap, children }: { onScrim: () => void; labelledBy?: string; gap: number; children: ReactNode }) {
   return (
     <>
       <div data-g="scrim" onClick={onScrim} style={css('position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.4);animation:fade 200ms ease both')} />

@@ -33,8 +33,19 @@ async function signUp(label) {
   })
   // Throw rather than fail(): process.exit would skip the cleanup in `finally`.
   if (!check(r.ok, `Test user ${label} signed up`, `Sign-up for test user ${label} failed (${r.status})`, r.json)) throw 0
-  return { uid: r.json.localId, token: r.json.idToken }
+  return { uid: r.json.localId, token: r.json.idToken, email }
 }
+
+async function signIn(email) {
+  const r = await call(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password: 'smoke-test-pw-123', returnSecureToken: true }),
+  })
+  if (!check(r.ok, `Signed in again as ${email}`, `Re-sign-in failed (${r.status})`, r.json)) throw 0
+  return r.json.idToken
+}
+const withServerTime = (w, field) => ({ ...w, updateTransforms: [{ fieldPath: field, setToServerValue: 'REQUEST_TIME' }] })
+const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('')
 
 const candidate = (uid, name) => ({
   name, ownerUid: uid, up: 0, down: 0, score: 0, gender: '', bio: '', photoURL: '',
@@ -88,6 +99,43 @@ try {
 
   const inflate = await commit(b.token, [update(`candidates/${a.uid}`, { up: 50, down: 0, score: 50 }, ['up', 'down', 'score'])])
   check(inflate.status === 403, 'Inflating a tally is refused', `Inflating a tally was NOT refused (${inflate.status})`)
+
+  const bump = await commit(b.token, [update(`candidates/${a.uid}`, { up: 2, down: 0, score: 2 }, ['up', 'down', 'score'])])
+  check(bump.status === 403, 'A tally can’t move without a matching vote', `A tally moved without a vote (${bump.status})`)
+
+  // ---- admin protocol on the live database: 3 single-use tokens, then one batch ----
+  const payload = { target: a.uid, amount: 50 }
+  const tokenDoc = (uid, seq) => ({ uid, action: 'grantPoints', payload, seq, used: false })
+  const plain = await commit(b.token, [withServerTime(update(`adminTokens/${randomId()}`, tokenDoc(b.uid, 1)), 'createdAt')])
+  check(plain.status === 403, 'Regular users can’t issue admin tokens', `A regular user issued an admin token (${plain.status})`)
+
+  const adm = await signUp('admin'); users.push(adm)
+  const setClaim = await call(`https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:update`, {
+    method: 'POST', headers: bearer(await getAccessToken(key)), body: JSON.stringify({ localId: adm.uid, customAttributes: JSON.stringify({ admin: true }) }),
+  })
+  if (!check(setClaim.ok, 'Test admin got the admin claim', `Setting the admin claim failed (${setClaim.status})`, setClaim.json)) throw 0
+  adm.token = await signIn(adm.email)
+
+  const tokens = []
+  for (const seq of [1, 2, 3]) {
+    const id = randomId(); tokens.push(id); docs.push(`adminTokens/${id}`)
+    const r = await commit(adm.token, [{ ...withServerTime(update(`adminTokens/${id}`, tokenDoc(adm.uid, seq)), 'createdAt'), currentDocument: { exists: false } }])
+    const back = await call(`${fsApi}/${dbRoot}/adminTokens/${id}`, { headers: bearer(adm.token) })
+    if (!check(r.ok && back.json.fields?.used?.booleanValue === false && back.json.fields?.seq?.integerValue === String(seq),
+      `Admin token ${seq}/3 issued and verified`, `Admin token ${seq} failed (${r.status}/${back.status})`, r.json)) throw 0
+  }
+  docs.push('meta/adminLock')
+  const grantWrites = () => [
+    withServerTime(update('meta/adminLock', { by: adm.uid, action: 'grantPoints', payload, tokens }), 'at'),
+    ...tokens.map(t => update(`adminTokens/${t}`, { used: true }, ['used'])),
+    update(`candidates/${a.uid}`, { bonus: 50 }, ['bonus']),
+  ]
+  const grant = await commit(adm.token, grantWrites())
+  if (!check(grant.ok, 'Admin grant with 3 tokens goes through', `Admin grant was refused (${grant.status})`, grant.json)) throw 0
+  const aAfter = await call(`${fsApi}/${dbRoot}/candidates/${a.uid}?key=${apiKey}`)
+  check(aAfter.json.fields?.bonus?.integerValue === '50', 'Granted points landed', 'Granted points missing', aAfter.json.fields?.bonus)
+  const replay = await commit(adm.token, grantWrites())
+  check(replay.status === 403, 'Replaying used tokens is refused', `Replaying used tokens was NOT refused (${replay.status})`)
 } catch (e) {
   if (e !== 0) { failed = String(e); console.log('::error::Smoke test crashed: ' + e) }
 } finally {

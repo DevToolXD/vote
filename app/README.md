@@ -30,6 +30,20 @@ React + TypeScript + Vite build of `project/Popular Vote v2.dc.html` (Claude Des
 
 For local dev, copy `.env.example` to `.env.local` and fill in the same values (it's git-ignored).
 
+## Admin
+
+Sign up in the app with the id **admin** (admin@vote.local) — that account gets a **관리** tab and isn't on the leaderboard. Do this before anyone else can take the id; the `Firebase backend` workflow warns while no admin account exists.
+
+- **시즌**: rename the season, or start a new one (all tallies → 0, all votes cleared, each person's recommendations this season carry over as points).
+- **사람 관리**: give or take points (any amount, ±1,000,000 max), or delete an account (their votes are taken back, their entry removed, the uid banned from re-joining; `purge-deleted-accounts.yml` then deletes the login itself, hourly).
+
+Every admin write goes through single-use tokens, enforced by `firestore.rules`: the app issues three tokens (seq 1–3) bound to the exact action and payload, reads each back to verify it, then commits one batch that writes `meta/adminLock` listing them, burns all three, and makes the change. Tokens expire after 2 minutes and can't be reused, and the rules reject any privileged write that doesn't come with a freshly written lock for its action. Big operations (season reset) run in several batches, each with its own three tokens. What this guards against: replayed, duplicated or altered requests, and anyone who isn't the admin. What it can't: someone who has the admin's password — keep it strong.
+
+## Tests
+
+- `npm run test:rules` (in `app/`): 22 tests of `firestore.rules` on the Firestore emulator (needs Java 21), using the app's own `src/backend` code — sign-up, voting and vote-integrity attacks, the shop's price/points checks, and every admin operation including token replay/forgery. CI runs these before deploying rules.
+- `.github/scripts/smoke-test.mjs`: the same core flows plus a real 3-token admin grant against the live project, with throwaway users that are deleted afterwards.
+
 ## Install as an app
 
 The Home tab has an **앱 설치하기** card (hidden when already running as an app) that opens a sheet with two tabs:

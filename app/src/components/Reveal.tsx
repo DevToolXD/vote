@@ -16,10 +16,10 @@ const PODIUM: [number, number, number, string, string, string, number, number][]
   [2, 3, 72, 'linear-gradient(180deg,#f0bb8f,#b06a3a)', '#4a2a12', 'rgba(224,162,118,0.45)', 56, 1],
 ]
 
-type Props = { top: Person[]; sound: boolean; onToggleSound: () => void; onClose: () => void }
+type Props = { top: Person[]; seasonName: string; sound: boolean; onToggleSound: () => void; onClose: () => void }
 
 /** Season TOP 3 reveal: screen darkens, drum zooms in and shakes harder, then 3rd → 2nd → 1st. */
-export function Reveal({ top, sound, onToggleSound, onClose }: Props) {
+export function Reveal({ top, seasonName, sound, onToggleSound, onClose }: Props) {
   const [run, setRun] = useState(0)
   const [step, setStep] = useState(0)
   const [flash, setFlash] = useState(0)
@@ -60,7 +60,7 @@ export function Reveal({ top, sound, onToggleSound, onClose }: Props) {
           <button className="pr-light" onClick={onClose} aria-label="닫기" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#ffffff')}><CloseIcon size={22} stroke="currentColor" width={2.4} /></button>
         </div>
         <div style={css('position:relative;z-index:2;padding:8px 24px 0;display:flex;flex-direction:column;gap:4px;animation:rvFade 800ms ease 700ms both')}>
-          <span style={css('font-size:13px;line-height:19.5px;font-weight:700;color:#64a8ff')}>시즌 BETA 결과</span>
+          <span style={css('font-size:13px;line-height:19.5px;font-weight:700;color:#64a8ff')}>시즌 {seasonName} 결과</span>
           <span style={css('font-size:26px;line-height:35px;font-weight:700;color:#ffffff;min-height:70px')}>{title}</span>
         </div>
         <div style={css('position:relative;z-index:2;flex:1 0 auto;min-height:220px;padding:12px 0 20px;display:flex;align-items:center;justify-content:center')}>
