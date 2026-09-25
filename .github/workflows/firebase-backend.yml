@@ -46,6 +46,8 @@ jobs:
         run: npm ci && npm run test:rules
       - name: Deploy Firestore rules
         run: node .github/scripts/deploy-firestore-rules.mjs
+      - name: Migrate vote docs to the weekly-추천 format
+        run: node .github/scripts/migrate-votes.mjs
       - name: Check Authentication settings
         run: node .github/scripts/setup-auth.mjs
       - name: End-to-end smoke test

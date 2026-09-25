@@ -143,7 +143,8 @@ export async function setSeasonName(db: Firestore, adminUid: string, name: strin
 }
 
 /**
- * Starts a new season: every tally goes to zero, all votes are removed, and each
+ * Starts a new season: every tally goes to zero (vote docs stay, so the 7-day 추천
+ * timer and the one-time 비추천 carry over; they just stop counting), and each
  * person's recommendations this season carry over as points (bonus) so nobody
  * loses what they can spend in the shop.
  */
@@ -151,14 +152,13 @@ export async function resetSeason(db: Firestore, adminUid: string, newName: stri
   const name = cleanSeasonName(newName)
   const cur = await getSeason(db)
   const nextNumber = (cur.exists ? cur.number : 1) + 1
-  const [cands, votes] = await Promise.all([getDocs(collection(db, 'candidates')), getDocs(collection(db, 'votes'))])
+  const cands = await getDocs(collection(db, 'candidates'))
   const groups: ((b: WriteBatch) => number)[] = []
   for (const c of cands.docs) {
     const d = c.data() as CandidateDoc
     if (!d.up && !d.down && !d.score) continue
     groups.push(b => { b.update(c.ref, { up: 0, down: 0, score: 0, bonus: (d.bonus ?? 0) + d.up }); return 1 })
   }
-  for (const v of votes.docs) groups.push(b => { b.delete(v.ref); return 1 })
   // Final podium of the season that's ending, for the one-time TOP 3 reveal.
   const top = cands.docs
     .map(c => ({ id: c.id, ...(c.data() as CandidateDoc) }))
@@ -183,14 +183,18 @@ export async function deleteAccount(db: Firestore, adminUid: string, target: str
     getDocs(query(collection(db, 'votes'), where('candidateId', '==', target))),
   ])
   const groups: ((b: WriteBatch) => number)[] = []
+  const cur = (await getSeason(db)).number
   for (const v of cast.docs) {
-    const vote = v.data() as VoteDoc
-    if (vote.candidateId === target) continue
+    const vote = v.data() as Partial<VoteDoc>
+    if (!vote.candidateId || vote.candidateId === target) continue
+    // Only this season's part of the vote is in the tally (see firestore.rules upsNow/downNow).
+    const ups = vote.season === cur ? vote.ups ?? 0 : 0
+    const downs = vote.down && vote.downSeason === cur ? 1 : 0
     const candRef = doc(db, 'candidates', vote.candidateId)
-    const cand = vote.value !== 0 ? await getDoc(candRef) : null
+    const cand = ups || downs ? await getDoc(candRef) : null
     if (cand?.exists()) {
       const c = cand.data() as CandidateDoc
-      const up = c.up - (vote.value === 1 ? 1 : 0), down = c.down - (vote.value === -1 ? 1 : 0)
+      const up = c.up - ups, down = c.down - downs
       groups.push(b => { b.update(candRef, { up, down, score: up - down }); b.delete(v.ref); return 2 })
     } else {
       groups.push(b => { b.delete(v.ref); return 1 })

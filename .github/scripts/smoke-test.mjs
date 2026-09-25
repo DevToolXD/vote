@@ -45,7 +45,7 @@ async function signIn(email) {
   if (!check(r.ok, `Signed in again as ${email}`, `Re-sign-in failed (${r.status})`, r.json)) throw 0
   return r.json.idToken
 }
-const withServerTime = (w, field) => ({ ...w, updateTransforms: [{ fieldPath: field, setToServerValue: 'REQUEST_TIME' }] })
+const withServerTime = (w, ...fieldsNow) => ({ ...w, updateTransforms: fieldsNow.map(f => ({ fieldPath: f, setToServerValue: 'REQUEST_TIME' })) })
 const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('')
 
 const candidate = (uid, name) => ({
@@ -80,19 +80,27 @@ try {
   }
 
   // B recommends A: same two writes the app's castVote() transaction makes.
+  const seasonDoc = await call(`${fsApi}/${dbRoot}/meta/season?key=${apiKey}`)
+  const season = seasonDoc.ok ? Number(seasonDoc.json.fields?.number?.integerValue ?? 1) : 1
+  const upVote = (voter, cand, ups) => withServerTime(update(`votes/${voter}_${cand}`, { uid: voter, candidateId: cand, season, ups, down: false, downSeason: 0 }), 'lastUpAt', 'updatedAt')
   docs.push(`votes/${b.uid}_${a.uid}`)
   const vote = await commit(b.token, [
     update(`candidates/${a.uid}`, { up: 1, down: 0, score: 1 }, ['up', 'down', 'score']),
-    update(`votes/${b.uid}_${a.uid}`, { uid: b.uid, candidateId: a.uid, value: 1, updatedAt: new Date() }),
+    upVote(b.uid, a.uid, 1),
   ])
   if (!check(vote.ok, 'Voting for someone else works', `Voting was refused (${vote.status})`, vote.json)) throw 0
+  const again = await commit(b.token, [
+    update(`candidates/${a.uid}`, { up: 2, down: 0, score: 2 }, ['up', 'down', 'score']),
+    upVote(b.uid, a.uid, 2),
+  ])
+  check(again.status === 403, 'A second 추천 within 7 days is refused', `A second 추천 within 7 days was NOT refused (${again.status})`)
 
   const readA = await call(`${fsApi}/${dbRoot}/candidates/${a.uid}?key=${apiKey}`)
   check(readA.ok && readA.json.fields?.up?.integerValue === '1' && readA.json.fields?.score?.integerValue === '1',
     'Leaderboard is publicly readable and shows the vote', 'Reading the tally back did not show the vote', readA.json)
 
   docs.push(`votes/${a.uid}_${a.uid}`)
-  const selfVote = await commit(a.token, [update(`votes/${a.uid}_${a.uid}`, { uid: a.uid, candidateId: a.uid, value: 1, updatedAt: new Date() })])
+  const selfVote = await commit(a.token, [update(`candidates/${a.uid}`, { up: 2, down: 0, score: 2 }, ['up', 'down', 'score']), upVote(a.uid, a.uid, 1)])
   check(selfVote.status === 403, 'Self-voting is refused', `Self-voting was NOT refused (${selfVote.status})`)
 
   const editOther = await commit(b.token, [update(`candidates/${a.uid}`, { bio: 'hacked' }, ['bio'])])

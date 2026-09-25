@@ -62,55 +62,90 @@ describe('sign-up', () => {
     const admin = dbAs(ADMIN)
     await setDoc(doc(admin, 'candidates', ADMIN.uid), newCandidateDoc(ADMIN.uid, '관리자'))
     const b = await signUp('b')
-    await castVote(admin, ADMIN.uid, 'b', 1)
-    await castVote(b, 'b', ADMIN.uid, 1)
+    await castVote(admin, ADMIN.uid, 'b', 'up')
+    await castVote(b, 'b', ADMIN.uid, 'up')
     assert.equal((await read(admin, `candidates/${ADMIN.uid}`)).up, 1)
-    await assert.rejects(castVote(admin, ADMIN.uid, ADMIN.uid, 1))
+    await assert.rejects(castVote(admin, ADMIN.uid, ADMIN.uid, 'up'))
     await grantPoints(admin, ADMIN.uid, ADMIN.uid, 100)
     assert.equal((await read(admin, `candidates/${ADMIN.uid}`)).bonus, 100)
     await assert.rejects(deleteAccount(admin, ADMIN.uid, ADMIN.uid))
   })
 })
 
+// Writes straight to the emulator as the owner (rules bypassed) — to set up history, e.g. a 추천 8 days ago.
+async function seed(path: string, fields: Record<string, unknown>) {
+  const fv = (v: unknown): unknown => typeof v === 'string' ? { stringValue: v } : typeof v === 'boolean' ? { booleanValue: v }
+    : typeof v === 'number' ? { integerValue: String(v) } : v instanceof Date ? { timestampValue: v.toISOString() } : v === null ? { nullValue: null } : v
+  const body = { fields: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, fv(v)])) }
+  const mask = Object.keys(fields).map(k => `updateMask.fieldPaths=${k}`).join('&')
+  const r = await fetch(`http://${HOST}:${PORT}/v1/projects/${PROJECT}/databases/(default)/documents/${path}?${mask}`, { method: 'PATCH', headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  assert.ok(r.ok, await r.text())
+}
+const tally = async (db: Firestore, id: string) => { const c = await read(db, `candidates/${id}`); return [c.up, c.down, c.score] }
+const voteDoc = (uid: string, cand: string, extra: Record<string, unknown>) =>
+  ({ uid, candidateId: cand, season: 1, ups: 0, lastUpAt: null, down: false, downSeason: 0, updatedAt: serverTimestamp(), ...extra })
+
 describe('voting', () => {
-  test('recommend, switch to not-recommend, cancel — tally follows', async () => {
+  test('추천 once per 7 days per person; 비추천 once ever; nothing undoes', async () => {
+    await signUp('a'); const b = await signUp('b'); await signUp('c')
+    await castVote(b, 'b', 'a', 'up')
+    assert.deepEqual(await tally(b, 'a'), [1, 0, 1])
+    await assert.rejects(castVote(b, 'b', 'a', 'up'), /vote-too-soon/)
+    await castVote(b, 'b', 'c', 'up') // other people are separate
+    await castVote(b, 'b', 'a', 'down')
+    assert.deepEqual(await tally(b, 'a'), [1, 1, 0])
+    await assert.rejects(castVote(b, 'b', 'a', 'down'), /already-downvoted/)
+    // Server side too, skipping the client checks: a second 추천 within 7 days, a second 비추천, taking one back.
+    const ref = doc(b, 'votes', 'b_a'), cand = doc(b, 'candidates', 'a')
+    const tryWrite = (vote: Record<string, unknown>, c: Record<string, unknown>) => { const w = writeBatch(b); w.set(ref, voteDoc('b', 'a', vote)); w.update(cand, c); return w.commit() }
+    const last = (await getDoc(ref)).data()!.lastUpAt
+    await denied(tryWrite({ ups: 2, lastUpAt: serverTimestamp(), down: true, downSeason: 1 }, { up: 2, score: 1 }))
+    await denied(tryWrite({ ups: 1, lastUpAt: last, down: false, downSeason: 0 }, { down: 0, score: 1 }))
+    await denied(tryWrite({ ups: 0, lastUpAt: last, down: true, downSeason: 1 }, { up: 0, score: -1 }))
+  })
+  test('after 7 days, 추천 works again and adds up; a back-dated 추천 is refused', async () => {
     await signUp('a'); const b = await signUp('b')
-    assert.equal(await castVote(b, 'b', 'a', 1), 1)
-    let c = await read(b, 'candidates/a'); assert.deepEqual([c.up, c.down, c.score], [1, 0, 1])
-    assert.equal(await castVote(b, 'b', 'a', -1), -1)
-    c = await read(b, 'candidates/a'); assert.deepEqual([c.up, c.down, c.score], [0, 1, -1])
-    assert.equal(await castVote(b, 'b', 'a', -1), 0)
-    c = await read(b, 'candidates/a'); assert.deepEqual([c.up, c.down, c.score], [0, 0, 0])
+    await castVote(b, 'b', 'a', 'up')
+    await seed('votes/b_a', { lastUpAt: new Date(Date.now() - 8 * 86400_000) })
+    await castVote(b, 'b', 'a', 'up')
+    assert.deepEqual(await tally(b, 'a'), [2, 0, 2])
+    assert.equal((await getDoc(doc(b, 'votes', 'b_a'))).data()!.ups, 2)
+    await seed('votes/b_a', { lastUpAt: new Date(Date.now() - 6 * 86400_000) })
+    await assert.rejects(castVote(b, 'b', 'a', 'up'))
+    const w = writeBatch(b)
+    w.set(doc(b, 'votes', 'b_a'), voteDoc('b', 'a', { ups: 3, lastUpAt: new Date(Date.now() - 30 * 86400_000) }))
+    w.update(doc(b, 'candidates', 'a'), { up: 3, score: 3 })
+    await denied(w.commit())
   })
   test('refused: voting for yourself', async () => {
     const a = await signUp('a')
-    await assert.rejects(castVote(a, 'a', 'a', 1))
-    await denied(setDoc(doc(a, 'votes', 'a_a'), { uid: 'a', candidateId: 'a', value: 1, updatedAt: serverTimestamp() }))
+    await assert.rejects(castVote(a, 'a', 'a', 'up'))
+    await denied(setDoc(doc(a, 'votes', 'a_a'), voteDoc('a', 'a', { ups: 1, lastUpAt: serverTimestamp() })))
   })
   test('refused: bumping a tally without a matching vote (the old infinite-votes hole)', async () => {
     await signUp('a'); const b = await signUp('b')
     await denied(updateDoc(doc(b, 'candidates', 'a'), { up: 1, score: 1 }))
-    await castVote(b, 'b', 'a', 1)
+    await castVote(b, 'b', 'a', 'up')
     await denied(updateDoc(doc(b, 'candidates', 'a'), { up: 2, score: 2 }))
   })
   test('refused: changing a vote doc without the tally, or with a bigger jump', async () => {
     await signUp('a'); const b = await signUp('b')
-    await denied(setDoc(doc(b, 'votes', 'b_a'), { uid: 'b', candidateId: 'a', value: 1, updatedAt: serverTimestamp() }))
+    await denied(setDoc(doc(b, 'votes', 'b_a'), voteDoc('b', 'a', { ups: 1, lastUpAt: serverTimestamp() })))
     const batch = writeBatch(b)
-    batch.set(doc(b, 'votes', 'b_a'), { uid: 'b', candidateId: 'a', value: 1, updatedAt: serverTimestamp() })
+    batch.set(doc(b, 'votes', 'b_a'), voteDoc('b', 'a', { ups: 1, lastUpAt: serverTimestamp() }))
     batch.update(doc(b, 'candidates', 'a'), { up: 5, score: 5 })
     await denied(batch.commit())
   })
   test('refused: casting a vote in someone else’s name; editing someone else’s profile; signed-out writes', async () => {
     await signUp('a'); const b = await signUp('b'); await signUp('c')
-    await denied(setDoc(doc(b, 'votes', 'c_a'), { uid: 'c', candidateId: 'a', value: 1, updatedAt: serverTimestamp() }))
+    await denied(setDoc(doc(b, 'votes', 'c_a'), voteDoc('c', 'a', { ups: 1, lastUpAt: serverTimestamp() })))
     await denied(updateDoc(doc(b, 'candidates', 'a'), { bio: 'hacked' }))
     await denied(updateDoc(doc(dbAs(null), 'candidates', 'a'), { bio: 'x' }))
   })
   test('votes are private to their voter', async () => {
     await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
-    await castVote(b, 'b', 'a', 1)
-    assert.equal((await getDoc(doc(b, 'votes', 'b_a'))).data()?.value, 1)
+    await castVote(b, 'b', 'a', 'up')
+    assert.equal((await getDoc(doc(b, 'votes', 'b_a'))).data()?.ups, 1)
     await denied(getDoc(doc(c, 'votes', 'b_a')))
   })
 })
@@ -256,8 +291,9 @@ describe('admin: single-use tokens ×3', () => {
     const uids = Array.from({ length: 12 }, (_, i) => `u${i}`)
     const dbs = await Promise.all(uids.map(signUp))
     // Everyone recommends u0; u1 gets some not-recommends.
-    for (let i = 1; i < uids.length; i++) await castVote(dbs[i], uids[i], 'u0', 1)
-    for (let i = 2; i < 6; i++) await castVote(dbs[i], uids[i], 'u1', -1)
+    for (let i = 1; i < uids.length; i++) await castVote(dbs[i], uids[i], 'u0', 'up')
+    for (let i = 2; i < 6; i++) await castVote(dbs[i], uids[i], 'u1', 'down')
+    for (let i = 2; i < uids.length; i++) await castVote(dbs[0], 'u0', uids[i], 'up')
     await grantPoints(dbAs(ADMIN), ADMIN.uid, 'u0', 5)
     const admin = dbAs(ADMIN)
     const seen: AdminProgress[] = []
@@ -266,7 +302,8 @@ describe('admin: single-use tokens ×3', () => {
     const u0 = await read(admin, 'candidates/u0'), u1 = await read(admin, 'candidates/u1')
     assert.deepEqual([u0.up, u0.down, u0.score, u0.bonus], [0, 0, 0, 11 + 5])
     assert.deepEqual([u1.up, u1.down, u1.score], [0, 0, 0])
-    assert.equal((await getDocs(collection(admin, 'votes'))).size, 0)
+    // Vote docs stay: the 7-day timer and the one-time 비추천 carry over into the new season.
+    assert.equal((await getDocs(collection(admin, 'votes'))).size, 25)
     const s = (await getDoc(doc(admin, 'meta', 'season'))).data()!
     assert.deepEqual([s.name, s.number], ['시즌 2', 2])
     assert.equal(s.last.name, 'BETA')
@@ -275,23 +312,30 @@ describe('admin: single-use tokens ×3', () => {
     // Renaming keeps the podium; nobody can forge one.
     await setSeasonName(admin, ADMIN.uid, '시즌 2+')
     assert.equal((await getDoc(doc(admin, 'meta', 'season'))).data()!.last.name, 'BETA')
-    // New season: voting works again from zero.
-    await castVote(dbs[3], 'u3', 'u0', 1)
-    assert.equal((await read(admin, 'candidates/u0')).up, 1)
+    // New season: the tally starts from zero, but the per-person limits still apply.
+    await assert.rejects(castVote(dbs[3], 'u3', 'u0', 'up'), /vote-too-soon/)
+    await assert.rejects(castVote(dbs[3], 'u3', 'u1', 'down'), /already-downvoted/)
+    await seed('votes/u3_u0', { lastUpAt: new Date(Date.now() - 8 * 86400_000) })
+    await castVote(dbs[3], 'u3', 'u0', 'up')
+    await castVote(dbs[7], 'u7', 'u1', 'down')
+    assert.deepEqual(await tally(admin, 'u0'), [1, 0, 1])
+    assert.deepEqual(await tally(admin, 'u1'), [0, 1, -1])
+    assert.equal((await getDoc(doc(dbs[3], 'votes', 'u3_u0'))).data()!.ups, 1)
   })
   test('refused: a regular user deleting votes or resetting tallies', async () => {
     await signUp('a'); const b = await signUp('b')
-    await castVote(b, 'b', 'a', 1)
+    await castVote(b, 'b', 'a', 'up')
     await denied(deleteDoc(doc(b, 'votes', 'b_a')))
     await denied(updateDoc(doc(b, 'candidates', 'a'), { up: 0, score: 0 }))
   })
 
   test('delete account: their votes are taken back, their entry removed, and they can’t come back', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
-    await castVote(c, 'c', 'a', 1)
-    await castVote(c, 'c', 'b', -1)
-    await castVote(b, 'b', 'c', 1)
-    await castVote(a, 'a', 'b', 1)
+    await castVote(c, 'c', 'a', 'up')
+    await castVote(c, 'c', 'b', 'down')
+    await castVote(c, 'c', 'b', 'up')
+    await castVote(b, 'b', 'c', 'up')
+    await castVote(a, 'a', 'b', 'up')
     const admin = dbAs(ADMIN)
     await deleteAccount(admin, ADMIN.uid, 'c')
     assert.equal((await getDoc(doc(admin, 'candidates', 'c'))).exists(), false)

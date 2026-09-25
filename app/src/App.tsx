@@ -4,7 +4,7 @@ import { authErrorMessage, logIn, logOut, onAuthChange, saveLoginId, savedLoginI
 import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, castVote, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, isUnread, leaveGroup, openDm, sendMessage, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
-import { DEFAULT_SEASON, type Season } from './backend/types'
+import { DEFAULT_SEASON, type MyVote, type Season } from './backend/types'
 import { fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
 import { AdminProgressOverlay, AdminScreen } from './components/AdminScreen'
@@ -17,7 +17,7 @@ import { BuyDialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, V
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
 import { css } from './css'
-import { BLUE, fmt, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab, type Vote } from './data'
+import { BLUE, fmt, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab } from './data'
 import { db as maybeDb, firebaseConfigured } from './firebase'
 import { buildPeople } from './model'
 
@@ -54,7 +54,10 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   const [authReady, setAuthReady] = useState(false)
   const [authBusy, setAuthBusy] = useState(false)
   const [rows, setRows] = useState<CandidateRow[]>([])
-  const [votes, setVotes] = useState<Record<string, Vote>>({})
+  const [votes, setVotes] = useState<Record<string, MyVote>>({})
+  // Re-derives "추천 가능" once a minute so a 7-day wait ends without a reload.
+  const [minute, setMinute] = useState(() => Date.now())
+  useEffect(() => { const t = setInterval(() => setMinute(Date.now()), 60_000); return () => clearInterval(t) }, [])
   const [season, setSeason] = useState<Season>(DEFAULT_SEASON)
 
   const [, setPhotoBusy] = useState(false)
@@ -134,9 +137,9 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   }, [theme])
 
   const loggedIn = !!authUser
-  const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null), [rows, votes, authUser])
+  const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null, minute), [rows, votes, authUser, minute])
   const me = authUser ? all.find(d => d.id === authUser.uid) : undefined
-  const mine = all.filter(d => d.v !== 0)
+  const mine = all.filter(d => d.my && (d.my.ups > 0 || d.my.down || !d.upReady))
   const points = me ? pointsOf(me) : 0
   const isAdmin = isAdminEmail(authUser?.email)
   const byId = useMemo(() => new Map(all.map(p => [p.id, p])), [all])
@@ -183,16 +186,19 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
     window.scrollTo(0, 0)
   }
 
-  const vote = async (id: string, dir: 1 | -1) => {
+  const vote = async (id: string, kind: 'up' | 'down') => {
     if (!authUser) return
     const d = all.find(x => x.id === id)
     if (!d) return
     setSheet(null)
     try {
-      const next = await castVote(db!, authUser.uid, id, dir)
-      showToast(next === 0 ? `${d.name}님 투표를 취소했어요` : `${d.name}님에게 투표했어요`)
+      await castVote(db!, authUser.uid, id, kind)
+      showToast(kind === 'up' ? `${d.name}님을 추천했어요. 7일 후에 다시 추천할 수 있어요` : `${d.name}님을 비추천했어요`)
     } catch (e) {
-      failToast('투표하지 못했어요. 다시 시도해주세요', e)
+      const m = (e as Error)?.message
+      if (m === 'vote-too-soon') showToast('추천은 7일마다 한 번 할 수 있어요')
+      else if (m === 'already-downvoted') showToast('비추천은 한 사람에게 한 번만 할 수 있어요')
+      else failToast('투표하지 못했어요. 다시 시도해주세요', e)
     }
   }
 
@@ -363,7 +369,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
               onGender={g => authUser && updateMyProfile(db!, authUser.uid, { gender: g }).catch(e => failToast('저장하지 못했어요', e))}
               points={points}
               mine={mine}
-              onCancelVote={d => vote(d.id, d.v as 1 | -1)}
+              onOpenVote={d => { setTab('home'); setSheet(d.id) }}
               openEdit={() => setEditOpen(true)}
               openTheme={() => setThemeOpen(true)}
               goHome={() => go('home')}
@@ -393,7 +399,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
         <BottomNav tab={tab === 'admin' && !isAdmin ? 'home' : tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} />
 
         {sheetPerson && (
-          <VoteSheet d={sheetPerson} loggedIn={loggedIn} colors={colors} onVote={dir => vote(sheetPerson.id, dir)} onClose={() => setSheet(null)} onLogin={() => go('acct')} />
+          <VoteSheet d={sheetPerson} loggedIn={loggedIn} colors={colors} onVote={kind => vote(sheetPerson.id, kind)} onClose={() => setSheet(null)} onLogin={() => go('acct')} />
         )}
         {profilePerson && (
           <ProfileSheet

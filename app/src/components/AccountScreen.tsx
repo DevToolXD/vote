@@ -32,7 +32,7 @@ type Props = {
   onGender: (g: string) => void
   points: number
   mine: Person[]
-  onCancelVote: (p: Person) => void
+  onOpenVote: (p: Person) => void
   openEdit: () => void
   openTheme: () => void
   goHome: () => void
@@ -157,7 +157,7 @@ function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus
   )
 }
 
-function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, onCancelVote, onLogout, goHome }: Props & { me: Person }) {
+function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, onOpenVote, onLogout, goHome }: Props & { me: Person }) {
   const hasPhoto = me.photoCss !== 'none'
   const sep = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
   return (
@@ -208,11 +208,14 @@ function Profile({ me, onPhoto, onRemovePhoto, onBio, onGender, points, mine, on
             <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
               <span style={css('display:flex;align-items:center;gap:6px')}>
                 <span style={css('font-size:17px;line-height:25.5px;font-weight:500;color:#333d4b')}>{d.name}</span>
-                <span style={css('height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:600;display:flex;align-items:center;background:#03b26c;color:#ffffff')}>✓ 투표함</span>
               </span>
-              <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>{d.rank}위 · {d.scoreLabel}점</span>
+              <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>
+                {[d.my && d.my.ups > 0 ? `이번 시즌 추천 ${d.my.ups}번` : '', d.downDone ? '비추천함' : ''].filter(Boolean).join(' · ') || `${d.rank}위`}
+              </span>
             </span>
-            <button data-g="secondary" className="pr-96" onClick={() => onCancelVote(d)} style={css('height:32px;padding:0 12px;border-radius:8px;background:#f2f4f6;color:#4e5968;font-size:13px;font-weight:600;transition:transform 150ms')}>취소</button>
+            {d.upReady
+              ? <button data-g="secondary" className="pr-96" onClick={() => onOpenVote(d)} style={css('height:32px;padding:0 12px;border-radius:8px;background:#e8f3ff;color:#1b64da;font-size:13px;font-weight:600;transition:transform 150ms')}>추천하기</button>
+              : <span style={css('font-size:13px;color:#8b95a1;font-variant-numeric:tabular-nums')}>{d.upWait} 추천 가능</span>}
           </div>
           <div style={css('height:0.5px;margin-left:24px;background:rgba(0,0,33,0.07)')} />
         </div>

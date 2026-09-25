@@ -13,8 +13,8 @@ import {
   type Firestore,
   type Unsubscribe,
 } from 'firebase/firestore'
-import type { ItemKind, Vote } from '../data'
-import type { CandidateDoc, VoteDoc } from './types'
+import type { ItemKind } from '../data'
+import { UP_EVERY_MS, type CandidateDoc, type MyVote, type VoteDoc } from './types'
 
 // Every function takes the Firestore instance so the rules tests (app/tests) run
 // this exact code against the emulator.
@@ -27,32 +27,49 @@ export function subscribeCandidates(db: Firestore, cb: (rows: CandidateRow[]) =>
   return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...(d.data() as CandidateDoc) }))))
 }
 
-/** The signed-in voter's own votes, as { candidateId: value }. */
-export function subscribeMyVotes(db: Firestore, uid: string, cb: (votes: Record<string, Vote>) => void): Unsubscribe {
+/** The signed-in voter's own vote history, as { candidateId: MyVote }. */
+export function subscribeMyVotes(db: Firestore, uid: string, cb: (votes: Record<string, MyVote>) => void): Unsubscribe {
   const q = query(collection(db, 'votes'), where('uid', '==', uid))
   return onSnapshot(q, snap => {
-    const out: Record<string, Vote> = {}
-    snap.forEach(d => { out[(d.data() as VoteDoc).candidateId] = (d.data() as VoteDoc).value })
+    const out: Record<string, MyVote> = {}
+    snap.forEach(d => {
+      const v = d.data({ serverTimestamps: 'estimate' }) as Partial<VoteDoc>
+      if (!v.candidateId) return
+      out[v.candidateId] = { ups: v.ups ?? 0, nextUpAt: v.lastUpAt ? v.lastUpAt.toMillis() + UP_EVERY_MS : 0, down: !!v.down }
+    })
     cb(out)
   })
 }
 
-/** Casts, changes, or cancels a vote. Reads the current server state in a transaction so concurrent voters can't corrupt the tally. */
-export async function castVote(db: Firestore, myUid: string, candidateId: string, dir: 1 | -1): Promise<Vote> {
+export type VoteKind = 'up' | 'down'
+
+/**
+ * 추천 (once every 7 days per person, adds up) or 비추천 (once ever per person).
+ * Neither can be undone. Runs in a transaction so concurrent voters can't corrupt
+ * the tally; firestore.rules checks the same limits server side.
+ */
+export async function castVote(db: Firestore, myUid: string, candidateId: string, kind: VoteKind) {
   if (candidateId === myUid) throw new Error('cannot-vote-self')
   const voteRef = doc(db, 'votes', `${myUid}_${candidateId}`)
   const candidateRef = doc(db, 'candidates', candidateId)
-  return runTransaction(db, async tx => {
-    const [voteSnap, candSnap] = await Promise.all([tx.get(voteRef), tx.get(candidateRef)])
+  const seasonRef = doc(db, 'meta', 'season')
+  await runTransaction(db, async tx => {
+    const [voteSnap, candSnap, seasonSnap] = await Promise.all([tx.get(voteRef), tx.get(candidateRef), tx.get(seasonRef)])
     if (!candSnap.exists()) throw new Error('candidate-not-found')
-    const cur = (voteSnap.data() as VoteDoc | undefined)?.value ?? 0
-    const next: Vote = cur === dir ? 0 : dir
-    const du = (next === 1 ? 1 : 0) - (cur === 1 ? 1 : 0)
-    const dd = (next === -1 ? 1 : 0) - (cur === -1 ? 1 : 0)
+    const cur = seasonSnap.exists() ? (seasonSnap.data().number as number) : 1
+    const o = (voteSnap.data() ?? {}) as Partial<VoteDoc>
+    const oUps = o.season === cur ? o.ups ?? 0 : 0
     const c = candSnap.data() as CandidateDoc
-    tx.set(voteRef, { uid: myUid, candidateId, value: next, updatedAt: serverTimestamp() })
-    tx.update(candidateRef, { up: c.up + du, down: c.down + dd, score: c.up + du - (c.down + dd) })
-    return next
+    const base = { uid: myUid, candidateId, season: cur, updatedAt: serverTimestamp() }
+    if (kind === 'up') {
+      if (o.lastUpAt && Date.now() < o.lastUpAt.toMillis() + UP_EVERY_MS) throw new Error('vote-too-soon')
+      tx.set(voteRef, { ...base, ups: oUps + 1, lastUpAt: serverTimestamp(), down: o.down ?? false, downSeason: o.downSeason ?? 0 })
+      tx.update(candidateRef, { up: c.up + 1, score: c.up + 1 - c.down })
+    } else {
+      if (o.down) throw new Error('already-downvoted')
+      tx.set(voteRef, { ...base, ups: oUps, lastUpAt: o.lastUpAt ?? null, down: true, downSeason: cur })
+      tx.update(candidateRef, { down: c.down + 1, score: c.up - (c.down + 1) })
+    }
   })
 }
 

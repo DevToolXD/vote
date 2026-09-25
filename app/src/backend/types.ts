@@ -30,9 +30,21 @@ export const DEFAULT_OWNED: Record<ItemKind, string[]> = { frame: ['none'], plat
 export type VoteDoc = {
   uid: string
   candidateId: string
-  value: -1 | 0 | 1
+  /** Season `ups` belongs to; a season reset leaves the doc but it stops counting. */
+  season: number
+  /** 추천 given this season (one every 7 days). */
+  ups: number
+  lastUpAt: { toMillis(): number } | null
+  /** 비추천 — once ever, never undone. */
+  down: boolean
+  downSeason: number
   updatedAt: unknown
 }
+
+export const UP_EVERY_MS = 7 * 24 * 60 * 60 * 1000
+
+/** My history with one candidate, as the app needs it. */
+export type MyVote = { ups: number; nextUpAt: number; down: boolean }
 
 export type PodiumEntry = { id: string; name: string; score: number; frame: string }
 export type Season = {

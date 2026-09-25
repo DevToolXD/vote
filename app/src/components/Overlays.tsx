@@ -39,32 +39,16 @@ export function Dialog({ onScrim, labelledBy, gap, children }: { onScrim: () => 
 
 type VoteColors = { up: string; down: string; downWeak: string; downWeakFg: string }
 
-export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin }: { d: Person; loggedIn: boolean; colors: VoteColors; onVote: (dir: 1 | -1) => void; onClose: () => void; onLogin: () => void }) {
+export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin }: { d: Person; loggedIn: boolean; colors: VoteColors; onVote: (kind: 'up' | 'down') => void; onClose: () => void; onLogin: () => void }) {
+  // 비추천 can't be undone and only happens once per person, so it asks once more.
+  const [confirmDown, setConfirmDown] = useState(false)
+  const sub = !d.upReady && d.downDone ? `${d.upWait}에 다시 추천할 수 있어요`
+    : !d.upReady ? `추천은 ${d.upWait}에 다시 할 수 있어요`
+      : '추천은 7일마다, 비추천은 한 번만 할 수 있어요'
   return (
     <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle="border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));animation:sheetUp 400ms cubic-bezier(0.22,1,0.36,1) both">
       {handle}
-      {loggedIn ? (
-        <>
-          <div style={css('padding:24px 24px 0;display:flex;flex-direction:column;gap:4px')}>
-            <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{d.name}님에게 투표할까요?</span>
-            <span style={css('font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684')}>{d.v !== 0 ? '이미 투표했어요. 같은 버튼을 한 번 더 누르면 취소돼요' : `지금 ${d.rank}위 · ${d.scoreLabel}점`}</span>
-          </div>
-          <div style={css('padding:20px 24px 0;display:flex;flex-direction:column;gap:8px')}>
-            <div style={css('display:flex;justify-content:space-between;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums')}>
-              <span style={{ color: colors.up }}>추천 {d.upLabel}</span>
-              <span style={{ color: colors.down }}>비추천 {d.downLabel}</span>
-            </div>
-            <div style={css('height:8px;border-radius:4px;overflow:hidden;display:flex;gap:2px')}>
-              <span style={sx('height:100%;border-radius:4px;transition:width 400ms cubic-bezier(0.22,1,0.36,1)', { width: Math.round(d.upN / (d.upN + d.downN) * 100) + '%', background: colors.up })} />
-              <span style={sx('height:100%;border-radius:4px;flex:1', { background: colors.down })} />
-            </div>
-          </div>
-          <div style={css('padding:24px 20px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
-            <button className="pr-96" onClick={() => onVote(-1)} style={sx(bigBtn + ';transition:transform 150ms,background 200ms', { background: d.v === -1 ? '#f2f4f6' : colors.downWeak, color: d.v === -1 ? '#4e5968' : colors.downWeakFg })}>{d.v === -1 ? '비추천 취소' : '비추천'}</button>
-            <button className="pr-96" onClick={() => onVote(1)} style={sx(bigBtn + ';transition:transform 150ms,background 200ms', { background: d.v === 1 ? '#f2f4f6' : colors.up, color: d.v === 1 ? '#4e5968' : '#ffffff' })}>{d.v === 1 ? '추천 취소' : '추천'}</button>
-          </div>
-        </>
-      ) : (
+      {!loggedIn ? (
         <>
           <div style={css('padding:24px 24px 0;display:flex;flex-direction:column;gap:4px')}>
             <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>로그인하면 투표할 수 있어요</span>
@@ -73,6 +57,38 @@ export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin }: { d
           <div style={css('padding:24px 20px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
             <button data-g="secondary" className="pr-96" onClick={onClose} style={css(bigBtn + ';background:#f2f4f6;color:#4e5968;transition:transform 150ms')}>닫기</button>
             <button data-g="primary" className="pr-96" onClick={onLogin} style={css(bigBtn + ';background:#3182f6;color:#ffffff;transition:transform 150ms')}>로그인하기</button>
+          </div>
+        </>
+      ) : confirmDown ? (
+        <>
+          <div style={css('padding:24px 24px 0;display:flex;flex-direction:column;gap:4px')}>
+            <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{d.name}님을 비추천할까요?</span>
+            <span style={css('font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684')}>비추천은 한 사람에게 한 번만 할 수 있고, 취소할 수 없어요</span>
+          </div>
+          <div style={css('padding:24px 20px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
+            <button data-g="secondary" className="pr-96" onClick={() => setConfirmDown(false)} style={css(bigBtn + ';background:#f2f4f6;color:#4e5968;transition:transform 150ms')}>닫기</button>
+            <button className="pr-96" onClick={() => onVote('down')} style={sx(bigBtn + ';color:#ffffff;transition:transform 150ms', { background: colors.down })}>비추천하기</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={css('padding:24px 24px 0;display:flex;flex-direction:column;gap:4px')}>
+            <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{d.name}님에게 투표할까요?</span>
+            <span style={css('font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684')}>{sub}</span>
+          </div>
+          <div style={css('padding:20px 24px 0;display:flex;flex-direction:column;gap:8px')}>
+            <div style={css('display:flex;justify-content:space-between;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums')}>
+              <span style={{ color: colors.up }}>추천 {d.upLabel}</span>
+              <span style={{ color: colors.down }}>비추천 {d.downLabel}</span>
+            </div>
+            <div style={css('height:8px;border-radius:4px;overflow:hidden;display:flex;gap:2px')}>
+              <span style={sx('height:100%;border-radius:4px;transition:width 400ms cubic-bezier(0.22,1,0.36,1)', { width: (d.upN + d.downN ? Math.round(d.upN / (d.upN + d.downN) * 100) : 50) + '%', background: colors.up })} />
+              <span style={sx('height:100%;border-radius:4px;flex:1', { background: colors.down })} />
+            </div>
+          </div>
+          <div style={css('padding:24px 20px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
+            <button className="pr-96" disabled={d.downDone} onClick={() => setConfirmDown(true)} style={sx(bigBtn + ';transition:transform 150ms,background 200ms', { background: d.downDone ? '#f2f4f6' : colors.downWeak, color: d.downDone ? '#b0b8c1' : colors.downWeakFg })}>{d.downDone ? '비추천 완료' : '비추천'}</button>
+            <button className="pr-96" disabled={!d.upReady} onClick={() => onVote('up')} style={sx(bigBtn + ';transition:transform 150ms,background 200ms', { background: d.upReady ? colors.up : '#f2f4f6', color: d.upReady ? '#ffffff' : '#b0b8c1' })}>{d.upReady ? '추천' : `${d.upWait} 가능`}</button>
           </div>
         </>
       )}

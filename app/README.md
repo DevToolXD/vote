@@ -3,6 +3,7 @@
 React + TypeScript + Vite build of `project/Popular Vote v2.dc.html` (Claude Design handoff), backed by **Firebase** (Auth + Firestore) so accounts, votes, the leaderboard and the point shop are real and shared across everyone who opens the site.
 
 - Signing up creates a Firebase Auth account **and** a leaderboard entry for that person — every registered voter is also a candidate others can vote on (that's how the point shop, "받은 추천 1개가 1P", makes sense).
+- **Voting:** 추천 someone once every 7 days (counted from your last 추천 to them; each one adds up), 비추천 once ever per person. Votes can't be undone. `firestore.rules` enforces both (`voteAction`); a season reset zeroes the tallies but keeps these limits.
 - Voting, the shop, and profile edits (bio/gender/frame/nameplate/bar skin) are stored in Firestore and update live for everyone.
 - Login uses an "아이디" (username), not email — under the hood it's Firebase Auth email/password with `id@vote.local` as a synthetic email.
 - Profile photos are stored too, but not via Firebase Storage (see "Known trade-offs" — that now needs the paid Blaze plan). Instead the client shrinks the photo to a small square JPEG and saves it as a data URL directly on the candidate doc, so it persists and everyone can see it, no billing required.
@@ -34,7 +35,7 @@ For local dev, copy `.env.example` to `.env.local` and fill in the same values (
 
 Sign up in the app with the id **admin** (admin@vote.local) — that account gets a **관리** tab on top of everything a normal account has (it stays on the leaderboard, votes and gets votes; it just can’t delete itself). Do this before anyone else can take the id; the `Firebase backend` workflow warns while no admin account exists.
 
-- **시즌**: rename the season, or start a new one (all tallies → 0, all votes cleared, each person's recommendations this season carry over as points). The reset records the ended season's final TOP 3 in `meta/season.last`, and everyone sees the drum-roll reveal once (per device, within a week of the reset).
+- **시즌**: rename the season, or start a new one (all tallies → 0, each person's recommendations this season carry over as points). The reset records the ended season's final TOP 3 in `meta/season.last`, and everyone sees the drum-roll reveal once (per device, within a week of the reset).
 - **사람 관리**: give or take points (any amount, ±1,000,000 max), rename someone (1–20 chars; login id, score and points unchanged), or delete an account (their votes are taken back, their entry removed, the uid banned from re-joining; `purge-deleted-accounts.yml` then deletes the login itself, hourly).
 
 Every admin write goes through single-use tokens, enforced by `firestore.rules`: the app issues three tokens (seq 1–3) bound to the exact action and payload, reads each back to verify it, then commits one batch that writes `meta/adminLock` listing them, burns all three, and makes the change. Tokens expire after 2 minutes and can't be reused, and the rules reject any privileged write that doesn't come with a freshly written lock for its action. Big operations (season reset) run in several batches, each with its own three tokens. What this guards against: replayed, duplicated or altered requests, and anyone who isn't the admin. What it can't: someone who has the admin's password — keep it strong.
