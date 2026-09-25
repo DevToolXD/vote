@@ -30,6 +30,7 @@ button:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #3182f6}
 @keyframes labelRide{from{transform:translateX(-50%) translateY(var(--dy))}to{transform:translateX(-50%) translateY(0)}}
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}
 @keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes slideInRight{from{transform:translateX(100%)}to{transform:none}}
 @keyframes popIn{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:none}}
 [data-theme="glass"] [data-g="app"]{background:radial-gradient(70% 45% at 8% 4%,#ffd8c4 0%,rgba(255,216,196,0) 70%),radial-gradient(60% 45% at 96% 22%,#d9d2ff 0%,rgba(217,210,255,0) 70%),radial-gradient(70% 50% at 18% 72%,#c7efe3 0%,rgba(199,239,227,0) 70%),radial-gradient(60% 45% at 96% 96%,#ffe6a6 0%,rgba(255,230,166,0) 70%),#eef1f6 !important;background-attachment:fixed !important}
 [data-theme="glass"] :is([data-g="clear"],[data-g="gap"]){background:transparent !important}
@@ -111,6 +112,7 @@ button:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #3182f6}
 .pr-97:active{transform:scale(0.97)!important}
 .pr-98:active{transform:scale(0.98)!important}
 .ring-focus:focus,.ring-within:focus-within{box-shadow:inset 0 0 0 1.5px #3182f6!important}
+.box-focus:focus{background-image:linear-gradient(rgba(25,74,166,0.06),rgba(25,74,166,0.06))}
 .field-bad,.field-bad:focus{box-shadow:inset 0 0 0 1.5px #f04452!important}
 .av-host{display:block}
 .av-art{display:contents}

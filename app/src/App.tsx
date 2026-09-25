@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, logIn, logOut, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, castVote, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
-import { createGroup, isUnread, leaveGroup, openDm, sendMessage, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
+import { createGroup, isUnread, leaveGroup, openDm, sendMessage, setChatMuted, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_SEASON, type MyVote, type Season } from './backend/types'
 import { fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
@@ -137,7 +137,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
   }, [theme])
 
   const loggedIn = !!authUser
-  const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null, minute), [rows, votes, authUser, minute])
+  const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null, Date.now()), [rows, votes, authUser, minute]) // eslint-disable-line react-hooks/exhaustive-deps
   const me = authUser ? all.find(d => d.id === authUser.uid) : undefined
   const mine = all.filter(d => d.my && (d.my.ups > 0 || d.my.down || !d.upReady))
   const points = me ? pointsOf(me) : 0
@@ -193,7 +193,7 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
     setSheet(null)
     try {
       await castVote(db!, authUser.uid, id, kind)
-      showToast(kind === 'up' ? `${d.name}님을 추천했어요. 7일 후에 다시 추천할 수 있어요` : `${d.name}님을 비추천했어요`)
+      showToast(kind === 'up' ? `${d.name}님을 추천했어요` : `${d.name}님을 비추천했어요`)
     } catch (e) {
       const m = (e as Error)?.message
       if (m === 'vote-too-soon') showToast('추천은 7일마다 한 번 할 수 있어요')
@@ -462,6 +462,11 @@ export function App({ startTab = 'home', swapPalette = false }: AppProps) {
             onError={failToast}
             onSend={async text => {
               try { await sendMessage(db!, authUser.uid, openChat.id, text); return true } catch (e) { failToast('보내지 못했어요', e); return false }
+            }}
+            onMute={muted => {
+              setChatMuted(db!, authUser.uid, openChat.id, muted)
+                .then(() => showToast(muted ? '이 채팅방 알림을 껐어요' : '이 채팅방 알림을 켰어요'))
+                .catch(e => failToast('바꾸지 못했어요', e))
             }}
             onLeave={async () => {
               try { await leaveGroup(db!, authUser.uid, openChat.id); setChatId(null); showToast('채팅방에서 나왔어요') } catch (e) { failToast('나가지 못했어요', e) }

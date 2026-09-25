@@ -10,7 +10,7 @@ import {
 import { deleteAccount, grantPoints, renameUser, resetSeason, runAdminOp, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, castVote, equipItem, pointsOf, updateMyProfile } from '../src/backend/candidates'
-import { createGroup, dmId, leaveGroup, markRead, openDm, sendMessage, setMessagesOff } from '../src/backend/messages'
+import { createGroup, dmId, leaveGroup, markRead, openDm, sendMessage, setChatMuted, setMessagesOff } from '../src/backend/messages'
 import type { CandidateDoc } from '../src/backend/types'
 import { priceOf } from '../src/data'
 
@@ -369,6 +369,11 @@ describe('messages', () => {
     const chat = (await getDoc(doc(a, 'chats', id))).data()!
     assert.equal(chat.last.text, '반가워')
     await markRead(a, 'a', id)
+    await setChatMuted(a, 'a', id, true)
+    assert.equal((await getDoc(doc(b, 'chats', id))).data()!.mutes.a, true)
+    await denied(updateDoc(doc(a, 'chats', id), { 'mutes.b': true }))
+    await denied(updateDoc(doc(a, 'chats', id), { 'mutes.a': 'yes' }))
+    await setChatMuted(a, 'a', id, false)
     await denied(getDoc(doc(c, 'chats', id)))
     await denied(getDocs(collection(c, 'chats', id, 'messages')))
     await assert.rejects(sendMessage(c, 'c', id, '끼어들기'))

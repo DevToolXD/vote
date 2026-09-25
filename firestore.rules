@@ -12,7 +12,8 @@ rules_version = '2';
 //   meta/adminLock                the admin operation currently being committed (see below)
 //   adminTokens/{random id}       single-use tokens for admin operations
 //   banned/{uid}                  accounts deleted by the admin; they can't re-join
-//   chats/{chatId}                1:1 (id = sorted uids joined by '_') or group chat (≤10 members)
+//   chats/{chatId}                1:1 (id = sorted uids joined by '_') or group chat (≤10 members);
+//                                 reads/mutes maps hold each member's read time / 알림 off
 //   chats/{chatId}/messages/{id}  { uid, text, at }
 //
 // Admin operations (grant points, set season name, reset season, delete account)
@@ -362,7 +363,7 @@ service cloud.firestore {
               && request.resource.data.name is string && request.resource.data.name.size() <= 30));
 
       allow update: if signedIn() && request.auth.uid in resource.data.members
-        && (newMessageSummary() || readReceipt() || leaveGroup());
+        && (newMessageSummary() || readReceipt() || muteToggle() || leaveGroup());
       allow delete: if false;
 
       function readsOk() {
@@ -383,6 +384,13 @@ service cloud.firestore {
       }
       function readReceipt() {
         return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reads']) && readsOk();
+      }
+      // Per-chat 알림 on/off: each member flips only their own entry.
+      function muteToggle() {
+        let d = request.resource.data;
+        return d.diff(resource.data).affectedKeys().hasOnly(['mutes'])
+          && d.mutes.diff(resource.data.get('mutes', {})).affectedKeys().hasOnly([request.auth.uid])
+          && d.mutes[request.auth.uid] is bool;
       }
       function leaveGroup() {
         return resource.data.type == 'group'

@@ -35,6 +35,8 @@ export type ChatDoc = {
   updatedAt: Timestamp | null
   last?: { text: string; uid: string; at: Timestamp | null }
   reads?: Record<string, Timestamp | null>
+  /** Members who turned this chat's 알림 off. */
+  mutes?: Record<string, boolean>
 }
 export type ChatRow = ChatDoc & { id: string }
 export type MessageRow = { id: string; uid: string; text: string; at: Timestamp | null }
@@ -106,6 +108,11 @@ export async function sendMessage(db: Firestore, me: string, chatId: string, tex
 
 export async function markRead(db: Firestore, me: string, chatId: string) {
   await updateDoc(doc(db, 'chats', chatId), { [`reads.${me}`]: serverTimestamp() })
+}
+
+/** This chat's 알림 on/off, for me only. */
+export async function setChatMuted(db: Firestore, me: string, chatId: string, muted: boolean) {
+  await updateDoc(doc(db, 'chats', chatId), { [`mutes.${me}`]: muted })
 }
 
 /** Leaves a group chat (1:1 chats can't be left, only muted by turning messages off). */
