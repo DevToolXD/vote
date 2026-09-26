@@ -1,0 +1,29 @@
+name: Probe usage
+
+# Read-only diagnostics: Firestore read/write counts per hour
+# (.github/scripts/probe-usage.mjs). Runs when that script or this file changes.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/probe-usage.mjs'
+      - '.github/workflows/probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: node .github/scripts/probe-usage.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
