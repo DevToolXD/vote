@@ -22,12 +22,12 @@ export function loadServiceAccount() {
   }
 }
 
-export async function getAccessToken(key) {
+export async function getAccessToken(key, scope = 'https://www.googleapis.com/auth/firebase https://www.googleapis.com/auth/cloud-platform') {
   const b64url = obj => Buffer.from(JSON.stringify(obj)).toString('base64url')
   const now = Math.floor(Date.now() / 1000)
   const unsigned = `${b64url({ alg: 'RS256', typ: 'JWT' })}.${b64url({
     iss: key.client_email,
-    scope: 'https://www.googleapis.com/auth/firebase https://www.googleapis.com/auth/cloud-platform',
+    scope,
     aud: key.token_uri,
     exp: now + 3600,
     iat: now,

@@ -17,6 +17,7 @@ on:
       - 'app/src/backend/**'
       - 'app/tests/**'
       - 'firebase.json'
+      - 'database.rules.json'
   workflow_dispatch:
 
 permissions:
@@ -47,6 +48,8 @@ jobs:
         run: npm ci --prefix ../.github/scripts --no-audit --no-fund && npm ci && npm run test:rules
       - name: Deploy Firestore rules
         run: node .github/scripts/deploy-firestore-rules.mjs
+      - name: Realtime Database (chat) and its rules
+        run: node .github/scripts/setup-rtdb.mjs
       - name: Migrate vote docs to the current format (idempotent)
         continue-on-error: true
         run: node .github/scripts/migrate-votes.mjs
