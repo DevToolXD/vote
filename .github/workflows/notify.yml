@@ -37,6 +37,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
+      - name: Note the start time
+        run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v5
         with:
           sparse-checkout: |
@@ -73,4 +75,9 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run notify.yml --ref main --repo "$GITHUB_REPOSITORY"
+        # If the worker stopped early (e.g. Firestore's daily quota is used up),
+        # wait so a run lasts at least 5 minutes instead of restarting in a tight loop.
+        run: |
+          left=$(( JOB_STARTED + 300 - $(date +%s) ))
+          if [ "$left" -gt 0 ]; then echo "Stopped early; waiting ${left}s before the next run"; sleep "$left"; fi
+          gh workflow run notify.yml --ref main --repo "$GITHUB_REPOSITORY"
