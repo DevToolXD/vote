@@ -44,7 +44,8 @@ export type ChatDoc = {
 export type ChatRow = ChatDoc & { id: string }
 /** 'image': the photo itself is in chats/{id}/media/{messageId}; 'system': e.g. "A님이 B님을 초대했어요". */
 export type MessageKind = 'text' | 'image' | 'system' | 'gift'
-export type MessageRow = { id: string; uid: string; text: string; at: Timestamp | null; kind?: MessageKind; giftId?: string }
+export type ReplyRef = { id: string; uid: string; text: string }
+export type MessageRow = { id: string; uid: string; text: string; at: Timestamp | null; kind?: MessageKind; giftId?: string; replyTo?: ReplyRef }
 
 export const dmId = (a: string, b: string) => [a, b].sort().join('_')
 const ms = (t: Timestamp | null | undefined) => (t ? t.toMillis() : 0)
@@ -97,12 +98,12 @@ export async function createGroup(db: Firestore, me: string, others: string[], n
   return ref.id
 }
 
-export async function sendMessage(db: Firestore, me: string, chatId: string, text: string) {
+export async function sendMessage(db: Firestore, me: string, chatId: string, text: string, replyTo?: ReplyRef) {
   const t = text.trim()
   if (!t || t.length > MAX_TEXT) throw new Error('invalid-message')
   const chatRef = doc(db, 'chats', chatId)
   const b = writeBatch(db)
-  b.set(doc(collection(chatRef, 'messages')), { uid: me, text: t, at: serverTimestamp() })
+  b.set(doc(collection(chatRef, 'messages')), { uid: me, text: t, at: serverTimestamp(), ...(replyTo ? { replyTo: { ...replyTo, text: replyTo.text.slice(0, 100) } } : {}) })
   b.update(chatRef, {
     last: { text: t.slice(0, 100), uid: me, at: serverTimestamp() },
     updatedAt: serverTimestamp(),

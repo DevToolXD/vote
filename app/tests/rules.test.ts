@@ -410,6 +410,18 @@ describe('messages', () => {
     await denied(setDoc(doc(c, 'chats', dmId('a', 'c').replace('c', 'b')), { type: 'dm', members: ['a', 'b'], name: '', createdBy: 'c', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
   })
 
+  test('답장: quotes an existing message in the same chat', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); await signUp('c')
+    const id = await openDm(a, 'a', 'b')
+    await sendMessage(a, 'a', id, '저녁 먹었어?')
+    const first = (await getDocs(collection(b, 'chats', id, 'messages'))).docs[0]
+    await sendMessage(b, 'b', id, '응 먹었어', { id: first.id, uid: 'a', text: '저녁 먹었어?' })
+    const reply = (await getDocs(collection(a, 'chats', id, 'messages'))).docs.map(d => d.data()).find(m => m.replyTo)!
+    assert.deepEqual(reply.replyTo, { id: first.id, uid: 'a', text: '저녁 먹었어?' })
+    await assert.rejects(sendMessage(b, 'b', id, 'x', { id: 'nope', uid: 'a', text: 'x' })) // no such message
+    await denied(setDoc(doc(collection(b, 'chats', id, 'messages')), { uid: 'b', text: 'x', at: serverTimestamp(), replyTo: { id: first.id, uid: 'a', text: 'x', extra: 1 } }))
+  })
+
   test('refused: forged sender, someone else’s read receipt, fake preview, wrong 1:1 id', async () => {
     const a = await signUp('a'); await signUp('b')
     const id = await openDm(a, 'a', 'b')

@@ -4,6 +4,7 @@ import { ID_PATTERN } from '../backend/auth'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
 import { BackIcon } from './icons'
+import { PointsChip } from './PointsChip'
 
 export type SignupForm = { name: string; id: string; pw: string; pw2: string }
 export type LoginForm = { id: string; pw: string; keep: boolean }
@@ -48,7 +49,8 @@ const primaryBtn = 'height:56px;border-radius:16px;background:#3182f6;color:#fff
 export function AccountScreen(p: Props) {
   return (
     <div data-g="clear" style={css('flex:1;background:#ffffff')}>
-      <div style={css('height:56px;padding:6px 8px 0 12px;display:flex;justify-content:flex-end;align-items:center;gap:4px')}>
+      <div style={css('height:56px;padding:6px 8px 0 16px;display:flex;justify-content:flex-end;align-items:center;gap:4px')}>
+        {p.loggedIn && <span style={css('margin-right:auto')}><PointsChip points={p.points} onClick={p.openEdit} /></span>}
         {p.loggedIn && (
           <button data-g="secondary" className="pr-96" onClick={p.openEdit} style={css('height:36px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:6px;background:#f2f4f6;color:#333d4b;font-size:14px;font-weight:600')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" /><path d="m13.5 6.5 4 4" /></svg>프로필 편집

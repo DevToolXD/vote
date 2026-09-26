@@ -532,7 +532,12 @@ service cloud.firestore {
       match /messages/{msgId} {
         allow read: if signedIn() && request.auth.uid in chatData(chatId).members;
         allow create: if signedIn()
-          && request.resource.data.keys().hasOnly(['uid', 'text', 'at', 'kind', 'giftId'])
+          && request.resource.data.keys().hasOnly(['uid', 'text', 'at', 'kind', 'giftId', 'replyTo'])
+          // 답장: a short quote of an existing message in this chat
+          && (!('replyTo' in request.resource.data)
+              || (request.resource.data.replyTo.keys().hasOnly(['id', 'uid', 'text'])
+                  && request.resource.data.replyTo.text is string && request.resource.data.replyTo.text.size() <= 100
+                  && exists(/databases/$(database)/documents/chats/$(chatId)/messages/$(request.resource.data.replyTo.id))))
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.at == request.time
           && request.resource.data.text is string && request.resource.data.text.size() <= 500

@@ -1,5 +1,6 @@
 import { Countdown } from './Countdown'
-import { css, sx } from '../css'
+import { PointsChip } from './PointsChip'
+import { css } from '../css'
 import { isInstalledApp } from '../install'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
@@ -18,9 +19,11 @@ type Props = {
   seasonName: string
   /** When the season ends (ms), for the countdown; undefined = no end date. */
   seasonEndsAt?: number
+  /** My points (signed in only). */
+  points?: number
 }
 
-export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAccount, onInstall, myCount, seasonName, seasonEndsAt }: Props) {
+export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAccount, onInstall, myCount, seasonName, seasonEndsAt, points }: Props) {
   const q = query.trim()
   // You can't vote for yourself, so you never appear in the pick list.
   const votable = all.filter(d => !d.isMe)
@@ -29,9 +32,12 @@ export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAc
     <div data-g="clear" style={css('flex:1;background:#f2f4f6;padding-bottom:24px')}>
       <header data-g="head" style={css('position:sticky;top:0;z-index:20;height:56px;padding:0 12px 0 24px;display:flex;align-items:center;justify-content:space-between;background:#f2f4f6')}>
         <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>인기투표</span>
-        <button className="pr-dim" onClick={goRank} aria-label="검색" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#6b7684')}>
-          <SearchIcon size={24} stroke="currentColor" />
-        </button>
+        <span style={css('display:flex;align-items:center;gap:4px')}>
+          {points !== undefined && <PointsChip points={points} onClick={goAccount} />}
+          <button className="pr-dim" onClick={goRank} aria-label="검색" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#6b7684')}>
+            <SearchIcon size={24} stroke="currentColor" />
+          </button>
+        </span>
       </header>
 
       <div style={css('padding:12px 24px 24px')}>
@@ -69,8 +75,8 @@ export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAc
               <span style={css('font-size:17px;line-height:25.5px;font-weight:500;color:#333d4b')}>{t.name}</span>
               <span style={css('font-size:13px;line-height:19.5px;color:#6b7684;font-variant-numeric:tabular-nums')}>{t.rank}위 · {t.scoreLabel}점</span>
             </span>
-            {t.weekKind !== 'none'
-              ? <span style={sx('height:24px;padding:0 10px;border-radius:9999px;font-size:12px;font-weight:600;display:flex;align-items:center', t.weekKind === 'up' ? { background: 'rgba(49,130,246,0.12)', color: '#1b64da' } : { background: 'rgba(240,68,82,0.12)', color: '#d22030' })}>{t.weekKind === 'up' ? '✓ 추천함' : '✓ 비추천함'}</span>
+            {t.inWeek
+              ? <span style={css('height:32px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:600;display:flex;align-items:center;background:#f2f4f6;color:#4e5968')}>바꾸기</span>
               : <span style={css('height:32px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:600;display:flex;align-items:center;background:rgba(100,168,255,0.15);color:#2272eb')}>투표</span>}
           </button>
         ))}

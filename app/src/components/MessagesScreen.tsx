@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type R
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { MEDALS } from '../data'
-import { MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, isUnread, loadImage, markRead, subscribeMessages, type ChatRow, type MessageRow } from '../backend/messages'
+import { MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, isUnread, loadImage, markRead, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, subscribeGift, type Gift } from '../backend/gifts'
 import { saveImage } from '../saveImage'
 import type { Person } from '../model'
@@ -232,7 +232,7 @@ type RoomProps = {
   all: Person[]
   byId: Map<string, Person>
   onBack: () => void
-  onSend: (text: string) => Promise<boolean>
+  onSend: (text: string, replyTo?: ReplyRef) => Promise<boolean>
   onSendImage: (file: File) => Promise<boolean>
   myPoints: number
   onSendGift: (amount: number) => Promise<boolean>
@@ -259,6 +259,41 @@ export function ChatRoom(p: RoomProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [attach, setAttach] = useState<'menu' | 'gift' | null>(null)
+  // 답장: long-press (or right-click) a message for 답장/복사, or swipe it to the right.
+  const [reply, setReply] = useState<ReplyRef | null>(null)
+  const [actionFor, setActionFor] = useState<MessageRow | null>(null)
+  const [flash, setFlash] = useState<string | null>(null)
+  const snippet = (m: MessageRow) => m.kind === 'image' ? '사진' : m.kind === 'gift' ? m.text || '🎁 포인트 선물' : m.text
+  const startReply = (m: MessageRow) => { setReply({ id: m.id, uid: m.uid, text: snippet(m).slice(0, 100) }); setActionFor(null); setTimeout(() => inputRef.current?.focus(), 50) }
+  const jumpTo = (id: string) => {
+    const el = listRef.current?.querySelector(`[data-mid="${id}"]`) as HTMLElement | null
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setFlash(id); setTimeout(() => setFlash(f => (f === id ? null : f)), 1200)
+  }
+  const press = useRef<{ id: string; x: number; y: number; timer?: ReturnType<typeof setTimeout>; dx: number } | null>(null)
+  const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
+  const gestures = (m: MessageRow) => m.kind === 'system' ? {} : {
+    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setActionFor(m) },
+    onPointerDown: (e: React.PointerEvent) => {
+      const timer = setTimeout(() => { press.current = null; setDrag(null); try { navigator.vibrate?.(15) } catch { /* no vibration */ } setActionFor(m) }, 480)
+      press.current = { id: m.id, x: e.clientX, y: e.clientY, timer, dx: 0 }
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const pr = press.current
+      if (!pr || pr.id !== m.id) return
+      const dx = e.clientX - pr.x, dy = e.clientY - pr.y
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(pr.timer)
+      if (Math.abs(dy) > 24 && Math.abs(dy) > Math.abs(dx)) { press.current = null; setDrag(null); return }
+      if (dx > 0) { pr.dx = dx; setDrag({ id: m.id, dx: Math.min(dx, 72) }) }
+    },
+    onPointerUp: () => {
+      const pr = press.current
+      if (pr) { clearTimeout(pr.timer); if (pr.dx > 56) startReply(m) }
+      press.current = null; setDrag(null)
+    },
+    onPointerCancel: () => { if (press.current) clearTimeout(press.current.timer); press.current = null; setDrag(null) },
+  }
   const firstIds = useRef<Set<string> | null>(null)
   const box = useKeyboardSafeBox()
   const v = describeChat(chat, me.id, byId, !!me.msgOff)
@@ -305,7 +340,9 @@ export function ChatRoom(p: RoomProps) {
     const t = draft.trim()
     if (!t || !v.canSend) return
     setDraft('')
-    if (!(await onSend(t))) setDraft(d => (d ? d : t))
+    const r = reply
+    setReply(null)
+    if (!(await onSend(t, r ?? undefined))) { setDraft(d => (d ? d : t)); setReply(r) }
   }
   const [photoSending, setPhotoSending] = useState(false)
   const pickPhoto = async (f: File) => {
@@ -362,11 +399,24 @@ export function ChatRoom(p: RoomProps) {
               ? <GiftBubble db={db} giftId={m.giftId} me={me.id} byId={byId} onClaim={p.onClaimGift} onCancel={p.onCancelGift} onLoaded={keepBottom} />
               : m.kind === 'image'
               ? <ImageBubble db={db} chatId={chat.id} msgId={m.id} onOpen={setViewer} onLoaded={keepBottom} />
-              : <span style={sx('padding:10px 14px;border-radius:20px;font-size:15px;line-height:22px;white-space:pre-wrap;word-break:break-word', { background: mine ? '#3182f6' : tinted ? '#ffffff' : '#f2f4f6', color: mine ? '#ffffff' : '#191f28', fontWeight: mine ? 500 : 400 })}>{m.text}</span>
+              : <span style={sx('padding:10px 14px;border-radius:20px;font-size:15px;line-height:22px;white-space:pre-wrap;word-break:break-word;display:flex;flex-direction:column;gap:6px', { background: mine ? '#3182f6' : tinted ? '#ffffff' : '#f2f4f6', color: mine ? '#ffffff' : '#191f28', fontWeight: mine ? 500 : 400 })}>
+                  {m.replyTo && (
+                    <button onClick={() => jumpTo(m.replyTo!.id)} style={sx('display:flex;flex-direction:column;gap:1px;padding:6px 10px;border-radius:12px;text-align:left;max-width:100%;border-left:3px solid', { background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(0,23,51,0.05)', borderLeftColor: mine ? 'rgba(255,255,255,0.7)' : '#3182f6' })}>
+                      <span style={sx('font-size:12px;line-height:16px;font-weight:700', { color: mine ? 'rgba(255,255,255,0.9)' : '#1b64da' })}>{m.replyTo.uid === me.id ? '나' : byId.get(m.replyTo.uid)?.name ?? '(탈퇴한 사람)'}에게 답장</span>
+                      <span style={sx('font-size:13px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px', { color: mine ? 'rgba(255,255,255,0.85)' : '#4e5968', fontWeight: 400 })}>{m.replyTo.text}</span>
+                    </button>
+                  )}
+                  <span>{m.text}</span>
+                </span>
             return (
               <Fragment key={m.id}>
                 {dayRow}
-                <div data-anim style={sx('display:flex;gap:8px;align-items:flex-end', { justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: firstOfRun ? 12 : 4, animation: isNew ? (mine ? 'msgSend 520ms cubic-bezier(0.25,0.9,0.3,1) both' : `msgInL 380ms ${EASE} both`) : undefined, transformOrigin: mine ? 'bottom right' : 'bottom left' })}>
+                <div data-anim data-mid={m.id} {...gestures(m)} style={sx('display:flex;gap:8px;align-items:flex-end;position:relative;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;border-radius:14px', { justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: firstOfRun ? 12 : 4, transform: drag?.id === m.id ? `translateX(${drag.dx}px)` : undefined, transition: drag?.id === m.id ? 'none' : `transform 260ms ${EASE}, background 400ms ease`, background: flash === m.id ? 'rgba(49,130,246,0.12)' : undefined, animation: isNew ? (mine ? 'msgSend 520ms cubic-bezier(0.25,0.9,0.3,1) both' : `msgInL 380ms ${EASE} both`) : undefined, transformOrigin: mine ? 'bottom right' : 'bottom left' })}>
+                  {drag?.id === m.id && (
+                    <span aria-hidden="true" style={sx('position:absolute;left:-40px;top:50%;margin-top:-14px;width:28px;height:28px;border-radius:9999px;background:#f2f4f6;display:flex;align-items:center;justify-content:center;color:#4e5968', { opacity: Math.min(1, drag.dx / 56), transform: `scale(${drag.dx > 56 ? 1.1 : 0.9})`, transition: 'transform 120ms' })}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 6 6v5" /></svg>
+                    </span>
+                  )}
                   {!mine && (
                     <span style={css('width:32px;flex:none;align-self:flex-start')}>
                       {firstOfRun && <button className="pr-94" onClick={() => sender && onOpenProfile(sender.id)} aria-label={`${sender?.name ?? ''} 프로필`} style={css('display:block;border-radius:9999px')}><Avatar frame={sender?.frame} photo={sender?.photoCss} size={32} /></button>}
@@ -407,6 +457,16 @@ export function ChatRoom(p: RoomProps) {
         )}
 
         <div style={sx('flex:none;padding:8px 12px', { paddingBottom: box.top || box.height < window.innerHeight - 80 ? 8 : 'calc(8px + env(safe-area-inset-bottom))', background: '#ffffff' })}>
+          {reply && v.canSend && (
+            <div style={css('display:flex;align-items:center;gap:10px;padding:8px 6px 10px 12px;margin-bottom:6px;border-radius:14px;background:#f9fafb;animation:toastDown 220ms cubic-bezier(0.16,1,0.3,1) both')}>
+              <span style={css('width:3px;align-self:stretch;border-radius:2px;background:#3182f6;flex:none')} />
+              <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+                <span style={css('font-size:13px;font-weight:700;color:#1b64da')}>{reply.uid === me.id ? '나' : byId.get(reply.uid)?.name ?? '(탈퇴한 사람)'}에게 답장</span>
+                <span style={css('font-size:13px;color:#6b7684;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{reply.text}</span>
+              </span>
+              <button onClick={() => setReply(null)} aria-label="답장 취소" style={css('width:36px;height:36px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center')}><CloseIcon size={16} stroke="#8b95a1" width={2.6} /></button>
+            </div>
+          )}
           {v.canSend ? (
             <div style={css('display:flex;align-items:flex-end;gap:6px')}>
               <button className="pr-94" onClick={() => setAttach(a => (a ? null : 'menu'))} disabled={sending} aria-label="사진·포인트 선물" aria-expanded={!!attach} style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#4e5968;background:#f2f4f6;transition:transform 260ms ${EASE}`, { transform: attach ? 'rotate(45deg)' : 'none' })}><PlusIcon /></button>
@@ -431,6 +491,16 @@ export function ChatRoom(p: RoomProps) {
           <ChatMenu {...p} bg={bg} onBg={k => { setBg(k); saveBg(chat.id, k) }} onClose={() => setMenu(false)}
             onLeave={() => { setMenu(false); p.onLeave() }}
             onOpenProfile={uid => { setMenu(false); onOpenProfile(uid) }} />
+        )}
+        {actionFor && (
+          <BottomSheet onScrim={() => setActionFor(null)} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(16px + env(safe-area-inset-bottom));animation:sheetUp 320ms ${EASE} both`}>
+            <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto 8px')} />
+            <div style={css('margin:4px 24px 8px;padding:10px 14px;border-radius:14px;background:#f9fafb;font-size:14px;line-height:20px;color:#4e5968;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{snippet(actionFor)}</div>
+            {v.canSend && <button className="pr-dim" onClick={() => startReply(actionFor)} style={css('width:calc(100% - 8px);margin:0 4px;padding:16px 20px;border-radius:12px;text-align:left;font-size:17px;font-weight:500;color:#333d4b')}>답장</button>}
+            {(!actionFor.kind || actionFor.kind === 'text') && (
+              <button className="pr-dim" onClick={async () => { try { await navigator.clipboard.writeText(actionFor.text); p.onToast('메시지를 복사했어요') } catch { p.onToast('복사하지 못했어요') } setActionFor(null) }} style={css('width:calc(100% - 8px);margin:0 4px;padding:16px 20px;border-radius:12px;text-align:left;font-size:17px;font-weight:500;color:#333d4b')}>복사</button>
+            )}
+          </BottomSheet>
         )}
         {viewer && <ImageViewer src={viewer} onClose={() => setViewer(null)} onToast={p.onToast} />}
         {attach === 'menu' && (

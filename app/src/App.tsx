@@ -465,7 +465,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
           {tab === 'home' && (
             <HomeScreen
               all={all} loggedIn={loggedIn} query={homeQuery} onQuery={setHomeQuery} onPick={setSheet}
-              goRank={() => go('rank')} goAccount={() => go('acct')} onInstall={() => setInstallOpen(true)} myCount={mine.length} seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()}
+              goRank={() => go('rank')} goAccount={() => go('acct')} onInstall={() => setInstallOpen(true)} myCount={mine.length} seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()} points={me ? points : undefined}
             />
           )}
           {tab === 'rank' && (
@@ -618,8 +618,8 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
             }}
             onBack={() => setChatId(null)}
             onError={failToast}
-            onSend={async text => {
-              try { await sendMessage(db!, authUser.uid, openChat.id, text); return true } catch (e) { failToast('보내지 못했어요', e); return false }
+            onSend={async (text, replyTo) => {
+              try { await sendMessage(db!, authUser.uid, openChat.id, text, replyTo); return true } catch (e) { failToast('보내지 못했어요', e); return false }
             }}
             onMute={muted => {
               setChatMuted(db!, authUser.uid, openChat.id, muted)
