@@ -120,6 +120,13 @@ export async function signInForSupport() {
   return (await signInAnonymously(auth)).user
 }
 
+/** A new anonymous login for a new 상담 (the previous one was ended by 상담원). */
+export async function restartSupport() {
+  if (!auth) throw new Error('firebase-not-configured')
+  if (auth.currentUser?.isAnonymous) await signOut(auth)
+  return (await signInAnonymously(auth)).user
+}
+
 /** After logging in with an admin-issued one-time code: is a new password required? */
 export async function needsNewPassword(uid: string) {
   if (!db) return false

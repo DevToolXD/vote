@@ -7,14 +7,14 @@ import { after, beforeEach, describe, test } from 'node:test'
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app'
 import {
   collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore,
-  serverTimestamp, setDoc, updateDoc, writeBatch, type Firestore,
+  query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Firestore,
 } from 'firebase/firestore'
 import { deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, castVote, equipItem, pointsOf, updateMyProfile } from '../src/backend/candidates'
 import { createGroup, dmId, inviteMembers, leaveGroup, loadImage, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
-import { markSupportRead, sendSupport } from '../src/backend/support'
+import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
 import { cancelGift, claimGift, sendGift } from '../src/backend/gifts'
 import { markNoticeSeen, nextUnseenNotice, postNotice } from '../src/backend/notices'
 import { DEFAULT_REWARDS } from '../src/backend/rewards'
@@ -525,6 +525,26 @@ describe('상담 and password reset', () => {
     await assert.rejects(sendSupport(anon, 'anon1', 'admin', '관리자인 척', { exists: true }))
     await assert.rejects(sendSupport(other, 'anon1', 'user', '끼어들기', { exists: true }))
     await denied(setDoc(doc(other, 'support', 'anon1', 'messages', 'x'), { from: 'user', text: 'x', at: serverTimestamp() }))
+  })
+  test('상담 stays with the account after a reset until the admin ends it', async () => {
+    const anon = dbAs({ uid: 'anon2' }); const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
+    await sendSupport(anon, 'anon2', 'user', '비밀번호를 잊었어요', { exists: false, name: '김철수', loginId: 'a' })
+    await denied(getDoc(doc(a, 'support', 'anon2'))) // not linked yet
+    await denied(linkTicket(a, 'anon2', 'a')) // only the admin links
+    await linkTicket(admin, 'anon2', 'a')
+    // logged in as the account: reads and keeps talking
+    assert.equal((await getDocs(query(collection(a, 'support'), where('accountUid', '==', 'a')))).size, 1)
+    await sendSupport(a, 'anon2', 'user', '로그인했어요', { exists: true })
+    assert.equal((await getDocs(collection(a, 'support', 'anon2', 'messages'))).size, 2)
+    await denied(getDoc(doc(b, 'support', 'anon2')))
+    await assert.rejects(sendSupport(b, 'anon2', 'user', '끼어들기', { exists: true }))
+    await assert.rejects(closeTicket(a, 'anon2')) // only 상담원 ends it
+    await closeTicket(admin, 'anon2')
+    assert.equal((await getDoc(doc(a, 'support', 'anon2'))).data()!.closed, true)
+    await assert.rejects(sendSupport(a, 'anon2', 'user', '또 보내기', { exists: true }))
+    await assert.rejects(sendSupport(anon, 'anon2', 'user', '또 보내기', { exists: true }))
+    await markSupportRead(a, 'anon2', 'user') // can still mark the ending as seen
+    await denied(setDoc(doc(anon, 'support', 'anon2', 'messages', 'x'), { from: 'user', text: 'x', at: serverTimestamp() }))
   })
   test('reset: admin-only 3-token op; the worker applies it; the owner clears it after choosing a password', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)

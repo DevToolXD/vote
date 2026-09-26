@@ -19,7 +19,7 @@ import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScr
 import { NotifySettings } from './components/NotifySettings'
 import { MessageBanner, type Banner } from './components/MessageBanner'
 import { SupportFlow, SupportRoom } from './components/SupportScreen'
-import { sendSupport, subscribeTickets, type Ticket } from './backend/support'
+import { closeTicket, linkTicket, sendSupport, subscribeLinkedTickets, subscribeTicket, subscribeTickets, type Ticket } from './backend/support'
 import { markNoticeSeen, nextUnseenNotice, postNotice, subscribeNoticeIndex, type Notice } from './backend/notices'
 import { NoticeScreen } from './components/NoticeScreen'
 import { cancelGift, claimGift, sendGift } from './backend/gifts'
@@ -100,7 +100,12 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   const [notify, setNotify] = useState<NotifyPrefs>(DEFAULT_NOTIFY)
   const [pushOn, setPushOn] = useState(deviceRegistered)
   const [pushBusy, setPushBusy] = useState(false)
-  const [supportOpen, setSupportOpen] = useState(false)
+  // 상담 (forgot password): 'new' from 비밀번호를 잊었어요, 'resume' from the 계정 card.
+  const [supportOpen, setSupportOpen] = useState<'new' | 'resume' | null>(null)
+  const [anonUid, setAnonUid] = useState<string | null>(null)
+  const [myTickets, setMyTickets] = useState<Ticket[]>([])
+  const [linkedOpen, setLinkedOpen] = useState<string | null>(null)
+  const [endAsk, setEndAsk] = useState(false)
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [ticketId, setTicketId] = useState<string | null>(startSupport)
   const [mustChangePw, setMustChangePw] = useState(false)
@@ -129,7 +134,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   useEffect(() => { setTab(startTab) }, [startTab])
 
   // An anonymous login is only for 상담 (forgot password); the app treats it as signed out.
-  useEffect(() => onAuthChange(u => { setAuthUser(u && !u.isAnonymous ? u : null); setAuthReady(true) }), [])
+  useEffect(() => onAuthChange(u => { setAuthUser(u && !u.isAnonymous ? u : null); setAnonUid(u?.isAnonymous ? u.uid : null); setAuthReady(true) }), [])
   useEffect(() => (db ? subscribeCandidates(db, setRows) : undefined), [])
   useEffect(() => (db ? subscribeSeason(db, setSeason) : undefined), [])
 
@@ -238,6 +243,28 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   const openTicket = tickets.find(t => t.id === ticketId)
   const ticketAccount = openTicket ? all.find(p => p.loginId && p.loginId === openTicket.loginId) : undefined
   const unreadTickets = tickets.filter(t => t.last?.from === 'user' && !t.adminRead).length
+
+  // My own 상담: the anonymous one (logged out), or ones 상담원 linked to my account after a
+  // password reset. It stays on 계정 until 상담원 ends it (and I've seen that it ended).
+  useEffect(() => {
+    if (!db) return
+    if (anonUid) return subscribeTicket(db, anonUid, t => setMyTickets(t ? [t] : []))
+    if (authUser && !isAdmin) return subscribeLinkedTickets(db, authUser.uid, setMyTickets)
+    setMyTickets([])
+  }, [anonUid, authUser, isAdmin])
+  const myTicket = myTickets.filter(t => !t.closed || !t.userRead).sort((a, b) => (b.updatedAt?.toMillis() ?? 0) - (a.updatedAt?.toMillis() ?? 0))[0]
+  const linkedTicket = linkedOpen ? myTickets.find(t => t.id === linkedOpen) : undefined
+  const supportCard = myTicket && (
+    <button className="pr-dim anim-list" onClick={() => (authUser ? setLinkedOpen(myTicket.id) : setSupportOpen('resume'))}
+      style={css('width:calc(100% - 32px);margin:0 16px 12px;display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:16px;background:#f2f8ff;text-align:left')}>
+      <span style={css('width:40px;height:40px;flex:none;border-radius:9999px;background:#3182f6;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px')}>💬</span>
+      <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+        <span style={css('font-size:16px;line-height:24px;font-weight:600;color:#191f28')}>{myTicket.closed ? '상담이 끝났어요' : '상담원과 상담 중이에요'}</span>
+        <span style={css('font-size:14px;line-height:21px;color:#4e5968;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{myTicket.last ? (myTicket.last.from === 'admin' ? '상담원: ' : '나: ') + myTicket.last.text : '눌러서 이어서 이야기해요'}</span>
+      </span>
+      {myTicket.last?.from === 'admin' && !myTicket.userRead && <span style={css('width:8px;height:8px;flex:none;border-radius:9999px;background:#f04452;animation:dotPop 420ms cubic-bezier(0.16,1,0.3,1) both')} />}
+    </button>
+  )
 
   // The login id, shown on my profile; older accounts get it saved on their entry too.
   const myLoginId = authUser?.email?.endsWith('@vote.local') ? authUser.email.slice(0, -'@vote.local'.length) : undefined
@@ -505,7 +532,8 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
               openEdit={() => setEditOpen(true)}
               openTheme={() => setThemeOpen(true)}
               goHome={() => go('home')}
-              onForgot={() => setSupportOpen(true)}
+              onForgot={() => setSupportOpen('new')}
+              supportSlot={supportCard}
               notifySlot={
                 <NotifySettings
                   support={pushSupport()} on={pushOn && notify.notify} busy={pushBusy} settings={notify}
@@ -538,6 +566,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
               setSeasonName={(n, p) => setSeasonName(db!, authUser.uid, n, p)}
               resetSeason={(n, p) => resetSeason(db!, authUser.uid, n, p)}
               renameUser={(t, n, p) => renameUser(db!, authUser.uid, t, n, p)}
+              resetPassword={(t, p) => resetPassword(db!, authUser.uid, t, p)}
               deleteAccount={(t, p) => deleteAccount(db!, authUser.uid, t, p)}
               onLogout={doLogout}
             />
@@ -650,25 +679,48 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
           </div>
         )}
         {supportOpen && db && (
-          <SupportFlow db={db} loginId={login.id} onClose={() => setSupportOpen(false)} onError={failToast} />
+          <SupportFlow db={db} loginId={login.id} resume={supportOpen === 'resume'} onClose={() => setSupportOpen(null)} onError={failToast} />
+        )}
+        {linkedTicket && authUser && db && (
+          <SupportRoom
+            db={db} ticketUid={linkedTicket.id} as="user" exists title="상담원" subtitle="상담원이 끝낼 때까지 여기에서 이어갈 수 있어요"
+            closed={!!linkedTicket.closed} onBack={() => setLinkedOpen(null)} onError={failToast}
+          />
         )}
         {openTicket && isAdmin && authUser && db && (
           <SupportRoom
             db={db} ticketUid={openTicket.id} as="admin" exists
             title={`${openTicket.name || '이름 없음'} @${openTicket.loginId || '?'}`}
             subtitle={ticketAccount ? `가입한 계정이 있어요 · ${ticketAccount.name}` : '이 아이디로 가입한 계정을 찾지 못했어요'}
-            onBack={() => setTicketId(null)} onError={failToast}
-            tools={ticketAccount && (
+            onBack={() => setTicketId(null)} onError={failToast} closed={!!openTicket.closed}
+            headerAction={!openTicket.closed && (
+              <button className="pr-96" onClick={() => setEndAsk(true)} style={css('flex:none;height:36px;padding:0 12px;margin-right:4px;border-radius:10px;background:#fff0f1;color:#e42939;font-size:14px;font-weight:600')}>상담 끝내기</button>
+            )}
+            tools={ticketAccount && !openTicket.closed && (
               <div style={css('flex:none;margin:0 16px 8px;padding:12px 14px;border-radius:14px;background:#f9fafb;display:flex;align-items:center;gap:10px')}>
                 <span style={css('flex:1;min-width:0;font-size:13px;line-height:19.5px;color:#4e5968')}>본인이 맞으면 임시 비밀번호를 보내요. 그 번호로 로그인하면 새 비밀번호를 정해요</span>
                 <button className="pr-96" onClick={async () => {
                   let code = ''
                   const ok = await runAdmin('비밀번호 초기화', async p => { code = await resetPassword(db, authUser.uid, ticketAccount.id, p) })
+                  if (ok && code) await linkTicket(db, openTicket.id, ticketAccount.id).catch(() => {})
                   if (ok && code) await sendSupport(db, openTicket.id, 'admin', `임시 비밀번호는 ${code}이에요. 아이디 ${ticketAccount.loginId}와 이 번호로 로그인하면 새 비밀번호를 정할 수 있어요. 1분쯤 뒤에 로그인해주세요.`, { exists: true }).catch(e => failToast('안내를 보내지 못했어요', e))
                 }} style={css('flex:none;height:36px;padding:0 12px;border-radius:10px;background:#e8f3ff;color:#1b64da;font-size:14px;font-weight:600')}>비밀번호 초기화</button>
               </div>
             )}
           />
+        )}
+        {endAsk && openTicket && db && (
+          <Dialog onScrim={() => setEndAsk(false)} gap={20}>
+            <div style={css('padding:0 4px;display:flex;flex-direction:column;gap:8px')}>
+              <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>상담을 끝낼까요?</span>
+              <span style={css('font-size:15px;line-height:22.5px;color:#4e5968')}>{openTicket.name || '이 사람'}님 계정 탭에서 상담이 사라지고, 더 이상 메시지를 보낼 수 없어요</span>
+            </div>
+            <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
+              <button data-g="secondary" className="pr-96" onClick={() => setEndAsk(false)} style={css('height:54px;border-radius:16px;background:#f2f4f6;color:#4e5968;font-size:17px;font-weight:600')}>닫기</button>
+              <button className="pr-96" onClick={() => { setEndAsk(false); closeTicket(db, openTicket.id).then(() => showToast('상담을 끝냈어요')).catch(e => failToast('상담을 끝내지 못했어요', e)) }}
+                style={css('height:54px;border-radius:16px;background:#f04452;color:#ffffff;font-size:17px;font-weight:600')}>끝내기</button>
+            </div>
+          </Dialog>
         )}
         {mustChangePw && authUser && (
           <Dialog onScrim={() => {}} gap={20}>

@@ -40,6 +40,8 @@ type Props = {
   onForgot: () => void
   /** 알림 settings section, rendered above 로그아웃. */
   notifySlot?: ReactNode
+  /** An ongoing 상담 (until 상담원 ends it), shown at the top. */
+  supportSlot?: ReactNode
 }
 
 const field = 'height:52px;border:0;border-radius:14px;background:#f2f4f6;padding:0 16px;font-size:17px;color:#191f28'
@@ -60,6 +62,7 @@ export function AccountScreen(p: Props) {
           <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="3.5" /><circle cx="9" cy="9.5" r="1.8" /><path d="m21 15.5-4.6-4.6a1.5 1.5 0 0 0-2.1 0L5 20" /></svg>
         </button>
       </div>
+      {p.supportSlot}
       {!p.loggedIn && (p.view === 'login' ? <LoginView {...p} /> : <SignupView {...p} />)}
       {p.loggedIn && (p.me ? <Profile {...p} me={p.me} /> : (
         <div style={css('padding:80px 24px;text-align:center;font-size:15px;color:#6b7684')}>불러오는 중이에요…</div>

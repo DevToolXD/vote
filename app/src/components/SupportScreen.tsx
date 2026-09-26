@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { MAX_SUPPORT_TEXT, markSupportRead, sendSupport, subscribeSupportMessages, subscribeTicket, type SupportFrom, type SupportMessage, type Ticket } from '../backend/support'
-import { signInForSupport } from '../backend/auth'
+import { restartSupport, signInForSupport } from '../backend/auth'
 import { BackIcon } from './icons'
 import { PlaneIcon, useKeyboardSafeBox } from './MessagesScreen'
 
@@ -28,9 +28,13 @@ type RoomProps = {
   /** Admin tools under the header (account match, 비밀번호 초기화). */
   tools?: ReactNode
   intro?: ReactNode
+  /** 상담 끝내기 has been pressed: no more messages. */
+  closed?: boolean
+  /** Button at the right of the header (admin: 상담 끝내기). */
+  headerAction?: ReactNode
 }
 
-export function SupportRoom({ db, ticketUid, as, title, subtitle, exists, profile, onBack, onError, tools, intro }: RoomProps) {
+export function SupportRoom({ db, ticketUid, as, title, subtitle, exists, profile, onBack, onError, tools, intro, closed, headerAction }: RoomProps) {
   const [msgs, setMsgs] = useState<SupportMessage[]>([])
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -62,6 +66,7 @@ export function SupportRoom({ db, ticketUid, as, title, subtitle, exists, profil
             <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#191f28;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{title}</span>
             {subtitle && <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>{subtitle}</span>}
           </span>
+          {headerAction}
         </div>
         {tools}
         <div ref={listRef} style={css('flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;gap:4px')}>
@@ -82,22 +87,32 @@ export function SupportRoom({ db, ticketUid, as, title, subtitle, exists, profil
             )
           })}
         </div>
-        <div style={css('flex:none;padding:8px 12px calc(8px + env(safe-area-inset-bottom));display:flex;align-items:flex-end;gap:8px')}>
-          <textarea className="box-focus" rows={1} value={draft} maxLength={MAX_SUPPORT_TEXT} placeholder={as === 'admin' ? '답변 보내기' : '궁금한 점을 적어주세요'}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }}
-            style={css('flex:1;min-width:0;min-height:44px;max-height:120px;resize:none;border:0;outline:none;border-radius:22px;background-color:#f2f4f6;padding:11px 16px;font-size:17px;line-height:22px;color:#191f28;font-family:inherit')} />
-          <button className="pr-94" onClick={send} disabled={!draft.trim() || sending} aria-label="보내기" style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;background:#3182f6;display:flex;align-items:center;justify-content:center;transition:opacity 200ms ${EASE}`, { opacity: draft.trim() && !sending ? 1 : 0.3 })}>
-            <PlaneIcon size={20} stroke="#fff" width={2.2} />
-          </button>
-        </div>
+        {closed ? (
+          <div style={css('flex:none;padding:14px 20px calc(14px + env(safe-area-inset-bottom));text-align:center;font-size:14px;line-height:21px;color:#6b7684;background:#f9fafb')}>
+            상담이 끝났어요{as === 'user' ? ' · 더 궁금하면 로그인 화면의 "비밀번호를 잊었어요"로 새로 시작해주세요' : ''}
+          </div>
+        ) : (
+          <div style={css('flex:none;padding:8px 12px calc(8px + env(safe-area-inset-bottom));display:flex;align-items:flex-end;gap:8px')}>
+            <textarea className="box-focus" rows={1} value={draft} maxLength={MAX_SUPPORT_TEXT} placeholder={as === 'admin' ? '답변 보내기' : '궁금한 점을 적어주세요'}
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }}
+              style={css('flex:1;min-width:0;min-height:44px;max-height:120px;resize:none;border:0;outline:none;border-radius:22px;background-color:#f2f4f6;padding:11px 16px;font-size:17px;line-height:22px;color:#191f28;font-family:inherit')} />
+            <button className="pr-94" onClick={send} disabled={!draft.trim() || sending} aria-label="보내기" style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;background:#3182f6;display:flex;align-items:center;justify-content:center;transition:opacity 200ms ${EASE}`, { opacity: draft.trim() && !sending ? 1 : 0.3 })}>
+              <PlaneIcon size={20} stroke="#fff" width={2.2} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-/** 로그인 → 비밀번호를 잊었어요: asks who they are once, then chats with 상담원. */
-export function SupportFlow({ db, loginId, onClose, onError }: { db: Firestore; loginId: string; onClose: () => void; onError: (msg: string, e: unknown) => void }) {
+/**
+ * 로그인 → 비밀번호를 잊었어요: asks who they are once, then chats with 상담원. The 상담 stays
+ * (계정 shows it) until 상담원 ends it; after that "비밀번호를 잊었어요" starts a new one,
+ * while `resume` (from the 계정 card) reopens the ended one to read it.
+ */
+export function SupportFlow({ db, loginId, resume, onClose, onError }: { db: Firestore; loginId: string; resume?: boolean; onClose: () => void; onError: (msg: string, e: unknown) => void }) {
   const [uid, setUid] = useState<string | null>(null)
   const [ticket, setTicket] = useState<Ticket | null | undefined>(undefined)
   const [name, setName] = useState('')
@@ -109,6 +124,15 @@ export function SupportFlow({ db, loginId, onClose, onError }: { db: Firestore; 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useEffect(() => (uid ? subscribeTicket(db, uid, setTicket) : undefined), [db, uid])
+  // The last 상담 was ended: a new one gets a fresh (anonymous) login, so a fresh ticket.
+  const restarting = useRef(false)
+  useEffect(() => {
+    if (resume || !ticket?.closed || restarting.current) return
+    restarting.current = true
+    setTicket(undefined)
+    restartSupport().then(u => setUid(u.uid)).catch(e => { onError('상담을 시작하지 못했어요', e); onClose() })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket?.closed, resume])
 
   if (!uid || ticket === undefined) return null
   if (!ticket && !started) {
@@ -138,7 +162,7 @@ export function SupportFlow({ db, loginId, onClose, onError }: { db: Firestore; 
     <SupportRoom
       db={db} ticketUid={uid} as="user" title="상담원" subtitle="답변이 오면 여기에서 볼 수 있어요"
       exists={!!ticket} profile={{ name: name || ticket?.name || '', loginId: id || ticket?.loginId || '' }}
-      onBack={onClose} onError={onError}
+      onBack={onClose} onError={onError} closed={!!ticket?.closed}
       intro={
         <div style={css('align-self:center;margin:8px 0 12px;padding:10px 14px;border-radius:14px;background:#f9fafb;font-size:13px;line-height:19.5px;color:#6b7684;text-align:center;max-width:300px')}>
           {ticket ? `${ticket.name}님, 상담원이 확인하고 답변을 드릴게요` : '어떤 도움이 필요한지 적어주세요. 예) 비밀번호를 잊었어요'}

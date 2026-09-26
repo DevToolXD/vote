@@ -150,6 +150,10 @@ async function votes(from, to) {
 
 async function support(from, to) {
   const tickets = await runQuery(docsRoot, { from: [{ collectionId: 'support' }], where: between('updatedAt', from, to) })
+  // 상담원's replies reach the person once the 상담 is linked to their account (after a password reset).
+  for (const t of tickets.filter(t => t.last?.from === 'admin' && t.accountUid)) {
+    await push(t.accountUid, { title: '상담원', body: t.last.text, url: `${SITE}?tab=acct`, tag: `support-${t.id}` })
+  }
   const fromUsers = tickets.filter(t => t.last?.from === 'user')
   if (!fromUsers.length) return
   const admin = await adminUid()

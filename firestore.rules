@@ -50,7 +50,7 @@ service cloud.firestore {
 
     function signedIn() { return request.auth != null; }
     function isAdmin() {
-      return signedIn() && (request.auth.token.email == 'admin@vote.local' || request.auth.token.get('admin', false) == true);
+      return signedIn() && (request.auth.token.get('email', '') == 'admin@vote.local' || request.auth.token.get('admin', false) == true);
     }
 
     // ---- admin operation plumbing -------------------------------------------------
@@ -605,7 +605,12 @@ service cloud.firestore {
     match /support/{uid} {
       function supportText(t) { return t is string && t.size() >= 1 && t.size() <= 1000; }
       function asUser() { return request.auth.uid == uid; }
-      allow read: if signedIn() && (asUser() || isAdmin());
+      // After 비밀번호 초기화 from a 상담 the admin links the ticket to the account, so the
+      // person keeps the conversation after logging in (until the admin ends it).
+      function ticket() { return get(/databases/$(database)/documents/support/$(uid)).data; }
+      function asAccount() { return ticket().get('accountUid', '') == request.auth.uid; }
+      function isOpen() { return ticket().get('closed', false) == false; }
+      allow read: if signedIn() && (asUser() || isAdmin() || resource.data.get('accountUid', '') == request.auth.uid);
       allow create: if signedIn() && asUser()
         && request.resource.data.keys().hasOnly(['loginId', 'name', 'createdAt', 'updatedAt', 'last', 'adminRead', 'userRead'])
         && request.resource.data.loginId is string && request.resource.data.loginId.size() <= 20
@@ -614,22 +619,34 @@ service cloud.firestore {
         && request.resource.data.last.keys().hasOnly(['from', 'text', 'at'])
         && request.resource.data.last.from == 'user' && request.resource.data.last.at == request.time
         && supportText(request.resource.data.last.text);
-      allow update: if signedIn() && (asUser() || isAdmin())
+      // The customer (anonymous 상담 login, or the linked account): only while the 상담 is open.
+      allow update: if signedIn() && !isAdmin() && (asUser() || resource.data.get('accountUid', '') == request.auth.uid)
+        && (resource.data.get('closed', false) == false || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userRead']))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['last', 'updatedAt', 'adminRead', 'userRead'])
         && (!('last' in request.resource.data.diff(resource.data).affectedKeys())
             || (request.resource.data.last.keys().hasOnly(['from', 'text', 'at'])
                 && request.resource.data.last.at == request.time && request.resource.data.updatedAt == request.time
-                && supportText(request.resource.data.last.text)
-                && ((asUser() && request.resource.data.last.from == 'user') || (isAdmin() && request.resource.data.last.from == 'admin'))));
+                && supportText(request.resource.data.last.text) && request.resource.data.last.from == 'user'));
+      // 상담원: replies, links the account (accountUid) and ends the 상담 (closed).
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['last', 'updatedAt', 'adminRead', 'userRead', 'closed', 'closedAt', 'accountUid'])
+        && (!('last' in request.resource.data.diff(resource.data).affectedKeys())
+            || (request.resource.data.last.keys().hasOnly(['from', 'text', 'at'])
+                && request.resource.data.last.at == request.time && request.resource.data.updatedAt == request.time
+                && supportText(request.resource.data.last.text) && request.resource.data.last.from == 'admin'))
+        && request.resource.data.get('closed', false) is bool
+        && (!('accountUid' in request.resource.data) || request.resource.data.accountUid is string);
       allow delete: if false;
 
       match /messages/{msgId} {
-        allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+        allow read: if signedIn() && (request.auth.uid == uid || isAdmin() || asAccount());
         allow create: if signedIn()
           && request.resource.data.keys().hasOnly(['from', 'text', 'at'])
           && request.resource.data.at == request.time
           && request.resource.data.text is string && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 1000
-          && ((request.auth.uid == uid && request.resource.data.from == 'user') || (isAdmin() && request.resource.data.from == 'admin'));
+          && ((isAdmin() && request.resource.data.from == 'admin')
+              || (!isAdmin() && (request.auth.uid == uid || asAccount()) && request.resource.data.from == 'user'
+                  && (!exists(/databases/$(database)/documents/support/$(uid)) || isOpen())));
         allow update, delete: if false;
       }
     }

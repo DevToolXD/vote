@@ -24,6 +24,8 @@ type Props = {
   setSeasonConfig: (endsAt: number, rewards: Rewards, onProgress: (p: AdminProgress) => void) => Promise<void>
   renameUser: (target: string, name: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   deleteAccount: (target: string, onProgress: (p: AdminProgress) => void) => Promise<void>
+  /** Issues a one-time password (resolves with it); the worker applies it within a minute. */
+  resetPassword: (target: string, onProgress: (p: AdminProgress) => void) => Promise<string>
   onLogout: () => void
 }
 
@@ -34,7 +36,8 @@ const gap = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
 
 type Confirm = { title: string; desc: string; cta: string; danger?: boolean; go: () => void }
 
-export function AdminScreen({ all, tickets, onOpenTicket, postNotice, setSeasonConfig, season, run, grantPoints, setSeasonName, resetSeason, renameUser, deleteAccount, onLogout }: Props) {
+export function AdminScreen({ all, tickets, onOpenTicket, postNotice, setSeasonConfig, season, run, grantPoints, setSeasonName, resetSeason, renameUser, deleteAccount, resetPassword, onLogout }: Props) {
+  const [issued, setIssued] = useState<{ name: string; loginId?: string; code: string } | null>(null)
   const [nameDraft, setNameDraft] = useState('')
   const [notice, setNotice] = useState({ title: '', body: '' })
   const curRewards = season.rewards ?? DEFAULT_REWARDS
@@ -84,12 +87,12 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, setSeasonC
         <span style={css('padding:0 24px;' + sectionTitle)}>상담 {tickets.filter(t => t.last?.from === 'user' && !t.adminRead).length ? <span style={css('color:#3182f6')}>· 새 메시지 {tickets.filter(t => t.last?.from === 'user' && !t.adminRead).length}</span> : null}</span>
         {tickets.length === 0 && <span style={css('padding:4px 24px 8px;' + hint)}>아직 상담이 없어요</span>}
         <div className="anim-list">
-          {tickets.slice(0, 20).map(t => {
-            const unread = t.last?.from === 'user' && !t.adminRead
+          {[...tickets.filter(t => !t.closed), ...tickets.filter(t => t.closed)].slice(0, 20).map(t => {
+            const unread = t.last?.from === 'user' && !t.adminRead && !t.closed
             return (
               <button key={t.id} className="pr-dim" onClick={() => onOpenTicket(t.id)} style={css('width:calc(100% - 8px);margin:0 4px;display:flex;align-items:center;gap:12px;padding:12px 20px;border-radius:12px;text-align:left')}>
                 <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
-                  <span style={sx('font-size:17px;line-height:25.5px;color:#191f28', { fontWeight: unread ? 600 : 500 })}>{t.name || '이름 없음'} <span style={css('font-size:13px;color:#8b95a1;font-weight:400')}>@{t.loginId || '?'}</span></span>
+                  <span style={sx('font-size:17px;line-height:25.5px;color:#191f28', { fontWeight: unread ? 600 : 500 })}>{t.name || '이름 없음'} <span style={css('font-size:13px;color:#8b95a1;font-weight:400')}>@{t.loginId || '?'}</span>{t.closed && <span style={css('margin-left:6px;padding:2px 6px;border-radius:6px;background:#f2f4f6;font-size:12px;color:#8b95a1;font-weight:600')}>끝남</span>}</span>
                   <span style={css('font-size:15px;line-height:22.5px;color:#6b7684;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{t.last ? (t.last.from === 'admin' ? '나: ' : '') + t.last.text : ''}</span>
                 </span>
                 {unread && <span style={css('width:8px;height:8px;border-radius:9999px;background:#3182f6;flex:none;animation:dotPop 420ms cubic-bezier(0.16,1,0.3,1) both')} />}
@@ -218,6 +221,17 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, setSeasonC
           </div>
           {!person.isMe && <button className="pr-96"
             onClick={() => setConfirm({
+              title: `${person.name}님 비밀번호를 초기화할까요?`,
+              desc: '8자리 임시 비밀번호를 만들어요. 1분쯤 뒤부터 아이디와 그 번호로 로그인하면 새 비밀번호를 정하게 돼요. 지금 비밀번호는 더 이상 안 돼요.',
+              cta: '초기화하기',
+              go: async () => {
+                let code = ''
+                if (await run('비밀번호 초기화', async p => { code = await resetPassword(person.id, p) }) && code) setIssued({ name: person.name, loginId: person.loginId, code })
+              },
+            })}
+            style={css('height:44px;border-radius:14px;background:#f2f4f6;color:#333d4b;font-size:15px;font-weight:600')}>비밀번호 초기화</button>}
+          {!person.isMe && <button className="pr-96"
+            onClick={() => setConfirm({
               title: `${person.name}님 계정을 삭제할까요?`,
               desc: '랭킹에서 사라지고, 이 사람이 남긴 투표는 모두 취소돼요. 같은 아이디로는 다시 가입할 수 없어요. 되돌릴 수 없어요.',
               cta: '삭제하기', danger: true,
@@ -230,6 +244,17 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, setSeasonC
       {gap}
       <button className="pr-dim" onClick={onLogout} style={css('width:100%;text-align:left;padding:16px 24px;font-size:17px;font-weight:500;color:#4e5968;border-radius:12px')}>로그아웃</button>
 
+      {issued && (
+        <Dialog onScrim={() => setIssued(null)} gap={20}>
+          <div style={css('padding:0 4px;display:flex;flex-direction:column;gap:8px')}>
+            <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{issued.name}님 임시 비밀번호예요</span>
+            <button className="pr-96" onClick={() => navigator.clipboard?.writeText(issued.code).catch(() => {})} aria-label="복사하기"
+              style={css('margin:8px 0 4px;padding:14px;border-radius:16px;background:#f2f4f6;font-size:30px;line-height:38px;font-weight:700;letter-spacing:4px;color:#191f28;font-variant-numeric:tabular-nums')}>{issued.code}</button>
+            <span style={css('font-size:15px;line-height:22.5px;color:#4e5968')}>{issued.loginId ? `아이디 ${issued.loginId}와 ` : ''}이 번호로 1분쯤 뒤에 로그인하면 새 비밀번호를 정해요. 번호를 누르면 복사돼요</span>
+          </div>
+          <button data-g="primary" className="pr-96" onClick={() => setIssued(null)} style={css('height:54px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600')}>확인</button>
+        </Dialog>
+      )}
       {confirm && (
         <Dialog onScrim={() => setConfirm(null)} gap={20}>
           <div style={css('padding:0 4px;display:flex;flex-direction:column;gap:8px')}>
