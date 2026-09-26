@@ -119,6 +119,9 @@ button:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #3182f6}
 /* Messages motion: spring-like ease-out (Toss "quick"/"small"), off for reduced motion. */
 @keyframes msgInR{from{opacity:0;transform:translate(10px,8px) scale(.96)}to{opacity:1;transform:none}}
 @keyframes msgInMine{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+/* iMessage-style send: the bubble rises out of the input field, overshoots a touch and settles. */
+@keyframes msgSend{0%{opacity:0;transform:translateY(72px) scale(.82)}45%{opacity:1}62%{transform:translateY(-5px) scale(1.03)}82%{transform:translateY(1px) scale(.995)}100%{opacity:1;transform:none}}
+@keyframes readFade{from{opacity:1;transform:none}to{opacity:0;transform:scale(.6)}}
 @keyframes msgInL{from{opacity:0;transform:translate(-10px,8px) scale(.96)}to{opacity:1;transform:none}}
 @keyframes listIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes roomIn{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}

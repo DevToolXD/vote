@@ -327,13 +327,15 @@ export function ChatRoom(p: RoomProps) {
             const firstOfRun = newDay || prev.uid !== m.uid || prev.kind === 'system' || at - (prev.at?.toMillis() ?? 0) > 60_000
             const lastOfRun = !next || next.uid !== m.uid || next.kind === 'system' || (next.at?.toMillis() ?? 0) - at > 60_000 || clock(next.at?.toMillis() ?? 0) !== clock(at)
             const sender = byId.get(m.uid)
+            // KakaoTalk-style unread count: members (other than the sender) who haven't opened the chat since this message.
+            const unreadBy = chat.members.filter(u => u !== m.uid && (chat.reads?.[u]?.toMillis() ?? 0) < at).length
             const bubble = m.kind === 'image'
               ? <ImageBubble db={db} chatId={chat.id} msgId={m.id} onOpen={setViewer} />
               : <span style={sx('padding:10px 14px;border-radius:20px;font-size:15px;line-height:22px;white-space:pre-wrap;word-break:break-word', { background: mine ? '#3182f6' : tinted ? '#ffffff' : '#f2f4f6', color: mine ? '#ffffff' : '#191f28', fontWeight: mine ? 500 : 400 })}>{m.text}</span>
             return (
               <Fragment key={m.id}>
                 {dayRow}
-                <div data-anim style={sx('display:flex;gap:8px;align-items:flex-end', { justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: firstOfRun ? 12 : 4, animation: isNew ? `${mine ? 'msgInMine' : 'msgInL'} 320ms ${EASE} both` : undefined, transformOrigin: mine ? 'bottom right' : 'bottom left' })}>
+                <div data-anim style={sx('display:flex;gap:8px;align-items:flex-end', { justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: firstOfRun ? 12 : 4, animation: isNew ? (mine ? 'msgSend 520ms cubic-bezier(0.25,0.9,0.3,1) both' : `msgInL 380ms ${EASE} both`) : undefined, transformOrigin: mine ? 'bottom right' : 'bottom left' })}>
                   {!mine && (
                     <span style={css('width:32px;flex:none;align-self:flex-start')}>
                       {firstOfRun && <button className="pr-94" onClick={() => sender && onOpenProfile(sender.id)} aria-label={`${sender?.name ?? ''} 프로필`} style={css('display:block;border-radius:9999px')}><Avatar frame={sender?.frame} photo={sender?.photoCss} size={32} /></button>}
@@ -348,7 +350,12 @@ export function ChatRoom(p: RoomProps) {
                     )}
                     <span style={sx('display:flex;align-items:flex-end;gap:6px', { flexDirection: mine ? 'row-reverse' : 'row' })}>
                       {bubble}
-                      {lastOfRun && <span style={css('flex:none;font-size:11px;line-height:16px;color:#8b95a1;white-space:nowrap')}>{clock(at)}</span>}
+                      {(lastOfRun || unreadBy > 0) && (
+                        <span style={sx('flex:none;display:flex;flex-direction:column;gap:0', { alignItems: mine ? 'flex-end' : 'flex-start' })}>
+                          {unreadBy > 0 && <span key={unreadBy} aria-label={`안 읽은 사람 ${unreadBy}명`} style={css(`font-size:11px;line-height:14px;font-weight:700;color:#f5a300;font-variant-numeric:tabular-nums;animation:dotPop 320ms ${EASE} both`)}>{unreadBy}</span>}
+                          {lastOfRun && <span style={css('font-size:11px;line-height:16px;color:#8b95a1;white-space:nowrap')}>{clock(at)}</span>}
+                        </span>
+                      )}
                     </span>
                   </span>
                 </div>
