@@ -141,3 +141,7 @@ button,a,input,textarea,select,label{touch-action:manipulation}
 html,body{overscroll-behavior:none}
 /* People who asked their phone for less motion get (almost) none. */
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms !important;animation-delay:0ms !important;animation-iteration-count:1 !important;transition-duration:1ms !important;scroll-behavior:auto !important}}
+
+/* Chat rooms and sheets: a long-press is a menu, not a text selection (iPhone tinted the screen blue). */
+.no-select, .no-select *, [data-g="scrim"] ~ div [data-g="l4"], [data-g="scrim"] ~ div [data-g="l4"] * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.no-select input, .no-select textarea, [data-g="l4"] input, [data-g="l4"] textarea { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }

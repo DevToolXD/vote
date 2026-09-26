@@ -241,6 +241,9 @@ export function useKeyboardSafeBox() {
  * White layer under a full-screen chat, reaching below the screen: the iPhone keyboard
  * (and its ⌃⌄✓ bar) is see-through, so without it the screen underneath showed through.
  */
+/** Drops any text selection the browser started (e.g. an iPhone long-press). */
+function clearSelection() { try { window.getSelection()?.removeAllRanges() } catch { /* nothing selected */ } }
+
 export function KeyboardUnderlay({ z }: { z: number }) {
   return <div aria-hidden="true" style={sx('position:fixed;left:0;right:0;top:0;height:200vh;background:#ffffff;pointer-events:none;animation:fade 160ms ease both', { zIndex: z })} />
 }
@@ -295,12 +298,24 @@ export function ChatRoom(p: RoomProps) {
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     setFlash(id); setTimeout(() => setFlash(f => (f === id ? null : f)), 1200)
   }
+  // Long-pressing a message is ours (답장 · 복사 · 타임아웃): on iPhone it also started a
+  // text selection that tinted the whole screen blue and showed 복사하기/찾아보기/번역.
+  // No selecting in the room, except in the input box.
+  useEffect(() => {
+    const block = (e: Event) => {
+      const t = e.target as Node | null
+      const el = t && (t.nodeType === 1 ? (t as Element) : t.parentElement)
+      if (!el?.closest?.('input, textarea')) e.preventDefault()
+    }
+    document.addEventListener('selectstart', block)
+    return () => document.removeEventListener('selectstart', block)
+  }, [])
   const press = useRef<{ id: string; x: number; y: number; timer?: ReturnType<typeof setTimeout>; dx: number } | null>(null)
   const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
   const gestures = (m: MessageRow) => m.kind === 'system' ? {} : {
     onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setActionFor(m) },
     onPointerDown: (e: React.PointerEvent) => {
-      const timer = setTimeout(() => { press.current = null; setDrag(null); try { navigator.vibrate?.(15) } catch { /* no vibration */ } setActionFor(m) }, 480)
+      const timer = setTimeout(() => { press.current = null; setDrag(null); clearSelection(); try { navigator.vibrate?.(15) } catch { /* no vibration */ } setActionFor(m) }, 480)
       press.current = { id: m.id, x: e.clientX, y: e.clientY, timer, dx: 0 }
     },
     onPointerMove: (e: React.PointerEvent) => {
@@ -464,7 +479,7 @@ export function ChatRoom(p: RoomProps) {
     <>
     <KeyboardUnderlay z={199} />
     <div style={sx('position:fixed;left:0;right:0;z-index:200;display:flex;justify-content:center', { top: box.top, height: box.height })}>
-      <div data-g="app" style={css(`width:100%;max-width:430px;height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;background:#ffffff;animation:roomIn 360ms ${EASE} backwards`)}>
+      <div data-g="app" className="no-select" style={css(`width:100%;max-width:430px;height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;background:#ffffff;animation:roomIn 360ms ${EASE} backwards`)}>
         <div style={sx('flex:none;display:flex;align-items:center;gap:4px;padding:4px 8px;position:relative;z-index:2', { paddingTop: box.top ? 4 : 'calc(4px + env(safe-area-inset-top))', background: tinted ? 'rgba(255,255,255,0.72)' : '#ffffff', backdropFilter: tinted ? 'blur(12px)' : undefined })}>
           <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28')}><BackIcon /></button>
           <button className="pr-dim" onClick={() => (chat.type === 'dm' && v.people[0] ? onOpenProfile(v.people[0].id) : setMenu(true))} style={css('flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:4px;border-radius:12px;text-align:left')}>
