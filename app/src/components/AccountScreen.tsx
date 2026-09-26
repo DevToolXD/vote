@@ -205,8 +205,8 @@ function Profile({ me, onPhoto, onBio, onGender, points, mine, onOpenVote, onLog
               </span>
             </span>
             {d.upReady
-              ? <button data-g="secondary" className="pr-96" onClick={() => onOpenVote(d)} style={css('height:32px;padding:0 12px;border-radius:8px;background:#e8f3ff;color:#1b64da;font-size:13px;font-weight:600;transition:transform 150ms')}>추천하기</button>
-              : <span style={css('font-size:13px;color:#8b95a1;font-variant-numeric:tabular-nums')}>{d.upWait} 추천 가능</span>}
+              ? <button data-g="secondary" className="pr-96" onClick={() => onOpenVote(d)} style={css('height:32px;padding:0 12px;border-radius:8px;background:#e8f3ff;color:#1b64da;font-size:13px;font-weight:600;transition:transform 150ms')}>투표하기</button>
+              : <span style={css('font-size:13px;color:#8b95a1;font-variant-numeric:tabular-nums')}>{d.upWait} 투표 가능</span>}
           </div>
           <div style={css('height:0.5px;margin-left:24px;background:rgba(0,0,33,0.07)')} />
         </div>

@@ -40,8 +40,8 @@ export function Dialog({ onScrim, labelledBy, gap, children }: { onScrim: () => 
 type VoteColors = { up: string; down: string; downWeak: string; downWeakFg: string }
 
 export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin }: { d: Person; loggedIn: boolean; colors: VoteColors; onVote: (kind: 'up' | 'down') => void; onClose: () => void; onLogin: () => void }) {
-  const sub = d.upReady && d.downReady ? '추천·비추천은 각각 7일마다 할 수 있고, 취소할 수 없어요'
-    : [!d.upReady && `추천은 ${d.upWait}`, !d.downReady && `비추천은 ${d.downWait}`].filter(Boolean).join(', ') + '에 다시 할 수 있어요'
+  const sub = d.upReady ? '7일마다 추천이나 비추천 중 하나를 할 수 있어요. 취소할 수 없어요'
+    : `${d.upWait}에 다시 투표할 수 있어요`
   return (
     <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle="border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));animation:sheetUp 400ms cubic-bezier(0.16,1,0.3,1) both">
       {handle}

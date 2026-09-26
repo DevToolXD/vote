@@ -90,15 +90,19 @@ const voteDoc = (uid: string, cand: string, extra: Record<string, unknown>) =>
   ({ uid, candidateId: cand, season: 1, ups: 0, downs: 0, lastUpAt: null, lastDownAt: null, updatedAt: serverTimestamp(), ...extra })
 
 describe('voting', () => {
-  test('추천 and 비추천 each once per 7 days per person; nothing undoes', async () => {
+  test('one vote per 7 days per person — 추천 or 비추천; nothing undoes', async () => {
     await signUp('a'); const b = await signUp('b'); await signUp('c')
     await castVote(b, 'b', 'a', 'up')
     assert.deepEqual(await tally(b, 'a'), [1, 0, 1])
     await assert.rejects(castVote(b, 'b', 'a', 'up'), /vote-too-soon/)
-    await castVote(b, 'b', 'c', 'up') // other people are separate
-    await castVote(b, 'b', 'a', 'down') // the 비추천 timer is separate from 추천
+    await assert.rejects(castVote(b, 'b', 'a', 'down'), /vote-too-soon/) // same timer for both kinds
+    await castVote(b, 'b', 'c', 'down') // other people are separate
+    assert.deepEqual(await tally(b, 'c'), [0, 1, -1])
+    // A week later: 비추천 this time.
+    await seed('votes/b_a', { lastUpAt: new Date(Date.now() - 8 * 86400_000) })
+    await castVote(b, 'b', 'a', 'down')
     assert.deepEqual(await tally(b, 'a'), [1, 1, 0])
-    await assert.rejects(castVote(b, 'b', 'a', 'down'), /vote-too-soon/)
+    await assert.rejects(castVote(b, 'b', 'a', 'up'), /vote-too-soon/)
     // Server side too, skipping the client checks: a second vote within 7 days, taking one back.
     const ref = doc(b, 'votes', 'b_a'), cand = doc(b, 'candidates', 'a')
     const tryWrite = (vote: Record<string, unknown>, c: Record<string, unknown>) => { const w = writeBatch(b); w.set(ref, voteDoc('b', 'a', vote)); w.update(cand, c); return w.commit() }
@@ -106,8 +110,8 @@ describe('voting', () => {
     await denied(tryWrite({ ups: 2, downs: 1, lastUpAt: serverTimestamp(), lastDownAt: v.lastDownAt }, { up: 2, score: 1 }))
     await denied(tryWrite({ ups: 1, downs: 2, lastUpAt: v.lastUpAt, lastDownAt: serverTimestamp() }, { down: 2, score: -1 }))
     await denied(tryWrite({ ups: 0, downs: 1, lastUpAt: v.lastUpAt, lastDownAt: v.lastDownAt }, { up: 0, score: -1 }))
-    // After 7 days, 비추천 works again and adds up.
-    await seed('votes/b_a', { lastDownAt: new Date(Date.now() - 8 * 86400_000) })
+    // Both timers past: votes add up.
+    await seed('votes/b_a', { lastUpAt: new Date(Date.now() - 9 * 86400_000), lastDownAt: new Date(Date.now() - 8 * 86400_000) })
     await castVote(b, 'b', 'a', 'down')
     assert.deepEqual(await tally(b, 'a'), [1, 2, -1])
   })
@@ -358,7 +362,6 @@ describe('admin: single-use tokens ×3', () => {
     const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
     await castVote(c, 'c', 'a', 'up')
     await castVote(c, 'c', 'b', 'down')
-    await castVote(c, 'c', 'b', 'up')
     await castVote(b, 'b', 'c', 'up')
     await castVote(a, 'a', 'b', 'up')
     const admin = dbAs(ADMIN)

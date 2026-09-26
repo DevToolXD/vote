@@ -38,8 +38,9 @@ export function buildPeople(rows: CandidateRow[], myVotes: Record<string, MyVote
   let rank = 0
   return rows.map((d, i) => {
     const my = myVotes[d.id]
-    const wait = my ? my.nextUpAt - now : 0
-    const downWait = my ? my.nextDownAt - now : 0
+    // One vote a week per person, 추천 or 비추천: both wait on the later of the two.
+    const wait = my ? Math.max(my.nextUpAt, my.nextDownAt) - now : 0
+    const downWait = wait
     if (i === 0 || d.score !== rows[i - 1].score) rank += 1
     return {
       ...d,

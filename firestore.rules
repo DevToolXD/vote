@@ -7,7 +7,7 @@ rules_version = '2';
 //   candidates/{uid}              a signed-up user's leaderboard entry (doc id == Auth uid)
 //   votes/{voterUid}_{candidateId} one voter's history with one candidate:
 //                                 { season, ups, downs (this season), lastUpAt, lastDownAt }
-//                                 추천 and 비추천 each once every 7 days (they add up); neither can be undone
+//                                 one vote every 7 days per person — 추천 or 비추천 (they add up); never undone
 //   meta/season                   { name, number, startedAt, last? }  last = the ended season's { name, top: [≤3 × {id,name,score,frame}] }
 //   meta/adminLock                the admin operation currently being committed (see below)
 //   adminTokens/{random id}       single-use tokens for admin operations
@@ -302,7 +302,7 @@ service cloud.firestore {
         && c1.down == c0.down + downsNow(request.resource.data, cur) - downsNow(o, cur);
     }
 
-    // 추천 and 비추천: each once every 7 days per person, adding up. Neither undoes.
+    // One vote every 7 days per person — either 추천 or 비추천 (one shared timer), adding up. Never undone.
     function voteAction() {
       let d = request.resource.data;
       let o = resource == null ? {} : resource.data;
@@ -312,12 +312,10 @@ service cloud.firestore {
       let oLastUp = o.get('lastUpAt', null);
       let oLastDown = o.get('lastDownAt', null);
       return d.season == cur && d.ups is int && d.downs is int
-        && ((d.ups == oUps + 1 && d.lastUpAt == request.time
-              && (oLastUp == null || request.time >= oLastUp + duration.value(7, 'd'))
-              && d.downs == oDowns && d.lastDownAt == oLastDown)
-          || (d.downs == oDowns + 1 && d.lastDownAt == request.time
-              && (oLastDown == null || request.time >= oLastDown + duration.value(7, 'd'))
-              && d.ups == oUps && d.lastUpAt == oLastUp));
+        && (oLastUp == null || request.time >= oLastUp + duration.value(7, 'd'))
+        && (oLastDown == null || request.time >= oLastDown + duration.value(7, 'd'))
+        && ((d.ups == oUps + 1 && d.lastUpAt == request.time && d.downs == oDowns && d.lastDownAt == oLastDown)
+          || (d.downs == oDowns + 1 && d.lastDownAt == request.time && d.ups == oUps && d.lastUpAt == oLastUp));
     }
 
     match /votes/{voteId} {

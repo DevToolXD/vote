@@ -269,7 +269,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
       showToast(kind === 'up' ? `${d.name}님을 추천했어요` : `${d.name}님을 비추천했어요`)
     } catch (e) {
       const m = (e as Error)?.message
-      if (m === 'vote-too-soon') showToast(`${kind === 'up' ? '추천' : '비추천'}은 7일마다 한 번 할 수 있어요`)
+      if (m === 'vote-too-soon') showToast('투표는 한 사람에게 7일마다 한 번 할 수 있어요')
       else failToast('투표하지 못했어요. 다시 시도해주세요', e)
     }
   }

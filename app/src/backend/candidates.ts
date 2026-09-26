@@ -49,8 +49,8 @@ export function subscribeMyVotes(db: Firestore, uid: string, cb: (votes: Record<
 export type VoteKind = 'up' | 'down'
 
 /**
- * 추천 or 비추천 — each once every 7 days per person, adding up; neither can be
- * undone. Runs in a transaction so concurrent voters can't corrupt the tally;
+ * 추천 or 비추천 — one vote every 7 days per person (either kind), adding up;
+ * never undone. Runs in a transaction so concurrent voters can't corrupt the tally;
  * firestore.rules checks the same limits server side.
  */
 export async function castVote(db: Firestore, myUid: string, candidateId: string, kind: VoteKind) {
@@ -69,8 +69,9 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
       ups: thisSeason ? o.ups ?? 0 : 0, downs: thisSeason ? o.downs ?? 0 : 0,
       lastUpAt: o.lastUpAt ?? null, lastDownAt: o.lastDownAt ?? null,
     } as Record<string, unknown> & { ups: number; downs: number }
-    const last = kind === 'up' ? o.lastUpAt : o.lastDownAt
-    if (last && Date.now() < last.toMillis() + VOTE_EVERY_MS) throw new Error('vote-too-soon')
+    // One shared timer: after either kind of vote, the next one (either kind) waits 7 days.
+    const last = Math.max(o.lastUpAt?.toMillis() ?? 0, o.lastDownAt?.toMillis() ?? 0)
+    if (last && Date.now() < last + VOTE_EVERY_MS) throw new Error('vote-too-soon')
     const c = candSnap.data() as CandidateDoc
     if (kind === 'up') {
       next.ups += 1; next.lastUpAt = serverTimestamp()
