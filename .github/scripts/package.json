@@ -1,0 +1,9 @@
+{
+  "name": "vote-ci-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Dependencies for the CI/worker scripts (the background worker listens with firebase-admin).",
+  "dependencies": {
+    "firebase-admin": "^13.5.0"
+  }
+}

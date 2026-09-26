@@ -76,7 +76,7 @@ The **+** button in a chat offers 사진 and 포인트 선물. A gift holds the 
 
 계정 → **알림**: 알림 받기 (this device), 새 메시지, 받은 추천·비추천 (never says who voted). A muted chat (≡ → 알림) is skipped. Works in the Galaxy app (native FCM; `android-firebase-config.mjs` registers the Android app in Firebase and fetches `google-services.json` during the APK build), in desktop/Android browsers, and on iPhone only in the app added to the home screen (iOS 16.4+).
 
-Delivery: `.github/workflows/notify.yml` is a self-restarting worker (GitHub's cron never fired for this repo): each run polls Firestore every 10 s for ~25 min (`send-notifications.mjs`), sending through FCM HTTP v1 with the service account, then dispatches the next run; the backend workflow also kicks it after deploys. Progress is kept in `meta/notifyCursor`, dead device tokens are removed, and there's a short gap between runs. Truly instant delivery would need a Cloud Functions trigger (Blaze plan).
+Delivery: `.github/workflows/notify.yml` is a self-restarting worker (GitHub's cron never fired for this repo): each run lasts ~25 min and uses firebase-admin real-time listeners (chats, votes, 상담, password resets, season), querying only when something changed — polling every 10 s once burned through the free plan's 50,000 daily reads (`send-notifications.mjs`), sending through FCM HTTP v1 with the service account, then dispatches the next run; the backend workflow also kicks it after deploys. Progress is kept in `meta/notifyCursor`, dead device tokens are removed, and there's a short gap between runs. Truly instant delivery would need a Cloud Functions trigger (Blaze plan).
 
 ## Install as an app
 

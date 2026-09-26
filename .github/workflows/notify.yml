@@ -5,8 +5,10 @@ name: Notifications
 # It also re-checks the Firestore rules once an hour (deploying only if the live
 # rules differ from firestore.rules on main) and purges deleted accounts' logins.
 #
-# GitHub's scheduled (cron) runs never fire reliably for this repo, so the worker
-# keeps itself alive instead: each run polls Firestore every 10 s for ~25 minutes,
+# It doesn't poll: firebase-admin real-time listeners report changes, and only then
+# does it query (Firestore's free plan allows 50,000 reads a day; polling every
+# 10 s once used them all up). GitHub's scheduled (cron) runs never fire reliably
+# for this repo, so the worker keeps itself alive instead: each run lasts ~25 minutes,
 # then starts the next run (workflow_dispatch with the built-in token is allowed
 # to trigger workflows). Pushing changes to the worker, the schedule below (when
 # GitHub does run it) and the Firebase backend workflow all (re)start the chain;
@@ -44,6 +46,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      - name: Install worker dependencies
+        run: npm ci --prefix .github/scripts --no-audit --no-fund
       - name: Firestore rules (re-deployed hourly if they differ from main)
         continue-on-error: true
         env:
@@ -64,7 +68,6 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           RUN_FOR_MS: '1500000'
-          POLL_MS: '10000'
         run: node .github/scripts/send-notifications.mjs
       - name: Start the next run
         if: always()

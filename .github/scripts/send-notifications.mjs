@@ -22,7 +22,6 @@ const docsRoot = `projects/${project}/databases/(default)/documents`
 const api = `${FS}/${docsRoot}`
 const SITE = process.env.SITE_URL || 'https://devtoolxd.github.io/vote/'
 const RUN_FOR_MS = Number(process.env.RUN_FOR_MS ?? 4 * 60_000)
-const POLL_MS = Number(process.env.POLL_MS ?? 20_000)
 const SETTLE_MS = Number(process.env.SETTLE_MS ?? 2000)
 const AUTH = process.env.AUTH_BASE || 'https://identitytoolkit.googleapis.com'
 
@@ -251,26 +250,63 @@ async function endSeasonIfDue() {
 }
 
 // ---- main loop ----
+// Firestore reads are the scarce resource (the free plan allows 50,000 a day), so
+// nothing is polled: real-time listeners (firebase-admin) tell us when chats,
+// votes, 상담, password resets or the season change, and only then do we run
+// the queries above. With nothing happening, a whole run costs a handful of reads.
+import { cert, initializeApp } from 'firebase-admin/app'
+import { Timestamp, getFirestore } from 'firebase-admin/firestore'
+
+if (LOCAL) process.env.FIRESTORE_EMULATOR_HOST = new URL(FS).host
+const adminApp = initializeApp(LOCAL ? { projectId: project } : { credential: cert(key), projectId: project })
+const fdb = getFirestore(adminApp)
+
 const cursorPath = 'meta/notifyCursor'
 const started = Date.now()
 let cursor = (await getDoc(cursorPath))?.at ?? Date.now() - 5 * 60_000
-let polls = 0
+const since = Timestamp.fromMillis(cursor)
+const dirty = { chats: false, votes: false, support: false, resets: false }
+let seasonEndsAt = null
+let firstSnapshots = 0
+const listeners = []
+const firstDone = new Promise(resolve => {
+  const seen = new Set()
+  const listen = (name, ref, onSnap) => ref.onSnapshot(snap => {
+    onSnap(snap)
+    if (!seen.has(name)) { seen.add(name); firstSnapshots++; if (seen.size === 5) resolve() }
+  }, err => { warn(`Listener ${name} failed: ${err.message}`); if (!seen.has(name)) { seen.add(name); if (seen.size === 5) resolve() } })
+  listeners.push(
+    listen('chats', fdb.collection('chats').where('updatedAt', '>', since), snap => { if (snap.docChanges().length) dirty.chats = true }),
+    listen('votes', fdb.collection('votes').where('updatedAt', '>', since), snap => { if (snap.docChanges().length) dirty.votes = true }),
+    listen('support', fdb.collection('support').where('updatedAt', '>', since), snap => { if (snap.docChanges().length) dirty.support = true }),
+    listen('resets', fdb.collection('pwResets').where('status', '==', 'pending'), snap => { if (!snap.empty) dirty.resets = true }),
+    listen('season', fdb.doc('meta/season'), snap => { const e = snap.get('endsAt'); seasonEndsAt = e ? e.toMillis() : null }),
+  )
+})
+await firstDone
+
+let rounds = 0
+const TICK_MS = Number(process.env.TICK_MS ?? 3000)
 while (true) {
-  // A little behind "now" so writes still being committed are picked up next time.
   const to = Date.now() - SETTLE_MS
-  if (to > cursor) {
+  if ((dirty.chats || dirty.votes || dirty.support) && to > cursor) {
+    const work = { ...dirty }
+    dirty.chats = dirty.votes = dirty.support = false
     cache = {}
-    await messages(cursor, to)
-    await votes(cursor, to)
-    await support(cursor, to)
+    if (work.chats) await messages(cursor, to)
+    if (work.votes) await votes(cursor, to)
+    if (work.support) await support(cursor, to)
     const r = await call(`${api}/${cursorPath}?updateMask.fieldPaths=at`, { method: 'PATCH', headers: await headers(), body: JSON.stringify({ fields: { at: ts(to) } }) })
     if (!r.ok) throw new Error(`Saving the cursor failed (${r.status})`)
     cursor = to
+    rounds++
   }
-  await passwordResets()
-  await endSeasonIfDue().catch(e => warn('Season end check failed: ' + e))
-  polls++
-  if (Date.now() - started + POLL_MS > RUN_FOR_MS) break
-  await new Promise(res => setTimeout(res, POLL_MS))
+  if (dirty.resets) { dirty.resets = false; await passwordResets() }
+  if (seasonEndsAt && Date.now() >= seasonEndsAt) { seasonEndsAt = null; await endSeasonIfDue().catch(e => warn('Season end check failed: ' + e)) }
+  if (Date.now() - started + TICK_MS > RUN_FOR_MS) break
+  await new Promise(res => setTimeout(res, TICK_MS))
 }
-notice(`Worker: ${polls} polls, ${sent} notifications sent, ${dropped} stale devices removed, ${resets} password resets applied, ${seasonsEnded} seasons ended.`)
+listeners.forEach(stop => stop())
+await adminApp.delete?.().catch?.(() => {})
+notice(`Worker: ${rounds} rounds with activity, ${sent} notifications sent, ${dropped} stale devices removed, ${resets} password resets applied, ${seasonsEnded} seasons ended.`)
+process.exit(0)
