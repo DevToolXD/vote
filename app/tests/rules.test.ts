@@ -19,7 +19,8 @@ import { removePushToken, saveNotifySettings, savePushToken } from '../src/backe
 import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
 import { cancelGift, claimGift, sendGift, subscribeGift } from '../src/backend/gifts'
 import { markNoticeSeen, nextUnseenNotice, postNotice } from '../src/backend/notices'
-import { DEFAULT_REWARDS } from '../src/backend/rewards'
+import { DEFAULT_REWARDS, computeRewards } from '../src/backend/rewards'
+import { buildPeople } from '../src/model'
 import type { CandidateDoc } from '../src/backend/types'
 import { priceOf } from '../src/data'
 
@@ -386,10 +387,14 @@ describe('admin: single-use tokens ×3', () => {
     await resetSeason(admin, ADMIN.uid, '시즌 2', p => seen.push(p))
     assert.ok(seen.at(-1)!.batches > 1, 'expected the reset to span several batches')
     const u0 = await read(admin, 'candidates/u0'), u1 = await read(admin, 'candidates/u1')
-    // Rewards (defaults): u0 is 1st (500), u2–u11 tie for 2nd (300), u1 (−4) is 3rd (150); everyone took part (+50).
+    // Rewards (defaults): u0 is 1st (500); u2–u11 all have 1 point, ranked by who got it first
+    // (u2 2nd 300, u3 3rd 150, u4–u6 90, the rest none); u1 (−4) is last; everyone took part (+50).
     assert.deepEqual([u0.up, u0.down, u0.score, u0.bonus], [0, 0, 0, 11 + 5 + 500 + 50])
-    assert.deepEqual([u1.up, u1.down, u1.score, u1.bonus], [0, 0, 0, 150 + 50])
+    assert.deepEqual([u1.up, u1.down, u1.score, u1.bonus], [0, 0, 0, 50])
     assert.equal((await read(admin, 'candidates/u2')).bonus, 1 + 300 + 50)
+    assert.equal((await read(admin, 'candidates/u3')).bonus, 1 + 150 + 50)
+    assert.equal((await read(admin, 'candidates/u6')).bonus, 1 + 90 + 50)
+    assert.equal((await read(admin, 'candidates/u7')).bonus, 1 + 50)
     const results = (await getDoc(doc(admin, 'seasonResults', '1'))).data()!
     assert.equal(results.name, 'BETA'); assert.equal(results.paid.length, 12)
     // Vote docs stay: the 7-day timer and the one-time 비추천 carry over into the new season.
@@ -799,6 +804,22 @@ describe('포인트 선물', () => {
     w2.set(doc(a, 'gifts', 'g3'), { chatId: id, from: 'a', to: 'a', amount: 50, status: 'open', createdAt: serverTimestamp() }) // to yourself
     w2.update(doc(a, 'candidates', 'a'), { spent: 50, lastGift: 'g3' })
     await denied(w2.commit())
+  })
+})
+
+describe('ranking ties', () => {
+  test('same score: whoever reached it first ranks higher; ranks never repeat, rewards follow', async () => {
+    await signUp('a'); await signUp('b'); const c = await signUp('c'); const d = await signUp('d')
+    await castVote(c, 'c', 'b', 'up') // b reaches 1 first
+    await new Promise(r => setTimeout(r, 30))
+    await castVote(d, 'd', 'a', 'up') // a reaches 1 later
+    const rows = (await getDocs(collection(c, 'candidates'))).docs.map(x => ({ id: x.id, ...(x.data() as CandidateDoc) }))
+    const people = buildPeople(rows as never, {}, null)
+    assert.deepEqual(people.slice(0, 2).map(p => [p.id, p.rank]), [['b', 1], ['a', 2]])
+    assert.equal(new Set(people.map(p => p.rank)).size, people.length)
+    const paid = computeRewards(rows, new Set(), DEFAULT_REWARDS)
+    assert.deepEqual(paid.slice(0, 2).map(p => [p.id, p.rank]), [['b', 1], ['a', 2]])
+    await denied(updateDoc(doc(c, 'candidates', 'b'), { scoreAt: new Date(0) })) // can't back-date who got there first
   })
 })
 

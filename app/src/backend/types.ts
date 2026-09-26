@@ -8,6 +8,10 @@ export type CandidateDoc = {
   down: number
   /** Kept equal to up - down so the leaderboard query can `orderBy('score', 'desc')`. */
   score: number
+  /** When the score last changed (ties: who reached it first ranks higher, see rank.ts). */
+  scoreAt?: { toMillis(): number } | null
+  /** scoreAt in ms, as the one-doc board carries it. */
+  sa?: number
   gender: string
   bio: string
   /** Small JPEG data URL (or '' for none) — see backend/image.ts. */

@@ -1,6 +1,7 @@
 import type { CandidateRow } from './backend/candidates'
 import type { MyVote, WeekKind } from './backend/types'
 import { fmt } from './data'
+import { byRank } from './backend/rank'
 
 export type Person = CandidateRow & {
   rank: number
@@ -31,19 +32,16 @@ export function waitLabel(ms: number) {
 }
 
 /**
- * `rows` is already ordered by score (the Firestore query does that). Equal scores
- * share a rank, and the next score gets the next number (1, 1, 2, 3 …), so ties
- * at the top still leave a silver and a bronze.
+ * Ranks never repeat: higher score first, and on the same score whoever reached it first
+ * (see backend/rank.ts) — so there is exactly one 1st, 2nd and 3rd.
  */
 export function buildPeople(rows: CandidateRow[], myVotes: Record<string, MyVote>, myUid: string | null, now = Date.now()): Person[] {
-  let rank = 0
-  return rows.map((d, i) => {
+  return [...rows].sort(byRank).map((d, i) => {
     const my = myVotes[d.id]
     const left = my ? my.weekEndsAt - now : 0
-    if (i === 0 || d.score !== rows[i - 1].score) rank += 1
     return {
       ...d,
-      rank,
+      rank: i + 1,
       my,
       weekKind: left > 0 ? my?.weekKind ?? 'none' : 'none',
       weekN: left > 0 ? my?.weekN ?? 0 : 0,

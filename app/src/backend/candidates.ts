@@ -118,7 +118,7 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
       if (!p) return
       const b = writeBatch(db)
       b.set(voteRef, { ...base, ...p.vote })
-      b.update(candidateRef, { up: increment(p.dUp), down: increment(p.dDown), score: increment(p.dUp - p.dDown) })
+      b.update(candidateRef, { up: increment(p.dUp), down: increment(p.dDown), score: increment(p.dUp - p.dDown), scoreAt: serverTimestamp() })
       await b.commit()
       return
     } catch { /* out of date: read and retry below */ }
@@ -132,7 +132,7 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
     if (!p) return
     const c = candSnap.data() as CandidateDoc
     tx.set(voteRef, { ...base, ...p.vote })
-    tx.update(candidateRef, { up: c.up + p.dUp, down: c.down + p.dDown, score: c.up + p.dUp - (c.down + p.dDown) })
+    tx.update(candidateRef, { up: c.up + p.dUp, down: c.down + p.dDown, score: c.up + p.dUp - (c.down + p.dDown), scoreAt: serverTimestamp() })
   })
 }
 

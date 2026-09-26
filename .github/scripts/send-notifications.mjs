@@ -83,10 +83,10 @@ function photoVersion(s) {
 const BOARD_SKIP = new Set(['photoURL', 'createdAt', 'lastGift', 'ownerUid'])
 function boardRows() {
   return [...candidates.entries()].map(([id, c]) => {
-    const row = { id, pv: photoVersion(c.photoURL ?? '') }
+    const row = { id, pv: photoVersion(c.photoURL ?? ''), sa: c.scoreAt?.toMillis?.() ?? 0 }
     for (const [k, v] of Object.entries(c)) if (!BOARD_SKIP.has(k) && !(v instanceof Timestamp)) row[k] = v
     return row
-  }).sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+  }).sort((a, b) => byRank({ ...a, scoreAt: a.sa }, { ...b, scoreAt: b.sa }))
 }
 let boardDirty = true, boardWrittenAt = 0, boardLast = ''
 const BOARD_HEARTBEAT_MS = 20 * 60_000
@@ -196,11 +196,13 @@ let resets = 0
 // and start the next season — all in one commit, guarded by the season doc's updateTime so
 // it can only happen once.
 const DEFAULT_REWARDS = { first: 500, second: 300, third: 150, top6: 90, participant: 50 }
+// Same order as app/src/backend/rank.ts: higher score, then who reached it first (scoreAt).
+const scoreAtMs = c => (typeof c.scoreAt === 'number' ? c.scoreAt : c.scoreAt?.toMillis?.() ?? 0)
+const byRank = (a, b) => (b.score ?? 0) - (a.score ?? 0) || scoreAtMs(a) - scoreAtMs(b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 function computeRewards(cands, voters, r) {
-  const sorted = [...cands].sort((a, b) => b.score - a.score)
-  let rank = 0
+  const sorted = [...cands].sort(byRank)
   return sorted.map((c, i) => {
-    if (i === 0 || c.score !== sorted[i - 1].score) rank += 1
+    const rank = i + 1
     const place = rank === 1 ? r.first : rank === 2 ? r.second : rank === 3 ? r.third : rank <= 6 ? r.top6 : 0
     const took = (c.up ?? 0) + (c.down ?? 0) > 0 || voters.has(c.id)
     return { id: c.id, name: c.name ?? '', rank, points: place + (took ? r.participant : 0) }
@@ -230,7 +232,7 @@ async function endSeasonIfDue() {
   })).map(v => v.uid))
   const paid = computeRewards(cands, voters, rewards)
   const pointsFor = new Map(paid.map(p => [p.id, p.points]))
-  const top = [...cands].sort((a, b) => b.score - a.score || (b.up ?? 0) - (a.up ?? 0)).slice(0, 3)
+  const top = [...cands].sort(byRank).slice(0, 3)
     .map(c => ({ id: c.id, name: c.name ?? '', score: c.score ?? 0, frame: c.frame ?? 'none' }))
   const now = new Date()
   const writes = [{

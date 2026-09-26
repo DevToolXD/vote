@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore'
 import { DEFAULT_SEASON, type CandidateDoc, type Season, type VoteDoc } from './types'
 import { DEFAULT_REWARDS, computeRewards, type Rewards } from './rewards'
+import { byRank } from './rank'
 
 // Admin operations. Each batch of writes goes through the single-use-token
 // protocol enforced by firestore.rules:
@@ -199,7 +200,7 @@ export async function resetSeason(db: Firestore, adminUid: string, newName: stri
   // Final podium of the season that's ending, for the one-time TOP 3 reveal.
   const top = cands.docs
     .map(c => ({ id: c.id, ...(c.data() as CandidateDoc) }))
-    .sort((a, b) => b.score - a.score || b.up - a.up)
+    .sort(byRank)
     .slice(0, 3)
     .map(c => ({ id: c.id, name: c.name, score: c.score, frame: c.frame }))
   const last = { name: cur.name, top }

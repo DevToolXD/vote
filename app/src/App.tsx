@@ -31,6 +31,7 @@ import { BLUE, fmt, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab
 import { db as maybeDb, firebaseConfigured } from './firebase'
 import { isInstalledApp } from './install'
 import { buildPeople } from './model'
+import { byRank } from './backend/rank'
 import { BOARD_STALE_MS, photoOf, subscribeBoard, subscribeCandidate, type BoardRow } from './backend/board'
 
 export type AppProps = {
@@ -253,7 +254,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     // Until the list itself has loaded, show nothing rather than just me (everyone else would look deleted).
     if (!ownRow || !base.length) return base
     const merged = base.some(r => r.id === ownRow.id) ? base.map(r => (r.id === ownRow.id ? ownRow : r)) : [...base, ownRow]
-    return merged.sort((a, b) => b.score - a.score)
+    return merged.sort(byRank)
   }, [board.rows, boardFallback, fallbackRows, ownRow, photoMap])
   const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null, Date.now()), [rows, votes, authUser, minute]) // eslint-disable-line react-hooks/exhaustive-deps
   const me = authUser ? all.find(d => d.id === authUser.uid) : undefined

@@ -298,7 +298,8 @@ service cloud.firestore {
       let cur = curSeason();
       return request.auth.uid != o.ownerUid
         && existsAfter(vp)
-        && d.diff(o).affectedKeys().hasOnly(['up', 'down', 'score'])
+        && d.diff(o).affectedKeys().hasOnly(['up', 'down', 'score', 'scoreAt'])
+        && (!('scoreAt' in d.diff(o).affectedKeys()) || d.scoreAt == request.time)
         && d.up == o.up + upsNow(getAfter(vp).data, cur) - upsNow(before, cur)
         && d.down == o.down + downsNow(getAfter(vp).data, cur) - downsNow(before, cur)
         && (d.up != o.up || d.down != o.down)
