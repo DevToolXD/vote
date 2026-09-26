@@ -463,7 +463,13 @@ service cloud.firestore {
     function dmOther(chat) { return chat.members[0] == request.auth.uid ? chat.members[1] : chat.members[0]; }
     function canSend(chat) {
       return request.auth.uid in chat.members && msgOn(request.auth.uid)
-        && (chat.type != 'dm' || msgOn(dmOther(chat)));
+        && (chat.type != 'dm' || msgOn(dmOther(chat)))
+        && notTimedOut(chat);
+    }
+    // 타임아웃 (group chats, set by the admin): can still read, can't send until it ends.
+    function notTimedOut(chat) {
+      let until = chat.get('timeouts', {}).get(request.auth.uid, null);
+      return until == null || request.time >= until;
     }
     function chatData(chatId) { return get(/databases/$(database)/documents/chats/$(chatId)).data; }
 
@@ -491,7 +497,7 @@ service cloud.firestore {
               && request.resource.data.name is string && request.resource.data.name.size() <= 30));
 
       allow update: if signedIn() && request.auth.uid in resource.data.members
-        && (newMessageSummary() || readReceipt() || muteToggle() || leaveGroup() || addMembers() || groupInfo());
+        && (newMessageSummary() || readReceipt() || muteToggle() || leaveGroup() || addMembers() || groupInfo() || adminTimeout());
       allow delete: if false;
 
       function readsOk() {
@@ -540,6 +546,21 @@ service cloud.firestore {
           && d.diff(resource.data).affectedKeys().hasOnly(['photo', 'name'])
           && d.get('photo', '') is string && d.get('photo', '').size() <= 200000
           && d.name is string && d.name.size() <= 30;
+      }
+      // Only the admin account puts a group member in (or out of) 타임아웃, one person at a
+      // time, posting the "…님을 타임아웃했어요" notice in the same batch.
+      function adminTimeout() {
+        let d = request.resource.data;
+        let o = resource.data;
+        return isAdmin() && o.type == 'group'
+          && d.diff(o).affectedKeys().hasOnly(['timeouts', 'last', 'updatedAt', 'reads'])
+          && d.timeouts is map
+          && d.timeouts.diff(o.get('timeouts', {})).affectedKeys().size() == 1
+          && d.timeouts.diff(o.get('timeouts', {})).affectedKeys().hasOnly(o.members)
+          && (!('last' in d.diff(o).affectedKeys())
+              || (d.last.keys().hasOnly(['text', 'uid', 'at']) && d.last.uid == request.auth.uid && d.last.at == request.time
+                  && d.updatedAt == request.time && d.last.text is string && d.last.text.size() <= 100))
+          && readsOk();
       }
       function leaveGroup() {
         return resource.data.type == 'group'

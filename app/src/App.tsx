@@ -661,6 +661,10 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
         {newChatOpen && me && <NewChatSheet me={me} all={all} onClose={() => setNewChatOpen(false)} onCreate={createChat} />}
         {openChat && me && authUser && (
           <ChatRoom
+            // A different chat (e.g. tapping a new-message banner while in a room) is a fresh
+            // room: without the key the old room's messages stayed and mixed with the new ones.
+            key={openChat.id}
+            canTimeout={isAdmin}
             db={db!} chat={openChat} me={me} all={all} byId={byId}
             onOpenProfile={setProfile}
             myPoints={points}

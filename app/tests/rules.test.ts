@@ -6,13 +6,13 @@ import { createServer } from 'node:http'
 import { after, beforeEach, describe, test } from 'node:test'
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app'
 import {
-  collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore,
+  collection, connectFirestoreEmulator, deleteDoc, deleteField, doc, getDoc, getDocs, getFirestore,
   query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Firestore,
 } from 'firebase/firestore'
 import { deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, updateMyProfile } from '../src/backend/candidates'
-import { createGroup, dmId, inviteMembers, leaveGroup, loadImage, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
+import { setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
 import { cancelGift, claimGift, sendGift, subscribeGift } from '../src/backend/gifts'
@@ -538,6 +538,26 @@ describe('chat extras', () => {
     await assert.rejects(sendImage(a, 'a', id, 'data:image/jpeg;base64,' + 'A'.repeat(700_001)))
     await setMessagesOff(b, 'b', true)
     await assert.rejects(sendImage(a, 'a', id, IMG))
+  })
+  test('타임아웃: only the admin, group chats only; the person can read but not send until it ends', async () => {
+    const admin = dbAs(ADMIN)
+    await setDoc(doc(admin, 'candidates', ADMIN.uid), newCandidateDoc(ADMIN.uid, '관리자'))
+    const b = await signUp('b'); const c = await signUp('c')
+    const id = await createGroup(admin, ADMIN.uid, ['b', 'c'], '모임')
+    await assert.rejects(setChatTimeout(b, 'b', id, 'c', 600_000, 'b가 c를 타임아웃')) // not the admin
+    await setChatTimeout(admin, ADMIN.uid, id, 'c', 600_000, '관리자님이 이름c님을 10분 동안 타임아웃했어요')
+    await assert.rejects(sendMessage(c, 'c', id, '말하기')) // timed out
+    assert.ok((await getDocs(collection(c, 'chats', id, 'messages'))).size >= 1) // still reads
+    await sendMessage(b, 'b', id, '나는 돼') // others still talk
+    const sys = (await getDocs(collection(b, 'chats', id, 'messages'))).docs.map(d => d.data()).find(m => m.kind === 'system')
+    assert.equal(sys?.text, '관리자님이 이름c님을 10분 동안 타임아웃했어요')
+    await denied(updateDoc(doc(c, 'chats', id), { 'timeouts.c': deleteField() })) // can't lift it yourself
+    await setChatTimeout(admin, ADMIN.uid, id, 'c', 0, '관리자님이 이름c님의 타임아웃을 풀었어요')
+    await sendMessage(c, 'c', id, '이제 돼')
+    // an expired timeout doesn't block
+    await seed(`chats/${id}`, { timeouts: { mapValue: { fields: { b: { timestampValue: new Date(Date.now() - 1000).toISOString() } } } } })
+    await sendMessage(b, 'b', id, '끝났어')
+    await assert.rejects(setChatTimeout(admin, ADMIN.uid, await openDm(admin, ADMIN.uid, 'b'), 'b', 600_000, 'x')) // not in 1:1
   })
   test('group icon and name: members only, small images only, not for 1:1', async () => {
     const a = await signUp('a'); await signUp('b'); const c = await signUp('c'); await signUp('d')

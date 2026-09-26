@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type R
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { MEDALS } from '../data'
-import { MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, loadImage, loadOlderMessages, markRead, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
+import { MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, markRead, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, subscribeGift, type Gift } from '../backend/gifts'
 import { saveImage } from '../saveImage'
 import type { Person } from '../model'
@@ -69,13 +69,21 @@ const dayLabel = (ms: number) => new Date(ms).toLocaleDateString('ko-KR', { mont
 export type ChatView = { title: string; people: Person[]; others: string[]; canSend: boolean; blockedReason: string }
 
 /** Who's in a chat and whether I can send in it right now (mirrors firestore.rules' canSend). */
-export function describeChat(c: ChatRow, me: string, byId: Map<string, Person>, myOff: boolean): ChatView {
+/** "12분" / "3시간" / "1일" — time left, rounded (at least 1분). */
+export function leftLabel(ms: number) {
+  const m = Math.max(1, Math.round(ms / 60_000))
+  return m < 60 ? `${m}분` : m < 1440 ? `${Math.round(m / 60)}시간` : `${Math.round(m / 1440)}일`
+}
+
+export function describeChat(c: ChatRow, me: string, byId: Map<string, Person>, myOff: boolean, now = Date.now()): ChatView {
   const others = c.members.filter(m => m !== me)
   const people = others.map(id => byId.get(id)).filter((p): p is Person => !!p)
   const names = others.map(id => byId.get(id)?.name ?? '(탈퇴한 사람)')
   const title = c.type === 'dm' ? names[0] ?? '(알 수 없음)' : c.name || names.join(', ')
   const dmPeer = c.type === 'dm' ? byId.get(others[0]) : undefined
-  const blockedReason = myOff ? '메시지 받기를 켜면 보낼 수 있어요'
+  const until = timedOutUntil(c, me, now)
+  const blockedReason = until ? `관리자가 타임아웃했어요 · ${leftLabel(until - now)} 뒤에 말할 수 있어요`
+    : myOff ? '메시지 받기를 켜면 보낼 수 있어요'
     : c.type === 'dm' && !dmPeer ? '탈퇴한 사람에게는 보낼 수 없어요'
       : dmPeer?.msgOff ? `${dmPeer.name}님이 메시지를 받지 않고 있어요` : ''
   return { title, people, others, canSend: !blockedReason, blockedReason }
@@ -240,6 +248,8 @@ export function KeyboardUnderlay({ z }: { z: number }) {
 // ---- 채팅방 -----------------------------------------------------------------------
 
 type RoomProps = {
+  /** The admin account: can put group members in 타임아웃. */
+  canTimeout?: boolean
   db: Firestore
   chat: ChatRow
   me: Person
@@ -310,7 +320,25 @@ export function ChatRoom(p: RoomProps) {
   }
   const firstIds = useRef<Set<string> | null>(null)
   const box = useKeyboardSafeBox()
-  const v = describeChat(chat, me.id, byId, !!me.msgOff)
+  // While I'm in 타임아웃 the composer counts down and comes back on its own.
+  const [now, setNow] = useState(Date.now())
+  const myTimeout = timedOutUntil(chat, me.id, now)
+  useEffect(() => {
+    if (!myTimeout) return
+    const t = setInterval(() => setNow(Date.now()), 10_000)
+    const end = setTimeout(() => setNow(Date.now()), myTimeout - Date.now() + 300)
+    return () => { clearInterval(t); clearTimeout(end) }
+  }, [myTimeout])
+  const v = describeChat(chat, me.id, byId, !!me.msgOff, now)
+  const [timeoutFor, setTimeoutFor] = useState<string | null>(null)
+  const applyTimeout = async (target: string, ms: number, label: string) => {
+    const name = byId.get(target)?.name ?? '(알 수 없음)'
+    const notice = ms ? `${me.name}님이 ${name}님을 ${label} 동안 타임아웃했어요` : `${me.name}님이 ${name}님의 타임아웃을 풀었어요`
+    setTimeoutFor(null)
+    try { await setChatTimeout(db, me.id, chat.id, target, ms, notice); p.onToast(ms ? `${name}님을 ${label} 동안 타임아웃했어요` : `${name}님 타임아웃을 풀었어요`) }
+    catch (e) { onError('타임아웃하지 못했어요', e) }
+  }
+  const adminHere = !!p.canTimeout && chat.type === 'group'
   const bgCss = (BGS.find(b => b[0] === bg) ?? BGS[0])[2]
   const tinted = bg !== 'default'
 
@@ -572,7 +600,8 @@ export function ChatRoom(p: RoomProps) {
         {menu && (
           <ChatMenu {...p} bg={bg} onBg={k => { setBg(k); saveBg(chat.id, k) }} onClose={() => setMenu(false)}
             onLeave={() => { setMenu(false); p.onLeave() }}
-            onOpenProfile={uid => { setMenu(false); onOpenProfile(uid) }} />
+            onOpenProfile={uid => { setMenu(false); onOpenProfile(uid) }}
+            onTimeoutPick={adminHere ? uid => { setMenu(false); setTimeoutFor(uid) } : undefined} />
         )}
         {actionFor && (
           <BottomSheet onScrim={() => setActionFor(null)} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(16px + env(safe-area-inset-bottom));animation:sheetUp 320ms ${EASE} both`}>
@@ -582,7 +611,14 @@ export function ChatRoom(p: RoomProps) {
             {(!actionFor.kind || actionFor.kind === 'text') && (
               <button className="pr-dim" onClick={async () => { try { await navigator.clipboard.writeText(actionFor.text); p.onToast('메시지를 복사했어요') } catch { p.onToast('복사하지 못했어요') } setActionFor(null) }} style={css('width:calc(100% - 8px);margin:0 4px;padding:16px 20px;border-radius:12px;text-align:left;font-size:17px;font-weight:500;color:#333d4b')}>복사</button>
             )}
+            {adminHere && actionFor.uid !== me.id && chat.members.includes(actionFor.uid) && (
+              <button className="pr-dim" onClick={() => { setTimeoutFor(actionFor.uid); setActionFor(null) }} style={css('width:calc(100% - 8px);margin:0 4px;padding:16px 20px;border-radius:12px;text-align:left;font-size:17px;font-weight:500;color:#f04452')}>{byId.get(actionFor.uid)?.name ?? ''}님 타임아웃</button>
+            )}
           </BottomSheet>
+        )}
+        {timeoutFor && (
+          <TimeoutSheet name={byId.get(timeoutFor)?.name ?? '(알 수 없음)'} left={timedOutUntil(chat, timeoutFor) ? timedOutUntil(chat, timeoutFor) - Date.now() : 0}
+            onPick={(ms, label) => applyTimeout(timeoutFor, ms, label)} onClose={() => setTimeoutFor(null)} />
         )}
         {viewer && <ImageViewer src={viewer} onClose={() => setViewer(null)} onToast={p.onToast} />}
         {attach === 'menu' && (
@@ -710,10 +746,10 @@ function GiftSheet({ points, group, to, onClose, onSend }: { points: number; gro
 
 // ---- ≡ 채팅방 메뉴 ------------------------------------------------------------------
 
-type MenuProps = RoomProps & { bg: string; onBg: (k: string) => void; onClose: () => void }
+type MenuProps = RoomProps & { bg: string; onBg: (k: string) => void; onClose: () => void; onTimeoutPick?: (uid: string) => void }
 
 /** KakaoTalk-style side panel: who's here (tap for profile), invite, 알림, photo/name, background, 나가기 (asks twice). */
-function ChatMenu({ chat, me, all, byId, bg, onBg, onClose, onMute, onLeave, onInvite, onGroupInfo, onOpenProfile }: MenuProps) {
+function ChatMenu({ chat, me, all, byId, bg, onBg, onClose, onMute, onLeave, onInvite, onGroupInfo, onOpenProfile, onTimeoutPick }: MenuProps) {
   const [ask, setAsk] = useState<0 | 1 | 2>(0)
   const [sheet, setSheet] = useState<'invite' | 'bg' | 'name' | null>(null)
   const [nameDraft, setNameDraft] = useState(chat.name)
@@ -754,6 +790,13 @@ function ChatMenu({ chat, me, all, byId, bg, onBg, onClose, onMute, onLeave, onI
                 </span>
                 {id === me.id && <span style={css('flex:none;height:22px;padding:0 8px;border-radius:9999px;background:#f2f4f6;color:#6b7684;font-size:12px;font-weight:600;display:flex;align-items:center')}>나</span>}
                 {id !== me.id && p?.msgOff && <span style={css('flex:none;font-size:13px;color:#8b95a1')}>메시지 꺼둠</span>}
+                {timedOutUntil(chat, id) > 0 && <span style={css('flex:none;height:22px;padding:0 8px;border-radius:9999px;background:#fff0f1;color:#e42939;font-size:12px;font-weight:600;display:flex;align-items:center')}>타임아웃 {leftLabel(timedOutUntil(chat, id) - Date.now())}</span>}
+                {onTimeoutPick && id !== me.id && p && (
+                  <span role="button" tabIndex={0} className="pr-96" onClick={e => { e.stopPropagation(); onTimeoutPick(id) }} aria-label={`${p.name}님 타임아웃`}
+                    style={css('flex:none;width:32px;height:32px;border-radius:10px;background:#f2f4f6;color:#4e5968;display:flex;align-items:center;justify-content:center')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M9.5 2.5h5" /></svg>
+                  </span>
+                )}
               </button>
             )
           })}
@@ -922,5 +965,30 @@ export function NewChatSheet({ me, all, onClose, onCreate }: NewProps) {
       title="누구와 이야기할까요?" all={all} exclude={[me.id]} max={MAX_GROUP - 1} withName
       cta={n => (n >= 2 ? `${n + 1}명 단톡방 만들기` : '대화하기')} onClose={onClose} onDone={onCreate}
     />
+  )
+}
+
+const TIMEOUTS: [number, string][] = [[5 * 60_000, '5분'], [10 * 60_000, '10분'], [60 * 60_000, '1시간'], [24 * 60 * 60_000, '1일']]
+
+/** Admin: how long this person can't talk in the group (they can still read). */
+function TimeoutSheet({ name, left, onPick, onClose }: { name: string; left: number; onPick: (ms: number, label: string) => void; onClose: () => void }) {
+  return (
+    <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(16px + env(safe-area-inset-bottom));animation:sheetUp 360ms ${EASE} both`}>
+      <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
+      <div style={css('padding:20px 24px 12px;display:flex;flex-direction:column;gap:4px')}>
+        <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{name}님을 타임아웃할까요?</span>
+        <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{left > 0 ? `지금 타임아웃 중이에요 · ${leftLabel(left)} 남음. ` : ''}그동안 메시지를 읽을 수만 있고 보낼 수는 없어요. 채팅방에 누가 했는지 보여요</span>
+      </div>
+      <div className="anim-list" style={css('padding:4px 20px 0;display:grid;grid-template-columns:repeat(2,1fr);gap:8px')}>
+        {TIMEOUTS.map(([ms, label]) => (
+          <button key={label} className="pr-96" onClick={() => onPick(ms, label)} style={css('height:52px;border-radius:14px;background:#fff0f1;color:#e42939;font-size:16px;font-weight:700')}>{label}</button>
+        ))}
+      </div>
+      {left > 0 && (
+        <div style={css('padding:8px 20px 0')}>
+          <button className="pr-96" onClick={() => onPick(0, '')} style={css('width:100%;height:52px;border-radius:14px;background:#e8f3ff;color:#1b64da;font-size:16px;font-weight:700')}>타임아웃 풀기</button>
+        </div>
+      )}
+    </BottomSheet>
   )
 }

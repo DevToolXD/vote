@@ -16,6 +16,8 @@ import {
   updateDoc,
   where,
   writeBatch,
+  deleteField,
+  Timestamp as FsTimestamp,
   type Firestore,
   type Timestamp,
   type Unsubscribe,
@@ -43,6 +45,8 @@ export type ChatDoc = {
   photo?: string
   /** Members who turned this chat's 알림 off. */
   mutes?: Record<string, boolean>
+  /** 타임아웃 (group chats, set by the admin): uid → until when they can't send. */
+  timeouts?: Record<string, Timestamp>
 }
 export type ChatRow = ChatDoc & { id: string }
 /** 'image': the photo itself is in chats/{id}/media/{messageId}; 'system': e.g. "A님이 B님을 초대했어요". */
@@ -174,6 +178,27 @@ export async function inviteMembers(db: Firestore, me: string, chatId: string, i
   if (!ids.length) return
   await updateDoc(doc(db, 'chats', chatId), { members: arrayUnion(...ids) })
   await postSystem(db, me, chatId, notice).catch(() => {})
+}
+
+/** Until when `uid` can't send in this chat (0 = free to talk). */
+export const timedOutUntil = (c: ChatDoc, uid: string, now = Date.now()) => {
+  const t = c.timeouts?.[uid]?.toMillis() ?? 0
+  return t > now ? t : 0
+}
+
+/**
+ * Admin only (firestore.rules: adminTimeout): puts `target` in 타임아웃 for `ms`
+ * (0 lifts it) and posts `notice` ("…님을 10분 동안 타임아웃했어요") in the chat.
+ */
+export async function setChatTimeout(db: Firestore, me: string, chatId: string, target: string, ms: number, notice: string) {
+  const chatRef = doc(db, 'chats', chatId)
+  const b = writeBatch(db)
+  b.update(chatRef, {
+    [`timeouts.${target}`]: ms > 0 ? FsTimestamp.fromMillis(Date.now() + ms) : deleteField(),
+    last: { text: notice.slice(0, 100), uid: me, at: serverTimestamp() }, updatedAt: serverTimestamp(), [`reads.${me}`]: serverTimestamp(),
+  })
+  b.set(doc(collection(chatRef, 'messages')), { uid: me, text: notice, kind: 'system', at: serverTimestamp() })
+  await b.commit()
 }
 
 /** Group chat icon / name, shared by everyone in it. */
