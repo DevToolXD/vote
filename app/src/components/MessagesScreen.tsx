@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type R
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { MEDALS } from '../data'
-import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, hasSeen, isUnread, markGone, markHere, noteRead, subscribeReads, type RoomReads, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
+import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, subscribeGift, type Gift } from '../backend/gifts'
 import { saveImage } from '../saveImage'
 import type { Person } from '../model'
@@ -75,16 +75,19 @@ export function leftLabel(ms: number) {
   return m < 60 ? `${m}분` : m < 1440 ? `${Math.round(m / 60)}시간` : `${Math.round(m / 1440)}일`
 }
 
+/** A member's name; "(탈퇴한 사람)" only once the people list has loaded and they're not in it. */
+export const nameIn = (byId: Map<string, Person>, id: string) => byId.get(id)?.name ?? (byId.size ? '(탈퇴한 사람)' : '')
+
 export function describeChat(c: ChatRow, me: string, byId: Map<string, Person>, myOff: boolean, now = Date.now()): ChatView {
   const others = c.members.filter(m => m !== me)
   const people = others.map(id => byId.get(id)).filter((p): p is Person => !!p)
-  const names = others.map(id => byId.get(id)?.name ?? '(탈퇴한 사람)')
+  const names = others.map(id => nameIn(byId, id))
   const title = c.type === 'dm' ? names[0] ?? '(알 수 없음)' : c.name || names.join(', ')
   const dmPeer = c.type === 'dm' ? byId.get(others[0]) : undefined
   const until = timedOutUntil(c, me, now)
   const blockedReason = until ? `관리자가 타임아웃했어요 · ${leftLabel(until - now)} 뒤에 말할 수 있어요`
     : myOff ? '메시지 받기를 켜면 보낼 수 있어요'
-    : c.type === 'dm' && !dmPeer ? '탈퇴한 사람에게는 보낼 수 없어요'
+    : c.type === 'dm' && !dmPeer && byId.size ? '탈퇴한 사람에게는 보낼 수 없어요'
       : dmPeer?.msgOff ? `${dmPeer.name}님이 메시지를 받지 않고 있어요` : ''
   return { title, people, others, canSend: !blockedReason, blockedReason }
 }
@@ -166,7 +169,7 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
             const unread = isUnread(c, me.id)
             const muted = !!c.mutes?.[me.id]
             const lastText = c.last ? (c.last.text || '사진') : ''
-            const who = c.last ? (c.last.uid === me.id ? '나: ' : c.type === 'group' ? `${byId.get(c.last.uid)?.name ?? '(탈퇴한 사람)'}: ` : '') : ''
+            const who = c.last ? (c.last.uid === me.id ? '나: ' : c.type === 'group' ? `${nameIn(byId, c.last.uid)}: ` : '') : ''
             return (
               <button key={c.id} className="pr-dim" onClick={() => onOpen(c.id)} style={css(`display:flex;align-items:center;gap:14px;padding:12px 20px 12px 24px;border-radius:12px;text-align:left;margin:0 4px;transition:background 200ms ${EASE}`)}>
                 <ChatAvatar people={v.people} size={48} photo={c.photo} />
@@ -362,8 +365,6 @@ export function ChatRoom(p: RoomProps) {
   const [hasOlder, setHasOlder] = useState(false)
   const loadingOlder = useRef(false)
   const keepFromBottom = useRef<number | null>(null)
-  const [roomReads, setRoomReads] = useState<RoomReads>({})
-  useEffect(() => subscribeReads(db, chat.id, setRoomReads), [db, chat.id])
   const settled = useRef(false)
   useEffect(() => subscribeMessages(db, chat.id, (rows, fromCache) => {
     // Everything up to the first answer from the server is history (no entry animation);
@@ -520,8 +521,6 @@ export function ChatRoom(p: RoomProps) {
             const firstOfRun = newDay || prev.uid !== m.uid || prev.kind === 'system' || at - (prev.at?.toMillis() ?? 0) > 60_000
             const lastOfRun = !next || next.uid !== m.uid || next.kind === 'system' || (next.at?.toMillis() ?? 0) - at > 60_000 || clock(next.at?.toMillis() ?? 0) !== clock(at)
             const sender = byId.get(m.uid)
-            // KakaoTalk-style unread count: members (other than the sender) who haven't opened the chat since this message.
-            const unreadBy = chat.members.filter(u => u !== m.uid && !hasSeen(chat, u, at, roomReads)).length
             const bubble = m.kind === 'gift' && m.giftId
               ? <GiftBubble db={db} giftId={m.giftId} me={me.id} byId={byId} onClaim={p.onClaimGift} onCancel={p.onCancelGift} onLoaded={keepBottom} />
               : m.kind === 'image'
@@ -529,7 +528,7 @@ export function ChatRoom(p: RoomProps) {
               : <span style={sx('padding:10px 14px;border-radius:20px;font-size:15px;line-height:22px;white-space:pre-wrap;word-break:break-word;display:flex;flex-direction:column;gap:6px', { background: mine ? '#3182f6' : tinted ? '#ffffff' : '#f2f4f6', color: mine ? '#ffffff' : '#191f28', fontWeight: mine ? 500 : 400 })}>
                   {m.replyTo && (
                     <button onClick={() => jumpTo(m.replyTo!.id)} style={sx('display:flex;flex-direction:column;gap:1px;padding:6px 10px;border-radius:12px;text-align:left;max-width:100%;border-left:3px solid', { background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(0,23,51,0.05)', borderLeftColor: mine ? 'rgba(255,255,255,0.7)' : '#3182f6' })}>
-                      <span style={sx('font-size:12px;line-height:16px;font-weight:700', { color: mine ? 'rgba(255,255,255,0.9)' : '#1b64da' })}>{m.replyTo.uid === me.id ? '나' : byId.get(m.replyTo.uid)?.name ?? '(탈퇴한 사람)'}에게 답장</span>
+                      <span style={sx('font-size:12px;line-height:16px;font-weight:700', { color: mine ? 'rgba(255,255,255,0.9)' : '#1b64da' })}>{m.replyTo.uid === me.id ? '나' : nameIn(byId, m.replyTo.uid)}에게 답장</span>
                       <span style={sx('font-size:13px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px', { color: mine ? 'rgba(255,255,255,0.85)' : '#4e5968', fontWeight: 400 })}>{m.replyTo.text}</span>
                     </button>
                   )}
@@ -552,15 +551,14 @@ export function ChatRoom(p: RoomProps) {
                   <span style={sx('display:flex;flex-direction:column;gap:4px;max-width:74%', { alignItems: mine ? 'flex-end' : 'flex-start' })}>
                     {!mine && firstOfRun && chat.type === 'group' && (
                       <button onClick={() => sender && onOpenProfile(sender.id)} style={css('display:flex;align-items:center;gap:4px;padding:0;text-align:left')}>
-                        <span style={css('font-size:13px;line-height:19.5px;color:#4e5968;font-weight:500')}>{sender?.name ?? '(탈퇴한 사람)'}</span>
+                        <span style={css('font-size:13px;line-height:19.5px;color:#4e5968;font-weight:500')}>{nameIn(byId, m.uid)}</span>
                         <RankChip rank={sender?.rank} />
                       </button>
                     )}
                     <span style={sx('display:flex;align-items:flex-end;gap:6px', { flexDirection: mine ? 'row-reverse' : 'row' })}>
                       {bubble}
-                      {(lastOfRun || unreadBy > 0) && (
+                      {lastOfRun && (
                         <span style={sx('flex:none;display:flex;flex-direction:column;gap:0', { alignItems: mine ? 'flex-end' : 'flex-start' })}>
-                          {unreadBy > 0 && <span key={unreadBy} aria-label={`안 읽은 사람 ${unreadBy}명`} style={css(`font-size:11px;line-height:14px;font-weight:700;color:#f5a300;font-variant-numeric:tabular-nums;animation:dotPop 320ms ${EASE} both`)}>{unreadBy}</span>}
                           {lastOfRun && <span style={css('font-size:11px;line-height:16px;color:#8b95a1;white-space:nowrap')}>{clock(at)}</span>}
                         </span>
                       )}
@@ -588,7 +586,7 @@ export function ChatRoom(p: RoomProps) {
             <div style={css('display:flex;align-items:center;gap:10px;padding:8px 6px 10px 12px;margin-bottom:6px;border-radius:14px;background:#f9fafb;animation:toastDown 220ms cubic-bezier(0.16,1,0.3,1) both')}>
               <span style={css('width:3px;align-self:stretch;border-radius:2px;background:#3182f6;flex:none')} />
               <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
-                <span style={css('font-size:13px;font-weight:700;color:#1b64da')}>{reply.uid === me.id ? '나' : byId.get(reply.uid)?.name ?? '(탈퇴한 사람)'}에게 답장</span>
+                <span style={css('font-size:13px;font-weight:700;color:#1b64da')}>{reply.uid === me.id ? '나' : nameIn(byId, reply.uid)}에게 답장</span>
                 <span style={css('font-size:13px;color:#6b7684;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{reply.text}</span>
               </span>
               <button onClick={() => setReply(null)} aria-label="답장 취소" style={css('width:36px;height:36px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center')}><CloseIcon size={16} stroke="#8b95a1" width={2.6} /></button>
@@ -802,7 +800,7 @@ function ChatMenu({ chat, me, all, byId, bg, onBg, onClose, onMute, onLeave, onI
               <button key={id} className="pr-dim" disabled={!p} onClick={() => p && onOpenProfile(id)} style={css('width:calc(100% - 8px);margin:0 4px;display:flex;align-items:center;gap:12px;padding:10px 20px;border-radius:12px;text-align:left')}>
                 <Avatar frame={p?.frame} photo={p?.photoCss} size={40} style={{ flex: 'none' }} />
                 <span style={css('flex:1;min-width:0;display:flex;align-items:center;gap:6px')}>
-                  <span style={css(title17 + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{p?.name ?? '(탈퇴한 사람)'}</span>
+                  <span style={css(title17 + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{nameIn(byId, id)}</span>
                   <RankChip rank={p?.rank} />
                 </span>
                 {id === me.id && <span style={css('flex:none;height:22px;padding:0 8px;border-radius:9999px;background:#f2f4f6;color:#6b7684;font-size:12px;font-weight:600;display:flex;align-items:center')}>나</span>}

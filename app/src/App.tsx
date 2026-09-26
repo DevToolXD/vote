@@ -233,7 +233,9 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   }, [theme])
 
   const loggedIn = !!authUser
-  const boardFallback = board.server && (!board.rows || Date.now() - board.at > BOARD_STALE_MS)
+  // No board yet (first launch, or the worker hasn't written it) or a stale one: read the
+  // candidates directly, so people never show up as "(탈퇴한 사람)" in the meantime.
+  const boardFallback = !board.rows || (board.server && Date.now() - board.at > BOARD_STALE_MS)
   useEffect(() => (db && boardFallback ? subscribeCandidates(db, setFallbackRows) : undefined), [boardFallback])
   useEffect(() => { setOwnRow(null); return db && authUser ? subscribeCandidate(db, authUser.uid, setOwnRow) : undefined }, [authUser])
   useEffect(() => {
@@ -248,7 +250,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const rows = useMemo<CandidateRow[]>(() => {
     const base: CandidateRow[] = boardFallback ? fallbackRows
       : (board.rows ?? []).map(({ pv, ...r }) => ({ ...r, photoURL: pv ? photoMap[r.id + '@' + pv] ?? '' : '' }) as CandidateRow)
-    if (!ownRow) return base
+    // Until the list itself has loaded, show nothing rather than just me (everyone else would look deleted).
+    if (!ownRow || !base.length) return base
     const merged = base.some(r => r.id === ownRow.id) ? base.map(r => (r.id === ownRow.id ? ownRow : r)) : [...base, ownRow]
     return merged.sort((a, b) => b.score - a.score)
   }, [board.rows, boardFallback, fallbackRows, ownRow, photoMap])
