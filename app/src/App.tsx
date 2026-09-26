@@ -1,4 +1,5 @@
 import type { User } from 'firebase/auth'
+import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetPassword, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
@@ -210,6 +211,13 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   const openTicket = tickets.find(t => t.id === ticketId)
   const ticketAccount = openTicket ? all.find(p => p.loginId && p.loginId === openTicket.loginId) : undefined
   const unreadTickets = tickets.filter(t => t.last?.from === 'user' && !t.adminRead).length
+
+  // The login id, shown on my profile; older accounts get it saved on their entry too.
+  const myLoginId = authUser?.email?.endsWith('@vote.local') ? authUser.email.slice(0, -'@vote.local'.length) : undefined
+  useEffect(() => {
+    if (me && !me.loginId && myLoginId) updateDoc(doc(db!, 'candidates', me.id), { loginId: myLoginId }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.id, me?.loginId, myLoginId])
 
   // 300P for opening the installed app (home-screen app or Galaxy app), once per account.
   const bonusTried = useRef(false)
@@ -457,7 +465,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
               authBusy={authBusy}
               isAdmin={isAdmin}
               goAdmin={() => go('admin')}
-              me={me ? { ...me, bio: bioDraft } : undefined}
+              me={me ? { ...me, bio: bioDraft, loginId: me.loginId ?? myLoginId } : undefined}
               onPhoto={onPhoto}
               onRemovePhoto={onRemovePhoto}
               onBio={v => setBioDraft(v.slice(0, 60))}
@@ -528,6 +536,8 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
           <EditProfile
             name={me.name} bio={bioDraft} photoCss={me.photoCss} equipped={{ frame: me.frame, plate: me.plate, skin: me.skin }} owned={me.owned} points={points}
             tab={editTab} onTab={setEditTab} onPick={pickItem} onClose={() => setEditOpen(false)}
+            gender={me.gender} onPhoto={onPhoto} onBio={v => setBioDraft(v.slice(0, 60))}
+            onGender={g => authUser && updateMyProfile(db!, authUser.uid, { gender: g }).catch(e => failToast('저장하지 못했어요', e))}
           />
         )}
         {buy && (
@@ -585,7 +595,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
           // Above an open chat room too (tapping someone in a chat opens their profile).
           <div style={css('position:relative;z-index:300')}>
           <ProfileSheet
-            d={profilePerson.isMe ? { ...profilePerson, bio: bioDraft } : profilePerson}
+            d={profilePerson.isMe ? { ...profilePerson, bio: bioDraft, loginId: profilePerson.loginId ?? myLoginId } : profilePerson}
             onClose={() => setProfile(null)}
             canMessage={!profilePerson.msgOff && !me?.msgOff}
             onMessage={() => startDm(profilePerson.id)}

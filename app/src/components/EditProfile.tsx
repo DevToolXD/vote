@@ -18,6 +18,10 @@ type Props = {
   /** Equips an owned item or opens the purchase dialog for a locked one. */
   onPick: (kind: ItemKind, key: string, label: string) => void
   onClose: () => void
+  gender: string
+  onPhoto: (f: File) => void
+  onBio: (bio: string) => void
+  onGender: (g: string) => void
 }
 
 const check = (size: number, style: string) => (
@@ -26,7 +30,7 @@ const check = (size: number, style: string) => (
 const tile = 'position:relative;border-radius:16px;display:flex;flex-direction:column;align-items:center'
 
 /** Full-screen editor + point shop for frame, nameplate and bar skin. */
-export function EditProfile({ name, bio, photoCss, equipped, owned, points, tab, onTab, onPick, onClose }: Props) {
+export function EditProfile({ name, bio, photoCss, equipped, owned, points, tab, onTab, onPick, onClose, gender, onPhoto, onBio, onGender }: Props) {
   const item = (kind: ItemKind, k: string) => ({ on: equipped[kind] === k, locked: !owned[kind].includes(k), price: priceOf(kind, k) + 'P' })
   const priceTag = (price: string) => (
     <span style={css('position:absolute;top:8px;left:8px;z-index:3;height:20px;padding:0 7px;border-radius:9999px;background:#191f28;color:#ffffff;font-size:11px;font-weight:700;display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums')}><LockIcon size={9} />{price}</span>
@@ -44,7 +48,26 @@ export function EditProfile({ name, bio, photoCss, equipped, owned, points, tab,
             <span style={css('width:16px;height:16px;border-radius:9999px;background:#ffc342;color:#5c3d00;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center')}>P</span>{points.toLocaleString()}P
           </span>
         </div>
-        <div style={css('padding:12px 24px 8px;display:flex;flex-direction:column;gap:12px')}>
+        <div style={css('padding:8px 24px 20px;display:flex;flex-direction:column;gap:20px')}>
+          <label style={css('align-self:center;position:relative;width:96px;height:96px;cursor:pointer;margin:8px')}>
+            <Avatar frame={equipped.frame} photo={photoCss} size={96} />
+            <span style={css('position:absolute;right:-4px;bottom:-4px;width:32px;height:32px;border-radius:9999px;background:#191f28;box-shadow:0 0 0 3px #fff;display:flex;align-items:center;justify-content:center')}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.4-2h4.6l1.4 2h1.8A2.5 2.5 0 0 1 20 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z" /><circle cx="12" cy="13" r="3.5" /></svg>
+            </span>
+            <input type="file" accept="image/*" aria-label="프로필 사진 바꾸기" onChange={e => { const f = e.target.files?.[0]; if (f) onPhoto(f); e.target.value = '' }} style={css('position:absolute;width:1px;height:1px;opacity:0;pointer-events:none')} />
+          </label>
+          <label style={css('display:flex;flex-direction:column;gap:8px')}>
+            <span style={css('display:flex;justify-content:space-between;font-size:13px;line-height:19.5px;font-weight:500;color:#6b7684')}><span>소개</span><span style={css('font-variant-numeric:tabular-nums')}>{bio.length}/60</span></span>
+            <textarea data-g="l1" className="ring-focus" value={bio} onChange={e => onBio(e.target.value.slice(0, 60))} maxLength={60} rows={2} placeholder="자신을 더 잘 알 수 있게 써주세요" style={css('resize:none;border:0;border-radius:14px;background:#f2f4f6;padding:14px 16px;font:inherit;font-size:16px;line-height:24px;color:#191f28;outline:none')} />
+          </label>
+          <div style={css('display:flex;flex-direction:column;gap:8px')}>
+            <span style={css('font-size:13px;line-height:19.5px;font-weight:500;color:#6b7684')}>성별</span>
+            <Segmented options={['남자', '여자', '비공개']} value={gender || '비공개'} onPick={g => onGender(g === '비공개' ? '' : g)} />
+          </div>
+        </div>
+        <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
+        <div style={css('padding:20px 24px 8px;display:flex;flex-direction:column;gap:12px')}>
+          <span style={css('font-size:17px;line-height:25.5px;font-weight:700;color:#191f28')}>꾸미기</span>
           <div style={{ height: 60 }}>
             <Nameplate kind={equipped.plate} person={name} sub={bio || '소개를 적으면 이름표에 보여요'} frame={equipped.frame} photo={photoCss} style={{ width: '100%', height: 60 }} />
           </div>

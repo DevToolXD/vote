@@ -150,18 +150,12 @@ function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus
   )
 }
 
-function Profile({ me, onPhoto, onBio, onGender, points, mine, onOpenVote, onLogout, goHome, notifySlot }: Props & { me: Person }) {
+function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot }: Props & { me: Person }) {
   const sep = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
   return (
     <>
       <div style={css('padding:24px;display:flex;align-items:center;gap:16px')}>
-        <label style={css('position:relative;width:76px;height:76px;flex:none;cursor:pointer;margin:6px')}>
-          <Avatar frame={me.frame} photo={me.photoCss} size={76} />
-          <span style={css('position:absolute;right:-4px;bottom:-4px;width:28px;height:28px;border-radius:9999px;background:#191f28;box-shadow:0 0 0 3px #fff;display:flex;align-items:center;justify-content:center')}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.4-2h4.6l1.4 2h1.8A2.5 2.5 0 0 1 20 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z" /><circle cx="12" cy="13" r="3.5" /></svg>
-          </span>
-          <input type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) onPhoto(f); e.target.value = '' }} style={css('position:absolute;width:1px;height:1px;opacity:0;pointer-events:none')} />
-        </label>
+        <span style={css('width:76px;height:76px;flex:none;margin:6px')}><Avatar frame={me.frame} photo={me.photoCss} size={76} /></span>
         <span style={css('display:flex;flex-direction:column')}>
           <span style={css('display:flex;align-items:center;gap:6px')}>
             <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{me.name}님</span>
@@ -171,13 +165,9 @@ function Profile({ me, onPhoto, onBio, onGender, points, mine, onOpenVote, onLog
         </span>
       </div>
       <div style={css('padding:0 24px 24px;display:flex;flex-direction:column;gap:20px')}>
-        <label style={css('display:flex;flex-direction:column;gap:8px')}>
-          <span style={css('display:flex;justify-content:space-between;font-size:13px;line-height:19.5px;font-weight:500;color:#6b7684')}><span>소개</span><span style={css('font-variant-numeric:tabular-nums')}>{me.bio.length}/60</span></span>
-          <textarea data-g="l1" className="ring-focus" value={me.bio} onChange={e => onBio(e.target.value.slice(0, 60))} maxLength={60} rows={2} placeholder="자신을 더 잘 알 수 있게 써주세요" style={css('resize:none;border:0;border-radius:14px;background:#f2f4f6;padding:14px 16px;font:inherit;font-size:16px;line-height:24px;color:#191f28;outline:none')} />
-        </label>
-        <div style={css('display:flex;flex-direction:column;gap:8px')}>
-          <span style={css(fieldLabel)}>성별</span>
-          <Segmented options={['남자', '여자', '비공개']} value={me.gender || '비공개'} onPick={g => onGender(g === '비공개' ? '' : g)} />
+        <div style={css('display:flex;flex-direction:column;gap:6px')}>
+          <span style={css(fieldLabel)}>소개</span>
+          <span style={sx('font-size:17px;line-height:25.5px;white-space:pre-wrap;word-break:break-word', { color: me.bio ? '#333d4b' : '#8b95a1' })}>{me.bio || '프로필 편집에서 소개를 적어보세요'}</span>
         </div>
       </div>
       {sep}
