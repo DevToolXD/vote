@@ -4,7 +4,9 @@ import { ID_PATTERN } from '../backend/auth'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
 import { BackIcon } from './icons'
-import { PointsChip } from './PointsChip'
+import { PointsChip, shortPoints } from './PointsChip'
+import { Badges } from './Badges'
+import { Nameplate } from './Nameplate'
 
 export type SignupForm = { name: string; id: string; pw: string; pw2: string }
 export type LoginForm = { id: string; pw: string; keep: boolean }
@@ -173,12 +175,17 @@ function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot }:
         <div style={css('display:flex;flex-direction:column;gap:6px')}>
           <span style={css(fieldLabel)}>소개</span>
           <span style={sx('font-size:17px;line-height:25.5px;white-space:pre-wrap;word-break:break-word', { color: me.bio ? '#333d4b' : '#8b95a1' })}>{me.bio || '프로필 편집에서 소개를 적어보세요'}</span>
+          <Badges person={me} style="margin-top:4px" />
+        </div>
+        <div style={css('display:flex;flex-direction:column;gap:6px')}>
+          <span style={css(fieldLabel)}>이름표</span>
+          <div style={{ height: 60 }}><Nameplate kind={me.plate} person={me.name} sub={me.bio || '소개를 적으면 이름표에 보여요'} frame={me.frame} photo={me.photoCss} style={{ width: '100%', height: 60 }} /></div>
         </div>
       </div>
       {sep}
       <div style={{ height: 24 }} />
       <div style={css('padding:0 24px 24px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px')}>
-        {[['투표', mine.length + '명'], ['순위', me.rank + '위'], ['포인트', points.toLocaleString() + 'P']].map(([k, v]) => (
+        {[['투표', mine.length + '명'], ['순위', me.rank + '위'], ['포인트', shortPoints(points) + 'P']].map(([k, v]) => (
           <div key={k} data-g="l1" style={css('background:#f9fafb;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:2px')}>
             <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>{k}</span>
             <span style={css('font-size:22px;line-height:31px;font-weight:700;color:#191f28')}>{v}</span>

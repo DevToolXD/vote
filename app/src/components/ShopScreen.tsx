@@ -147,7 +147,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
               {passActive ? (
                 <div style={css('padding:16px 18px;border-radius:16px;background:linear-gradient(135deg,#1b64da,#6a3cf0);color:#fff;display:flex;align-items:center;gap:12px')}>
                   <span style={css('font-size:22px;font-weight:800')}>×2</span>
-                  <span style={css('display:flex;flex-direction:column')}><span style={css('font-size:16px;font-weight:700')}>투표 2배권</span><span style={css('font-size:13px;opacity:0.85')}>한 사람에게 일주일에 두 번까지 투표할 수 있어요</span></span>
+                  <span style={css('display:flex;flex-direction:column')}><span style={css('font-size:16px;font-weight:700')}>투표 2배권</span><span style={css('font-size:13px;opacity:0.85')}>영구 · 한 사람에게 일주일에 두 번 투표</span></span>
                 </div>
               ) : (
                 <button className="pr-dim" onClick={() => onTab('pass')} style={css('width:100%;padding:16px 18px;border-radius:16px;background:#f9fafb;text-align:left;font-size:15px;color:#6b7684')}>아직 없어요 · 투표 2배권 보러 가기 ›</button>
@@ -157,23 +157,26 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
         )}
 
         {tab === 'pass' && (
-          <div className="anim-list" style={css('padding:0 24px 32px;display:flex;flex-direction:column;gap:12px')}>
-            <div data-g="l1" style={css('position:relative;overflow:hidden;border-radius:24px;padding:24px 20px 20px;background:linear-gradient(135deg,#1b64da,#6a3cf0);color:#ffffff;display:flex;flex-direction:column;gap:6px')}>
-              <span aria-hidden="true" style={css('position:absolute;right:-18px;top:-22px;font-size:120px;line-height:1;font-weight:800;opacity:0.14')}>×2</span>
-              <span style={css('align-self:flex-start;height:24px;padding:0 10px;border-radius:9999px;background:rgba(255,255,255,0.2);font-size:12px;font-weight:700;display:flex;align-items:center')}>패스 · 한 번 사면 계속</span>
-              <span style={css('margin-top:6px;font-size:24px;line-height:32px;font-weight:800')}>투표 2배권</span>
-              <span style={css('font-size:15px;line-height:22.5px;opacity:0.9')}>한 사람에게 일주일에 두 번까지 투표할 수 있어요. 추천이나 비추천을 한 번 더 할 수 있어요</span>
-              <span style={css('margin-top:10px;font-size:13px;line-height:19.5px;opacity:0.75')}>시즌이 바뀌어도 사라지지 않아요 · 보관함에서 확인할 수 있어요</span>
+          <div className="anim-list" style={css('padding:0 24px 32px;display:flex;flex-direction:column;gap:8px')}>
+            <div data-g="l1" style={css('border-radius:18px;padding:14px;background:#f9fafb;display:flex;align-items:center;gap:12px')}>
+              <span aria-hidden="true" style={css('width:48px;height:48px;flex:none;border-radius:14px;background:linear-gradient(135deg,#1b64da,#6a3cf0);color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center')}>×2</span>
+              <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
+                <span style={css('display:flex;align-items:center;gap:6px')}>
+                  <span style={css('font-size:16px;line-height:24px;font-weight:700;color:#191f28')}>투표 2배권</span>
+                  <span style={css('height:20px;padding:0 7px;border-radius:9999px;background:#f3eeff;color:#6a3cf0;font-size:11px;font-weight:700;display:flex;align-items:center')}>영구</span>
+                </span>
+                <span style={css('font-size:13px;line-height:18px;color:#6b7684')}>한 사람에게 일주일에 두 번 투표</span>
+              </span>
+              {passActive ? (
+                <span style={css('flex:none;height:34px;padding:0 12px;border-radius:10px;background:#e8f3ff;color:#1b64da;font-size:14px;font-weight:700;display:flex;align-items:center')}>보유중</span>
+              ) : (
+                <button data-g="primary" className="pr-96" onClick={loggedIn ? onBuyPass : onLogin}
+                  style={css('flex:none;height:34px;padding:0 12px;border-radius:10px;background:#3182f6;color:#ffffff;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;transition:transform 150ms')}>
+                  {loggedIn ? `${PASS_PRICE.toLocaleString()}P` : '로그인'}
+                </button>
+              )}
             </div>
-            {passActive ? (
-              <div style={css('height:56px;border-radius:16px;background:#e8f3ff;color:#1b64da;font-size:17px;font-weight:700;display:flex;align-items:center;justify-content:center')}>✓ 가지고 있어요 · 투표할 때 ×2 버튼이 보여요</div>
-            ) : (
-              <button data-g="primary" className="pr-96" onClick={loggedIn ? onBuyPass : onLogin}
-                style={css('height:56px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600;transition:transform 150ms')}>
-                {loggedIn ? `${PASS_PRICE.toLocaleString()}P로 사기` : '로그인하고 사기'}
-              </button>
-            )}
-            {loggedIn && !passActive && <span style={css('text-align:center;font-size:13px;color:#8b95a1')}>내 포인트 {points.toLocaleString()}P{points < PASS_PRICE ? ` · ${(PASS_PRICE - points).toLocaleString()}P 더 필요해요` : ''}</span>}
+            {loggedIn && !passActive && points < PASS_PRICE && <span style={css('padding:0 4px;font-size:13px;color:#8b95a1')}>{(PASS_PRICE - points).toLocaleString()}P 더 필요해요</span>}
           </div>
         )}
     </div>

@@ -76,10 +76,11 @@ service cloud.firestore {
                 && p.target is string && validPersonName(p.name))
           || (action == 'resetPassword' && p.keys().hasOnly(['target', 'code']) && p.keys().hasAll(['target', 'code'])
                 && p.target is string && p.code is string && p.code.matches('[0-9]{8}'))
-          || (action == 'postNotice' && p.keys().hasOnly(['id', 'title', 'body']) && p.keys().hasAll(['id', 'title', 'body'])
+          || (action == 'postNotice' && p.keys().hasOnly(['id', 'title', 'body', 'options']) && p.keys().hasAll(['id', 'title', 'body'])
                 && p.id is string && p.id.matches('[A-Za-z0-9]{20}')
                 && p.title is string && p.title.size() >= 1 && p.title.size() <= 40
-                && p.body is string && p.body.size() >= 1 && p.body.size() <= 2000)
+                && p.body is string && p.body.size() >= 1 && p.body.size() <= 2000
+                && (!('options' in p) || (p.options is list && p.options.size() >= 2 && p.options.size() <= 6)))
           || (action == 'seasonConfig' && p.keys().hasOnly(['endsAt', 'first', 'second', 'third', 'top6', 'participant'])
                 && p.keys().hasAll(['endsAt', 'first', 'second', 'third', 'top6', 'participant'])
                 && p.endsAt is int && p.endsAt >= 0
@@ -737,12 +738,25 @@ service cloud.firestore {
       allow get: if isAdmin() || (member() && !seenNotice(id));
       allow list: if isAdmin();
       allow create: if adminOp('postNotice') && lock().payload.id == id
-        && request.resource.data.keys().hasOnly(['title', 'body', 'by', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['title', 'body', 'by', 'createdAt', 'options'])
         && request.resource.data.title == lock().payload.title
         && request.resource.data.body == lock().payload.body
+        && request.resource.data.get('options', null) == lock().payload.get('options', null)
         && request.resource.data.by == request.auth.uid
         && request.resource.data.createdAt == request.time;
       allow update, delete: if false;
+
+      // 공지 투표: one choice per member, once; only the admin sees the results.
+      match /votes/{uid} {
+        allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+        allow list: if isAdmin();
+        allow create: if member() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['choice', 'at'])
+          && request.resource.data.at == request.time
+          && request.resource.data.choice is int && request.resource.data.choice >= 0
+          && request.resource.data.choice < get(/databases/$(database)/documents/notices/$(id)).data.get('options', []).size();
+        allow update, delete: if false;
+      }
     }
 
     // The whole leaderboard in one doc, written only by the background worker

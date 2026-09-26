@@ -4,6 +4,7 @@ import type { AdminProgress } from '../backend/admin'
 import { pointsOf } from '../backend/candidates'
 import type { Ticket } from '../backend/support'
 import { DEFAULT_REWARDS, rewardNotice, type Rewards } from '../backend/rewards'
+import type { PollResult } from '../backend/notices'
 import type { Season } from '../backend/types'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
@@ -14,7 +15,9 @@ type Props = {
   all: Person[]
   tickets: Ticket[]
   onOpenTicket: (id: string) => void
-  postNotice: (title: string, body: string, onProgress: (p: AdminProgress) => void) => Promise<void>
+  postNotice: (title: string, body: string, onProgress: (p: AdminProgress) => void, options?: string[]) => Promise<void>
+  /** 공지 투표 results (latest polls). */
+  loadPolls: () => Promise<PollResult[]>
   season: Season
   /** Runs one admin operation; resolves when done, rejects with the Firebase error. */
   run: (label: string, op: (onProgress: (p: AdminProgress) => void) => Promise<void>) => Promise<boolean>
@@ -36,10 +39,15 @@ const gap = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
 
 type Confirm = { title: string; desc: string; cta: string; danger?: boolean; go: () => void }
 
-export function AdminScreen({ all, tickets, onOpenTicket, postNotice, setSeasonConfig, season, run, grantPoints, setSeasonName, resetSeason, renameUser, deleteAccount, resetPassword, onLogout }: Props) {
+export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls, setSeasonConfig, season, run, grantPoints, setSeasonName, resetSeason, renameUser, deleteAccount, resetPassword, onLogout }: Props) {
   const [issued, setIssued] = useState<{ name: string; loginId?: string; code: string } | null>(null)
   const [nameDraft, setNameDraft] = useState('')
   const [notice, setNotice] = useState({ title: '', body: '' })
+  const [poll, setPoll] = useState<string[] | null>(null)
+  const pollOpts = (poll ?? []).map(o => o.trim()).filter(Boolean)
+  const pollOk = !poll || pollOpts.length >= 2
+  const [polls, setPolls] = useState<PollResult[] | null>(null)
+  const [pollsBusy, setPollsBusy] = useState(false)
   const curRewards = season.rewards ?? DEFAULT_REWARDS
   const curEnds = season.endsAt ? season.endsAt.toMillis() : 0
   const toLocalInput = (ms: number) => { if (!ms) return ''; const d = new Date(ms); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16) }
@@ -72,15 +80,54 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, setSeasonC
         <span style={css(sectionTitle)}>공지사항</span>
         <input data-g="l1" className="ring-focus" value={notice.title} maxLength={40} onChange={e => setNotice(n => ({ ...n, title: e.target.value }))} placeholder="제목 (40자까지)" style={css(field)} />
         <textarea data-g="l1" className="ring-focus" value={notice.body} maxLength={2000} rows={4} onChange={e => setNotice(n => ({ ...n, body: e.target.value }))} placeholder="내용" style={css('resize:vertical;min-height:100px;border:0;border-radius:14px;background:#f2f4f6;padding:12px 14px;font:inherit;font-size:16px;line-height:24px;color:#191f28;outline:none')} />
-        <button data-g="primary" className="pr-96" disabled={!notice.title.trim() || !notice.body.trim()}
+        {poll ? (
+          <div style={css('display:flex;flex-direction:column;gap:8px')}>
+            <span style={css('display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:600;color:#333d4b')}>투표 항목
+              <button className="pr-dim" onClick={() => setPoll(null)} style={css('height:28px;padding:0 8px;border-radius:8px;font-size:13px;color:#6b7684')}>투표 빼기</button>
+            </span>
+            {poll.map((o, i) => (
+              <input key={i} data-g="l1" className="ring-focus" value={o} maxLength={40} placeholder={`항목 ${i + 1}`}
+                onChange={e => setPoll(ps => ps!.map((x, j) => (j === i ? e.target.value : x)))} style={css(field)} />
+            ))}
+            {poll.length < 6 && <button className="pr-dim" onClick={() => setPoll(ps => [...ps!, ''])} style={css('align-self:flex-start;height:32px;padding:0 10px;border-radius:8px;font-size:14px;font-weight:600;color:#3182f6')}>+ 항목 추가</button>}
+          </div>
+        ) : (
+          <button className="pr-dim" onClick={() => setPoll(['', ''])} style={css('align-self:flex-start;height:36px;padding:0 12px;border-radius:10px;background:#f2f4f6;font-size:14px;font-weight:600;color:#333d4b')}>+ 투표 넣기</button>
+        )}
+        <button data-g="primary" className="pr-96" disabled={!notice.title.trim() || !notice.body.trim() || !pollOk}
           onClick={() => setConfirm({
-            title: '이 공지를 보낼까요?',
-            desc: `“${notice.title.trim()}” — 로그인한 모든 사람에게 앱을 열 때 화면 전체로 한 번 보여요. 보낸 공지는 고칠 수 없어요.`,
+            title: poll ? '투표가 있는 공지를 보낼까요?' : '이 공지를 보낼까요?',
+            desc: `“${notice.title.trim()}” — 로그인한 모든 사람에게 앱을 열 때 화면 전체로 한 번 보여요.${poll ? ` 항목 ${pollOpts.length}개 중 하나를 골라 투표해요.` : ''} 보낸 공지는 고칠 수 없어요.`,
             cta: '보내기',
-            go: async () => { if (await run('공지 보내기', p => postNotice(notice.title, notice.body, p))) setNotice({ title: '', body: '' }) },
+            go: async () => { if (await run('공지 보내기', p => postNotice(notice.title, notice.body, p, poll ? pollOpts : undefined))) { setNotice({ title: '', body: '' }); setPoll(null) } },
           })}
-          style={sx('height:48px;border-radius:14px;background:#3182f6;color:#fff;font-size:15px;font-weight:600;transition:opacity 200ms', { opacity: notice.title.trim() && notice.body.trim() ? 1 : 0.4 })}>공지 보내기</button>
+          style={sx('height:48px;border-radius:14px;background:#3182f6;color:#fff;font-size:15px;font-weight:600;transition:opacity 200ms', { opacity: notice.title.trim() && notice.body.trim() && pollOk ? 1 : 0.4 })}>공지 보내기</button>
         <span style={css(hint)}>로그인한 사람만, 한 번만 볼 수 있어요</span>
+      </section>
+      {gap}
+      <section style={css('padding:24px 24px;display:flex;flex-direction:column;gap:12px')}>
+        <span style={css('display:flex;justify-content:space-between;align-items:center;' + sectionTitle)}>공지 투표 결과
+          <button className="pr-dim" disabled={pollsBusy} onClick={async () => { setPollsBusy(true); try { setPolls(await loadPolls()) } finally { setPollsBusy(false) } }}
+            style={css('height:32px;padding:0 10px;border-radius:8px;background:#f2f4f6;font-size:13px;font-weight:600;color:#333d4b')}>{pollsBusy ? '불러오는 중…' : polls ? '새로고침' : '결과 보기'}</button>
+        </span>
+        {polls && polls.length === 0 && <span style={css(hint)}>아직 투표가 있는 공지가 없어요</span>}
+        {polls?.map(p => {
+          const total = p.counts.reduce((a, b) => a + b, 0)
+          return (
+            <div key={p.id} data-g="l1" style={css('padding:14px 16px;border-radius:16px;background:#f9fafb;display:flex;flex-direction:column;gap:8px')}>
+              <span style={css('font-size:15px;font-weight:700;color:#191f28')}>{p.title} <span style={css('font-size:13px;font-weight:500;color:#8b95a1')}>· {total}명</span></span>
+              {p.options.map((o, i) => {
+                const pct = total ? Math.round(p.counts[i] / total * 100) : 0
+                return (
+                  <div key={i} style={css('display:flex;flex-direction:column;gap:4px')}>
+                    <span style={css('display:flex;justify-content:space-between;font-size:14px;color:#333d4b')}><span>{o}</span><span style={css('font-weight:600;font-variant-numeric:tabular-nums')}>{p.counts[i]}명 · {pct}%</span></span>
+                    <span style={css('height:6px;border-radius:3px;background:#e5e8eb;overflow:hidden')}><span style={sx('display:block;height:100%;background:#3182f6;border-radius:3px;transition:width 400ms', { width: pct + '%' })} /></span>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })}
       </section>
       {gap}
       <section style={css('padding:24px 0 12px;display:flex;flex-direction:column;gap:4px')}>

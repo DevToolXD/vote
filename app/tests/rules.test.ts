@@ -18,7 +18,7 @@ import { loadOlderMessages, subscribeMessages, setChatDatabase, setChatTimeout, 
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
 import { cancelGift, claimGift, sendGift, subscribeGift } from '../src/backend/gifts'
-import { markNoticeSeen, nextUnseenNotice, postNotice } from '../src/backend/notices'
+import { markNoticeSeen, nextUnseenNotice, pollResults, postNotice, voteNotice } from '../src/backend/notices'
 import { DEFAULT_REWARDS, computeRewards } from '../src/backend/rewards'
 import { buildPeople } from '../src/model'
 import type { CandidateDoc } from '../src/backend/types'
@@ -804,6 +804,25 @@ describe('포인트 선물', () => {
     w2.set(doc(a, 'gifts', 'g3'), { chatId: id, from: 'a', to: 'a', amount: 50, status: 'open', createdAt: serverTimestamp() }) // to yourself
     w2.update(doc(a, 'candidates', 'a'), { spent: 50, lastGift: 'g3' })
     await denied(w2.commit())
+  })
+})
+
+describe('공지 투표', () => {
+  test('admin posts a poll; members vote once, in range; only the admin sees results', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
+    await assert.rejects(postNotice(admin, ADMIN.uid, '투표', '골라요', undefined, ['하나']))
+    const id = await postNotice(admin, ADMIN.uid, '점심 투표', '뭐 먹을까요?', undefined, ['피자', '치킨', '떡볶이'])
+    await voteNotice(a, 'a', id, 1)
+    await voteNotice(b, 'b', id, 1)
+    await denied(voteNotice(a, 'a', id, 0)) // once
+    await denied(setDoc(doc(b, 'notices', id, 'votes', 'b2'), { choice: 0, at: serverTimestamp() })) // someone else's
+    const c = await signUp('c')
+    await denied(voteNotice(c, 'c', id, 3)) // no such option
+    await denied(getDocs(collection(a, 'notices', id, 'votes')))
+    const [r] = await pollResults(admin)
+    assert.deepEqual([r.title, r.options, r.counts], ['점심 투표', ['피자', '치킨', '떡볶이'], [0, 2, 0]])
+    const plain = await postNotice(admin, ADMIN.uid, '그냥 공지', '내용')
+    await denied(voteNotice(a, 'a', plain, 0)) // no poll
   })
 })
 

@@ -9,6 +9,7 @@ import { Segmented } from './AccountScreen'
 import { Avatar } from './Avatar'
 import { CloseIcon } from './icons'
 import { PlateBanner } from './Nameplate'
+import { Badges } from './Badges'
 
 const handle = <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
 const bigBtn = 'height:56px;border-radius:16px;font-size:17px;font-weight:600'
@@ -155,7 +156,10 @@ export function ProfileSheet({ d, onClose, onCta, onMessage, canMessage }: { d: 
           <span style={css('width:88px;height:88px')}><Avatar frame={d.frame} photo={d.photoCss} size={88} /></span>
         </div>
         <div style={css('display:flex;justify-content:flex-end;align-items:center;gap:8px;padding-top:12px;min-height:52px')}>
-          {d.loginId && <span style={css('margin-right:auto;margin-left:110px;font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0')}>@{d.loginId}</span>}
+          <span style={css('margin-right:auto;margin-left:110px;min-width:0;display:flex;flex-direction:column;gap:4px')}>
+            <Badges person={d} />
+            {d.loginId && <span style={css('font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>@{d.loginId}</span>}
+          </span>
           <span style={sx('height:30px;padding:0 12px;border-radius:9999px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums', { background: medal ? medal[0] : '#f2f4f6', color: medal ? medal[1] : '#4e5968' })}>{d.rank}위</span>
         </div>
         <div style={css('margin-top:4px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px')}>

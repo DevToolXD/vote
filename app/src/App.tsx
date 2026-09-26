@@ -20,7 +20,7 @@ import { NotifySettings } from './components/NotifySettings'
 import { MessageBanner, type Banner } from './components/MessageBanner'
 import { SupportFlow, SupportRoom } from './components/SupportScreen'
 import { closeTicket, linkTicket, sendSupport, subscribeLinkedTickets, subscribeTicket, subscribeTickets, type Ticket } from './backend/support'
-import { markNoticeSeen, nextUnseenNotice, postNotice, subscribeNoticeIndex, type Notice } from './backend/notices'
+import { markNoticeSeen, nextUnseenNotice, pollResults, postNotice, subscribeNoticeIndex, voteNotice, type Notice } from './backend/notices'
 import { NoticeScreen } from './components/NoticeScreen'
 import { cancelGift, claimGift, sendGift } from './backend/gifts'
 import { BuyDialog, Dialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
@@ -622,8 +622,9 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               all={all}
               tickets={tickets}
               onOpenTicket={setTicketId}
-              postNotice={async (t, b, p) => {
-                const id = await postNotice(db!, authUser.uid, t, b, p)
+              loadPolls={() => pollResults(db!)}
+              postNotice={async (t, b, p, options) => {
+                const id = await postNotice(db!, authUser.uid, t, b, p, options)
                 // You wrote it — no need to show it back to you full-screen.
                 await markNoticeSeen(db!, authUser.uid, id).catch(() => {})
               }}
@@ -690,7 +691,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           <BuyDialog
             b={{
               title: '투표 2배권을 살까요?',
-              desc: points >= PASS_PRICE ? '한 번 사면 계속, 한 사람에게 일주일에 두 번까지 투표할 수 있어요' : '포인트가 더 쌓이면 살 수 있어요',
+              desc: points >= PASS_PRICE ? '영구 · 한 사람에게 일주일에 두 번까지 투표할 수 있어요' : '포인트가 더 쌓이면 살 수 있어요',
               price: PASS_PRICE.toLocaleString() + 'P',
               remain: (points - PASS_PRICE).toLocaleString() + 'P',
               can: points >= PASS_PRICE,
@@ -832,7 +833,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
         )}
         {installOpen && <InstallSheet onClose={() => setInstallOpen(false)} onToast={showToast} />}
         {adminBusy && <AdminProgressOverlay label={adminBusy.label} p={adminBusy.p} />}
-        {notice && authUser && !mustChangePw && <NoticeScreen notice={notice} onDone={closeNotice} />}
+        {notice && authUser && !mustChangePw && <NoticeScreen notice={notice} onDone={closeNotice} onVote={choice => voteNotice(db!, authUser.uid, notice.id, choice)} />}
         {banner && <MessageBanner banner={banner} onDone={() => setBanner(null)} onOpen={id => { setProfile(null); setSheet(null); setTab('msg'); setChatId(id) }} />}
         {toast && <Toast msg={toast} />}
       </div>
