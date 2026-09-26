@@ -591,13 +591,23 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
-      // Read receipts (KakaoTalk-style counts): each member sets only their own time. Kept out of
-      // the chat doc so a receipt only reaches people with this room open.
+      // Read receipts (KakaoTalk-style counts), kept out of the chat doc so they only reach
+      // people with this room open: uid → when they last read it, and here.uid → "in the room
+      // on screen until" (a few minutes ahead, refreshed while they stay). Each member sets
+      // only their own entries.
       match /state/reads {
+        function old() { return resource == null ? {} : resource.data; }
+        function hereOk(uid) {
+          let n = request.resource.data.get('here', {});
+          return n.diff(old().get('here', {})).affectedKeys().hasOnly([uid])
+            && (!(uid in n) || (n[uid] is timestamp
+                && n[uid] > request.time - duration.value(10, 'm') && n[uid] < request.time + duration.value(10, 'm')));
+        }
         allow read: if signedIn() && request.auth.uid in chatData(chatId).members;
         allow create, update: if signedIn() && request.auth.uid in chatData(chatId).members
-          && request.resource.data.diff(resource == null ? {} : resource.data).affectedKeys().hasOnly([request.auth.uid])
-          && request.resource.data[request.auth.uid] == request.time;
+          && request.resource.data.diff(old()).affectedKeys().hasOnly([request.auth.uid, 'here'])
+          && (!(request.auth.uid in request.resource.data.diff(old()).affectedKeys()) || request.resource.data[request.auth.uid] == request.time)
+          && (!('here' in request.resource.data.diff(old()).affectedKeys()) || hereOk(request.auth.uid));
       }
 
       // A photo message's image, written in the same batch as the message.

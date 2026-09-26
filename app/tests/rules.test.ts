@@ -12,7 +12,7 @@ import {
 import { deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, updateMyProfile } from '../src/backend/candidates'
-import { setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
+import { setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markGone, markHere, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
 import { cancelGift, claimGift, sendGift, subscribeGift } from '../src/backend/gifts'
@@ -567,6 +567,12 @@ describe('chat extras', () => {
     assert.ok((await getDoc(doc(a, 'chats', id, 'state', 'reads'))).data()!.b)
     await denied(setDoc(doc(b, 'chats', id, 'state', 'reads'), { a: serverTimestamp() }, { merge: true })) // someone else's
     await denied(setDoc(doc(b, 'chats', id, 'state', 'reads'), { b: new Date(0) }, { merge: true })) // back-dated
+    await markHere(a, 'a', id) // in the room: here until a few minutes from now
+    assert.ok((await getDoc(doc(b, 'chats', id, 'state', 'reads'))).data()!.here.a)
+    await denied(setDoc(doc(b, 'chats', id, 'state', 'reads'), { here: { a: new Date(Date.now() + 60_000) } }, { merge: true })) // someone else's
+    await denied(setDoc(doc(b, 'chats', id, 'state', 'reads'), { here: { b: new Date(Date.now() + 3600_000) } }, { merge: true })) // too far ahead
+    await markGone(a, 'a', id)
+    assert.equal((await getDoc(doc(b, 'chats', id, 'state', 'reads'))).data()!.here?.a, undefined)
     await denied(getDoc(doc(c, 'chats', id, 'state', 'reads'))) // not a member
     await denied(setDoc(doc(c, 'chats', id, 'state', 'reads'), { c: serverTimestamp() }))
   })
@@ -790,6 +796,9 @@ describe('notifications', () => {
     const dm2 = await openDm(c, 'c', 'b')
     await sendMessage(c, 'c', dm2, '읽은 메시지')
     await markRead(b, 'b', dm2) // read in the open chat (receipts doc): no push for it
+    const dm3 = await openDm(c, 'c', 'a')
+    await markHere(a, 'a', dm3) // a has this room open on screen
+    await sendMessage(c, 'c', dm3, '방에 있어요')
     await castVote(b, 'b', 'c', 'up')
     await castVote(c, 'c', 'a', 'down')
     await saveNotifySettings(a, 'a', { notifyVote: false })
@@ -820,6 +829,7 @@ describe('notifications', () => {
     assert.deepEqual(to('tok-b'), ['이름a|안녕 b'], JSON.stringify(got))
     assert.ok(!to('tok-b').some(x => x.includes('단톡 첫 메시지')), 'b sent it, b must not be notified')
     assert.ok(to('tok-a').includes('모임|이름b: 단톡 첫 메시지'))
+    assert.ok(!to('tok-a').some(x => x.includes('방에 있어요')), 'a was in that room, no push')
     assert.ok(!to('tok-a').some(x => x.includes('비추천')), 'a turned vote notifications off')
     assert.deepEqual(to('tok-c'), ['인기투표|누군가 회원님을 추천했어요'], 'c muted the group, so only the vote')
     // Nothing is sent twice: a second run finds nothing new.

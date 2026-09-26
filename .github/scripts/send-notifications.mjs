@@ -129,8 +129,9 @@ async function notifyChat(chat, count) {
   const last = chat.last
   for (const member of chat.members ?? []) {
     if (member === last.uid || chat.mutes?.[member]) continue
-    const readMs = Math.max(chat.reads?.[member]?.toMillis?.() ?? 0, roomReads.get(chat.id)?.[member]?.toMillis?.() ?? 0)
-    if (readMs >= last.at.toMillis()) continue // already read it in the open chat
+    const room = roomReads.get(chat.id)
+    const readMs = Math.max(chat.reads?.[member]?.toMillis?.() ?? 0, room?.[member]?.toMillis?.() ?? 0, room?.here?.[member]?.toMillis?.() ?? 0)
+    if (readMs >= last.at.toMillis()) continue // read it, or has the room open right now
     const s = settingsOf(member)
     if (s.notify === false || s.notifyMsg === false) continue
     const sender = await nameOf(last.uid)

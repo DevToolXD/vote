@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { Firestore, Timestamp } from 'firebase/firestore'
+import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { MEDALS } from '../data'
-import { MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, readAt, subscribeReads, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, markRead, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
+import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, hasSeen, isUnread, markGone, markHere, noteRead, subscribeReads, type RoomReads, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, subscribeGift, type Gift } from '../backend/gifts'
 import { saveImage } from '../saveImage'
 import type { Person } from '../model'
@@ -362,7 +362,7 @@ export function ChatRoom(p: RoomProps) {
   const [hasOlder, setHasOlder] = useState(false)
   const loadingOlder = useRef(false)
   const keepFromBottom = useRef<number | null>(null)
-  const [roomReads, setRoomReads] = useState<Record<string, Timestamp | null>>({})
+  const [roomReads, setRoomReads] = useState<RoomReads>({})
   useEffect(() => subscribeReads(db, chat.id, setRoomReads), [db, chat.id])
   const settled = useRef(false)
   useEffect(() => subscribeMessages(db, chat.id, (rows, fromCache) => {
@@ -388,33 +388,33 @@ export function ChatRoom(p: RoomProps) {
     loadingOlder.current = false
   }
   // Opening the room (and every new message while it's open) marks it read.
-  // Every read receipt is sent to every member's chat list (each counts as a Firestore
-  // read for them), so while the app is on screen it's sent at most once every 4 s,
-  // 1.2 s after the latest message at the earliest; a busy chat doesn't send one per message.
-  const lastMark = useRef(0)
-  const markTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const chatNow = useRef(chat)
-  chatNow.current = chat
+  // Read receipts: not one per message (each was delivered to everyone in the room, and
+  // every delivery counts as a Firestore read). While the room is open on screen I'm
+  // "here" — said once on entering, refreshed every HEARTBEAT_MS — and everything that
+  // arrives meanwhile counts as read by me. Leaving or going to the background ends it.
   useEffect(() => {
-    const mark = () => {
-      if (markTimer.current || document.visibilityState !== 'visible' || !isUnread(chat, me.id)) return
-      markTimer.current = setTimeout(() => {
-        markTimer.current = undefined
-        if (document.visibilityState !== 'visible' || !isUnread(chatNow.current, me.id)) return
-        lastMark.current = Date.now()
-        markRead(db, me.id, chat.id).catch(() => {})
-      }, Math.max(1200, 4000 - (Date.now() - lastMark.current)))
+    let beat: ReturnType<typeof setInterval> | undefined
+    let here = false
+    const enter = () => {
+      if (here) return
+      here = true
+      markHere(db, me.id, chat.id).catch(() => {})
+      beat = setInterval(() => markHere(db, me.id, chat.id).catch(() => {}), HEARTBEAT_MS)
     }
-    mark()
-    document.addEventListener('visibilitychange', mark)
-    return () => document.removeEventListener('visibilitychange', mark)
-  }, [db, chat, me.id])
-  // Leaving the room with a receipt still waiting: send it now, so the chat isn't left unread.
-  useEffect(() => () => {
-    if (!markTimer.current) return
-    clearTimeout(markTimer.current)
-    if (isUnread(chatNow.current, me.id)) markRead(db, me.id, chatNow.current.id).catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    const leave = () => {
+      if (!here) return
+      here = false
+      clearInterval(beat)
+      markGone(db, me.id, chat.id).catch(() => {})
+    }
+    const sync = () => (document.visibilityState === 'visible' ? enter() : leave())
+    sync()
+    document.addEventListener('visibilitychange', sync)
+    window.addEventListener('pagehide', leave)
+    return () => { document.removeEventListener('visibilitychange', sync); window.removeEventListener('pagehide', leave); leave() }
+  }, [db, chat.id, me.id])
+  // Messages arriving while I'm here: read on this device (unread badge), nothing sent.
+  useEffect(() => { if (chat.last && document.visibilityState === 'visible') noteRead(chat.id, chat.last.at?.toMillis() ?? Date.now()) }, [chat.id, chat.last?.at]) // eslint-disable-line react-hooks/exhaustive-deps
   const toBottom = (smooth = false) => { const el = listRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); nearBottom.current = true; setNewBelow(0) }
   // Follow new messages only while you're at the bottom; if you've scrolled up to read,
   // stay put and offer a "새 메시지" button instead of yanking the view down.
@@ -521,7 +521,7 @@ export function ChatRoom(p: RoomProps) {
             const lastOfRun = !next || next.uid !== m.uid || next.kind === 'system' || (next.at?.toMillis() ?? 0) - at > 60_000 || clock(next.at?.toMillis() ?? 0) !== clock(at)
             const sender = byId.get(m.uid)
             // KakaoTalk-style unread count: members (other than the sender) who haven't opened the chat since this message.
-            const unreadBy = chat.members.filter(u => u !== m.uid && readAt(chat, u, roomReads) < at).length
+            const unreadBy = chat.members.filter(u => u !== m.uid && !hasSeen(chat, u, at, roomReads)).length
             const bubble = m.kind === 'gift' && m.giftId
               ? <GiftBubble db={db} giftId={m.giftId} me={me.id} byId={byId} onClaim={p.onClaimGift} onCancel={p.onCancelGift} onLoaded={keepBottom} />
               : m.kind === 'image'

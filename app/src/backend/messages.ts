@@ -107,18 +107,45 @@ function noteMyRead(chatId: string, at: number) {
 /** Re-render when I mark something read on this device. */
 export function onMyReads(cb: () => void) { readListeners.add(cb); return () => { readListeners.delete(cb) } }
 
+/** chats/{id}/state/reads: uid → last read, plus here.uid → "in this room (on screen) until". */
+export type RoomReads = Record<string, unknown> & { here?: Record<string, Timestamp> }
+
 /** When `uid` last read this chat: the receipts doc, the older in-doc receipts, and (for me) this device. */
-export const readAt = (c: ChatDoc & { id?: string }, uid: string, roomReads?: Record<string, Timestamp | null>) =>
-  Math.max(ms(c.reads?.[uid]), ms(roomReads?.[uid]), c.id && uid === meUid ? myReads[c.id] ?? 0 : 0)
+export const readAt = (c: ChatDoc & { id?: string }, uid: string, roomReads?: RoomReads) =>
+  Math.max(ms(c.reads?.[uid]), ms(roomReads?.[uid] as Timestamp | undefined), c.id && uid === meUid ? myReads[c.id] ?? 0 : 0)
+
+/**
+ * Has `uid` seen a message sent at `at`? Read receipts no longer go out per message: someone
+ * with the room open says so once ("here until …", refreshed every HEARTBEAT_MS) and
+ * everything that arrives meanwhile counts as read by them.
+ */
+export const hasSeen = (c: ChatDoc & { id?: string }, uid: string, at: number, roomReads?: RoomReads) =>
+  readAt(c, uid, roomReads) >= at || ms(roomReads?.here?.[uid]) >= at
+export const HERE_MS = 200_000, HEARTBEAT_MS = 90_000
 let meUid = ''
 export const setReadsUser = (uid: string) => { meUid = uid }
 
 export const isUnread = (c: ChatDoc & { id?: string }, me: string) =>
   !!c.last && c.last.uid !== me && ms(c.last.at) > Math.max(ms(c.reads?.[me]), c.id ? myReads[c.id] ?? 0 : 0)
 
-/** Everyone's read times for one chat (the room's KakaoTalk-style unread counts). */
-export function subscribeReads(db: Firestore, chatId: string, cb: (reads: Record<string, Timestamp | null>) => void): Unsubscribe {
-  return onSnapshot(doc(db, 'chats', chatId, 'state', 'reads'), s => cb((s.data({ serverTimestamps: 'estimate' }) ?? {}) as Record<string, Timestamp | null>), () => {})
+/** Everyone's read times and who's in the room (the room's KakaoTalk-style unread counts). */
+export function subscribeReads(db: Firestore, chatId: string, cb: (reads: RoomReads) => void): Unsubscribe {
+  return onSnapshot(doc(db, 'chats', chatId, 'state', 'reads'), s => cb((s.data({ serverTimestamps: 'estimate' }) ?? {}) as RoomReads), () => {})
+}
+
+/** Reading along in the open room: this device's unread badge only, nothing sent. */
+export const noteRead = (chatId: string, at: number) => noteMyRead(chatId, at)
+
+/** In the room and on screen (entering, or the heartbeat): read up to now, here for HERE_MS. */
+export async function markHere(db: Firestore, me: string, chatId: string) {
+  noteMyRead(chatId, Date.now())
+  await setDoc(doc(db, 'chats', chatId, 'state', 'reads'), { [me]: serverTimestamp(), here: { [me]: FsTimestamp.fromMillis(Date.now() + HERE_MS) } }, { merge: true })
+}
+
+/** Left the room (or the app went to the background): read up to now, not here any more. */
+export async function markGone(db: Firestore, me: string, chatId: string) {
+  noteMyRead(chatId, Date.now())
+  await setDoc(doc(db, 'chats', chatId, 'state', 'reads'), { [me]: serverTimestamp(), here: { [me]: deleteField() } }, { merge: true })
 }
 
 /** Opens (creating if needed) my 1:1 chat with `other`. */
