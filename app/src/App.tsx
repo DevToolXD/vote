@@ -20,6 +20,8 @@ import { NotifySettings } from './components/NotifySettings'
 import { MessageBanner, type Banner } from './components/MessageBanner'
 import { SupportFlow, SupportRoom } from './components/SupportScreen'
 import { sendSupport, subscribeTickets, type Ticket } from './backend/support'
+import { markNoticeSeen, nextUnseenNotice, postNotice, subscribeNoticeIndex, type Notice } from './backend/notices'
+import { NoticeScreen } from './components/NoticeScreen'
 import { BuyDialog, Dialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
@@ -102,6 +104,8 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   const [ticketId, setTicketId] = useState<string | null>(startSupport)
   const [mustChangePw, setMustChangePw] = useState(false)
   const [banner, setBanner] = useState<Banner | null>(null)
+  const [notice, setNotice] = useState<Notice | null>(null)
+  const [noticeIds, setNoticeIds] = useState<string[]>([])
   const seenLast = useRef<Map<string, number> | null>(null)
   const [newPw, setNewPw] = useState({ a: '', b: '', busy: false })
   const [newChatOpen, setNewChatOpen] = useState(false)
@@ -124,6 +128,22 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   useEffect(() => onAuthChange(u => { setAuthUser(u && !u.isAnonymous ? u : null); setAuthReady(true) }), [])
   useEffect(() => (db ? subscribeCandidates(db, setRows) : undefined), [])
   useEffect(() => (db ? subscribeSeason(db, setSeason) : undefined), [])
+
+  // 공지: signed-in people see each new notice full-screen, once.
+  useEffect(() => (authUser && db ? subscribeNoticeIndex(db, setNoticeIds) : (setNoticeIds([]), setNotice(null), undefined)), [authUser])
+  useEffect(() => {
+    if (!authUser || !db || !noticeIds.length || notice) return
+    let live = true
+    nextUnseenNotice(db, authUser.uid, noticeIds).then(n => { if (live && n) setNotice(n) })
+    return () => { live = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser, noticeIds])
+  const closeNotice = async () => {
+    if (!notice || !authUser || !db) return
+    await markNoticeSeen(db, authUser.uid, notice.id).catch(e => failToast('저장하지 못했어요', e))
+    const next = await nextUnseenNotice(db, authUser.uid, noticeIds.filter(id => id !== notice.id))
+    setNotice(next)
+  }
 
   // Logged in with an admin-issued one-time code → choose a new password first.
   useEffect(() => { if (authUser) needsNewPassword(authUser.uid).then(setMustChangePw); else setMustChangePw(false) }, [authUser])
@@ -497,6 +517,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
               all={all}
               tickets={tickets}
               onOpenTicket={setTicketId}
+              postNotice={(t, b, p) => postNotice(db!, authUser.uid, t, b, p)}
               season={season}
               run={runAdmin}
               grantPoints={(t, n, p) => grantPoints(db!, authUser.uid, t, n, p)}
@@ -648,6 +669,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
         )}
         {installOpen && <InstallSheet onClose={() => setInstallOpen(false)} onToast={showToast} />}
         {adminBusy && <AdminProgressOverlay label={adminBusy.label} p={adminBusy.p} />}
+        {notice && authUser && !mustChangePw && <NoticeScreen notice={notice} onDone={closeNotice} />}
         {banner && <MessageBanner banner={banner} onDone={() => setBanner(null)} onOpen={id => { setProfile(null); setSheet(null); setTab('msg'); setChatId(id) }} />}
         {toast && <Toast msg={toast} />}
       </div>

@@ -15,6 +15,7 @@ import { buyItem, castVote, equipItem, pointsOf, updateMyProfile } from '../src/
 import { createGroup, dmId, inviteMembers, leaveGroup, loadImage, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { markSupportRead, sendSupport } from '../src/backend/support'
+import { markNoticeSeen, nextUnseenNotice, postNotice } from '../src/backend/notices'
 import type { CandidateDoc } from '../src/backend/types'
 import { priceOf } from '../src/data'
 
@@ -22,12 +23,12 @@ const PROJECT = 'demo-vote'
 const [HOST, PORT] = (process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8181').split(':')
 const apps: FirebaseApp[] = []
 
-function dbAs(user: { uid: string; email?: string; admin?: boolean } | null): Firestore {
+function dbAs(user: { uid: string; email?: string; admin?: boolean; firebase?: { sign_in_provider: string } } | null): Firestore {
   const app = initializeApp({ projectId: PROJECT, apiKey: 'test' }, `app${apps.length}`)
   apps.push(app)
   const db = getFirestore(app)
   connectFirestoreEmulator(db, HOST, Number(PORT), user ? {
-    mockUserToken: { sub: user.uid, user_id: user.uid, ...(user.email ? { email: user.email } : {}), ...(user.admin ? { admin: true } : {}) },
+    mockUserToken: { sub: user.uid, user_id: user.uid, ...(user.email ? { email: user.email } : {}), ...(user.admin ? { admin: true } : {}), firebase: { sign_in_provider: 'password', identities: {}, ...(user.firebase ?? {}) } },
   } : undefined)
   return db
 }
@@ -526,6 +527,29 @@ describe('상담 and password reset', () => {
     }, (err, stdout, stderr) => err ? reject(new Error(stderr || stdout)) : resolve()))
     assert.equal((await getDoc(doc(a, 'pwResets', 'a'))).data()!.status, 'done')
     await deleteDoc(doc(a, 'pwResets', 'a'))
+  })
+})
+
+describe('공지', () => {
+  test('admin posts; each member reads it once; anonymous and regular users can’t post', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
+    await assert.rejects(postNotice(b, 'b', '가짜 공지', '내용'))
+    await postNotice(admin, ADMIN.uid, '점검 안내', '오늘 밤 점검이 있어요')
+    const ids = (await getDoc(doc(a, 'meta', 'noticeIndex'))).data()!.ids as string[]
+    assert.equal(ids.length, 1)
+    const n = await nextUnseenNotice(a, 'a', ids)
+    assert.deepEqual([n?.title, n?.body], ['점검 안내', '오늘 밤 점검이 있어요'])
+    await markNoticeSeen(a, 'a', ids[0])
+    await denied(getDoc(doc(a, 'notices', ids[0]))) // read once
+    assert.equal(await nextUnseenNotice(a, 'a', ids), null)
+    await denied(setDoc(doc(a, 'noticeReads', 'a'), { seen: {} })) // can't un-see
+    assert.ok(await nextUnseenNotice(b, 'b', ids)) // others still can
+    const anon = dbAs({ uid: 'anon9', firebase: { sign_in_provider: 'anonymous' } })
+    await denied(getDoc(doc(anon, 'notices', ids[0])))
+    await denied(getDoc(doc(anon, 'meta', 'noticeIndex')))
+    await denied(getDoc(doc(dbAs(null), 'notices', ids[0])))
+    await denied(setDoc(doc(b, 'notices', 'x'.repeat(20)), { title: 't', body: 'b', by: 'b', createdAt: serverTimestamp() }))
+    await denied(setDoc(doc(b, 'meta', 'noticeIndex'), { ids: [] }))
   })
 })
 

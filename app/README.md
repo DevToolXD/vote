@@ -53,6 +53,10 @@ The **메시지** tab (paper-plane icon, red badge = chats with unread messages)
 
 For local end-to-end testing, build with `VITE_USE_EMULATORS=1` and run the Auth + Firestore emulators (`firebase.json` has both).
 
+## 공지 (notices)
+
+관리 → **공지사항**: title + body → **공지 보내기** (3-token admin op). Everyone signed in with a real account sees it full-screen once, the next time they open the app (or right away if it's open); **확인했어요** records it in `noticeReads/{uid}`, after which `firestore.rules` refuses to hand that notice out again. Anonymous (상담) and signed-out visitors can't read notices.
+
 ## 상담 and password reset
 
 로그인 → **비밀번호를 잊었어요** opens a chat with the admin (상담) without an account: the app signs in anonymously (`setup-auth.mjs` turns anonymous sign-in on) and asks for name and id once. The admin sees 상담 in the 관리 tab (badge + push), replies, and — when the id matches an account — taps **비밀번호 초기화**: a 3-token admin op writes an 8-digit one-time code to `pwResets/{uid}`, the worker sets it as the password (seconds), and the code is sent in the chat. Logging in with it opens **새 비밀번호를 정해주세요**; the new password replaces the code and the reset is cleared.

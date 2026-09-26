@@ -21,6 +21,9 @@ rules_version = '2';
 //   support/{uid}                 a 상담 (support chat) with the admin; uid may be an anonymous login
 //   support/{uid}/messages/{id}   { from: 'user'|'admin', text, at }
 //   pwResets/{uid}                admin password reset: one-time code the worker sets as the password
+//   notices/{id}                  admin 공지 { title, body, by, createdAt } — each signed-in person can read it once
+//   meta/noticeIndex              { ids: [newest first, ≤ 20] } so the app knows which notices exist
+//   noticeReads/{uid}             { seen: { noticeId: true } } — only ever grows; a seen notice can't be read again
 //
 // Admin operations (grant points, set season name, reset season, delete account)
 // Only the admin account (id "admin", i.e. admin@vote.local, or a user with the
@@ -63,6 +66,10 @@ service cloud.firestore {
                 && p.target is string && validPersonName(p.name))
           || (action == 'resetPassword' && p.keys().hasOnly(['target', 'code']) && p.keys().hasAll(['target', 'code'])
                 && p.target is string && p.code is string && p.code.matches('[0-9]{8}'))
+          || (action == 'postNotice' && p.keys().hasOnly(['id', 'title', 'body']) && p.keys().hasAll(['id', 'title', 'body'])
+                && p.id is string && p.id.matches('[A-Za-z0-9]{20}')
+                && p.title is string && p.title.size() >= 1 && p.title.size() <= 40
+                && p.body is string && p.body.size() >= 1 && p.body.size() <= 2000)
           || (action == 'deleteAccount' && p.keys().hasOnly(['target']) && p.target is string && p.target != request.auth.uid);
     }
     function validSeasonName(n) { return n is string && n.size() >= 1 && n.size() <= 20; }
@@ -100,7 +107,7 @@ service cloud.firestore {
         && request.resource.data.used == false
         && request.resource.data.createdAt == request.time
         && request.resource.data.seq in [1, 2, 3]
-        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser', 'resetPassword']
+        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser', 'resetPassword', 'postNotice']
         && request.resource.data.payload is map;
       // Burned only together with a lock that lists it.
       allow update: if isAdmin()
@@ -553,6 +560,48 @@ service cloud.firestore {
         && request.resource.data.status == 'pending';
       // After logging in with the code and choosing a new password.
       allow delete: if signedIn() && request.auth.uid == uid && resource.data.status == 'done';
+    }
+
+    // ---- 공지 (notices) ------------------------------------------------------------
+    // Posted by the admin (3-token op). Real accounts only (not the anonymous 상담
+    // login), and each person can read a notice once: after they mark it seen,
+    // reading it is refused.
+
+    function member() { return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+    function seenNotice(id) {
+      let rp = /databases/$(database)/documents/noticeReads/$(request.auth.uid);
+      return exists(rp) && get(rp).data.seen.get(id, false) == true;
+    }
+
+    match /notices/{id} {
+      allow get: if isAdmin() || (member() && !seenNotice(id));
+      allow list: if isAdmin();
+      allow create: if adminOp('postNotice') && lock().payload.id == id
+        && request.resource.data.keys().hasOnly(['title', 'body', 'by', 'createdAt'])
+        && request.resource.data.title == lock().payload.title
+        && request.resource.data.body == lock().payload.body
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    match /meta/noticeIndex {
+      allow read: if member() || isAdmin();
+      allow write: if adminOp('postNotice')
+        && request.resource.data.keys().hasOnly(['ids'])
+        && request.resource.data.ids is list && request.resource.data.ids.size() <= 20
+        && request.resource.data.ids[0] == lock().payload.id;
+    }
+
+    match /noticeReads/{uid} {
+      allow read: if member() && request.auth.uid == uid;
+      allow create: if member() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['seen']) && request.resource.data.seen is map;
+      allow update: if member() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['seen'])
+        && request.resource.data.seen.keys().hasAll(resource.data.seen.keys())
+        && request.resource.data.seen.diff(resource.data.seen).affectedKeys().hasOnly(request.resource.data.seen.diff(resource.data.seen).addedKeys());
+      allow delete: if false;
     }
   }
 }
