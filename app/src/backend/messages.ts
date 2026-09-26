@@ -43,8 +43,8 @@ export type ChatDoc = {
 }
 export type ChatRow = ChatDoc & { id: string }
 /** 'image': the photo itself is in chats/{id}/media/{messageId}; 'system': e.g. "A님이 B님을 초대했어요". */
-export type MessageKind = 'text' | 'image' | 'system'
-export type MessageRow = { id: string; uid: string; text: string; at: Timestamp | null; kind?: MessageKind }
+export type MessageKind = 'text' | 'image' | 'system' | 'gift'
+export type MessageRow = { id: string; uid: string; text: string; at: Timestamp | null; kind?: MessageKind; giftId?: string }
 
 export const dmId = (a: string, b: string) => [a, b].sort().join('_')
 const ms = (t: Timestamp | null | undefined) => (t ? t.toMillis() : 0)

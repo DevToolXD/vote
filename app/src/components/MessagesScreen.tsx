@@ -3,6 +3,8 @@ import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { MEDALS } from '../data'
 import { MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, isUnread, loadImage, markRead, subscribeMessages, type ChatRow, type MessageRow } from '../backend/messages'
+import { MAX_GIFT, subscribeGift, type Gift } from '../backend/gifts'
+import { saveImage } from '../saveImage'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
 import { BackIcon, ChevronRight, CloseIcon, SearchIcon } from './icons'
@@ -232,6 +234,11 @@ type RoomProps = {
   onBack: () => void
   onSend: (text: string) => Promise<boolean>
   onSendImage: (file: File) => Promise<boolean>
+  myPoints: number
+  onSendGift: (amount: number) => Promise<boolean>
+  onClaimGift: (giftId: string) => void
+  onCancelGift: (giftId: string) => void
+  onToast: (msg: string) => void
   onMute: (muted: boolean) => void
   onLeave: () => void
   onInvite: (ids: string[]) => Promise<boolean>
@@ -251,6 +258,7 @@ export function ChatRoom(p: RoomProps) {
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [attach, setAttach] = useState<'menu' | 'gift' | null>(null)
   const firstIds = useRef<Set<string> | null>(null)
   const box = useKeyboardSafeBox()
   const v = describeChat(chat, me.id, byId, !!me.msgOff)
@@ -329,7 +337,9 @@ export function ChatRoom(p: RoomProps) {
             const sender = byId.get(m.uid)
             // KakaoTalk-style unread count: members (other than the sender) who haven't opened the chat since this message.
             const unreadBy = chat.members.filter(u => u !== m.uid && (chat.reads?.[u]?.toMillis() ?? 0) < at).length
-            const bubble = m.kind === 'image'
+            const bubble = m.kind === 'gift' && m.giftId
+              ? <GiftBubble db={db} giftId={m.giftId} me={me.id} byId={byId} onClaim={p.onClaimGift} onCancel={p.onCancelGift} />
+              : m.kind === 'image'
               ? <ImageBubble db={db} chatId={chat.id} msgId={m.id} onOpen={setViewer} />
               : <span style={sx('padding:10px 14px;border-radius:20px;font-size:15px;line-height:22px;white-space:pre-wrap;word-break:break-word', { background: mine ? '#3182f6' : tinted ? '#ffffff' : '#f2f4f6', color: mine ? '#ffffff' : '#191f28', fontWeight: mine ? 500 : 400 })}>{m.text}</span>
             return (
@@ -367,7 +377,7 @@ export function ChatRoom(p: RoomProps) {
         <div style={sx('flex:none;padding:8px 12px', { paddingBottom: box.top || box.height < window.innerHeight - 80 ? 8 : 'calc(8px + env(safe-area-inset-bottom))', background: '#ffffff' })}>
           {v.canSend ? (
             <div style={css('display:flex;align-items:flex-end;gap:6px')}>
-              <button className="pr-94" onClick={() => fileRef.current?.click()} disabled={sending} aria-label="사진 보내기" style={css('width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#6b7684')}><PhotoIcon /></button>
+              <button className="pr-94" onClick={() => setAttach(a => (a ? null : 'menu'))} disabled={sending} aria-label="사진·포인트 선물" aria-expanded={!!attach} style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#4e5968;background:#f2f4f6;transition:transform 260ms ${EASE}`, { transform: attach ? 'rotate(45deg)' : 'none' })}><PlusIcon /></button>
               <input ref={fileRef} type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) pickPhoto(f); e.target.value = '' }} style={css('display:none')} />
               <textarea
                 ref={inputRef} className="box-focus" rows={1} value={draft} maxLength={MAX_TEXT} placeholder="메시지 보내기"
@@ -390,7 +400,29 @@ export function ChatRoom(p: RoomProps) {
             onLeave={() => { setMenu(false); p.onLeave() }}
             onOpenProfile={uid => { setMenu(false); onOpenProfile(uid) }} />
         )}
-        {viewer && <ImageViewer src={viewer} onClose={() => setViewer(null)} />}
+        {viewer && <ImageViewer src={viewer} onClose={() => setViewer(null)} onToast={p.onToast} />}
+        {attach === 'menu' && (
+          <BottomSheet onScrim={() => setAttach(null)} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));animation:sheetUp 380ms ${EASE} both`}>
+            <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
+            <div className="anim-list" style={css('padding:24px 24px 8px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px')}>
+              <button className="pr-96" onClick={() => { setAttach(null); fileRef.current?.click() }} style={css('display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 0;border-radius:20px;background:#f9fafb')}>
+                <span style={css('width:56px;height:56px;border-radius:9999px;background:#e8f3ff;color:#3182f6;display:flex;align-items:center;justify-content:center')}><PhotoIcon /></span>
+                <span style={css('font-size:15px;font-weight:600;color:#333d4b')}>사진</span>
+              </button>
+              <button className="pr-96" onClick={() => setAttach('gift')} style={css('display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 0;border-radius:20px;background:#f9fafb')}>
+                <span style={css('width:56px;height:56px;border-radius:9999px;background:#fff4d6;display:flex;align-items:center;justify-content:center;font-size:28px')}>🎁</span>
+                <span style={css('font-size:15px;font-weight:600;color:#333d4b')}>포인트 선물</span>
+              </button>
+            </div>
+          </BottomSheet>
+        )}
+        {attach === 'gift' && (
+          <GiftSheet
+            points={p.myPoints} group={chat.type === 'group'} to={chat.type === 'dm' ? v.people[0]?.name : undefined}
+            onClose={() => setAttach(null)}
+            onSend={async n => { if (await p.onSendGift(n)) setAttach(null) }}
+          />
+        )}
       </div>
     </div>
   )
@@ -408,12 +440,84 @@ function ImageBubble({ db, chatId, msgId, onOpen }: { db: Firestore; chatId: str
   )
 }
 
-function ImageViewer({ src, onClose }: { src: string; onClose: () => void }) {
+function ImageViewer({ src, onClose, onToast }: { src: string; onClose: () => void; onToast: (msg: string) => void }) {
+  const save = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try { if ((await saveImage(src)) === 'downloaded') onToast('사진을 저장했어요') }
+    catch (err) { if ((err as Error)?.name !== 'AbortError') onToast('사진을 저장하지 못했어요') }
+  }
   return (
     <div onClick={onClose} role="dialog" aria-label="사진" style={css('position:absolute;inset:0;z-index:20;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;animation:fade 200ms ease both')}>
-      <img src={src} alt="사진" style={css(`max-width:100%;max-height:100%;object-fit:contain;animation:viewerIn 320ms ${EASE} both`)} />
+      <img src={src} alt="사진" onClick={e => e.stopPropagation()} style={css(`max-width:100%;max-height:100%;object-fit:contain;animation:viewerIn 320ms ${EASE} both;-webkit-touch-callout:default`)} />
       <button onClick={onClose} aria-label="닫기" style={css('position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;width:44px;height:44px;border-radius:9999px;background:rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center')}><CloseIcon size={20} stroke="#fff" width={2.4} /></button>
+      <button className="pr-96" onClick={save} style={css('position:absolute;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom));height:48px;padding:0 20px;border-radius:9999px;background:rgba(255,255,255,0.18);color:#fff;font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;backdrop-filter:blur(8px)')}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v11M7 10.5l5 5 5-5" /><path d="M5 20h14" /></svg>
+        저장
+      </button>
     </div>
+  )
+}
+
+/** Kakao-style gift card in the chat: 받기 / 취소하기 / who got it. */
+function GiftBubble({ db, giftId, me, byId, onClaim, onCancel }: { db: Firestore; giftId: string; me: string; byId: Map<string, Person>; onClaim: (id: string) => void; onCancel: (id: string) => void }) {
+  const [g, setG] = useState<Gift | null | undefined>(undefined)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => subscribeGift(db, giftId, setG), [db, giftId])
+  useEffect(() => { setBusy(false) }, [g?.status])
+  const amount = g ? g.amount.toLocaleString() + 'P' : ''
+  const mine = g?.from === me
+  const canTake = !!g && g.status === 'open' && !mine && (!g.to || g.to === me)
+  const done = g?.status !== 'open'
+  const status = !g ? '불러오는 중이에요' : g.status === 'claimed' ? (g.claimedBy === me ? '내가 받았어요' : `${byId.get(g.claimedBy ?? '')?.name ?? '누군가'}님이 받았어요`)
+    : g.status === 'cancelled' ? '취소된 선물이에요'
+    : mine ? (g.to ? '아직 받지 않았어요' : '먼저 받는 한 명이 가져가요') : g.to ? '나에게 온 선물이에요' : '먼저 받는 사람이 가져가요'
+  return (
+    <span style={sx(`width:228px;border-radius:20px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px rgba(0,0,33,0.06);transition:filter 300ms ${EASE}`, { filter: done ? 'saturate(0.35)' : 'none', background: '#ffffff' })}>
+      <span style={css('padding:16px 16px 14px;background:linear-gradient(135deg,#fff1c2,#ffd66b);display:flex;align-items:center;gap:12px')}>
+        <span style={css('font-size:34px;line-height:1')}>🎁</span>
+        <span style={css('display:flex;flex-direction:column')}>
+          <span style={css('font-size:13px;font-weight:600;color:#8a5a00')}>포인트 선물</span>
+          <span style={css('font-size:22px;line-height:30px;font-weight:800;color:#5c3d00;font-variant-numeric:tabular-nums')}>{amount}</span>
+        </span>
+      </span>
+      <span style={css('padding:10px 14px 12px;display:flex;flex-direction:column;gap:8px')}>
+        <span style={css('font-size:13px;line-height:19px;color:#6b7684')}>{status}</span>
+        {canTake && <button className="pr-96" disabled={busy} onClick={() => { setBusy(true); onClaim(giftId) }} style={sx('height:40px;border-radius:12px;background:#3182f6;color:#fff;font-size:15px;font-weight:600', { opacity: busy ? 0.5 : 1 })}>받기</button>}
+        {g?.status === 'open' && mine && <button className="pr-96" disabled={busy} onClick={() => { setBusy(true); onCancel(giftId) }} style={sx('height:40px;border-radius:12px;background:#f2f4f6;color:#4e5968;font-size:15px;font-weight:600', { opacity: busy ? 0.5 : 1 })}>취소하기</button>}
+      </span>
+    </span>
+  )
+}
+
+/** "얼마를 선물할까요?" */
+function GiftSheet({ points, group, to, onClose, onSend }: { points: number; group: boolean; to?: string; onClose: () => void; onSend: (n: number) => Promise<void> }) {
+  const [amount, setAmount] = useState('')
+  const [busy, setBusy] = useState(false)
+  const n = Number(amount || 0)
+  const ok = Number.isInteger(n) && n >= 1 && n <= Math.min(points, MAX_GIFT)
+  const add = (k: number) => setAmount(String(Math.min(points, (Number(amount) || 0) + k)))
+  return (
+    <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));animation:sheetUp 420ms ${EASE} both`}>
+      <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
+      <div style={css('padding:20px 24px 8px;display:flex;flex-direction:column;gap:4px')}>
+        <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>얼마를 선물할까요?</span>
+        <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{group ? '단톡방에서는 먼저 받는 한 명이 가져가요' : `${to ?? '상대'}님에게 보내요`} · 받기 전에는 취소할 수 있어요</span>
+      </div>
+      <div style={css('padding:16px 24px 0;display:flex;align-items:baseline;gap:6px')}>
+        <input autoFocus inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} placeholder="0"
+          style={sx('flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:34px;line-height:44px;font-weight:700;font-variant-numeric:tabular-nums', { color: amount && !ok ? '#f04452' : '#191f28' })} />
+        <span style={css('font-size:26px;font-weight:700;color:#191f28')}>P</span>
+      </div>
+      <div style={sx('padding:4px 24px 0;font-size:13px', { color: amount && !ok ? '#f04452' : '#8b95a1' })}>{amount && n > points ? `포인트가 모자라요 · 내 포인트 ${points.toLocaleString()}P` : `내 포인트 ${points.toLocaleString()}P`}</div>
+      <div className="anim-list" style={css('padding:16px 24px 0;display:flex;gap:6px;flex-wrap:wrap')}>
+        {[10, 50, 100, 500].map(k => <button key={k} className="pr-96" onClick={() => add(k)} style={css('height:34px;padding:0 14px;border-radius:9999px;background:#f2f4f6;color:#4e5968;font-size:14px;font-weight:600')}>+{k}</button>)}
+        <button className="pr-96" onClick={() => setAmount(String(Math.min(points, MAX_GIFT)))} style={css('height:34px;padding:0 14px;border-radius:9999px;background:#f2f4f6;color:#4e5968;font-size:14px;font-weight:600')}>전부</button>
+      </div>
+      <div style={css('padding:24px 20px 0')}>
+        <button data-g="primary" className="pr-96" disabled={!ok || busy} onClick={async () => { setBusy(true); try { await onSend(n) } finally { setBusy(false) } }}
+          style={sx(`width:100%;height:56px;border-radius:16px;background:#3182f6;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms ${EASE}`, { opacity: ok && !busy ? 1 : 0.3 })}>{ok ? `${n.toLocaleString()}P 선물하기` : '선물하기'}</button>
+      </div>
+    </BottomSheet>
   )
 }
 

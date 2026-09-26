@@ -15,6 +15,7 @@ import { buyItem, castVote, equipItem, pointsOf, updateMyProfile } from '../src/
 import { createGroup, dmId, inviteMembers, leaveGroup, loadImage, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { markSupportRead, sendSupport } from '../src/backend/support'
+import { cancelGift, claimGift, sendGift } from '../src/backend/gifts'
 import { markNoticeSeen, nextUnseenNotice, postNotice } from '../src/backend/notices'
 import { DEFAULT_REWARDS } from '../src/backend/rewards'
 import type { CandidateDoc } from '../src/backend/types'
@@ -594,6 +595,55 @@ describe('season end date and rewards', () => {
     assert.equal((await getDoc(doc(a, 'seasonResults', '1'))).data()!.auto, true)
     await run() // not due any more: nothing changes
     assert.equal((await read(a, 'candidates/a')).bonus, 551)
+  })
+})
+
+describe('포인트 선물', () => {
+  const chatOf = async (db: Firestore, id: string) => ({ id, ...(await getDoc(doc(db, 'chats', id))).data() } as never)
+  const points = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
+  test('1:1: only the other person can take it; points move exactly once', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 200)
+    const id = await openDm(a, 'a', 'b')
+    await assert.rejects(sendGift(a, 'a', await chatOf(a, id), 500)) // more than a has
+    await sendGift(a, 'a', await chatOf(a, id), 120)
+    assert.equal(await points(a, 'a'), 80)
+    const gid = (await getDocs(collection(a, 'chats', id, 'messages'))).docs[0].data().giftId
+    await assert.rejects(claimGift(a, 'a', gid)) // not your own
+    await claimGift(b, 'b', gid)
+    assert.equal(await points(b, 'b'), 120)
+    await assert.rejects(claimGift(b, 'b', gid)) // only once
+    await assert.rejects(cancelGift(a, 'a', gid)) // already taken
+    assert.equal(await points(a, 'a'), 80)
+  })
+  test('group: first to tap wins; the sender can cancel an untaken gift', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c'); const d = await signUp('d')
+    await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 300)
+    const id = await createGroup(a, 'a', ['b', 'c'], '모임')
+    await sendGift(a, 'a', await chatOf(a, id), 100)
+    await sendGift(a, 'a', await chatOf(a, id), 50)
+    const gifts = (await getDocs(collection(a, 'chats', id, 'messages'))).docs.map(m => m.data()).filter(m => m.kind === 'gift').map(m => m.giftId)
+    const results = await Promise.allSettled([claimGift(b, 'b', gifts[0]), claimGift(c, 'c', gifts[0])])
+    assert.equal(results.filter(r => r.status === 'fulfilled').length, 1)
+    await assert.rejects(claimGift(d, 'd', gifts[1])) // not in the chat
+    await cancelGift(a, 'a', gifts[1])
+    assert.equal(await points(a, 'a'), 300 - (await getDoc(doc(a, 'gifts', gifts[0]))).data()!.amount) // the cancelled one came back
+    await assert.rejects(claimGift(b, 'b', gifts[1])) // cancelled
+  })
+  test('refused: faking the points side or the gift side', async () => {
+    const a = await signUp('a'); await signUp('b')
+    await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 100)
+    const id = await openDm(a, 'a', 'b')
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { bonus: 1000, lastGift: 'x' }))
+    await denied(setDoc(doc(a, 'gifts', 'g1'), { chatId: id, from: 'a', to: 'b', amount: 50, status: 'open', createdAt: serverTimestamp() })) // points not held
+    const w = writeBatch(a)
+    w.set(doc(a, 'gifts', 'g2'), { chatId: id, from: 'a', to: 'b', amount: 50, status: 'claimed', createdAt: serverTimestamp() })
+    w.update(doc(a, 'candidates', 'a'), { spent: 50, lastGift: 'g2' })
+    await denied(w.commit())
+    const w2 = writeBatch(a)
+    w2.set(doc(a, 'gifts', 'g3'), { chatId: id, from: 'a', to: 'a', amount: 50, status: 'open', createdAt: serverTimestamp() }) // to yourself
+    w2.update(doc(a, 'candidates', 'a'), { spent: 50, lastGift: 'g3' })
+    await denied(w2.commit())
   })
 })
 

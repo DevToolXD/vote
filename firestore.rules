@@ -13,6 +13,8 @@ rules_version = '2';
 //                                 endsAt = when the worker ends the season automatically (paying rewards)
 //                                 rewards = { first, second, third, top6, participant } points
 //   seasonResults/{number}        what each season paid out (written by the worker / admin reset)
+//   gifts/{id}                    포인트 선물 in a chat { chatId, from, to (1:1) | null (group: first to tap), amount, status }
+//                                 the sender's points are held (spent += amount) until claimed or cancelled
 //   meta/adminLock                the admin operation currently being committed (see below)
 //   adminTokens/{random id}       single-use tokens for admin operations
 //   banned/{uid}                  accounts deleted by the admin; they can't re-join
@@ -218,6 +220,43 @@ service cloud.firestore {
     function upsNow(v, cur) { return v.get('season', 0) == cur ? v.get('ups', 0) : 0; }
     function downsNow(v, cur) { return v.get('season', 0) == cur ? v.get('downs', 0) : 0; }
 
+    // ---- 포인트 선물 (gifts): the candidate side of each step names the gift in lastGift ----
+    function giftPath(id) { return /databases/$(database)/documents/gifts/$(id); }
+    // Sending: the points leave (spent grows by the gift amount), as long as I have them.
+    function giftSend() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let g = getAfter(giftPath(d.lastGift)).data;
+      return request.auth.uid == o.ownerUid
+        && d.diff(o).affectedKeys().hasOnly(['spent', 'lastGift'])
+        && !exists(giftPath(d.lastGift))
+        && g.from == request.auth.uid && g.status == 'open'
+        && d.spent == o.spent + g.amount
+        && d.spent <= d.up + d.get('bonus', 0);
+    }
+    // Claiming: the points arrive as bonus.
+    function giftClaim() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let g0 = get(giftPath(d.lastGift)).data;
+      let g1 = getAfter(giftPath(d.lastGift)).data;
+      return request.auth.uid == o.ownerUid
+        && d.diff(o).affectedKeys().hasOnly(['bonus', 'lastGift'])
+        && g0.status == 'open' && g1.status == 'claimed' && g1.claimedBy == request.auth.uid
+        && d.bonus == o.get('bonus', 0) + g0.amount;
+    }
+    // Cancelling an unclaimed gift: the held points come back.
+    function giftCancel() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let g0 = get(giftPath(d.lastGift)).data;
+      let g1 = getAfter(giftPath(d.lastGift)).data;
+      return request.auth.uid == o.ownerUid
+        && d.diff(o).affectedKeys().hasOnly(['spent', 'lastGift'])
+        && g0.from == request.auth.uid && g0.status == 'open' && g1.status == 'cancelled'
+        && d.spent == o.spent - g0.amount;
+    }
+
     // 300P once per account for opening the installed app.
     function appBonusClaim() {
       let d = request.resource.data;
@@ -317,7 +356,7 @@ service cloud.firestore {
         && request.resource.data.owned == {'frame': ['none'], 'plate': ['none'], 'skin': ['none']};
 
       allow update: if signedIn() && (
-        ownerEdit() || voteTally(candidateId) || appBonusClaim() || loginIdBackfill() ||
+        ownerEdit() || voteTally(candidateId) || appBonusClaim() || loginIdBackfill() || giftSend() || giftClaim() || giftCancel() ||
         adminGrant(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId)
       );
 
@@ -485,14 +524,17 @@ service cloud.firestore {
       match /messages/{msgId} {
         allow read: if signedIn() && request.auth.uid in chatData(chatId).members;
         allow create: if signedIn()
-          && request.resource.data.keys().hasOnly(['uid', 'text', 'at', 'kind'])
+          && request.resource.data.keys().hasOnly(['uid', 'text', 'at', 'kind', 'giftId'])
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.at == request.time
           && request.resource.data.text is string && request.resource.data.text.size() <= 500
-          && request.resource.data.get('kind', 'text') in ['text', 'image', 'system']
+          && request.resource.data.get('kind', 'text') in ['text', 'image', 'system', 'gift']
           && (request.resource.data.get('kind', 'text') == 'image'
                 ? existsAfter(/databases/$(database)/documents/chats/$(chatId)/media/$(msgId))
                 : request.resource.data.text.size() >= 1)
+          && (request.resource.data.get('kind', 'text') != 'gift'
+                || (getAfter(/databases/$(database)/documents/gifts/$(request.resource.data.giftId)).data.from == request.auth.uid
+                    && getAfter(/databases/$(database)/documents/gifts/$(request.resource.data.giftId)).data.chatId == chatId))
           && canSend(chatData(chatId));
         allow update, delete: if false;
       }
@@ -638,6 +680,45 @@ service cloud.firestore {
       allow read: if true;
       allow create: if adminOp('seasonReset');
       allow update, delete: if false;
+    }
+
+    // ---- 포인트 선물 (gifts) ----------------------------------------------------------
+    match /gifts/{id} {
+      function inChat(chatId) { return request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members; }
+      function me() { return /databases/$(database)/documents/candidates/$(request.auth.uid); }
+      // A gift that doesn't exist yet reveals nothing; the chat can start watching it before the send lands.
+      allow read: if signedIn() && (resource == null || inChat(resource.data.chatId));
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['chatId', 'from', 'to', 'amount', 'status', 'createdAt'])
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.amount is int && request.resource.data.amount >= 1 && request.resource.data.amount <= 100000
+        && request.resource.data.status == 'open'
+        && request.resource.data.createdAt == request.time
+        && canSend(get(/databases/$(database)/documents/chats/$(request.resource.data.chatId)).data)
+        && (get(/databases/$(database)/documents/chats/$(request.resource.data.chatId)).data.type == 'dm'
+              ? request.resource.data.to == dmOther(get(/databases/$(database)/documents/chats/$(request.resource.data.chatId)).data)
+              : request.resource.data.to == null)
+        // the points are held in the same write
+        && getAfter(me()).data.get('lastGift', '') == id
+        && getAfter(me()).data.spent == get(me()).data.spent + request.resource.data.amount;
+      allow update: if signedIn() && resource.data.status == 'open' && (
+        // 받기: someone else in the chat (the addressee in a 1:1), first come first served
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedBy', 'doneAt'])
+          && request.resource.data.status == 'claimed' && request.resource.data.claimedBy == request.auth.uid
+          && request.resource.data.doneAt == request.time
+          && request.auth.uid != resource.data.from
+          && (resource.data.to == null || resource.data.to == request.auth.uid)
+          && inChat(resource.data.chatId)
+          && getAfter(me()).data.get('lastGift', '') == id
+          && getAfter(me()).data.get('bonus', 0) == get(me()).data.get('bonus', 0) + resource.data.amount) ||
+        // 취소: the sender, while nobody has taken it
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'doneAt'])
+          && request.resource.data.status == 'cancelled' && request.resource.data.doneAt == request.time
+          && request.auth.uid == resource.data.from
+          && getAfter(me()).data.get('lastGift', '') == id
+          && getAfter(me()).data.spent == get(me()).data.spent - resource.data.amount)
+      );
+      allow delete: if false;
     }
   }
 }

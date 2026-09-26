@@ -57,6 +57,10 @@ For local end-to-end testing, build with `VITE_USE_EMULATORS=1` and run the Auth
 
 관리 → **시즌 끝나는 날짜 · 보상**: pick when the season ends and the rewards (defaults 🥇500 · 🥈300 · 🥉150 · 4–6등 90 · everyone who took part 50P; ties share a rank, the participation reward is added on top). Saved with the 3-token protocol in `meta/season` (`endsAt`, `rewards`). When `endsAt` passes, the background worker ends the season in one commit: pays rewards (plus the season's 추천 carried over as points), zeroes tallies, records the TOP 3 and `seasonResults/{n}`, and starts the next season (numbered, rename it in 관리). A manual 새 시즌 시작 pays the same rewards. **보상 공지하기** posts a notice filled in from the saved settings. Home shows a live countdown next to the season name.
 
+## 포인트 선물 and photos in chats
+
+The **+** button in a chat offers 사진 and 포인트 선물. A gift holds the sender's points (`spent += amount`) and shows as a card: in a 1:1 only the other person can take it (**받기**), in a group the first member to tap does; the sender can **취소하기** until then and gets the points back. Every step is checked in `firestore.rules` (`giftSend`/`giftClaim`/`giftCancel`, `match /gifts`). Photos open full-screen with **저장** (share sheet on iPhone/Galaxy app, download elsewhere).
+
 ## 공지 (notices)
 
 관리 → **공지사항**: title + body → **공지 보내기** (3-token admin op). Everyone signed in with a real account sees it full-screen once, the next time they open the app (or right away if it's open); **확인했어요** records it in `noticeReads/{uid}`, after which `firestore.rules` refuses to hand that notice out again. Anonymous (상담) and signed-out visitors can't read notices.

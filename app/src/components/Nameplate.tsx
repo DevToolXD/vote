@@ -1,4 +1,5 @@
 import { memo, type CSSProperties } from 'react'
+import type React from 'react'
 import { css } from '../css'
 import { Avatar } from './Avatar'
 import { PLATE_ART } from './plateArt'
@@ -62,3 +63,30 @@ export const Nameplate = memo(function Nameplate({ kind = 'none', person, sub, f
     </div>
   )
 })
+
+/**
+ * The nameplate art as a profile banner: full strength at the top, fading to
+ * transparent toward the bottom, with the name and bio on it. Without a
+ * nameplate it falls back to the frame's banner colours.
+ */
+export function PlateBanner({ kind = 'none', fallback, name, sub, height, children }: { kind?: string; fallback: string; name: string; sub: string; height: number; children?: React.ReactNode }) {
+  const k = PLATES[kind] ? kind : 'none'
+  const p = PLATES[k]
+  const art = k !== 'none' ? PLATE_ART[k]?.before : undefined
+  const fade = 'linear-gradient(180deg,#000 0%,#000 42%,rgba(0,0,0,0.55) 72%,rgba(0,0,0,0) 100%)'
+  const dark = k !== 'none' ? p.dark : false
+  const shadow = dark ? '0 1px 3px rgba(0,0,0,0.45)' : '0 1px 2px rgba(255,255,255,0.6)'
+  return (
+    <div style={{ position: 'relative', height }}>
+      <div aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'hidden', isolation: 'isolate', background: k !== 'none' ? p.bg : fallback, WebkitMaskImage: fade, maskImage: fade }}>
+        {art && <div className="av-art" dangerouslySetInnerHTML={{ __html: art }} />}
+        {k !== 'none' && <div style={css('position:absolute;top:0;bottom:0;left:0;width:30%;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,0.22),rgba(255,255,255,0));animation:npShine 5s ease-in-out infinite;pointer-events:none')} />}
+      </div>
+      <div style={css('position:absolute;left:140px;right:64px;top:34px;display:flex;flex-direction:column;gap:2px;min-width:0')}>
+        <span style={{ ...css('font-size:22px;line-height:30px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), color: k !== 'none' ? p.fg : '#191f28', textShadow: shadow }}>{name}</span>
+        <span style={{ ...css('font-size:13px;line-height:19px;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all'), color: k !== 'none' ? p.sub : '#4e5968', textShadow: shadow }}>{sub}</span>
+      </div>
+      {children}
+    </div>
+  )
+}

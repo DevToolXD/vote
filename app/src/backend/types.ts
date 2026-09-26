@@ -20,6 +20,8 @@ export type CandidateDoc = {
   bonus?: number
   /** Login id (the part before @vote.local), shown on profiles. */
   loginId?: string
+  /** The gift involved in this person's last 포인트 선물 step (firestore.rules checks it). */
+  lastGift?: string
   /** Got the one-time 300P for opening the installed app. */
   appBonus?: boolean
   /** 메시지 끄기: nobody can message them or add them to a chat. */

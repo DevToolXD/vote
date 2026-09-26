@@ -6,7 +6,7 @@ import type { Person } from '../model'
 import { Segmented } from './AccountScreen'
 import { Avatar } from './Avatar'
 import { CloseIcon } from './icons'
-import { Nameplate } from './Nameplate'
+import { PlateBanner } from './Nameplate'
 
 const handle = <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
 const bigBtn = 'height:56px;border-radius:16px;font-size:17px;font-weight:600'
@@ -92,10 +92,10 @@ export function ProfileSheet({ d, onClose, onCta, onMessage, canMessage }: { d: 
   )
   return (
     <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.32)" sheetStyle="border-radius:28px 28px 0 0;overflow:hidden;padding-bottom:calc(20px + env(safe-area-inset-bottom));animation:sheetUp 420ms cubic-bezier(0.22,1,0.36,1) both">
-      <div style={sx('position:relative;height:108px', { background: BANNERS[d.frame] || BANNERS.none })}>
+      <PlateBanner kind={d.plate} fallback={BANNERS[d.frame] || BANNERS.none} name={d.name} sub={d.bio || '아직 소개가 없어요'} height={136}>
         <div style={css('position:absolute;top:8px;left:50%;margin-left:-18px;width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,0.7)')} />
         <button className="pr-94" onClick={onClose} aria-label="닫기" style={css('position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:9999px;background:rgba(0,0,0,0.28);display:flex;align-items:center;justify-content:center')}><CloseIcon size={18} stroke="#fff" width={2.6} /></button>
-      </div>
+      </PlateBanner>
       <div style={css('position:relative;padding:0 24px')}>
         <div data-g="clear" style={css('position:absolute;top:-52px;left:18px;width:104px;height:104px;border-radius:9999px;background:#ffffff;display:flex;align-items:center;justify-content:center')}>
           <span style={css('width:88px;height:88px')}><Avatar frame={d.frame} photo={d.photoCss} size={88} /></span>
@@ -104,10 +104,7 @@ export function ProfileSheet({ d, onClose, onCta, onMessage, canMessage }: { d: 
           {d.loginId && <span style={css('margin-right:auto;margin-left:110px;font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0')}>@{d.loginId}</span>}
           <span style={sx('height:30px;padding:0 12px;border-radius:9999px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums', { background: medal ? medal[0] : '#f2f4f6', color: medal ? medal[1] : '#4e5968' })}>{d.rank}위</span>
         </div>
-        <div style={css('padding-top:8px;height:64px')}>
-          <Nameplate kind={d.plate} person={d.name} sub={d.bio || '아직 소개가 없어요'} frame={d.frame} photo={d.photoCss} showAvatar={false} style={{ width: '100%', height: 56 }} />
-        </div>
-        <div style={css('margin-top:16px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px')}>
+        <div style={css('margin-top:4px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px')}>
           {stat('점수', d.scoreLabel)}{stat('추천', d.upLabel)}{stat('비추천', d.downLabel)}
         </div>
         <div style={css('margin-top:20px;display:flex;gap:8px')}>
