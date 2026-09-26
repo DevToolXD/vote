@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { Firestore } from 'firebase/firestore'
+import type { Firestore, Timestamp } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { MEDALS } from '../data'
-import { MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, markRead, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
+import { MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, readAt, subscribeReads, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, markRead, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, subscribeGift, type Gift } from '../backend/gifts'
 import { saveImage } from '../saveImage'
 import type { Person } from '../model'
@@ -362,6 +362,8 @@ export function ChatRoom(p: RoomProps) {
   const [hasOlder, setHasOlder] = useState(false)
   const loadingOlder = useRef(false)
   const keepFromBottom = useRef<number | null>(null)
+  const [roomReads, setRoomReads] = useState<Record<string, Timestamp | null>>({})
+  useEffect(() => subscribeReads(db, chat.id, setRoomReads), [db, chat.id])
   const settled = useRef(false)
   useEffect(() => subscribeMessages(db, chat.id, (rows, fromCache) => {
     // Everything up to the first answer from the server is history (no entry animation);
@@ -519,7 +521,7 @@ export function ChatRoom(p: RoomProps) {
             const lastOfRun = !next || next.uid !== m.uid || next.kind === 'system' || (next.at?.toMillis() ?? 0) - at > 60_000 || clock(next.at?.toMillis() ?? 0) !== clock(at)
             const sender = byId.get(m.uid)
             // KakaoTalk-style unread count: members (other than the sender) who haven't opened the chat since this message.
-            const unreadBy = chat.members.filter(u => u !== m.uid && (chat.reads?.[u]?.toMillis() ?? 0) < at).length
+            const unreadBy = chat.members.filter(u => u !== m.uid && readAt(chat, u, roomReads) < at).length
             const bubble = m.kind === 'gift' && m.giftId
               ? <GiftBubble db={db} giftId={m.giftId} me={me.id} byId={byId} onClaim={p.onClaimGift} onCancel={p.onCancelGift} onLoaded={keepBottom} />
               : m.kind === 'image'

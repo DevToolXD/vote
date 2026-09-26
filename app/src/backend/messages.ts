@@ -91,8 +91,35 @@ export function mergeMessages(prev: MessageRow[] | null, rows: MessageRow[]) {
   return [...byId.values()].sort((a, b) => ms(a.at) - ms(b.at))
 }
 
-export const isUnread = (c: ChatDoc, me: string) =>
-  !!c.last && c.last.uid !== me && ms(c.last.at) > ms(c.reads?.[me])
+// Read receipts live in chats/{id}/state/reads (listened to only inside that room), not
+// in the chat doc every member's chat list listens to — so a receipt isn't delivered (and
+// counted as a read) to everyone. My own read times are also kept on this device, so the
+// chat list knows what I've read without listening to anything extra.
+const READS_KEY = 'pv-reads'
+const myReads: Record<string, number> = (() => { try { return JSON.parse(localStorage.getItem(READS_KEY) || '{}') } catch { return {} } })()
+const readListeners = new Set<() => void>()
+function noteMyRead(chatId: string, at: number) {
+  if ((myReads[chatId] ?? 0) >= at) return
+  myReads[chatId] = at
+  try { localStorage.setItem(READS_KEY, JSON.stringify(myReads)) } catch { /* private mode */ }
+  readListeners.forEach(f => f())
+}
+/** Re-render when I mark something read on this device. */
+export function onMyReads(cb: () => void) { readListeners.add(cb); return () => { readListeners.delete(cb) } }
+
+/** When `uid` last read this chat: the receipts doc, the older in-doc receipts, and (for me) this device. */
+export const readAt = (c: ChatDoc & { id?: string }, uid: string, roomReads?: Record<string, Timestamp | null>) =>
+  Math.max(ms(c.reads?.[uid]), ms(roomReads?.[uid]), c.id && uid === meUid ? myReads[c.id] ?? 0 : 0)
+let meUid = ''
+export const setReadsUser = (uid: string) => { meUid = uid }
+
+export const isUnread = (c: ChatDoc & { id?: string }, me: string) =>
+  !!c.last && c.last.uid !== me && ms(c.last.at) > Math.max(ms(c.reads?.[me]), c.id ? myReads[c.id] ?? 0 : 0)
+
+/** Everyone's read times for one chat (the room's KakaoTalk-style unread counts). */
+export function subscribeReads(db: Firestore, chatId: string, cb: (reads: Record<string, Timestamp | null>) => void): Unsubscribe {
+  return onSnapshot(doc(db, 'chats', chatId, 'state', 'reads'), s => cb((s.data({ serverTimestamps: 'estimate' }) ?? {}) as Record<string, Timestamp | null>), () => {})
+}
 
 /** Opens (creating if needed) my 1:1 chat with `other`. */
 export async function openDm(db: Firestore, me: string, other: string) {
@@ -207,7 +234,8 @@ export async function setGroupInfo(db: Firestore, chatId: string, patch: { photo
 }
 
 export async function markRead(db: Firestore, me: string, chatId: string) {
-  await updateDoc(doc(db, 'chats', chatId), { [`reads.${me}`]: serverTimestamp() })
+  noteMyRead(chatId, Date.now())
+  await setDoc(doc(db, 'chats', chatId, 'state', 'reads'), { [me]: serverTimestamp() }, { merge: true })
 }
 
 /** This chat's 알림 on/off, for me only. */

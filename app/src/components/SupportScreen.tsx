@@ -123,6 +123,7 @@ export function SupportFlow({ db, loginId, resume, onClose, onError }: { db: Fir
   const [started, setStarted] = useState(false)
 
   useEffect(() => {
+    try { localStorage.setItem('pv-support-used', '1') } catch { /* private mode */ }
     signInForSupport().then(u => setUid(u.uid)).catch(e => { onError('상담을 시작하지 못했어요', e); onClose() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

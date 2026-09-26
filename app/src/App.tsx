@@ -3,8 +3,8 @@ import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
-import { buyItem, buyPass, castVote, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
-import { createGroup, inviteMembers, isUnread, leaveGroup, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
+import { buyItem, buyPass, castVote, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { createGroup, inviteMembers, isUnread, leaveGroup, onMyReads, setReadsUser, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
 import { DEFAULT_OWNED, DEFAULT_SEASON, PASS_PRICE, type MyVote, type Season, type WeekKind } from './backend/types'
 import { deviceRegistered, disablePush, enablePush, pushErrorMessage, pushSupport, refreshPush } from './push'
@@ -31,6 +31,7 @@ import { BLUE, fmt, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab
 import { db as maybeDb, firebaseConfigured } from './firebase'
 import { isInstalledApp } from './install'
 import { buildPeople } from './model'
+import { BOARD_STALE_MS, photoOf, subscribeBoard, subscribeCandidate, type BoardRow } from './backend/board'
 
 export type AppProps = {
   startTab?: Tab
@@ -67,7 +68,13 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [authUser, setAuthUser] = useState<User | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [authBusy, setAuthBusy] = useState(false)
-  const [rows, setRows] = useState<CandidateRow[]>([])
+  // Leaderboard: the one-doc board (meta/board) plus my own candidate doc live; photos
+  // are fetched per version. If the board is missing or stale (worker down), fall back
+  // to listening to every candidate doc like before.
+  const [board, setBoard] = useState<{ rows: BoardRow[] | null; at: number; server: boolean }>({ rows: null, at: 0, server: false })
+  const [fallbackRows, setFallbackRows] = useState<CandidateRow[]>([])
+  const [ownRow, setOwnRow] = useState<CandidateRow | null>(null)
+  const [photoMap, setPhotoMap] = useState<Record<string, string>>({})
   const [votes, setVotes] = useState<Record<string, MyVote>>({})
   // Re-derives "추천 가능" once a minute so a 7-day wait ends without a reload.
   const [minute, setMinute] = useState(() => Date.now())
@@ -135,7 +142,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
 
   // An anonymous login is only for 상담 (forgot password); the app treats it as signed out.
   useEffect(() => onAuthChange(u => { setAuthUser(u && !u.isAnonymous ? u : null); setAnonUid(u?.isAnonymous ? u.uid : null); setAuthReady(true) }), [])
-  useEffect(() => (db ? subscribeCandidates(db, setRows) : undefined), [])
+  useEffect(() => (db ? subscribeBoard(db, (rows, at, fromCache) => setBoard(b => ({ rows, at, server: b.server || !fromCache }))) : undefined), [])
   useEffect(() => (db ? subscribeSeason(db, setSeason) : undefined), [])
 
   // 공지: signed-in people see each new notice full-screen, once.
@@ -180,10 +187,26 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     return db ? subscribeMyChats(db, authUser.uid, setChats, () => {}) : undefined
   }, [authUser])
 
+  // My votes are read only where they're shown: all of them on 계정 (내 투표), otherwise
+  // just the one person whose vote sheet or profile is open (1 read, not one per person).
+  const voteFocus = sheet ?? profile
   useEffect(() => {
-    if (!authUser) { setVotes({}); return }
-    return db ? subscribeMyVotes(db, authUser.uid, setVotes) : undefined
-  }, [authUser])
+    if (!authUser || !db || tab !== 'acct') return
+    return subscribeMyVotes(db, authUser.uid, setVotes)
+  }, [authUser, tab])
+  useEffect(() => {
+    if (!authUser || !db || !voteFocus || tab === 'acct' || voteFocus === authUser.uid) return
+    return subscribeMyVote(db, authUser.uid, voteFocus, one => setVotes(v => {
+      const next = { ...v }
+      if (one) next[voteFocus] = one; else delete next[voteFocus]
+      return next
+    }))
+  }, [authUser, voteFocus, tab])
+  useEffect(() => { if (!authUser) setVotes({}) }, [authUser])
+  // Chats I mark read on this device update the unread badges right away.
+  const [, setReadTick] = useState(0)
+  useEffect(() => onMyReads(() => setReadTick(t => t + 1)), [])
+  useEffect(() => setReadsUser(authUser?.uid ?? ''), [authUser])
 
   // Warm the skin images so towers appear together with the bar-grow animation.
   useEffect(() => {
@@ -210,6 +233,25 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   }, [theme])
 
   const loggedIn = !!authUser
+  const boardFallback = board.server && (!board.rows || Date.now() - board.at > BOARD_STALE_MS)
+  useEffect(() => (db && boardFallback ? subscribeCandidates(db, setFallbackRows) : undefined), [boardFallback])
+  useEffect(() => { setOwnRow(null); return db && authUser ? subscribeCandidate(db, authUser.uid, setOwnRow) : undefined }, [authUser])
+  useEffect(() => {
+    if (boardFallback || !board.rows || !db) return
+    let live = true
+    for (const r of board.rows) {
+      if (!r.pv || photoMap[r.id + '@' + r.pv] !== undefined) continue
+      photoOf(db, r.id, r.pv).then(url => { if (live) setPhotoMap(m => ({ ...m, [r.id + '@' + r.pv]: url })) }).catch(() => {})
+    }
+    return () => { live = false }
+  }, [board.rows, boardFallback]) // eslint-disable-line react-hooks/exhaustive-deps
+  const rows = useMemo<CandidateRow[]>(() => {
+    const base: CandidateRow[] = boardFallback ? fallbackRows
+      : (board.rows ?? []).map(({ pv, ...r }) => ({ ...r, photoURL: pv ? photoMap[r.id + '@' + pv] ?? '' : '' }) as CandidateRow)
+    if (!ownRow) return base
+    const merged = base.some(r => r.id === ownRow.id) ? base.map(r => (r.id === ownRow.id ? ownRow : r)) : [...base, ownRow]
+    return merged.sort((a, b) => b.score - a.score)
+  }, [board.rows, boardFallback, fallbackRows, ownRow, photoMap])
   const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null, Date.now()), [rows, votes, authUser, minute]) // eslint-disable-line react-hooks/exhaustive-deps
   const me = authUser ? all.find(d => d.id === authUser.uid) : undefined
   const mine = all.filter(d => d.my && (d.my.ups > 0 || d.my.downs > 0 || d.inWeek))
@@ -262,7 +304,10 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   useEffect(() => {
     if (!db) return
     if (anonUid) return subscribeTicket(db, anonUid, t => setMyTickets(t ? [t] : []))
-    if (authUser && !isAdmin) return subscribeLinkedTickets(db, authUser.uid, setMyTickets)
+    // Only on a device that used 상담 (or opened from a 상담원 reply): nobody else has one.
+    let used = false
+    try { used = localStorage.getItem('pv-support-used') === '1' || new URLSearchParams(location.search).get('support') === 'mine' } catch { /* private mode */ }
+    if (authUser && !isAdmin && used) return subscribeLinkedTickets(db, authUser.uid, setMyTickets)
     setMyTickets([])
   }, [anonUid, authUser, isAdmin])
   const myTicket = myTickets.filter(t => !t.closed || !t.userRead).sort((a, b) => (b.updatedAt?.toMillis() ?? 0) - (a.updatedAt?.toMillis() ?? 0))[0]

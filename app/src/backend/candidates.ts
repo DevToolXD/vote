@@ -32,29 +32,45 @@ export function subscribeCandidates(db: Firestore, cb: (rows: CandidateRow[]) =>
 // so castVote can write straight away instead of reading them again in a transaction.
 const myVoteDocs = new Map<string, Partial<VoteDoc> | null>()
 
-/** The signed-in voter's own vote history, as { candidateId: MyVote }. */
+// Which candidates' vote docs are known exactly: all of them while the full list is
+// being listened to, or single ones while one person's vote sheet / profile is open.
+let allKnown = false
+const knownIds = new Set<string>()
+const known = (candidateId: string) => allKnown || knownIds.has(candidateId)
+
+function toMyVote(v: Partial<VoteDoc>): MyVote {
+  const weekEndsAt = v.weekAt ? v.weekAt.toMillis() + VOTE_EVERY_MS : 0
+  const kind = weekEndsAt > Date.now() ? v.weekKind ?? 'none' : 'none'
+  return { ups: v.ups ?? 0, downs: v.downs ?? 0, weekEndsAt, weekKind: kind, weekN: kind === 'none' ? 0 : v.weekN ?? 1 }
+}
+
+/** All my votes, as { candidateId: MyVote } — only while a screen lists them (계정 → 내 투표). */
 export function subscribeMyVotes(db: Firestore, uid: string, cb: (votes: Record<string, MyVote>) => void): Unsubscribe {
   const q = query(collection(db, 'votes'), where('uid', '==', uid))
-  myVoteDocs.clear()
   const stop = onSnapshot(q, snap => {
     const out: Record<string, MyVote> = {}
-    myVoteDocs.clear()
     snap.forEach(d => {
       const v = d.data({ serverTimestamps: 'estimate' }) as Partial<VoteDoc>
       if (!v.candidateId) return
       myVoteDocs.set(v.candidateId, d.metadata.hasPendingWrites ? null : v)
-      const weekEndsAt = v.weekAt ? v.weekAt.toMillis() + VOTE_EVERY_MS : 0
-      const kind = weekEndsAt > Date.now() ? v.weekKind ?? 'none' : 'none'
-      out[v.candidateId] = { ups: v.ups ?? 0, downs: v.downs ?? 0, weekEndsAt, weekKind: kind, weekN: kind === 'none' ? 0 : v.weekN ?? 1 }
+      out[v.candidateId] = toMyVote(v)
     })
-    ready = !snap.metadata.fromCache
+    allKnown = !snap.metadata.fromCache
     cb(out)
   })
-  let ready = false
-  known = () => ready
-  return () => { stop(); myVoteDocs.clear(); known = () => false }
+  return () => { stop(); allKnown = false }
 }
-let known = () => false
+
+/** My vote for one person (1 read) — while their vote sheet or profile is open. */
+export function subscribeMyVote(db: Firestore, uid: string, candidateId: string, cb: (vote: MyVote | null) => void): Unsubscribe {
+  const stop = onSnapshot(doc(db, 'votes', `${uid}_${candidateId}`), s => {
+    const v = s.exists() ? (s.data({ serverTimestamps: 'estimate' }) as Partial<VoteDoc>) : null
+    myVoteDocs.set(candidateId, s.metadata.hasPendingWrites ? null : v)
+    if (!s.metadata.fromCache) knownIds.add(candidateId)
+    cb(v ? toMyVote(v) : null)
+  }, () => cb(null))
+  return () => { stop(); knownIds.delete(candidateId) }
+}
 
 /** What this week's vote becomes (see castVote), or null when nothing changes. */
 function planVote(o: Partial<VoteDoc>, cur: number, kind: WeekKind, count: number, now: number) {
@@ -96,7 +112,7 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
   const candidateRef = doc(db, 'candidates', candidateId)
   const base = { uid: myUid, candidateId, updatedAt: serverTimestamp() }
   const local = myVoteDocs.get(candidateId)
-  if (season && known() && local !== null) {
+  if (season && known(candidateId) && local !== null) {
     try {
       const p = planVote(local ?? {}, season, kind, count, Date.now())
       if (!p) return

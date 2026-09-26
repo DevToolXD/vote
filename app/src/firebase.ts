@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { browserLocalPersistence, browserSessionPersistence, connectAuthEmulator, indexedDBLocalPersistence, initializeAuth } from 'firebase/auth'
-import { connectFirestoreEmulator, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore'
+import { connectFirestoreEmulator, disableNetwork, enableNetwork, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore'
 
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -29,4 +29,18 @@ export const db = app ? initializeFirestore(app, { localCache: persistentLocalCa
 if (import.meta.env.VITE_USE_EMULATORS && auth && db) {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })
   connectFirestoreEmulator(db, '127.0.0.1', 8181)
+}
+
+// In the background (another app, screen off) live updates would still arrive — and each
+// changed doc counts as a read — though nobody is looking. After a minute out of sight the
+// connection pauses; coming back resumes it and brings only what changed meanwhile (each
+// doc once, however many times it changed). Writes made meanwhile wait and then go out.
+if (db && typeof document !== 'undefined') {
+  let pause: ReturnType<typeof setTimeout> | undefined
+  let paused = false
+  document.addEventListener('visibilitychange', () => {
+    clearTimeout(pause)
+    if (document.visibilityState === 'hidden') pause = setTimeout(() => { paused = true; disableNetwork(db!).catch(() => {}) }, 60_000)
+    else if (paused) { paused = false; enableNetwork(db!).catch(() => {}) }
+  })
 }

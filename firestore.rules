@@ -591,6 +591,15 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      // Read receipts (KakaoTalk-style counts): each member sets only their own time. Kept out of
+      // the chat doc so a receipt only reaches people with this room open.
+      match /state/reads {
+        allow read: if signedIn() && request.auth.uid in chatData(chatId).members;
+        allow create, update: if signedIn() && request.auth.uid in chatData(chatId).members
+          && request.resource.data.diff(resource == null ? {} : resource.data).affectedKeys().hasOnly([request.auth.uid])
+          && request.resource.data[request.auth.uid] == request.time;
+      }
+
       // A photo message's image, written in the same batch as the message.
       match /media/{msgId} {
         allow read: if signedIn() && request.auth.uid in chatData(chatId).members;
@@ -723,6 +732,13 @@ service cloud.firestore {
         && request.resource.data.by == request.auth.uid
         && request.resource.data.createdAt == request.time;
       allow update, delete: if false;
+    }
+
+    // The whole leaderboard in one doc, written only by the background worker
+    // (service account): apps read one doc instead of every candidate.
+    match /meta/board {
+      allow read: if true;
+      allow write: if false;
     }
 
     match /meta/noticeIndex {

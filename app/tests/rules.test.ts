@@ -559,6 +559,17 @@ describe('chat extras', () => {
     await sendMessage(b, 'b', id, '끝났어')
     await assert.rejects(setChatTimeout(admin, ADMIN.uid, await openDm(admin, ADMIN.uid, 'b'), 'b', 600_000, 'x')) // not in 1:1
   })
+  test('read receipts: own entry only, members only, in their own doc', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
+    const id = await openDm(a, 'a', 'b')
+    await sendMessage(a, 'a', id, '안녕')
+    await markRead(b, 'b', id)
+    assert.ok((await getDoc(doc(a, 'chats', id, 'state', 'reads'))).data()!.b)
+    await denied(setDoc(doc(b, 'chats', id, 'state', 'reads'), { a: serverTimestamp() }, { merge: true })) // someone else's
+    await denied(setDoc(doc(b, 'chats', id, 'state', 'reads'), { b: new Date(0) }, { merge: true })) // back-dated
+    await denied(getDoc(doc(c, 'chats', id, 'state', 'reads'))) // not a member
+    await denied(setDoc(doc(c, 'chats', id, 'state', 'reads'), { c: serverTimestamp() }))
+  })
   test('group icon and name: members only, small images only, not for 1:1', async () => {
     const a = await signUp('a'); await signUp('b'); const c = await signUp('c'); await signUp('d')
     const id = await createGroup(a, 'a', ['b', 'c'], '모임')
@@ -776,6 +787,9 @@ describe('notifications', () => {
     const group = await createGroup(a, 'a', ['b', 'c'], '모임')
     await setChatMuted(c, 'c', group, true)
     await sendMessage(b, 'b', group, '단톡 첫 메시지')
+    const dm2 = await openDm(c, 'c', 'b')
+    await sendMessage(c, 'c', dm2, '읽은 메시지')
+    await markRead(b, 'b', dm2) // read in the open chat (receipts doc): no push for it
     await castVote(b, 'b', 'c', 'up')
     await castVote(c, 'c', 'a', 'down')
     await saveNotifySettings(a, 'a', { notifyVote: false })
@@ -798,6 +812,11 @@ describe('notifications', () => {
     fcm.close()
 
     const to = (t: string) => got.filter(g => g.token === t).map(g => `${g.title}|${g.body}`).sort()
+    // The worker also keeps the one-doc leaderboard: every candidate, photo left out (a version instead).
+    const board = (await getDoc(doc(a, 'meta', 'board'))).data()!
+    assert.deepEqual(board.rows.map((r: { id: string }) => r.id).sort(), ['a', 'b', 'c'])
+    assert.ok(board.rows.every((r: Record<string, unknown>) => !('photoURL' in r) && 'pv' in r && 'score' in r && 'name' in r))
+    await denied(setDoc(doc(a, 'meta', 'board'), { rows: [] }))
     assert.deepEqual(to('tok-b'), ['이름a|안녕 b'], JSON.stringify(got))
     assert.ok(!to('tok-b').some(x => x.includes('단톡 첫 메시지')), 'b sent it, b must not be notified')
     assert.ok(to('tok-a').includes('모임|이름b: 단톡 첫 메시지'))

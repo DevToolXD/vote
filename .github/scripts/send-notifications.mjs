@@ -61,13 +61,45 @@ async function runQuery(parent, structuredQuery) {
 // ---- in-memory state, kept fresh by listeners (see main loop) ----
 const settings = new Map() // uid → { notify, notifyMsg, notifyVote }
 const tokens = new Map()   // uid → [{ token, platform, ref }]
-const names = new Map()    // uid → name (read once per run)
+const candidates = new Map() // uid → candidate doc (the leaderboard; also gives names)
+const roomReads = new Map()  // chatId → { uid: Timestamp } (chats/{id}/state/reads)
 const settingsOf = uid => ({ notify: true, notifyMsg: true, notifyVote: true, ...settings.get(uid) })
 const tokensOf = uid => tokens.get(uid) ?? []
-async function nameOf(uid) {
-  if (!names.has(uid)) names.set(uid, (await fdb.doc(`candidates/${uid}`).get()).get('name') ?? '알 수 없음')
-  return names.get(uid)
+const nameOf = async uid => candidates.get(uid)?.name ?? '알 수 없음'
+
+// ---- meta/board: the whole leaderboard in one doc ----
+// Every app used to listen to every candidate doc: opening the app cost one read per
+// person, and every vote one read per open app. The board carries everything public
+// except the photo (a photo "version" instead; apps fetch a photo once per version and
+// keep it on the device), so opening the app costs one read. Same fields and hash as
+// app/src/backend/board.ts.
+function photoVersion(s) {
+  if (!s) return ''
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
+  return s.length.toString(36) + '-' + h.toString(36)
 }
+const BOARD_SKIP = new Set(['photoURL', 'createdAt', 'lastGift', 'ownerUid'])
+function boardRows() {
+  return [...candidates.entries()].map(([id, c]) => {
+    const row = { id, pv: photoVersion(c.photoURL ?? '') }
+    for (const [k, v] of Object.entries(c)) if (!BOARD_SKIP.has(k) && !(v instanceof Timestamp)) row[k] = v
+    return row
+  }).sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+}
+let boardDirty = true, boardWrittenAt = 0, boardLast = ''
+const BOARD_HEARTBEAT_MS = 20 * 60_000
+async function writeBoard() {
+  const rows = boardRows()
+  const json = JSON.stringify(rows)
+  const heartbeat = Date.now() - boardWrittenAt > BOARD_HEARTBEAT_MS
+  boardDirty = false
+  if (json === boardLast && !heartbeat) return
+  if (json.length > 900_000) { warn(`Board too big (${json.length} bytes); apps fall back to reading every candidate.`); return }
+  await fdb.doc('meta/board').set({ at: FieldValue.serverTimestamp(), rows })
+  boardLast = json; boardWrittenAt = Date.now(); boardWrites++
+}
+let boardWrites = 0
 
 // ---- sending ----
 let sent = 0, dropped = 0
@@ -97,7 +129,8 @@ async function notifyChat(chat, count) {
   const last = chat.last
   for (const member of chat.members ?? []) {
     if (member === last.uid || chat.mutes?.[member]) continue
-    if ((chat.reads?.[member]?.toMillis?.() ?? 0) >= last.at.toMillis()) continue // already read it in the open chat
+    const readMs = Math.max(chat.reads?.[member]?.toMillis?.() ?? 0, roomReads.get(chat.id)?.[member]?.toMillis?.() ?? 0)
+    if (readMs >= last.at.toMillis()) continue // already read it in the open chat
     const s = settingsOf(member)
     if (s.notify === false || s.notifyMsg === false) continue
     const sender = await nameOf(last.uid)
@@ -122,7 +155,7 @@ async function notifyVotes(per) {
 async function notifySupport(t) {
   if (t.last?.from === 'admin') {
     // 상담원's replies reach the person once the 상담 is linked to their account (after a password reset).
-    if (t.accountUid) await push(t.accountUid, { title: '상담원', body: t.last.text, url: `${SITE}?tab=acct`, tag: `support-${t.id}` })
+    if (t.accountUid) await push(t.accountUid, { title: '상담원', body: t.last.text, url: `${SITE}?tab=acct&support=mine`, tag: `support-${t.id}` })
     return
   }
   const admin = await adminUid()
@@ -222,7 +255,7 @@ async function endSeasonIfDue() {
 // ---- main loop ----
 import { execFile } from 'node:child_process'
 import { cert, initializeApp } from 'firebase-admin/app'
-import { Timestamp, getFirestore } from 'firebase-admin/firestore'
+import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore'
 
 if (LOCAL) process.env.FIRESTORE_EMULATOR_HOST = new URL(FS).host
 const adminApp = initializeApp(LOCAL ? { projectId: project } : { credential: cert(key), projectId: project })
@@ -245,10 +278,17 @@ let seasonEndsAt = null
 
 const listeners = []
 const firstDone = new Promise(resolve => {
-  const seen = new Set(), total = 7
+  const seen = new Set(), total = 9
   const done = name => { if (!seen.has(name)) { seen.add(name); if (seen.size === total) resolve() } }
   const listen = (name, ref, onSnap) => ref.onSnapshot(snap => { onSnap(snap); done(name) }, err => { warn(`Listener ${name} failed: ${err.message}`); done(name) })
   listeners.push(
+    listen('candidates', fdb.collection('candidates'), snap => {
+      for (const c of snap.docChanges()) c.type === 'removed' ? candidates.delete(c.doc.id) : candidates.set(c.doc.id, c.doc.data())
+      if (snap.docChanges().length) boardDirty = true
+    }),
+    listen('reads', fdb.collectionGroup('state'), snap => {
+      for (const c of snap.docChanges()) if (c.doc.id === 'reads') roomReads.set(c.doc.ref.parent.parent.id, c.doc.data())
+    }),
     listen('settings', fdb.collection('settings'), snap => snap.docChanges().forEach(c => c.type === 'removed' ? settings.delete(c.doc.id) : settings.set(c.doc.id, c.doc.data()))),
     listen('tokens', fdb.collection('pushTokens'), snap => {
       tokens.clear()
@@ -328,6 +368,7 @@ while (true) {
     await cursorRef.set({ at: Timestamp.fromMillis(cursor) }, { merge: true })
     rounds++
   }
+  if (boardDirty || Date.now() - boardWrittenAt > BOARD_HEARTBEAT_MS) await writeBoard().catch(e => warn('Writing the board failed: ' + e.message))
   if (resetsPending) { resetsPending = false; await passwordResets() }
   if (seasonEndsAt && Date.now() >= seasonEndsAt) { seasonEndsAt = null; await endSeasonIfDue().catch(e => warn('Season end check failed: ' + e)) }
   if (Date.now() >= nextRules && !LOCAL) { nextRules = Date.now() + 60 * 60_000; await rulesCheck() }
@@ -337,5 +378,5 @@ while (true) {
 }
 listeners.forEach(stop => stop())
 await adminApp.delete?.().catch?.(() => {})
-notice(`Worker: ${rounds} rounds with activity, ${sent} notifications sent, ${dropped} stale devices removed, ${resets} password resets applied, ${seasonsEnded} seasons ended.`)
+notice(`Worker: ${rounds} rounds with activity, ${boardWrites} board updates, ${sent} notifications sent, ${dropped} stale devices removed, ${resets} password resets applied, ${seasonsEnded} seasons ended.`)
 process.exit(0)
