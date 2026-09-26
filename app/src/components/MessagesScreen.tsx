@@ -236,8 +236,8 @@ type RoomProps = {
   onSendImage: (file: File) => Promise<boolean>
   myPoints: number
   onSendGift: (amount: number) => Promise<boolean>
-  onClaimGift: (giftId: string) => void
-  onCancelGift: (giftId: string) => void
+  onClaimGift: (giftId: string) => Promise<unknown>
+  onCancelGift: (giftId: string) => Promise<unknown>
   onToast: (msg: string) => void
   onMute: (muted: boolean) => void
   onLeave: () => void
@@ -271,27 +271,48 @@ export function ChatRoom(p: RoomProps) {
   }, e => onError('메시지를 불러오지 못했어요', e)), [db, chat.id]) // eslint-disable-line react-hooks/exhaustive-deps
   // Opening the room (and every new message while it's open) marks it read.
   useEffect(() => { if (isUnread(chat, me.id)) markRead(db, me.id, chat.id).catch(() => {}) }, [db, chat, me.id])
-  const toBottom = (smooth = false) => { const el = listRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }) }
+  const toBottom = (smooth = false) => { const el = listRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); nearBottom.current = true; setNewBelow(0) }
+  // Follow new messages only while you're at the bottom; if you've scrolled up to read,
+  // stay put and offer a "새 메시지" button instead of yanking the view down.
+  const nearBottom = useRef(true)
+  const [newBelow, setNewBelow] = useState(0)
+  const seenCount = useRef(0)
+  const onListScroll = () => {
+    const el = listRef.current
+    if (!el) return
+    nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    if (nearBottom.current && newBelow) setNewBelow(0)
+  }
   useLayoutEffect(() => {
-    const last = msgs?.[msgs.length - 1]
-    toBottom(!!last && last.uid !== me.id && firstIds.current !== null && !firstIds.current.has(last.id))
+    if (!msgs) return
+    const added = msgs.length - seenCount.current
+    const first = seenCount.current === 0
+    seenCount.current = msgs.length
+    if (first) { toBottom(); return }
+    if (added <= 0) return
+    const last = msgs[msgs.length - 1]
+    if (last.uid === me.id) toBottom()
+    else if (nearBottom.current) toBottom(true)
+    else setNewBelow(n => n + added)
   }, [msgs]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { toBottom() }, [box.height])
+  useEffect(() => { if (nearBottom.current) toBottom() }, [box.height]) // eslint-disable-line react-hooks/exhaustive-deps
+  const keepBottom = () => { if (nearBottom.current) toBottom() }
   // Auto-grow the input up to ~5 lines.
   useLayoutEffect(() => { const t = inputRef.current; if (t) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px' } }, [draft])
 
+  // Text sends never block each other (typing fast and hitting 보내기 again must not drop a message).
   const send = async () => {
     const t = draft.trim()
-    if (!t || sending || !v.canSend) return
-    setSending(true)
+    if (!t || !v.canSend) return
     setDraft('')
-    if (!(await onSend(t))) setDraft(t)
-    setSending(false)
+    if (!(await onSend(t))) setDraft(d => (d ? d : t))
   }
+  const [photoSending, setPhotoSending] = useState(false)
   const pickPhoto = async (f: File) => {
-    setSending(true)
+    setSending(true); setPhotoSending(true)
+    requestAnimationFrame(() => toBottom(true))
     await onSendImage(f)
-    setSending(false)
+    setSending(false); setPhotoSending(false)
   }
 
   return (
@@ -309,7 +330,7 @@ export function ChatRoom(p: RoomProps) {
           <button className="pr-dim" onClick={() => setMenu(true)} aria-label="채팅방 메뉴" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#4e5968')}><MenuIcon /></button>
         </div>
 
-        <div ref={listRef} style={sx('flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;-webkit-overflow-scrolling:touch;transition:background 400ms ease', { background: bgCss })}>
+        <div ref={listRef} onScroll={onListScroll} style={sx('flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;-webkit-overflow-scrolling:touch;transition:background 400ms ease', { background: bgCss })}>
           {msgs === null ? null : msgs.length === 0 ? (
             <div className="anim-list" style={css('margin:auto;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center')}>
               <ChatAvatar people={v.people} size={72} photo={chat.photo} />
@@ -338,9 +359,9 @@ export function ChatRoom(p: RoomProps) {
             // KakaoTalk-style unread count: members (other than the sender) who haven't opened the chat since this message.
             const unreadBy = chat.members.filter(u => u !== m.uid && (chat.reads?.[u]?.toMillis() ?? 0) < at).length
             const bubble = m.kind === 'gift' && m.giftId
-              ? <GiftBubble db={db} giftId={m.giftId} me={me.id} byId={byId} onClaim={p.onClaimGift} onCancel={p.onCancelGift} />
+              ? <GiftBubble db={db} giftId={m.giftId} me={me.id} byId={byId} onClaim={p.onClaimGift} onCancel={p.onCancelGift} onLoaded={keepBottom} />
               : m.kind === 'image'
-              ? <ImageBubble db={db} chatId={chat.id} msgId={m.id} onOpen={setViewer} />
+              ? <ImageBubble db={db} chatId={chat.id} msgId={m.id} onOpen={setViewer} onLoaded={keepBottom} />
               : <span style={sx('padding:10px 14px;border-radius:20px;font-size:15px;line-height:22px;white-space:pre-wrap;word-break:break-word', { background: mine ? '#3182f6' : tinted ? '#ffffff' : '#f2f4f6', color: mine ? '#ffffff' : '#191f28', fontWeight: mine ? 500 : 400 })}>{m.text}</span>
             return (
               <Fragment key={m.id}>
@@ -372,7 +393,18 @@ export function ChatRoom(p: RoomProps) {
               </Fragment>
             )
           })}
+          {photoSending && (
+            <div style={css('display:flex;justify-content:flex-end;margin-top:8px;animation:msgInMine 260ms ease both')}>
+              <span className="skeleton" style={css('width:160px;height:120px;border-radius:18px;display:flex;align-items:flex-end;justify-content:flex-end;padding:8px 10px;font-size:12px;font-weight:600;color:#6b7684')}>보내는 중…</span>
+            </div>
+          )}
         </div>
+        {newBelow > 0 && (
+          <button className="pr-96" onClick={() => toBottom(true)} style={css('position:absolute;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom));z-index:3;height:36px;padding:0 14px;border-radius:9999px;background:#191f28;color:#fff;font-size:14px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,0.18);animation:toastDown 260ms cubic-bezier(0.16,1,0.3,1) both;display:flex;align-items:center;gap:6px')}>
+            새 메시지 {newBelow > 1 ? newBelow : ''}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+          </button>
+        )}
 
         <div style={sx('flex:none;padding:8px 12px', { paddingBottom: box.top || box.height < window.innerHeight - 80 ? 8 : 'calc(8px + env(safe-area-inset-bottom))', background: '#ffffff' })}>
           {v.canSend ? (
@@ -386,7 +418,7 @@ export function ChatRoom(p: RoomProps) {
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }}
                 style={css(`flex:1;min-width:0;min-height:44px;max-height:120px;resize:none;border:0;outline:none;border-radius:22px;background-color:#f2f4f6;padding:11px 16px;font-size:17px;line-height:22px;color:#191f28;font-family:inherit;transition:background-color 200ms ${EASE}`)}
               />
-              <button className="pr-94" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} onClick={send} disabled={!draft.trim() || sending} aria-label="보내기" style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;background:#3182f6;display:flex;align-items:center;justify-content:center;transition:opacity 200ms ${EASE},transform 200ms ${EASE}`, { opacity: draft.trim() && !sending ? 1 : 0.3, transform: draft.trim() ? 'scale(1)' : 'scale(0.92)' })}>
+              <button className="pr-94" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} onClick={send} disabled={!draft.trim()} aria-label="보내기" style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;background:#3182f6;display:flex;align-items:center;justify-content:center;transition:opacity 200ms ${EASE},transform 200ms ${EASE}`, { opacity: draft.trim() ? 1 : 0.3, transform: draft.trim() ? 'scale(1)' : 'scale(0.92)' })}>
                 <PlaneIcon size={20} stroke="#ffffff" width={2.2} />
               </button>
             </div>
@@ -428,14 +460,14 @@ export function ChatRoom(p: RoomProps) {
   )
 }
 
-function ImageBubble({ db, chatId, msgId, onOpen }: { db: Firestore; chatId: string; msgId: string; onOpen: (src: string) => void }) {
+function ImageBubble({ db, chatId, msgId, onOpen, onLoaded }: { db: Firestore; chatId: string; msgId: string; onOpen: (src: string) => void; onLoaded?: () => void }) {
   const [src, setSrc] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   useEffect(() => { let live = true; loadImage(db, chatId, msgId).then(s => { if (live) setSrc(s) }).catch(() => {}); return () => { live = false } }, [db, chatId, msgId])
   return (
     <button className="pr-96" onClick={() => src && onOpen(src)} aria-label="사진 크게 보기" style={css('display:block;padding:0;border-radius:18px;overflow:hidden;position:relative;min-width:120px;min-height:120px;background:#f2f4f6')}>
       {!loaded && <span className="skeleton" style={css('position:absolute;inset:0')} />}
-      {src && <img src={src} alt="사진" onLoad={() => setLoaded(true)} style={sx(`display:block;max-width:220px;max-height:300px;object-fit:cover;transition:opacity 300ms ${EASE}`, { opacity: loaded ? 1 : 0 })} />}
+      {src && <img src={src} alt="사진" onLoad={() => { setLoaded(true); onLoaded?.() }} style={sx(`display:block;max-width:220px;max-height:300px;object-fit:cover;transition:opacity 300ms ${EASE}`, { opacity: loaded ? 1 : 0 })} />}
     </button>
   )
 }
@@ -459,11 +491,11 @@ function ImageViewer({ src, onClose, onToast }: { src: string; onClose: () => vo
 }
 
 /** Kakao-style gift card in the chat: 받기 / 취소하기 / who got it. */
-function GiftBubble({ db, giftId, me, byId, onClaim, onCancel }: { db: Firestore; giftId: string; me: string; byId: Map<string, Person>; onClaim: (id: string) => void; onCancel: (id: string) => void }) {
+function GiftBubble({ db, giftId, me, byId, onClaim, onCancel, onLoaded }: { db: Firestore; giftId: string; me: string; byId: Map<string, Person>; onClaim: (id: string) => Promise<unknown>; onCancel: (id: string) => Promise<unknown>; onLoaded?: () => void }) {
   const [g, setG] = useState<Gift | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   useEffect(() => subscribeGift(db, giftId, setG), [db, giftId])
-  useEffect(() => { setBusy(false) }, [g?.status])
+  useEffect(() => { if (g) onLoaded?.() }, [g?.status]) // eslint-disable-line react-hooks/exhaustive-deps
   const amount = g ? g.amount.toLocaleString() + 'P' : ''
   const mine = g?.from === me
   const canTake = !!g && g.status === 'open' && !mine && (!g.to || g.to === me)
@@ -482,8 +514,8 @@ function GiftBubble({ db, giftId, me, byId, onClaim, onCancel }: { db: Firestore
       </span>
       <span style={css('padding:10px 14px 12px;display:flex;flex-direction:column;gap:8px')}>
         <span style={css('font-size:13px;line-height:19px;color:#6b7684')}>{status}</span>
-        {canTake && <button className="pr-96" disabled={busy} onClick={() => { setBusy(true); onClaim(giftId) }} style={sx('height:40px;border-radius:12px;background:#3182f6;color:#fff;font-size:15px;font-weight:600', { opacity: busy ? 0.5 : 1 })}>받기</button>}
-        {g?.status === 'open' && mine && <button className="pr-96" disabled={busy} onClick={() => { setBusy(true); onCancel(giftId) }} style={sx('height:40px;border-radius:12px;background:#f2f4f6;color:#4e5968;font-size:15px;font-weight:600', { opacity: busy ? 0.5 : 1 })}>취소하기</button>}
+        {canTake && <button className="pr-96" disabled={busy} onClick={() => { setBusy(true); onClaim(giftId).finally(() => setBusy(false)) }} style={sx('height:40px;border-radius:12px;background:#3182f6;color:#fff;font-size:15px;font-weight:600', { opacity: busy ? 0.5 : 1 })}>받기</button>}
+        {g?.status === 'open' && mine && <button className="pr-96" disabled={busy} onClick={() => { setBusy(true); onCancel(giftId).finally(() => setBusy(false)) }} style={sx('height:40px;border-radius:12px;background:#f2f4f6;color:#4e5968;font-size:15px;font-weight:600', { opacity: busy ? 0.5 : 1 })}>취소하기</button>}
       </span>
     </span>
   )

@@ -115,7 +115,8 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   const showToast = (msg: string) => {
     clearTimeout(toastTimer.current)
     setToast(msg)
-    toastTimer.current = setTimeout(() => setToast(''), 2000)
+    // Long enough to read: ~2s, plus a little per character for longer messages.
+    toastTimer.current = setTimeout(() => setToast(''), Math.min(5000, 1800 + msg.length * 45))
   }
   /** Error toast that keeps the Firebase error code visible, so a screenshot is enough to diagnose it. */
   const failToast = (msg: string, e: unknown) => {
@@ -198,6 +199,9 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   const byId = useMemo(() => new Map(all.map(p => [p.id, p])), [all])
   const unreadChats = authUser ? chats.filter(c => isUnread(c, authUser.uid)).length : 0
   const openChat = chats.find(c => c.id === chatId)
+
+  // Opening the chat a popup was about makes the popup go away.
+  useEffect(() => { if (banner && chatId === banner.chatId) setBanner(null) }, [chatId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Message popup while the app is open: a new message from someone else in a chat
   // that isn't on screen (and isn't muted, and 새 메시지 알림 is on) drops in from the top.
@@ -518,7 +522,11 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
               all={all}
               tickets={tickets}
               onOpenTicket={setTicketId}
-              postNotice={(t, b, p) => postNotice(db!, authUser.uid, t, b, p)}
+              postNotice={async (t, b, p) => {
+                const id = await postNotice(db!, authUser.uid, t, b, p)
+                // You wrote it — no need to show it back to you full-screen.
+                await markNoticeSeen(db!, authUser.uid, id).catch(() => {})
+              }}
               setSeasonConfig={(e, r, p) => setSeasonConfig(db!, authUser.uid, e, r, p)}
               season={season}
               run={runAdmin}

@@ -123,16 +123,21 @@ button:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #3182f6}
 @keyframes msgSend{0%{opacity:0;transform:translateY(72px) scale(.82)}45%{opacity:1}62%{transform:translateY(-5px) scale(1.03)}82%{transform:translateY(1px) scale(.995)}100%{opacity:1;transform:none}}
 @keyframes readFade{from{opacity:1;transform:none}to{opacity:0;transform:scale(.6)}}
 @keyframes msgInL{from{opacity:0;transform:translate(-10px,8px) scale(.96)}to{opacity:1;transform:none}}
-@keyframes listIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes listIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes roomIn{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
 @keyframes dotPop{0%{transform:scale(0)}60%{transform:scale(1.35)}100%{transform:scale(1)}}
 @keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
 @keyframes viewerIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
 @keyframes sendPulse{0%{transform:scale(1)}40%{transform:scale(.86)}100%{transform:scale(1)}}
-.anim-list>*{animation:listIn 420ms cubic-bezier(0.16,1,0.3,1) both}
-.anim-list>*:nth-child(2){animation-delay:30ms}.anim-list>*:nth-child(3){animation-delay:60ms}.anim-list>*:nth-child(4){animation-delay:90ms}
-.anim-list>*:nth-child(5){animation-delay:120ms}.anim-list>*:nth-child(6){animation-delay:150ms}.anim-list>*:nth-child(7){animation-delay:180ms}
-.anim-list>*:nth-child(n+8){animation-delay:210ms}
+.anim-list>*{animation:listIn 280ms cubic-bezier(0.16,1,0.3,1) both}
+.anim-list>*:nth-child(2){animation-delay:20ms}.anim-list>*:nth-child(3){animation-delay:40ms}.anim-list>*:nth-child(4){animation-delay:60ms}
+.anim-list>*:nth-child(5){animation-delay:80ms}.anim-list>*:nth-child(n+6){animation-delay:100ms}
 .skeleton{background:linear-gradient(90deg,#f2f4f6 0,#e8ebee 50%,#f2f4f6 100%);background-size:400px 100%;animation:shimmer 1.2s linear infinite}
 @media (prefers-reduced-motion:reduce){.anim-list>*,[data-anim]{animation:fade 1ms both !important}}
 @keyframes bannerIn{from{transform:translateY(-130%);opacity:0}to{transform:none;opacity:1}}
+@keyframes toastDown{from{opacity:0;transform:translateY(-16px) scale(.97)}to{opacity:1;transform:none}}
+/* No double-tap zoom / tap delay on controls, no rubber-band scrolling of the whole page. */
+button,a,input,textarea,select,label{touch-action:manipulation}
+html,body{overscroll-behavior:none}
+/* People who asked their phone for less motion get (almost) none. */
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms !important;animation-delay:0ms !important;animation-iteration-count:1 !important;transition-duration:1ms !important;scroll-behavior:auto !important}}

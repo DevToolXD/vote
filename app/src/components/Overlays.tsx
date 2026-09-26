@@ -11,13 +11,35 @@ import { PlateBanner } from './Nameplate'
 const handle = <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
 const bigBtn = 'height:56px;border-radius:16px;font-size:17px;font-weight:600'
 
-/** Dimmed scrim + bottom sheet shell, centred to the app column. */
+/**
+ * The part of the screen the on-screen keyboard covers (iPhone keeps the page
+ * height and draws the keyboard over it), plus the visible height — so sheets
+ * and dialogs can sit above the keyboard instead of behind it.
+ */
+export function useVisibleViewport() {
+  const read = () => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null
+    return vv ? { inset: Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)), top: vv.offsetTop, height: vv.height } : { inset: 0, top: 0, height: typeof window !== 'undefined' ? window.innerHeight : 800 }
+  }
+  const [v, setV] = useState(read)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const u = () => setV(read())
+    vv.addEventListener('resize', u); vv.addEventListener('scroll', u)
+    return () => { vv.removeEventListener('resize', u); vv.removeEventListener('scroll', u) }
+  }, [])
+  return v
+}
+
+/** Dimmed scrim + bottom sheet shell, centred to the app column; rides above the keyboard. */
 export function BottomSheet({ onScrim, scrim, sheetStyle, children }: { onScrim: () => void; scrim: string; sheetStyle: string; children: ReactNode }) {
+  const vp = useVisibleViewport()
   return (
     <>
       <div data-g="scrim" onClick={onScrim} style={sx('position:fixed;inset:0;z-index:100;animation:fade 200ms ease both', { background: scrim })} />
-      <div style={css('position:fixed;left:0;right:0;bottom:0;z-index:101;display:flex;justify-content:center;pointer-events:none')}>
-        <div data-g="l4" style={css('width:100%;max-width:430px;background:#ffffff;pointer-events:auto;' + sheetStyle)}>{children}</div>
+      <div style={sx('position:fixed;left:0;right:0;z-index:101;display:flex;justify-content:center;pointer-events:none;transition:bottom 220ms cubic-bezier(0.16,1,0.3,1)', { bottom: vp.inset })}>
+        <div data-g="l4" style={sx('width:100%;max-width:430px;background:#ffffff;pointer-events:auto;overflow-y:auto;overscroll-behavior:contain;' + sheetStyle, { maxHeight: vp.height - 16 })}>{children}</div>
       </div>
     </>
   )
@@ -25,10 +47,11 @@ export function BottomSheet({ onScrim, scrim, sheetStyle, children }: { onScrim:
 
 /** Centred modal dialog (real-name rule, purchase, admin confirmations). */
 export function Dialog({ onScrim, labelledBy, gap, children }: { onScrim: () => void; labelledBy?: string; gap: number; children: ReactNode }) {
+  const vp = useVisibleViewport()
   return (
     <>
       <div data-g="scrim" onClick={onScrim} style={css('position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.4);animation:fade 200ms ease both')} />
-      <div style={css('position:fixed;inset:0;z-index:301;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:none')}>
+      <div style={sx('position:fixed;left:0;right:0;z-index:301;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:none;transition:top 220ms,height 220ms', { top: vp.top, height: vp.height })}>
         <div role="dialog" aria-modal="true" aria-labelledby={labelledBy} data-g="l4" style={sx('width:100%;max-width:340px;background:#ffffff;border-radius:24px;padding:28px 20px 20px;pointer-events:auto;display:flex;flex-direction:column;animation:popIn 360ms cubic-bezier(0.34,1.4,0.64,1) both', { gap })}>
           {children}
         </div>
@@ -296,8 +319,8 @@ export function InstallSheet({ onClose, onToast }: { onClose: () => void; onToas
 
 export function Toast({ msg }: { msg: string }) {
   return (
-    <div style={css('position:fixed;left:0;right:0;bottom:84px;z-index:400;display:flex;justify-content:center;pointer-events:none;padding:0 20px')}>
-      <div data-g="l3" style={css('max-width:375px;padding:12px 20px;border-radius:9999px;background:#ffffff;box-shadow:0 2px 30px 0 rgba(0,27,55,0.1);font-size:15px;line-height:22.5px;font-weight:600;color:rgba(0,12,30,0.8);animation:toastIn 300ms cubic-bezier(0.22,1,0.36,1) both')}>{msg}</div>
+    <div role="status" aria-live="polite" style={css('position:fixed;left:0;right:0;top:calc(12px + env(safe-area-inset-top));z-index:400;display:flex;justify-content:center;pointer-events:none;padding:0 20px')}>
+      <div data-g="l3" key={msg} style={css('max-width:375px;padding:12px 20px;border-radius:22px;background:#ffffff;box-shadow:0 4px 24px rgba(0,27,55,0.14);font-size:15px;line-height:22.5px;font-weight:600;color:rgba(0,12,30,0.8);text-align:center;animation:toastDown 320ms cubic-bezier(0.16,1,0.3,1) both')}>{msg}</div>
     </div>
   )
 }

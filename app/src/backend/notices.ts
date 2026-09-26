@@ -4,7 +4,7 @@ import { runAdminOp, type AdminProgress } from './admin'
 // 공지: the admin posts a notice; everyone signed in sees it full-screen once.
 // firestore.rules refuses to hand out a notice someone already marked as seen.
 
-export type Notice = { id: string; title: string; body: string; createdAt: Timestamp | null }
+export type Notice = { id: string; title: string; body: string; by?: string; createdAt: Timestamp | null }
 export const MAX_NOTICE_TITLE = 40
 export const MAX_NOTICE_BODY = 2000
 
@@ -18,6 +18,7 @@ export async function postNotice(db: Firestore, adminUid: string, title: string,
   await runAdminOp(db, adminUid, 'postNotice', { id, title: t, body: b }, [
     w => { w.set(doc(db, 'notices', id), { title: t, body: b, by: adminUid, createdAt: serverTimestamp() }); w.set(doc(db, 'meta', 'noticeIndex'), { ids }); return 2 },
   ], onProgress)
+  return id
 }
 
 /** Calls back with the notice ids that exist (newest first), live. */
@@ -33,7 +34,11 @@ export async function nextUnseenNotice(db: Firestore, uid: string, ids: string[]
     if (seen[id]) continue
     try {
       const s = await getDoc(doc(db, 'notices', id))
-      if (s.exists()) return { id, ...(s.data() as Omit<Notice, 'id'>) }
+      if (!s.exists()) continue
+      const n = { id, ...(s.data() as Omit<Notice, 'id'>) }
+      // The person who posted it doesn't need to read it back.
+      if (n.by === uid) { await markNoticeSeen(db, uid, id).catch(() => {}); continue }
+      return n
     } catch { /* already seen (refused) or gone */ }
   }
   return null
