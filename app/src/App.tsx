@@ -3,7 +3,7 @@ import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
-import { buyItem, buyPass, castVote, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { buyItem, buyPass, castVote, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, inviteMembers, isUnread, leaveGroup, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
 import { DEFAULT_OWNED, DEFAULT_SEASON, PASS_PRICE, type MyVote, type Season, type WeekKind } from './backend/types'
@@ -154,8 +154,20 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     setNotice(next)
   }
 
-  // Logged in with an admin-issued one-time code → choose a new password first.
-  useEffect(() => { if (authUser) needsNewPassword(authUser.uid).then(setMustChangePw); else setMustChangePw(false) }, [authUser])
+  // Logged in with an admin-issued one-time code → choose a new password first. Only
+  // checked right after typing a password (or while still pending), not on every launch.
+  const justLoggedIn = useRef(false)
+  useEffect(() => {
+    if (!authUser) { setMustChangePw(false); return }
+    let pending = false
+    try { pending = localStorage.getItem('pv-mustpw') === authUser.uid } catch { /* private mode */ }
+    if (!justLoggedIn.current && !pending) return
+    justLoggedIn.current = false
+    needsNewPassword(authUser.uid).then(must => {
+      setMustChangePw(must)
+      try { if (must) localStorage.setItem('pv-mustpw', authUser.uid); else localStorage.removeItem('pv-mustpw') } catch { /* private mode */ }
+    })
+  }, [authUser])
 
   useEffect(() => {
     if (!authUser || !db) { setNotify(DEFAULT_NOTIFY); return }
@@ -202,7 +214,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const me = authUser ? all.find(d => d.id === authUser.uid) : undefined
   const mine = all.filter(d => d.my && (d.my.ups > 0 || d.my.downs > 0 || d.inWeek))
   const points = me ? pointsOf(me) : 0
-  const passActive = !!me && me.pass2x === season.number
+  const passActive = hasPass(me)
   const isAdmin = isAdminEmail(authUser?.email)
   const byId = useMemo(() => new Map(all.map(p => [p.id, p])), [all])
   const unreadChats = authUser ? chats.filter(c => isUnread(c, authUser.uid)).length : 0
@@ -365,6 +377,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     if (authBusy) return
     setAuthBusy(true)
     try {
+      justLoggedIn.current = true
       await logIn(login.id.trim(), login.pw, login.keep)
       saveLoginId(login.id.trim())
       setLogin(freshLogin())
@@ -628,7 +641,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           <BuyDialog
             b={{
               title: '투표 2배권을 살까요?',
-              desc: points >= PASS_PRICE ? `${season.name} 시즌이 끝날 때까지 한 사람에게 일주일에 두 번 투표할 수 있어요` : '포인트가 더 쌓이면 살 수 있어요',
+              desc: points >= PASS_PRICE ? '한 번 사면 계속, 한 사람에게 일주일에 두 번까지 투표할 수 있어요' : '포인트가 더 쌓이면 살 수 있어요',
               price: PASS_PRICE.toLocaleString() + 'P',
               remain: (points - PASS_PRICE).toLocaleString() + 'P',
               can: points >= PASS_PRICE,
@@ -637,7 +650,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             onClose={() => setPassAsk(false)}
             onConfirm={async () => {
               if (points < PASS_PRICE) return
-              try { await buyPass(db!, me.id, season.number); setPassAsk(false); showToast('투표 2배권을 샀어요. 이번 시즌 동안 한 번 더 투표할 수 있어요') }
+              try { await buyPass(db!, me.id); setPassAsk(false); showToast('투표 2배권을 샀어요. 이제 한 사람에게 일주일에 두 번 투표할 수 있어요') }
               catch (e) { failToast('사지 못했어요. 다시 시도해주세요', e) }
             }}
           />
@@ -758,7 +771,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             <button data-g="primary" className="pr-96" disabled={newPw.a.length < 8 || newPw.a !== newPw.b || newPw.busy}
               onClick={async () => {
                 setNewPw(s => ({ ...s, busy: true }))
-                try { await chooseNewPassword(newPw.a); setMustChangePw(false); setNewPw({ a: '', b: '', busy: false }); showToast('새 비밀번호로 바꿨어요') }
+                try { await chooseNewPassword(newPw.a); try { localStorage.removeItem('pv-mustpw') } catch { /* private mode */ } setMustChangePw(false); setNewPw({ a: '', b: '', busy: false }); showToast('새 비밀번호로 바꿨어요') }
                 catch (e) { setNewPw(s => ({ ...s, busy: false })); failToast('바꾸지 못했어요', e) }
               }}
               style={sx('height:54px;border-radius:16px;background:#3182f6;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms', { opacity: newPw.a.length >= 8 && newPw.a === newPw.b && !newPw.busy ? 1 : 0.3 })}>바꾸기</button>

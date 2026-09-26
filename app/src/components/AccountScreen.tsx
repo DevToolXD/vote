@@ -201,7 +201,7 @@ function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot }:
             </span>
             <span style={css('flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px')}>
               <button data-g="secondary" className="pr-96" onClick={() => onOpenVote(d)} style={css('height:32px;padding:0 12px;border-radius:8px;background:#e8f3ff;color:#1b64da;font-size:13px;font-weight:600;transition:transform 150ms')}>{d.inWeek ? '바꾸기' : '투표하기'}</button>
-              {d.inWeek && <span style={css('font-size:12px;color:#8b95a1;font-variant-numeric:tabular-nums')}>{d.weekKind === 'up' ? '이번 주 추천' : d.weekKind === 'down' ? '이번 주 비추천' : '이번 주 취소함'} · {d.weekLeft} 남음</span>}
+              {d.inWeek && <span style={css('font-size:12px;color:#8b95a1;font-variant-numeric:tabular-nums')}>{d.weekKind === 'up' ? '이번 주 추천' : d.weekKind === 'down' ? '이번 주 비추천' : '이번 주 취소함'}{d.weekN >= 2 ? ' ×2' : ''} · {d.weekLeft} 남음</span>}
             </span>
           </div>
           <div style={css('height:0.5px;margin-left:24px;background:rgba(0,0,33,0.07)')} />

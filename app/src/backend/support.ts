@@ -57,8 +57,8 @@ export function subscribeTickets(db: Firestore, cb: (t: Ticket[]) => void): Unsu
 }
 
 export function subscribeSupportMessages(db: Firestore, uid: string, cb: (m: SupportMessage[]) => void): Unsubscribe {
-  const q = query(collection(db, 'support', uid, 'messages'), orderBy('at', 'asc'), limit(300))
-  return onSnapshot(q, s => cb(s.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) } as SupportMessage))), () => cb([]))
+  const q = query(collection(db, 'support', uid, 'messages'), orderBy('at', 'desc'), limit(100))
+  return onSnapshot(q, s => cb(s.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) } as SupportMessage)).reverse()), () => cb([]))
 }
 
 /**

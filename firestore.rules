@@ -259,14 +259,13 @@ service cloud.firestore {
         && d.spent == o.spent - g0.amount;
     }
 
-    // 투표 2배권: 5000P, good for the current season.
+    // 투표 2배권: 5000P once, kept for good.
     function passBuy() {
       let d = request.resource.data;
       let o = resource.data;
-      let cur = curSeason();
       return request.auth.uid == o.ownerUid
         && d.diff(o).affectedKeys().hasOnly(['spent', 'pass2x'])
-        && o.get('pass2x', 0) != cur && d.pass2x == cur
+        && o.get('pass2x', false) == false && d.pass2x == true
         && d.spent == o.spent + 5000
         && d.spent <= d.up + d.get('bonus', 0);
     }
@@ -391,12 +390,13 @@ service cloud.firestore {
         && c1.down == c0.down + downsNow(request.resource.data, cur) - downsNow(o, cur);
     }
 
-    // One vote a week per person (two with the season's 투표 2배권, candidates/{me}.pass2x).
+    // One vote a week per person (two with the 투표 2배권, candidates/{me}.pass2x).
     // Within the week it can be switched (추천 ⇄ 비추천, moving every vote of the week),
     // cancelled, or — with the pass — cast once more the same way. After the week, a new
     // vote starts a new week. The tally moves by exactly the difference.
-    function hasPass(cur) {
-      return get(/databases/$(database)/documents/candidates/$(request.auth.uid)).data.get('pass2x', 0) == cur;
+    // Bought once, kept for good (an early season-numbered purchase counts too).
+    function hasPass() {
+      return get(/databases/$(database)/documents/candidates/$(request.auth.uid)).data.get('pass2x', false) != false;
     }
     function voteAction() {
       let d = request.resource.data;
@@ -412,7 +412,7 @@ service cloud.firestore {
         && d.weekN is int && d.weekN >= 0 && d.weekN <= 2 && ((d.weekKind == 'none') == (d.weekN == 0))
         && (inWeek
           ? (o.get('season', 0) == cur && d.weekAt == oWeekAt && (d.weekKind != oKind || d.weekN != oN)
-              && (d.weekN <= oN || (oN == 0 && d.weekN == 1) || (d.weekKind == oKind && oN == 1 && d.weekN == 2 && hasPass(cur)))
+              && (d.weekN <= oN || (oN == 0 && d.weekN == 1) || (d.weekKind == oKind && oN == 1 && d.weekN == 2 && hasPass()))
               && d.ups == oUps + (d.weekKind == 'up' ? d.weekN : 0) - (oKind == 'up' ? oN : 0)
               && d.downs == oDowns + (d.weekKind == 'down' ? d.weekN : 0) - (oKind == 'down' ? oN : 0))
           : (d.weekKind in ['up', 'down'] && d.weekN == 1 && d.weekAt == request.time

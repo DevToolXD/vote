@@ -82,10 +82,11 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
   })
 }
 
-/** 투표 2배권 for the current season (firestore.rules: passBuy). */
-export async function buyPass(db: Firestore, myUid: string, season: number) {
-  await updateDoc(doc(db, 'candidates', myUid), { pass2x: season, spent: increment(PASS_PRICE) })
+/** 투표 2배권, kept for good (firestore.rules: passBuy). */
+export async function buyPass(db: Firestore, myUid: string) {
+  await updateDoc(doc(db, 'candidates', myUid), { pass2x: true, spent: increment(PASS_PRICE) })
 }
+export const hasPass = (c?: { pass2x?: boolean | number }) => !!c?.pass2x
 
 /** Points available to spend: this season's recommendations + carried-over/admin bonus − spent. */
 export const pointsOf = (c: Pick<CandidateDoc, 'up' | 'spent'> & { bonus?: number }) => c.up + (c.bonus ?? 0) - c.spent

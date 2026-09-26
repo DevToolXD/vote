@@ -23,9 +23,15 @@ export function pushSupport(): PushSupport {
   return 'none'
 }
 
-const TOKEN_KEY = 'vote.pushToken'
+const TOKEN_KEY = 'vote.pushToken', SAVED_AT = 'vote.pushTokenAt'
 const savedToken = () => { try { return localStorage.getItem(TOKEN_KEY) } catch { return null } }
-const remember = (t: string | null) => { try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY) } catch { /* private mode */ } }
+const savedAt = () => { try { return Number(localStorage.getItem(SAVED_AT) || 0) } catch { return 0 } }
+const remember = (t: string | null) => {
+  try {
+    if (t) { localStorage.setItem(TOKEN_KEY, t); localStorage.setItem(SAVED_AT, String(Date.now())) }
+    else { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(SAVED_AT) }
+  } catch { /* private mode */ }
+}
 
 /** Is this device currently registered (as far as this device knows)? */
 export const deviceRegistered = () => !!savedToken()
@@ -56,13 +62,18 @@ async function nativeToken(): Promise<string> {
   })
 }
 
-/** Asks for permission (must run from a tap) and registers this device for `uid`. */
-export async function enablePush(db: Firestore, uid: string) {
+/**
+ * Asks for permission (must run from a tap) and registers this device for `uid`.
+ * `quiet` (app launch): skip the Firestore write when the token is unchanged and was
+ * saved within a week — the worker holds every token in memory, so each write costs a read.
+ */
+export async function enablePush(db: Firestore, uid: string, quiet = false) {
   const support = pushSupport()
   if (support !== 'web' && support !== 'native') throw new Error('push-unsupported')
   const token = support === 'native' ? await nativeToken() : await webToken()
   const platform: PushPlatform = support === 'native' ? 'android' : 'web'
   const old = savedToken()
+  if (quiet && old === token && Date.now() - savedAt() < 7 * 86_400_000) return
   if (old && old !== token) await removePushToken(db, old).catch(() => {})
   await savePushToken(db, uid, token, platform)
   remember(token)
@@ -83,7 +94,7 @@ export async function refreshPush(db: Firestore, uid: string) {
   if (!deviceRegistered()) return
   const support = pushSupport()
   if (support === 'web' && Notification.permission !== 'granted') return
-  try { await enablePush(db, uid) } catch { /* try again next launch */ }
+  try { await enablePush(db, uid, true) } catch { /* try again next launch */ }
 }
 
 export function pushErrorMessage(e: unknown) {

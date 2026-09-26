@@ -28,8 +28,8 @@ export type CandidateDoc = {
   msgOff?: boolean
   owned: Record<ItemKind, string[]>
   createdAt: unknown
-  /** Season number the 투표 2배권 was bought for (valid while it's the current season). */
-  pass2x?: number
+  /** 투표 2배권, bought once and kept (an early purchase stored the season number: also owned). */
+  pass2x?: boolean | number
 }
 
 export const DEFAULT_OWNED: Record<ItemKind, string[]> = { frame: ['none'], plate: ['none'], skin: ['none'] }

@@ -4,6 +4,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocFromCache,
   getDocs,
   limit,
   onSnapshot,
@@ -67,10 +68,10 @@ export const PAGE = 40
 const rowsOf = (docs: { id: string; data: (o: { serverTimestamps: 'estimate' }) => unknown }[]) =>
   docs.map(d => ({ id: d.id, ...(d.data({ serverTimestamps: 'estimate' }) as Omit<MessageRow, 'id'>) })).reverse()
 
-/** The latest PAGE messages of one chat, oldest first. */
-export function subscribeMessages(db: Firestore, chatId: string, cb: (rows: MessageRow[]) => void, onError?: (e: unknown) => void): Unsubscribe {
+/** The latest PAGE messages of one chat, oldest first. `fromCache`: the first answer can come from the on-device cache (maybe partial) before the server's. */
+export function subscribeMessages(db: Firestore, chatId: string, cb: (rows: MessageRow[], fromCache: boolean) => void, onError?: (e: unknown) => void): Unsubscribe {
   const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('at', 'desc'), limit(PAGE))
-  return onSnapshot(q, snap => cb(rowsOf(snap.docs)), onError)
+  return onSnapshot(q, snap => cb(rowsOf(snap.docs), snap.metadata.fromCache), onError)
 }
 
 /** The PAGE messages before `before` (oldest first), read once when scrolling up. */
@@ -146,12 +147,14 @@ export async function sendImage(db: Firestore, me: string, chatId: string, dataU
 }
 
 const imageCache = new Map<string, Promise<string>>()
-/** A photo message's image, loaded once per session. */
+/** A photo message's image, downloaded once (then kept on the device). */
 export function loadImage(db: Firestore, chatId: string, messageId: string) {
   const k = chatId + '/' + messageId
   let p = imageCache.get(k)
   if (!p) {
-    p = getDoc(doc(db, 'chats', chatId, 'media', messageId)).then(s => (s.data()?.data as string) ?? '')
+    // A photo never changes: the on-device cache is enough once it has been seen (no read).
+    const ref = doc(db, 'chats', chatId, 'media', messageId)
+    p = getDocFromCache(ref).catch(() => getDoc(ref)).then(s => (s.data()?.data as string) ?? '')
     p.catch(() => imageCache.delete(k))
     imageCache.set(k, p)
   }

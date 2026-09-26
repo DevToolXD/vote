@@ -115,17 +115,17 @@ describe('voting', () => {
     await castVote(b, 'b', 'a', 'up')
     assert.deepEqual(await tally(b, 'a'), [2, 0, 2])
   })
-  test('투표 2배권: 5000P for the season; then twice a week per person, switch/cancel move both', async () => {
+  test('투표 2배권: 5000P once, kept for good; then twice a week per person, switch/cancel move both', async () => {
     await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
-    await denied(buyPass(b, 'b', 1)) // no points
+    await denied(buyPass(b, 'b')) // no points
     await grantPoints(admin, ADMIN.uid, 'b', 5000)
-    await denied(updateDoc(doc(b, 'candidates', 'b'), { pass2x: 2, spent: 5000 })) // not this season
-    await denied(updateDoc(doc(b, 'candidates', 'b'), { pass2x: 1, spent: 10 })) // underpaid
+    await denied(updateDoc(doc(b, 'candidates', 'b'), { pass2x: 7, spent: 5000 })) // must be the plain pass
+    await denied(updateDoc(doc(b, 'candidates', 'b'), { pass2x: true, spent: 10 })) // underpaid
     await castVote(b, 'b', 'a', 'up')
     await denied(castVote(b, 'b', 'a', 'up', 2)) // no pass yet
-    await buyPass(b, 'b', 1)
+    await buyPass(b, 'b')
     assert.equal(pointsOf((await getDoc(doc(b, 'candidates', 'b'))).data() as never), 0)
-    await denied(buyPass(b, 'b', 1)) // already has it
+    await denied(buyPass(b, 'b')) // already has it
     await castVote(b, 'b', 'a', 'up', 2)
     assert.deepEqual(await tally(b, 'a'), [2, 0, 2])
     await castVote(b, 'b', 'a', 'down', 2) // switching moves both votes

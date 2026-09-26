@@ -319,8 +319,14 @@ export function ChatRoom(p: RoomProps) {
   const [hasOlder, setHasOlder] = useState(false)
   const loadingOlder = useRef(false)
   const keepFromBottom = useRef<number | null>(null)
-  useEffect(() => subscribeMessages(db, chat.id, rows => {
-    if (!firstIds.current) { firstIds.current = new Set(rows.map(r => r.id)); setHasOlder(rows.length >= PAGE) }
+  const settled = useRef(false)
+  useEffect(() => subscribeMessages(db, chat.id, (rows, fromCache) => {
+    // Everything up to the first answer from the server is history (no entry animation);
+    // a cached first answer may be partial, so "older pages exist" is decided by the server's.
+    if (!settled.current) {
+      firstIds.current = new Set([...(firstIds.current ?? []), ...rows.map(r => r.id)])
+      if (!fromCache) { settled.current = true; setHasOlder(rows.length >= PAGE) }
+    }
     setMsgs(prev => mergeMessages(prev, rows))
   }, e => onError('메시지를 불러오지 못했어요', e)), [db, chat.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const loadOlder = async () => {
@@ -641,7 +647,9 @@ function ImageViewer({ src, onClose, onToast }: { src: string; onClose: () => vo
 function GiftBubble({ db, giftId, me, byId, onClaim, onCancel, onLoaded }: { db: Firestore; giftId: string; me: string; byId: Map<string, Person>; onClaim: (id: string) => Promise<unknown>; onCancel: (id: string) => Promise<unknown>; onLoaded?: () => void }) {
   const [g, setG] = useState<Gift | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
-  useEffect(() => subscribeGift(db, giftId, setG), [db, giftId])
+  // Listen only while it can still change; a taken or cancelled gift is final.
+  const final = g?.status === 'claimed' || g?.status === 'cancelled'
+  useEffect(() => (final ? undefined : subscribeGift(db, giftId, setG)), [db, giftId, final])
   useEffect(() => { if (g) onLoaded?.() }, [g?.status]) // eslint-disable-line react-hooks/exhaustive-deps
   const amount = g ? g.amount.toLocaleString() + 'P' : ''
   const mine = g?.from === me
