@@ -3,8 +3,10 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { createServer } from 'node:http'
-import { after, beforeEach, describe, test } from 'node:test'
+import { after, before, beforeEach, describe, test } from 'node:test'
+import { readFileSync } from 'node:fs'
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app'
+import { connectDatabaseEmulator, get as rtGet, getDatabase, ref as rtRef, set as rtSet, update as rtUpdate, type Database } from 'firebase/database'
 import {
   collection, connectFirestoreEmulator, deleteDoc, deleteField, doc, getDoc, getDocs, getFirestore,
   query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Firestore,
@@ -12,7 +14,7 @@ import {
 import { deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, updateMyProfile } from '../src/backend/candidates'
-import { setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markGone, markHere, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
+import { loadOlderMessages, subscribeMessages, setChatDatabase, setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markGone, markHere, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
 import { cancelGift, claimGift, sendGift, subscribeGift } from '../src/backend/gifts'
@@ -22,18 +24,26 @@ import type { CandidateDoc } from '../src/backend/types'
 import { priceOf } from '../src/data'
 
 const PROJECT = 'demo-vote'
+const RTDB_NS = `${PROJECT}-default-rtdb`
+const RTDB = `http://127.0.0.1:9000`
 const [HOST, PORT] = (process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8181').split(':')
 const apps: FirebaseApp[] = []
 
+const rtdbOf = new Map<Firestore, Database>()
 function dbAs(user: { uid: string; email?: string; admin?: boolean; firebase?: { sign_in_provider: string } } | null): Firestore {
-  const app = initializeApp({ projectId: PROJECT, apiKey: 'test' }, `app${apps.length}`)
+  const app = initializeApp({ projectId: PROJECT, apiKey: 'test', databaseURL: `https://${RTDB_NS}.asia-southeast1.firebasedatabase.app` }, `app${apps.length}`)
   apps.push(app)
   const db = getFirestore(app)
-  connectFirestoreEmulator(db, HOST, Number(PORT), user ? {
-    mockUserToken: { sub: user.uid, user_id: user.uid, ...(user.email ? { email: user.email } : {}), ...(user.admin ? { admin: true } : {}), firebase: { sign_in_provider: 'password', identities: {}, ...(user.firebase ?? {}) } },
-  } : undefined)
+  const token = user ? { sub: user.uid, user_id: user.uid, ...(user.email ? { email: user.email } : {}), ...(user.admin ? { admin: true } : {}), firebase: { sign_in_provider: 'password', identities: {}, ...(user.firebase ?? {}) } } : undefined
+  connectFirestoreEmulator(db, HOST, Number(PORT), token ? { mockUserToken: token } : undefined)
+  const rtdb = getDatabase(app)
+  connectDatabaseEmulator(rtdb, '127.0.0.1', 9000, token ? { mockUserToken: token } : undefined)
+  setChatDatabase(db, rtdb)
+  rtdbOf.set(db, rtdb)
   return db
 }
+/** Reads a Realtime Database path as that user. */
+const rt = async (db: Firestore, path: string) => (await rtGet(rtRef(rtdbOf.get(db)!, path))).val()
 const ADMIN = { uid: 'admin-uid', email: 'admin@vote.local' }
 const userDb = (uid: string) => dbAs({ uid, email: `${uid}@vote.local` })
 
@@ -46,10 +56,18 @@ async function read(db: Firestore, path: string) {
   const s = await getDoc(doc(db, path))
   return s.data() as CandidateDoc & Record<string, unknown>
 }
-const denied = (p: Promise<unknown>) => assert.rejects(p, (e: { code?: string }) => e.code === 'permission-denied', 'expected permission-denied')
+const denied = (p: Promise<unknown>) => assert.rejects(p, (e: { code?: string; message?: string }) => e.code === 'permission-denied' || /permission[_ ]denied/i.test(String(e.code ?? '') + String(e.message ?? '')), 'expected permission-denied')
 
+// database.rules.json is loaded into the Realtime Database emulator here (firebase-tools'
+// own upload doesn't get through every network setup); it's deployed for real by
+// .github/scripts/setup-rtdb.mjs.
+before(async () => {
+  const r = await fetch(`${RTDB}/.settings/rules.json?ns=${RTDB_NS}`, { method: 'PUT', headers: { Authorization: 'Bearer owner' }, body: readFileSync(new URL('../../database.rules.json', import.meta.url), 'utf8') })
+  assert.ok(r.ok, await r.text())
+})
 beforeEach(async () => {
   await fetch(`http://${HOST}:${PORT}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' })
+  await fetch(`${RTDB}/.json?ns=${RTDB_NS}`, { method: 'PUT', headers: { Authorization: 'Bearer owner' }, body: 'null' })
 })
 after(async () => { await Promise.all(apps.map(a => deleteApp(a))) })
 
@@ -426,8 +444,10 @@ describe('admin: single-use tokens ×3', () => {
   })
 })
 
-describe('messages', () => {
-  const msgs = async (db: Firestore, chatId: string) => (await getDocs(collection(db, 'chats', chatId, 'messages'))).docs.map(d => d.data().text)
+describe('messages (Realtime Database)', () => {
+  const msgs = async (db: Firestore, chatId: string) => Object.values((await rt(db, `msgs/${chatId}`)) ?? {}) as { uid: string; text: string; kind?: string; replyTo?: unknown; giftId?: string }[]
+  const R = (db: Firestore) => rtdbOf.get(db)!
+  const now = { '.sv': 'timestamp' }
 
   test('1:1: open once per pair, both can talk, outsiders can’t read or write', async () => {
     const a = await signUp('a'), b = await signUp('b'), c = await signUp('c')
@@ -436,42 +456,46 @@ describe('messages', () => {
     assert.equal(await openDm(b, 'b', 'a'), id)
     await sendMessage(a, 'a', id, ' 안녕 ')
     await sendMessage(b, 'b', id, '반가워')
-    assert.deepEqual((await msgs(a, id)).sort(), ['반가워', '안녕'])
-    const chat = (await getDoc(doc(a, 'chats', id))).data()!
-    assert.equal(chat.last.text, '반가워')
-    await markRead(a, 'a', id)
+    assert.deepEqual((await msgs(a, id)).map(m => m.text).sort(), ['반가워', '안녕'])
+    assert.equal((await rt(a, `chats/${id}/last`)).text, '반가워')
+    assert.equal((await rt(b, `userChats/b`))[id], true)
+    assert.deepEqual((await getDoc(doc(a, 'chats', id))).data()!.members, ['a', 'b']) // Firestore copy for the gift rules
     await setChatMuted(a, 'a', id, true)
-    assert.equal((await getDoc(doc(b, 'chats', id))).data()!.mutes.a, true)
-    await denied(updateDoc(doc(a, 'chats', id), { 'mutes.b': true }))
-    await denied(updateDoc(doc(a, 'chats', id), { 'mutes.a': 'yes' }))
+    assert.equal((await rt(b, `chats/${id}/mutes`)).a, true)
+    await denied(rtSet(rtRef(R(a), `chats/${id}/mutes/b`), true))
     await setChatMuted(a, 'a', id, false)
-    await denied(getDoc(doc(c, 'chats', id)))
-    await denied(getDocs(collection(c, 'chats', id, 'messages')))
+    await denied(rtGet(rtRef(R(c), `chats/${id}`)))
+    await denied(rtGet(rtRef(R(c), `msgs/${id}`)))
     await assert.rejects(sendMessage(c, 'c', id, '끼어들기'))
-    await denied(setDoc(doc(c, 'chats', dmId('a', 'c').replace('c', 'b')), { type: 'dm', members: ['a', 'b'], name: '', createdBy: 'c', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
+    await denied(rtSet(rtRef(R(c), `chats/${id}/members/c`), true))
+    await denied(rtSet(rtRef(R(c), `userChats/c/${id}`), true)) // not a member
   })
 
   test('답장: quotes an existing message in the same chat', async () => {
-    const a = await signUp('a'); const b = await signUp('b'); await signUp('c')
+    const a = await signUp('a'); const b = await signUp('b')
     const id = await openDm(a, 'a', 'b')
     await sendMessage(a, 'a', id, '저녁 먹었어?')
-    const first = (await getDocs(collection(b, 'chats', id, 'messages'))).docs[0]
-    await sendMessage(b, 'b', id, '응 먹었어', { id: first.id, uid: 'a', text: '저녁 먹었어?' })
-    const reply = (await getDocs(collection(a, 'chats', id, 'messages'))).docs.map(d => d.data()).find(m => m.replyTo)!
-    assert.deepEqual(reply.replyTo, { id: first.id, uid: 'a', text: '저녁 먹었어?' })
-    await assert.rejects(sendMessage(b, 'b', id, 'x', { id: 'nope', uid: 'a', text: 'x' })) // no such message
-    await denied(setDoc(doc(collection(b, 'chats', id, 'messages')), { uid: 'b', text: 'x', at: serverTimestamp(), replyTo: { id: first.id, uid: 'a', text: 'x', extra: 1 } }))
+    const firstId = Object.keys(await rt(b, `msgs/${id}`))[0]
+    await sendMessage(b, 'b', id, '응 먹었어', { id: firstId, uid: 'a', text: '저녁 먹었어?' })
+    const reply = (await msgs(a, id)).find(m => m.replyTo)!
+    assert.deepEqual(reply.replyTo, { id: firstId, uid: 'a', text: '저녁 먹었어?' })
+    await denied(sendMessage(b, 'b', id, 'x', { id: 'nope', uid: 'a', text: 'x' })) // no such message
+    await denied(rtSet(rtRef(R(b), `msgs/${id}/k1`), { uid: 'b', text: 'x', at: now, replyTo: { id: firstId, uid: 'a', text: 'x', extra: 1 } }))
   })
 
-  test('refused: forged sender, someone else’s read receipt, fake preview, wrong 1:1 id', async () => {
-    const a = await signUp('a'); await signUp('b')
+  test('refused: forged sender, fake preview, edits and deletes, unknown fields, wrong 1:1 id', async () => {
+    const a = await signUp('a'); await signUp('b'); await signUp('c')
     const id = await openDm(a, 'a', 'b')
-    await denied(setDoc(doc(collection(a, 'chats', id, 'messages')), { uid: 'b', text: 'x', at: serverTimestamp() }))
-    await denied(updateDoc(doc(a, 'chats', id), { 'reads.b': serverTimestamp() }))
-    await denied(updateDoc(doc(a, 'chats', id), { last: { text: 'x', uid: 'b', at: serverTimestamp() }, updatedAt: serverTimestamp() }))
-    await denied(updateDoc(doc(a, 'chats', id), { members: ['a', 'b', 'z'] }))
-    await denied(setDoc(doc(a, 'chats', 'a_b_c'), { type: 'dm', members: ['a', 'b'], name: '', createdBy: 'a', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
-    await denied(deleteDoc(doc(a, 'chats', id)))
+    await sendMessage(a, 'a', id, '원래')
+    const k = Object.keys(await rt(a, `msgs/${id}`))[0]
+    await denied(rtSet(rtRef(R(a), `msgs/${id}/k2`), { uid: 'b', text: 'x', at: now }))
+    await denied(rtSet(rtRef(R(a), `chats/${id}/last`), { text: 'x', uid: 'b', at: now }))
+    await denied(rtSet(rtRef(R(a), `msgs/${id}/${k}/text`), '고침')) // no edits
+    await denied(rtSet(rtRef(R(a), `msgs/${id}/${k}`), null)) // no deletes
+    await denied(rtSet(rtRef(R(a), `msgs/${id}/k3`), { uid: 'a', text: 'x', at: now, admin: true }))
+    await denied(rtSet(rtRef(R(a), `msgs/${id}/k4`), { uid: 'a', text: 'x', at: 1 })) // back-dated
+    await denied(rtSet(rtRef(R(a), `chats/b_c/members/a`), true)) // someone else's 1:1
+    await denied(rtSet(rtRef(R(a), `chats/${id}/members/c`), true)) // a third person in a 1:1
   })
 
   test('메시지 끄기: no new 1:1, no sending either way, not addable to groups', async () => {
@@ -484,16 +508,18 @@ describe('messages', () => {
     await assert.rejects(createGroup(a, 'a', ['b', 'c'], '단톡'))
     await setMessagesOff(b, 'b', false)
     await sendMessage(a, 'a', id, '이제 돼')
-    await denied(updateDoc(doc(a, 'candidates', 'a'), { msgOff: 'yes' }))
+    await denied(rtSet(rtRef(R(a), 'msgOff/b'), true))
   })
 
   test('group: 3–10 people, members talk, leaving works, deleted accounts can’t be added', async () => {
     const a = await signUp('a'); const b = await signUp('b'); await signUp('c')
     const id = await createGroup(a, 'a', ['b', 'c'], '우리반')
+    assert.equal((await rt(a, `chats/${id}/info`)).name, '우리반')
     await sendMessage(b, 'b', id, '하이')
     await leaveGroup(b, 'b', id)
     await assert.rejects(sendMessage(b, 'b', id, '나갔는데'))
-    await denied(getDoc(doc(b, 'chats', id)))
+    await denied(rtGet(rtRef(R(b), `chats/${id}`)))
+    assert.equal(await rt(b, `userChats/b/${id}`), null)
     await sendMessage(a, 'a', id, '남은 사람')
     await assert.rejects(createGroup(a, 'a', ['b', 'ghost'], 'x'))
     await assert.rejects(createGroup(a, 'a', ['b'], '둘뿐'))
@@ -501,22 +527,36 @@ describe('messages', () => {
     for (const m of many) await signUp(m)
     await assert.rejects(createGroup(a, 'a', many, '11명'))
     await createGroup(a, 'a', many.slice(0, 9), '10명')
+    await denied(rtUpdate(rtRef(R(userDb('m0'))), { [`chats/${id}/members/m0`]: true })) // can't add yourself to a group
+  })
+
+  test('older pages load by key; newest page first', async () => {
+    const a = await signUp('a'); await signUp('b')
+    const id = await openDm(a, 'a', 'b')
+    for (let i = 0; i < 45; i++) await sendMessage(a, 'a', id, `m${i}`)
+    const page = await new Promise<{ text: string; id: string }[]>(res => { const stop = subscribeMessages(a, id, rows => { stop(); res(rows) }) })
+    assert.equal(page.length, 40)
+    assert.equal(page[39].text, 'm44')
+    const older = await loadOlderMessages(a, id, page[0].id)
+    assert.deepEqual(older.map(m => m.text), ['m0', 'm1', 'm2', 'm3', 'm4'])
   })
 })
 
 describe('chat extras', () => {
   const IMG = 'data:image/jpeg;base64,' + 'A'.repeat(1000)
+  const R = (db: Firestore) => rtdbOf.get(db)!
   test('invite: members add people who accept messages, up to 10; outsiders can’t', async () => {
     const a = await signUp('a'); await signUp('b'); await signUp('c'); const d = await signUp('d'); await signUp('e')
     const id = await createGroup(a, 'a', ['b', 'c'], '모임')
     await inviteMembers(a, 'a', id, ['d'], '이름a님이 이름d님을 초대했어요')
-    const chat = (await getDoc(doc(d, 'chats', id))).data()!
-    assert.deepEqual(chat.members, ['a', 'b', 'c', 'd'])
-    assert.equal(chat.last.text, '이름a님이 이름d님을 초대했어요')
-    await denied(updateDoc(doc(userDb('e'), 'chats', id), { members: ['a', 'b', 'c', 'd', 'e'] }))
+    assert.deepEqual(Object.keys(await rt(d, `chats/${id}/members`)).sort(), ['a', 'b', 'c', 'd'])
+    assert.equal((await rt(d, `chats/${id}/last`)).text, '이름a님이 이름d님을 초대했어요')
+    assert.equal(await rt(d, `userChats/d/${id}`), true)
+    assert.deepEqual((await getDoc(doc(d, 'chats', id))).data()!.members, ['a', 'b', 'c', 'd'])
+    await denied(rtSet(rtRef(R(userDb('e')), `chats/${id}/members/e`), true))
     await setMessagesOff(userDb('e'), 'e', true)
     await assert.rejects(inviteMembers(a, 'a', id, ['e'], 'x'))
-    await denied(updateDoc(doc(a, 'chats', id), { members: ['a', 'b', 'd'] })) // can't remove others
+    await denied(rtSet(rtRef(R(a), `chats/${id}/members/b`), null)) // can't remove others
     const many = Array.from({ length: 7 }, (_, i) => `m${i}`)
     for (const m of many) await signUp(m)
     await assert.rejects(inviteMembers(a, 'a', id, many, 'x')) // 11 people
@@ -524,16 +564,15 @@ describe('chat extras', () => {
     const dm = await openDm(a, 'a', 'b')
     await assert.rejects(inviteMembers(a, 'a', dm, ['c'], 'x')) // not in 1:1 chats
   })
-  test('photos: sent with their media doc, readable only by members', async () => {
+  test('photos: image in Firestore (members only), message in the Realtime Database', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
     const id = await openDm(a, 'a', 'b')
     await sendImage(a, 'a', id, IMG)
-    const msgs = await getDocs(collection(b, 'chats', id, 'messages'))
-    const m = msgs.docs[0]
-    assert.equal(m.data().kind, 'image')
-    assert.equal(await loadImage(b, id, m.id), IMG)
-    await denied(getDoc(doc(c, 'chats', id, 'media', m.id)))
-    await denied(setDoc(doc(collection(a, 'chats', id, 'messages')), { uid: 'a', text: '', kind: 'image', at: serverTimestamp() })) // no media
+    const [key, m] = Object.entries(await rt(b, `msgs/${id}`))[0] as [string, { kind: string }]
+    assert.equal(m.kind, 'image')
+    assert.equal(await loadImage(b, id, key), IMG)
+    await denied(getDoc(doc(c, 'chats', id, 'media', key)))
+    await denied(setDoc(doc(a, 'chats', id, 'media', key), { uid: 'a', data: IMG, at: serverTimestamp() })) // no replacing
     await assert.rejects(sendImage(a, 'a', id, 'data:text/html;base64,AAAA'))
     await assert.rejects(sendImage(a, 'a', id, 'data:image/jpeg;base64,' + 'A'.repeat(700_001)))
     await setMessagesOff(b, 'b', true)
@@ -547,40 +586,34 @@ describe('chat extras', () => {
     await assert.rejects(setChatTimeout(b, 'b', id, 'c', 600_000, 'b가 c를 타임아웃')) // not the admin
     await setChatTimeout(admin, ADMIN.uid, id, 'c', 600_000, '관리자님이 이름c님을 10분 동안 타임아웃했어요')
     await assert.rejects(sendMessage(c, 'c', id, '말하기')) // timed out
-    assert.ok((await getDocs(collection(c, 'chats', id, 'messages'))).size >= 1) // still reads
+    assert.ok(Object.keys(await rt(c, `msgs/${id}`)).length >= 1) // still reads
     await sendMessage(b, 'b', id, '나는 돼') // others still talk
-    const sys = (await getDocs(collection(b, 'chats', id, 'messages'))).docs.map(d => d.data()).find(m => m.kind === 'system')
+    const sys = (Object.values(await rt(b, `msgs/${id}`)) as { kind?: string; text: string }[]).find(m => m.kind === 'system')
     assert.equal(sys?.text, '관리자님이 이름c님을 10분 동안 타임아웃했어요')
-    await denied(updateDoc(doc(c, 'chats', id), { 'timeouts.c': deleteField() })) // can't lift it yourself
+    await denied(rtSet(rtRef(R(c), `chats/${id}/timeouts/c`), null)) // can't lift it yourself
     await setChatTimeout(admin, ADMIN.uid, id, 'c', 0, '관리자님이 이름c님의 타임아웃을 풀었어요')
     await sendMessage(c, 'c', id, '이제 돼')
-    // an expired timeout doesn't block
-    await seed(`chats/${id}`, { timeouts: { mapValue: { fields: { b: { timestampValue: new Date(Date.now() - 1000).toISOString() } } } } })
-    await sendMessage(b, 'b', id, '끝났어')
+    await fetch(`${RTDB}/chats/${id}/timeouts/b.json?ns=${RTDB_NS}`, { method: 'PUT', headers: { Authorization: 'Bearer owner' }, body: String(Date.now() - 1000) })
+    await sendMessage(b, 'b', id, '끝났어') // an expired timeout doesn't block
     await assert.rejects(setChatTimeout(admin, ADMIN.uid, await openDm(admin, ADMIN.uid, 'b'), 'b', 600_000, 'x')) // not in 1:1
   })
-  test('read receipts: own entry only, members only, in their own doc', async () => {
+  test('presence and read times: own entries only, members only', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
     const id = await openDm(a, 'a', 'b')
-    await sendMessage(a, 'a', id, '안녕')
-    await markRead(b, 'b', id)
-    assert.ok((await getDoc(doc(a, 'chats', id, 'state', 'reads'))).data()!.b)
-    await denied(setDoc(doc(b, 'chats', id, 'state', 'reads'), { a: serverTimestamp() }, { merge: true })) // someone else's
-    await denied(setDoc(doc(b, 'chats', id, 'state', 'reads'), { b: new Date(0) }, { merge: true })) // back-dated
-    await markHere(a, 'a', id) // in the room: here until a few minutes from now
-    assert.ok((await getDoc(doc(b, 'chats', id, 'state', 'reads'))).data()!.here.a)
-    await denied(setDoc(doc(b, 'chats', id, 'state', 'reads'), { here: { a: new Date(Date.now() + 60_000) } }, { merge: true })) // someone else's
-    await denied(setDoc(doc(b, 'chats', id, 'state', 'reads'), { here: { b: new Date(Date.now() + 3600_000) } }, { merge: true })) // too far ahead
+    await markHere(a, 'a', id)
+    assert.ok(await rt(a, `reads/a/${id}`))
+    await denied(rtSet(rtRef(R(b), `here/${id}/a`), Date.now()))
+    await denied(rtSet(rtRef(R(b), `here/${id}/b`), Date.now() + 3600_000)) // too far ahead
+    await denied(rtSet(rtRef(R(c), `here/${id}/c`), Date.now())) // not a member
+    await denied(rtGet(rtRef(R(b), 'reads/a')))
     await markGone(a, 'a', id)
-    assert.equal((await getDoc(doc(b, 'chats', id, 'state', 'reads'))).data()!.here?.a, undefined)
-    await denied(getDoc(doc(c, 'chats', id, 'state', 'reads'))) // not a member
-    await denied(setDoc(doc(c, 'chats', id, 'state', 'reads'), { c: serverTimestamp() }))
   })
   test('group icon and name: members only, small images only, not for 1:1', async () => {
     const a = await signUp('a'); await signUp('b'); const c = await signUp('c'); await signUp('d')
     const id = await createGroup(a, 'a', ['b', 'c'], '모임')
     await setGroupInfo(c, id, { photo: IMG, name: '새 이름' })
-    assert.equal((await getDoc(doc(a, 'chats', id))).data()!.name, '새 이름')
+    assert.equal((await rt(a, `chats/${id}/info`)).name, '새 이름')
+    assert.equal(await rt(a, `chatPhotos/${id}`), IMG)
     await denied(setGroupInfo(userDb('d'), id, { photo: IMG }))
     await denied(setGroupInfo(a, id, { photo: 'x'.repeat(200_001) }))
     await denied(setGroupInfo(a, id, { name: 'x'.repeat(31) }))
@@ -713,7 +746,7 @@ describe('포인트 선물', () => {
     await assert.rejects(sendGift(a, 'a', await chatOf(a, id), 500)) // more than a has
     await sendGift(a, 'a', await chatOf(a, id), 120)
     assert.equal(await points(a, 'a'), 80)
-    const gid = (await getDocs(collection(a, 'chats', id, 'messages'))).docs[0].data().giftId
+    const gid = (Object.values(await rt(a, `msgs/${id}`)) as { giftId: string }[])[0].giftId
     await assert.rejects(claimGift(a, 'a', gid)) // not your own
     await claimGift(b, 'b', gid)
     assert.equal(await points(b, 'b'), 120)
@@ -727,7 +760,7 @@ describe('포인트 선물', () => {
     const id = await createGroup(a, 'a', ['b', 'c'], '모임')
     await sendGift(a, 'a', await chatOf(a, id), 100)
     await sendGift(a, 'a', await chatOf(a, id), 50)
-    const gifts = (await getDocs(collection(a, 'chats', id, 'messages'))).docs.map(m => m.data()).filter(m => m.kind === 'gift').map(m => m.giftId)
+    const gifts = (Object.entries(await rt(a, `msgs/${id}`)) as [string, { kind?: string; giftId: string }][]).sort(([x], [y]) => (x < y ? -1 : 1)).map(([, m]) => m).filter(m => m.kind === 'gift').map(m => m.giftId)
     const results = await Promise.allSettled([claimGift(b, 'b', gifts[0]), claimGift(c, 'c', gifts[0])])
     assert.equal(results.filter(r => r.status === 'fulfilled').length, 1)
     await assert.rejects(claimGift(d, 'd', gifts[1])) // not in the chat
@@ -741,7 +774,7 @@ describe('포인트 선물', () => {
     const id = await createGroup(a, 'a', ['b', 'c'], '모임')
     await sendGift(a, 'a', await chatOf(a, id), 100)
     await sendGift(a, 'a', await chatOf(a, id), 40)
-    const gifts = (await getDocs(collection(a, 'chats', id, 'messages'))).docs.map(m => m.data()).filter(m => m.kind === 'gift').map(m => m.giftId)
+    const gifts = (Object.entries(await rt(a, `msgs/${id}`)) as [string, { kind?: string; giftId: string }][]).sort(([x], [y]) => (x < y ? -1 : 1)).map(([, m]) => m).filter(m => m.kind === 'gift').map(m => m.giftId)
     const stops = gifts.map(g => subscribeGift(b, g, () => {}))
     await new Promise(r => setTimeout(r, 500))
     const results = await Promise.allSettled([claimGift(b, 'b', gifts[0]), claimGift(c, 'c', gifts[0])])
@@ -766,6 +799,40 @@ describe('포인트 선물', () => {
     w2.set(doc(a, 'gifts', 'g3'), { chatId: id, from: 'a', to: 'a', amount: 50, status: 'open', createdAt: serverTimestamp() }) // to yourself
     w2.update(doc(a, 'candidates', 'a'), { spent: 50, lastGift: 'g3' })
     await denied(w2.commit())
+  })
+})
+
+describe('moving chats to the Realtime Database', () => {
+  test('the worker copies old Firestore chats once: members, lists, messages in order, replies, photos, 메시지 끄기', async () => {
+    const a = await signUp('a'); await signUp('b'); await signUp('c')
+    const fs = `http://${HOST}:${PORT}/v1/projects/${PROJECT}/databases/(default)/documents`
+    const H = { Authorization: 'Bearer owner', 'Content-Type': 'application/json' }
+    const ts = (ms: number) => ({ timestampValue: new Date(ms).toISOString() })
+    const t0 = Date.now() - 3600_000
+    await fetch(`${fs}/chats?documentId=g1`, { method: 'POST', headers: H, body: JSON.stringify({ fields: {
+      type: { stringValue: 'group' }, name: { stringValue: '옛날방' }, createdBy: { stringValue: 'a' }, createdAt: ts(t0), updatedAt: ts(t0 + 3000),
+      members: { arrayValue: { values: ['a', 'b', 'c'].map(v => ({ stringValue: v })) } },
+      mutes: { mapValue: { fields: { c: { booleanValue: true } } } },
+    } }) })
+    const msg = (id: string, uid: string, text: string, at: number, extra: Record<string, unknown> = {}) =>
+      fetch(`${fs}/chats/g1/messages?documentId=${id}`, { method: 'POST', headers: H, body: JSON.stringify({ fields: { uid: { stringValue: uid }, text: { stringValue: text }, at: ts(at), ...extra } }) })
+    await msg('zzzFirst', 'a', '첫 메시지', t0 + 1000)
+    await msg('aaaSecond', 'b', '답장', t0 + 2000, { replyTo: { mapValue: { fields: { id: { stringValue: 'zzzFirst' }, uid: { stringValue: 'a' }, text: { stringValue: '첫 메시지' } } } } })
+    await msg('mmmPhoto', 'c', '', t0 + 3000, { kind: { stringValue: 'image' } })
+    await updateDoc(doc(userDb('b'), 'candidates', 'b'), { msgOff: true })
+    await new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
+      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '0', SETTLE_MS: '0' },
+    }, (err, stdout, stderr) => err ? reject(new Error(stderr || stdout)) : resolve()))
+    const list = Object.entries(await rt(a, 'msgs/g1')).sort(([x], [y]) => (x < y ? -1 : 1)).map(([k, m]) => ({ k, ...(m as Record<string, unknown>) }))
+    assert.deepEqual(list.map(m => m.text), ['첫 메시지', '답장', ''])
+    assert.equal((list[1].replyTo as { id: string }).id, list[0].k)
+    assert.equal(list[2].mediaId, 'mmmPhoto')
+    assert.equal((await rt(a, 'chats/g1/info')).name, '옛날방')
+    assert.equal((await rt(a, 'chats/g1/last')).text, '사진')
+    assert.equal((await rt(a, 'chats/g1/mutes')).c, true)
+    assert.equal(await rt(a, 'userChats/a/g1'), true)
+    assert.equal(await rt(a, 'msgOff/b'), true)
+    assert.equal((await rt(a, 'meta/chatMigration')).done, true)
   })
 })
 

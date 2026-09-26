@@ -610,7 +610,7 @@ service cloud.firestore {
           && (!('here' in request.resource.data.diff(old()).affectedKeys()) || hereOk(request.auth.uid));
       }
 
-      // A photo message's image, written in the same batch as the message.
+      // A photo message's image (Realtime Database message key = this id).
       match /media/{msgId} {
         allow read: if signedIn() && request.auth.uid in chatData(chatId).members;
         allow create: if signedIn()
@@ -620,7 +620,7 @@ service cloud.firestore {
           && request.resource.data.data is string
           && request.resource.data.data.size() <= 700000
           && request.resource.data.data.split(',')[0] in ['data:image/jpeg;base64', 'data:image/png;base64', 'data:image/webp;base64']
-          && getAfter(/databases/$(database)/documents/chats/$(chatId)/messages/$(msgId)).data.uid == request.auth.uid
+          // (The message itself is in the Realtime Database, written right after.)
           && canSend(chatData(chatId));
         allow update, delete: if false;
       }

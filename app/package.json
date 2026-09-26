@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test:rules": "npx --yes firebase-tools@15 emulators:exec --config ../firebase.json --only firestore --project demo-vote \"node --import tsx --test --test-concurrency=1 tests/rules.test.ts\""
+    "test:rules": "npx --yes firebase-tools@15 emulators:exec --config ../firebase.json --only firestore,database --project demo-vote \"node --import tsx --test --test-concurrency=1 tests/rules.test.ts\""
   },
   "dependencies": {
     "@capacitor/filesystem": "^8.1.3",

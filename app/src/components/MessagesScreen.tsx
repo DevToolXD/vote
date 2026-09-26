@@ -376,7 +376,7 @@ export function ChatRoom(p: RoomProps) {
     setMsgs(prev => mergeMessages(prev, rows))
   }, e => onError('메시지를 불러오지 못했어요', e)), [db, chat.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const loadOlder = async () => {
-    const el = listRef.current, oldest = msgs?.[0]?.at
+    const el = listRef.current, oldest = msgs?.[0]?.id
     if (!el || !oldest || loadingOlder.current || !hasOlder) return
     loadingOlder.current = true
     try {
@@ -524,7 +524,7 @@ export function ChatRoom(p: RoomProps) {
             const bubble = m.kind === 'gift' && m.giftId
               ? <GiftBubble db={db} giftId={m.giftId} me={me.id} byId={byId} onClaim={p.onClaimGift} onCancel={p.onCancelGift} onLoaded={keepBottom} />
               : m.kind === 'image'
-              ? <ImageBubble db={db} chatId={chat.id} msgId={m.id} onOpen={setViewer} onLoaded={keepBottom} />
+              ? <ImageBubble db={db} chatId={chat.id} msgId={m.mediaId ?? m.id} onOpen={setViewer} onLoaded={keepBottom} />
               : <span style={sx('padding:10px 14px;border-radius:20px;font-size:15px;line-height:22px;white-space:pre-wrap;word-break:break-word;display:flex;flex-direction:column;gap:6px', { background: mine ? '#3182f6' : tinted ? '#ffffff' : '#f2f4f6', color: mine ? '#ffffff' : '#191f28', fontWeight: mine ? 500 : 400 })}>
                   {m.replyTo && (
                     <button onClick={() => jumpTo(m.replyTo!.id)} style={sx('display:flex;flex-direction:column;gap:1px;padding:6px 10px;border-radius:12px;text-align:left;max-width:100%;border-left:3px solid', { background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(0,23,51,0.05)', borderLeftColor: mine ? 'rgba(255,255,255,0.7)' : '#3182f6' })}>

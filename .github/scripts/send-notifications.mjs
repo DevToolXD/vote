@@ -62,7 +62,8 @@ async function runQuery(parent, structuredQuery) {
 const settings = new Map() // uid → { notify, notifyMsg, notifyVote }
 const tokens = new Map()   // uid → [{ token, platform, ref }]
 const candidates = new Map() // uid → candidate doc (the leaderboard; also gives names)
-const roomReads = new Map()  // chatId → { uid: Timestamp } (chats/{id}/state/reads)
+let here = {}                // chatId → { uid: until } (Realtime Database here/)
+let reads = {}               // uid → { chatId: when they last read it } (reads/)
 const settingsOf = uid => ({ notify: true, notifyMsg: true, notifyVote: true, ...settings.get(uid) })
 const tokensOf = uid => tokens.get(uid) ?? []
 const nameOf = async uid => candidates.get(uid)?.name ?? '알 수 없음'
@@ -125,19 +126,19 @@ async function push(uid, { title, body, url, tag }) {
 }
 
 // A chat whose latest message (chat.last) is new → each other member, once per burst.
+// `chat` is a Realtime Database chats/{id} node: { info, members, last, mutes }.
 async function notifyChat(chat, count) {
   const last = chat.last
-  for (const member of chat.members ?? []) {
+  const type = chat.info?.type, name = chat.info?.name
+  for (const member of Object.keys(chat.members ?? {})) {
     if (member === last.uid || chat.mutes?.[member]) continue
-    const room = roomReads.get(chat.id)
-    const readMs = Math.max(chat.reads?.[member]?.toMillis?.() ?? 0, room?.[member]?.toMillis?.() ?? 0, room?.here?.[member]?.toMillis?.() ?? 0)
-    if (readMs >= last.at.toMillis()) continue // read it, or has the room open right now
+    if (Math.max(here[chat.id]?.[member] ?? 0, reads[member]?.[chat.id] ?? 0) >= last.at) continue // has the room open, or read it already
     const s = settingsOf(member)
     if (s.notify === false || s.notifyMsg === false) continue
     const sender = await nameOf(last.uid)
     const more = count > 1 ? ` (+${count - 1})` : ''
-    await push(member, chat.type === 'group'
-      ? { title: chat.name || '단톡방', body: `${sender}: ${last.text}${more}`, url: `${SITE}?tab=msg&chat=${chat.id}`, tag: `chat-${chat.id}` }
+    await push(member, type === 'group'
+      ? { title: name || '단톡방', body: `${sender}: ${last.text}${more}`, url: `${SITE}?tab=msg&chat=${chat.id}`, tag: `chat-${chat.id}` }
       : { title: sender, body: last.text + more, url: `${SITE}?tab=msg&chat=${chat.id}`, tag: `chat-${chat.id}` })
   }
 }
@@ -253,14 +254,68 @@ async function endSeasonIfDue() {
   notice(`Season ${number} (${season.name}) ended automatically: rewards paid to ${paid.filter(p => p.points > 0).length} people.`)
 }
 
+// ---- one-time move of the chats from Firestore to the Realtime Database ----
+// Copies every chat (info, members, last message, mutes, timeouts, group photo), each
+// member's chat list, every message (keys built from the send time, so they stay in order
+// and a re-run writes the same keys) and 메시지 끄기. Photos stay in Firestore (mediaId).
+// Runs until meta/chatMigration says done; if Firestore's quota is used up it tries again later.
+const PUSH_CHARS = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'
+function keyFor(ms, fsId) {
+  let t = '', n = ms
+  for (let i = 0; i < 8; i++) { t = PUSH_CHARS[n % 64] + t; n = Math.floor(n / 64) }
+  return t + fsId.replace(/[^0-9A-Za-z]/g, '').padEnd(12, '0').slice(0, 12)
+}
+const tms = t => (t && typeof t.toMillis === 'function' ? t.toMillis() : 0)
+async function migrateChats() {
+  if ((await rdb.ref('meta/chatMigration/done').get()).val()) return true
+  const chats = await fdb.collection('chats').get()
+  let paths = {}, n = 0, msgCount = 0
+  const flush = async () => { if (n) await rdb.ref().update(paths); paths = {}; n = 0 }
+  const put = async (k, v) => { paths[k] = v; if (++n >= 400) await flush() }
+  for (const d of chats.docs) {
+    const c = d.data(), id = d.id
+    const members = c.members ?? []
+    if (!(await rdb.ref(`chats/${id}/info`).get()).exists()) {
+      await put(`chats/${id}/info`, { type: c.type === 'group' ? 'group' : 'dm', createdBy: c.createdBy ?? members[0] ?? '', createdAt: tms(c.createdAt) || Date.now(), ...(c.name ? { name: c.name.slice(0, 30) } : {}), ...(c.photo ? { photoAt: Date.now() } : {}) })
+      if (c.photo) await put(`chatPhotos/${id}`, c.photo)
+    }
+    for (const m of members) { await put(`chats/${id}/members/${m}`, true); await put(`userChats/${m}/${id}`, true) }
+    for (const [m, on] of Object.entries(c.mutes ?? {})) if (on) await put(`chats/${id}/mutes/${m}`, true)
+    for (const [m, t] of Object.entries(c.timeouts ?? {})) if (tms(t) > Date.now()) await put(`chats/${id}/timeouts/${m}`, tms(t))
+    const msgs = (await d.ref.collection('messages').get()).docs.map(m => ({ id: m.id, ...m.data() })).sort((a, b) => tms(a.at) - tms(b.at))
+    const keyOf = new Map(msgs.map(m => [m.id, keyFor(tms(m.at) || 0, m.id)]))
+    for (const m of msgs) {
+      const node = { uid: m.uid, text: m.text ?? '', at: tms(m.at) || 0 }
+      if (m.kind && m.kind !== 'text') node.kind = m.kind
+      if (m.giftId) node.giftId = m.giftId
+      if (m.kind === 'image') node.mediaId = m.id
+      if (m.replyTo?.id && keyOf.has(m.replyTo.id)) node.replyTo = { id: keyOf.get(m.replyTo.id), uid: m.replyTo.uid, text: (m.replyTo.text ?? '').slice(0, 100) }
+      await put(`msgs/${id}/${keyOf.get(m.id)}`, node)
+      msgCount++
+    }
+    const last = msgs[msgs.length - 1]
+    const cur = (await rdb.ref(`chats/${id}/last/at`).get()).val() ?? 0
+    if (last && tms(last.at) > cur) await put(`chats/${id}/last`, { text: (last.kind === 'image' ? '사진' : last.text || '').slice(0, 100) || '메시지', uid: last.uid, at: tms(last.at) })
+  }
+  for (const d of (await fdb.collection('candidates').where('msgOff', '==', true).get()).docs) await put(`msgOff/${d.id}`, true)
+  await flush()
+  await rdb.ref('meta/chatMigration').set({ done: true, at: Date.now(), chats: chats.size, messages: msgCount })
+  notice(`Chats moved to the Realtime Database: ${chats.size} chats, ${msgCount} messages.`)
+  return true
+}
+
 // ---- main loop ----
 import { execFile } from 'node:child_process'
 import { cert, initializeApp } from 'firebase-admin/app'
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore'
+import { getDatabase } from 'firebase-admin/database'
 
 if (LOCAL) process.env.FIRESTORE_EMULATOR_HOST = new URL(FS).host
-const adminApp = initializeApp(LOCAL ? { projectId: project } : { credential: cert(key), projectId: project })
+if (LOCAL) process.env.FIREBASE_DATABASE_EMULATOR_HOST ??= '127.0.0.1:9000'
+const databaseURL = process.env.DATABASE_URL || `https://${project}-default-rtdb.asia-southeast1.firebasedatabase.app`
+const adminApp = initializeApp(LOCAL ? { projectId: project, databaseURL } : { credential: cert(key), projectId: project, databaseURL })
 const fdb = getFirestore(adminApp)
+const rdb = getDatabase(adminApp)
 
 const cursorRef = fdb.doc('meta/notifyCursor')
 const started = Date.now()
@@ -279,7 +334,7 @@ let seasonEndsAt = null
 
 const listeners = []
 const firstDone = new Promise(resolve => {
-  const seen = new Set(), total = 9
+  const seen = new Set(), total = 7
   const done = name => { if (!seen.has(name)) { seen.add(name); if (seen.size === total) resolve() } }
   const listen = (name, ref, onSnap) => ref.onSnapshot(snap => { onSnap(snap); done(name) }, err => { warn(`Listener ${name} failed: ${err.message}`); done(name) })
   listeners.push(
@@ -287,25 +342,10 @@ const firstDone = new Promise(resolve => {
       for (const c of snap.docChanges()) c.type === 'removed' ? candidates.delete(c.doc.id) : candidates.set(c.doc.id, c.doc.data())
       if (snap.docChanges().length) boardDirty = true
     }),
-    listen('reads', fdb.collectionGroup('state'), snap => {
-      for (const c of snap.docChanges()) if (c.doc.id === 'reads') roomReads.set(c.doc.ref.parent.parent.id, c.doc.data())
-    }),
     listen('settings', fdb.collection('settings'), snap => snap.docChanges().forEach(c => c.type === 'removed' ? settings.delete(c.doc.id) : settings.set(c.doc.id, c.doc.data()))),
     listen('tokens', fdb.collection('pushTokens'), snap => {
       tokens.clear()
       snap.forEach(d => { const t = d.data(); if (!t.uid) return; if (!tokens.has(t.uid)) tokens.set(t.uid, []); tokens.get(t.uid).push({ token: t.token ?? d.id, platform: t.platform, ref: d.ref }) })
-    }),
-    listen('chats', fdb.collection('chats').where('updatedAt', '>', since), snap => {
-      for (const c of snap.docChanges()) {
-        if (c.type === 'removed') continue
-        const chat = { id: c.doc.id, ...c.doc.data() }
-        const at = ms(chat.last?.at)
-        const queued = chatEvents.get(chat.id)
-        if (queued) queued.chat = chat // keep reads / mutes current
-        if (!chat.last?.uid || at <= cursor || at <= (lastSeenAt.get(chat.id) ?? 0)) continue
-        lastSeenAt.set(chat.id, at)
-        chatEvents.set(chat.id, { chat, count: (queued?.count ?? 0) + 1, at })
-      }
     }),
     listen('votes', fdb.collection('votes').where('updatedAt', '>', since), snap => {
       for (const c of snap.docChanges()) {
@@ -328,6 +368,23 @@ const firstDone = new Promise(resolve => {
 })
 await firstDone
 
+// Chat (Realtime Database): every chats/{id} change; a new last.at is a new message.
+function onChatNode(snap) {
+  const chat = { id: snap.key, ...snap.val() }
+  const at = chat.last?.at ?? 0
+  const queued = chatEvents.get(chat.id)
+  if (queued) queued.chat = chat // keep mutes / members current
+  if (!chat.last?.uid || at <= cursor || at <= (lastSeenAt.get(chat.id) ?? 0)) return
+  lastSeenAt.set(chat.id, at)
+  chatEvents.set(chat.id, { chat, count: (queued?.count ?? 0) + 1, at })
+}
+const chatsRef = rdb.ref('chats'), hereRef = rdb.ref('here'), readsRef = rdb.ref('reads')
+chatsRef.on('child_added', onChatNode, e => warn('Chat listener failed: ' + e.message))
+chatsRef.on('child_changed', onChatNode)
+hereRef.on('value', s => { here = s.val() ?? {} }, e => warn('Presence listener failed: ' + e.message))
+readsRef.on('value', s => { reads = s.val() ?? {} }, () => {})
+await Promise.all([chatsRef.once('value'), hereRef.once('value'), readsRef.once('value')]).catch(e => warn('Realtime Database unavailable: ' + e.message))
+
 // A newer commit on main (new worker code or rules): stop, and the workflow starts a fresh run.
 async function newerCodeOnMain() {
   if (LOCAL || !process.env.GITHUB_TOKEN || !process.env.GITHUB_SHA) return false
@@ -339,6 +396,8 @@ async function newerCodeOnMain() {
 // Firestore rules: re-deployed hourly if they differ from this checkout (no Firestore reads).
 const rulesCheck = () => new Promise(res => execFile('node', ['.github/scripts/deploy-firestore-rules.mjs'], { env: { ...process.env, SKIP_IF_SAME: '1' } }, err => { if (err) warn('Hourly rules check failed: ' + err.message); res() }))
 
+let migrated = await migrateChats().catch(e => { warn('Moving chats to the Realtime Database failed (will retry): ' + e.message); return false })
+let nextMigration = Date.now() + 30 * 60_000
 let rounds = 0
 const TICK_MS = Number(process.env.TICK_MS ?? 3000)
 let nextCodeCheck = Date.now() + 10 * 60_000, nextRules = Date.now() + 60 * 60_000
@@ -370,6 +429,7 @@ while (true) {
     rounds++
   }
   if (boardDirty || Date.now() - boardWrittenAt > BOARD_HEARTBEAT_MS) await writeBoard().catch(e => warn('Writing the board failed: ' + e.message))
+  if (!migrated && Date.now() >= nextMigration) { nextMigration = Date.now() + 30 * 60_000; migrated = await migrateChats().catch(e => { warn('Moving chats failed (will retry): ' + e.message); return false }) }
   if (resetsPending) { resetsPending = false; await passwordResets() }
   if (seasonEndsAt && Date.now() >= seasonEndsAt) { seasonEndsAt = null; await endSeasonIfDue().catch(e => warn('Season end check failed: ' + e)) }
   if (Date.now() >= nextRules && !LOCAL) { nextRules = Date.now() + 60 * 60_000; await rulesCheck() }
@@ -378,6 +438,7 @@ while (true) {
   await new Promise(res => setTimeout(res, TICK_MS))
 }
 listeners.forEach(stop => stop())
+chatsRef.off(); hereRef.off(); readsRef.off()
 await adminApp.delete?.().catch?.(() => {})
 notice(`Worker: ${rounds} rounds with activity, ${boardWrites} board updates, ${sent} notifications sent, ${dropped} stale devices removed, ${resets} password resets applied, ${seasonsEnded} seasons ended.`)
 process.exit(0)
