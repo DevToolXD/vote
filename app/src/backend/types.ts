@@ -54,6 +54,9 @@ export type Season = {
   name: string
   number: number
   startedAt?: { toMillis(): number }
+  /** When the season ends by itself (the worker pays rewards and starts the next one). */
+  endsAt?: { toMillis(): number } | null
+  rewards?: import('./rewards').Rewards
   /** Set by a season reset: the season that just ended and its final TOP 3. */
   last?: { name: string; top: PodiumEntry[] }
 }

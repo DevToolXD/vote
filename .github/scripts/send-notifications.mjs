@@ -185,6 +185,70 @@ async function passwordResets() {
 }
 let resets = 0
 
+// ---- season end ----
+// When meta/season.endsAt has passed: pay rewards (same rules as app/src/backend/rewards.ts),
+// carry this season's 추천 over as points, zero the tallies, record the podium and results,
+// and start the next season — all in one commit, guarded by the season doc's updateTime so
+// it can only happen once.
+const DEFAULT_REWARDS = { first: 500, second: 300, third: 150, top6: 90, participant: 50 }
+function computeRewards(cands, voters, r) {
+  const sorted = [...cands].sort((a, b) => b.score - a.score)
+  let rank = 0
+  return sorted.map((c, i) => {
+    if (i === 0 || c.score !== sorted[i - 1].score) rank += 1
+    const place = rank === 1 ? r.first : rank === 2 ? r.second : rank === 3 ? r.third : rank <= 6 ? r.top6 : 0
+    const took = (c.up ?? 0) + (c.down ?? 0) > 0 || voters.has(c.id)
+    return { id: c.id, name: c.name ?? '', rank, points: place + (took ? r.participant : 0) }
+  })
+}
+function fsValue(v) {
+  if (v === null || v === undefined) return { nullValue: null }
+  if (typeof v === 'string') return { stringValue: v }
+  if (typeof v === 'boolean') return { booleanValue: v }
+  if (typeof v === 'number') return { integerValue: String(Math.trunc(v)) }
+  if (v instanceof Date) return { timestampValue: v.toISOString() }
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(fsValue) } }
+  return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fsValue(x)])) } }
+}
+let seasonsEnded = 0
+async function endSeasonIfDue() {
+  const r = await call(`${api}/meta/season`, { headers: await headers() })
+  if (!r.ok) return
+  const season = docData(r.json)
+  if (!season.endsAt || Date.now() < season.endsAt) return
+  const number = season.number ?? 1
+  const rewards = season.rewards ?? DEFAULT_REWARDS
+  const cands = (await runQuery(docsRoot, { from: [{ collectionId: 'candidates' }] }))
+  const voters = new Set((await runQuery(docsRoot, {
+    from: [{ collectionId: 'votes' }],
+    where: { fieldFilter: { field: { fieldPath: 'season' }, op: 'EQUAL', value: { integerValue: String(number) } } },
+  })).map(v => v.uid))
+  const paid = computeRewards(cands, voters, rewards)
+  const pointsFor = new Map(paid.map(p => [p.id, p.points]))
+  const top = [...cands].sort((a, b) => b.score - a.score || (b.up ?? 0) - (a.up ?? 0)).slice(0, 3)
+    .map(c => ({ id: c.id, name: c.name ?? '', score: c.score ?? 0, frame: c.frame ?? 'none' }))
+  const now = new Date()
+  const writes = [{
+    update: { name: `${docsRoot}/meta/season`, fields: fsValue({ name: `${number + 1}`, number: number + 1, startedAt: now, last: { name: season.name ?? 'BETA', top }, rewards }).mapValue.fields },
+    currentDocument: { updateTime: r.json.updateTime },
+  }, {
+    update: { name: `${docsRoot}/seasonResults/${number}`, fields: fsValue({ name: season.name ?? 'BETA', endedAt: now, rewards, paid: paid.filter(p => p.points > 0), auto: true }).mapValue.fields },
+  }]
+  for (const c of cands) {
+    const reward = pointsFor.get(c.id) ?? 0
+    if (!c.up && !c.down && !c.score && !reward) continue
+    writes.push({
+      update: { name: c.path, fields: fsValue({ up: 0, down: 0, score: 0, bonus: (c.bonus ?? 0) + (c.up ?? 0) + reward }).mapValue.fields },
+      updateMask: { fieldPaths: ['up', 'down', 'score', 'bonus'] },
+    })
+  }
+  if (writes.length > 500) { warn(`Season end needs ${writes.length} writes (> 500); end it from the 관리 tab instead.`); return }
+  const c = await call(`${FS}/${docsRoot}:commit`, { method: 'POST', headers: await headers(), body: JSON.stringify({ writes }) })
+  if (!c.ok) { warn(`Ending season ${number} failed (${c.status}) ${JSON.stringify(c.json).slice(0, 200)}`); return }
+  seasonsEnded++
+  notice(`Season ${number} (${season.name}) ended automatically: rewards paid to ${paid.filter(p => p.points > 0).length} people.`)
+}
+
 // ---- main loop ----
 const cursorPath = 'meta/notifyCursor'
 const started = Date.now()
@@ -203,8 +267,9 @@ while (true) {
     cursor = to
   }
   await passwordResets()
+  await endSeasonIfDue().catch(e => warn('Season end check failed: ' + e))
   polls++
   if (Date.now() - started + POLL_MS > RUN_FOR_MS) break
   await new Promise(res => setTimeout(res, POLL_MS))
 }
-notice(`Worker: ${polls} polls, ${sent} notifications sent, ${dropped} stale devices removed, ${resets} password resets applied.`)
+notice(`Worker: ${polls} polls, ${sent} notifications sent, ${dropped} stale devices removed, ${resets} password resets applied, ${seasonsEnded} seasons ended.`)

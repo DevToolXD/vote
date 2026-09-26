@@ -3,6 +3,7 @@ import { css, sx } from '../css'
 import type { AdminProgress } from '../backend/admin'
 import { pointsOf } from '../backend/candidates'
 import type { Ticket } from '../backend/support'
+import { DEFAULT_REWARDS, rewardNotice, type Rewards } from '../backend/rewards'
 import type { Season } from '../backend/types'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
@@ -20,6 +21,7 @@ type Props = {
   grantPoints: (target: string, amount: number, onProgress: (p: AdminProgress) => void) => Promise<void>
   setSeasonName: (name: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   resetSeason: (name: string, onProgress: (p: AdminProgress) => void) => Promise<void>
+  setSeasonConfig: (endsAt: number, rewards: Rewards, onProgress: (p: AdminProgress) => void) => Promise<void>
   renameUser: (target: string, name: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   deleteAccount: (target: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   onLogout: () => void
@@ -32,9 +34,16 @@ const gap = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
 
 type Confirm = { title: string; desc: string; cta: string; danger?: boolean; go: () => void }
 
-export function AdminScreen({ all, tickets, onOpenTicket, postNotice, season, run, grantPoints, setSeasonName, resetSeason, renameUser, deleteAccount, onLogout }: Props) {
+export function AdminScreen({ all, tickets, onOpenTicket, postNotice, setSeasonConfig, season, run, grantPoints, setSeasonName, resetSeason, renameUser, deleteAccount, onLogout }: Props) {
   const [nameDraft, setNameDraft] = useState('')
   const [notice, setNotice] = useState({ title: '', body: '' })
+  const curRewards = season.rewards ?? DEFAULT_REWARDS
+  const curEnds = season.endsAt ? season.endsAt.toMillis() : 0
+  const toLocalInput = (ms: number) => { if (!ms) return ''; const d = new Date(ms); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16) }
+  const [cfg, setCfg] = useState(() => ({ ends: toLocalInput(curEnds), ...Object.fromEntries(Object.entries(curRewards).map(([k, v]) => [k, String(v)])) } as Record<string, string>))
+  const cfgRewards: Rewards = { first: Number(cfg.first), second: Number(cfg.second), third: Number(cfg.third), top6: Number(cfg.top6), participant: Number(cfg.participant) }
+  const cfgEnds = cfg.ends ? new Date(cfg.ends).getTime() : 0
+  const cfgOk = Object.values(cfgRewards).every(n => Number.isInteger(n) && n >= 0 && n <= 100000) && (!cfgEnds || cfgEnds > Date.now())
   const [q, setQ] = useState('')
   const [picked, setPicked] = useState<string | null>(null)
   const [amount, setAmount] = useState('')
@@ -115,6 +124,40 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, season, ru
           위 이름으로 새 시즌 시작하기 (초기화)
         </button>
         <span style={css(hint)}>이름만 바꾸면 점수는 그대로예요. 초기화는 새 시즌 이름을 먼저 적어야 할 수 있어요</span>
+      </section>
+
+      <section style={css('padding:0 24px 24px;display:flex;flex-direction:column;gap:12px')}>
+        <span style={css(sectionTitle)}>시즌 끝나는 날짜 · 보상</span>
+        <label style={css('display:flex;flex-direction:column;gap:6px')}>
+          <span style={css(hint)}>끝나는 날짜 (비우면 직접 끝낼 때까지 계속돼요)</span>
+          <input data-g="l1" className="ring-focus" type="datetime-local" value={cfg.ends} onChange={e => setCfg(c => ({ ...c, ends: e.target.value }))} style={css(field)} />
+        </label>
+        <div style={css('display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px')}>
+          {([['first', '🥇 1등'], ['second', '🥈 2등'], ['third', '🥉 3등'], ['top6', '4~6등'], ['participant', '참여한 모든 사람']] as const).map(([k, label]) => (
+            <label key={k} style={css('display:flex;flex-direction:column;gap:6px')}>
+              <span style={css(hint)}>{label}</span>
+              <span style={css('display:flex;align-items:center;gap:6px')}>
+                <input data-g="l1" className="ring-focus" inputMode="numeric" value={cfg[k]} onChange={e => setCfg(c => ({ ...c, [k]: e.target.value.replace(/[^0-9]/g, '') }))} style={sx(field, { flex: 1 })} />
+                <span style={css('font-size:15px;color:#4e5968')}>P</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <button data-g="primary" className="pr-96" disabled={!cfgOk}
+          onClick={() => setConfirm({
+            title: '시즌 설정을 저장할까요?',
+            desc: `${cfgEnds ? new Date(cfgEnds).toLocaleString('ko-KR') + '에 자동으로 끝나고' : '끝나는 날짜 없이'} 보상은 1등 ${cfgRewards.first}P · 2등 ${cfgRewards.second}P · 3등 ${cfgRewards.third}P · 4~6등 ${cfgRewards.top6}P · 참여 ${cfgRewards.participant}P예요.`,
+            cta: '저장하기',
+            go: () => { run('시즌 설정', p => setSeasonConfig(cfgEnds, cfgRewards, p)) },
+          })}
+          style={sx('height:48px;border-radius:14px;background:#3182f6;color:#fff;font-size:15px;font-weight:600;transition:opacity 200ms', { opacity: cfgOk ? 1 : 0.4 })}>저장하기</button>
+        <button data-g="secondary" className="pr-96"
+          onClick={() => {
+            const n = rewardNotice(season.name, curRewards, curEnds || null)
+            setConfirm({ title: '보상 공지를 보낼까요?', desc: `지금 저장된 설정으로 “${n.title}” 공지를 보내요. 로그인한 모든 사람에게 한 번 보여요.`, cta: '공지하기', go: () => { run('보상 공지', p => postNotice(n.title, n.body, p)) } })
+          }}
+          style={css('height:48px;border-radius:14px;background:#e8f3ff;color:#1b64da;font-size:15px;font-weight:600')}>보상 공지하기</button>
+        <span style={css(hint)}>끝나는 시각이 되면 보상을 자동으로 주고, 점수를 0으로 되돌리고, 다음 시즌을 시작해요. 직접 새 시즌을 시작해도 같은 보상을 줘요.</span>
       </section>
 
       {gap}

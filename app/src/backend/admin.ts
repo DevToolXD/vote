@@ -1,5 +1,7 @@
 import {
+  Timestamp,
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -14,6 +16,7 @@ import {
   type WriteBatch,
 } from 'firebase/firestore'
 import { DEFAULT_SEASON, type CandidateDoc, type Season, type VoteDoc } from './types'
+import { DEFAULT_REWARDS, computeRewards, type Rewards } from './rewards'
 
 // Admin operations. Each batch of writes goes through the single-use-token
 // protocol enforced by firestore.rules:
@@ -26,7 +29,7 @@ import { DEFAULT_SEASON, type CandidateDoc, type Season, type VoteDoc } from './
 export const ADMIN_EMAIL = 'admin@vote.local'
 export const isAdminEmail = (email: string | null | undefined) => email === ADMIN_EMAIL
 
-export type AdminAction = 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount' | 'renameUser' | 'resetPassword' | 'postNotice'
+export type AdminAction = 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount' | 'renameUser' | 'resetPassword' | 'postNotice' | 'seasonConfig'
 export type AdminProgress = { batch: number; batches: number; verified: number }
 
 /** Keep each batch's rule evaluation well under Firestore's per-request document-access limit. */
@@ -127,6 +130,20 @@ export async function resetPassword(db: Firestore, adminUid: string, target: str
   return code
 }
 
+/** End date (ms, or 0 for none) and rewards for the current season. */
+export async function setSeasonConfig(db: Firestore, adminUid: string, endsAt: number, rewards: Rewards, onProgress?: (p: AdminProgress) => void) {
+  const cur = await getSeason(db)
+  const ref = doc(db, 'meta', 'season')
+  await runAdminOp(db, adminUid, 'seasonConfig', { endsAt, ...rewards }, [
+    b => {
+      const ends = endsAt ? Timestamp.fromMillis(endsAt) : null
+      if (cur.exists) b.update(ref, { endsAt: ends ?? deleteField(), rewards })
+      else b.set(ref, { name: 'BETA', number: 1, startedAt: serverTimestamp(), rewards, ...(ends ? { endsAt: ends } : {}) })
+      return 1
+    },
+  ], onProgress)
+}
+
 export async function getSeason(db: Firestore): Promise<Season & { exists: boolean }> {
   const snap = await getDoc(doc(db, 'meta', 'season'))
   return snap.exists() ? { ...(snap.data() as Season), exists: true } : { ...DEFAULT_SEASON, exists: false }
@@ -166,12 +183,19 @@ export async function resetSeason(db: Firestore, adminUid: string, newName: stri
   const cur = await getSeason(db)
   const nextNumber = (cur.exists ? cur.number : 1) + 1
   const cands = await getDocs(collection(db, 'candidates'))
+  const voted = await getDocs(query(collection(db, 'votes'), where('season', '==', cur.exists ? cur.number : 1)))
+  const rewards = cur.rewards ?? DEFAULT_REWARDS
+  const paid = computeRewards(cands.docs.map(c => ({ id: c.id, ...(c.data() as CandidateDoc) })), new Set(voted.docs.map(v => (v.data() as VoteDoc).uid)), rewards)
+  const pointsFor = new Map(paid.map(p => [p.id, p.points]))
   const groups: ((b: WriteBatch) => number)[] = []
   for (const c of cands.docs) {
     const d = c.data() as CandidateDoc
-    if (!d.up && !d.down && !d.score) continue
-    groups.push(b => { b.update(c.ref, { up: 0, down: 0, score: 0, bonus: (d.bonus ?? 0) + d.up }); return 1 })
+    const reward = pointsFor.get(c.id) ?? 0
+    if (!d.up && !d.down && !d.score && !reward) continue
+    groups.push(b => { b.update(c.ref, { up: 0, down: 0, score: 0, bonus: (d.bonus ?? 0) + d.up + reward }); return 1 })
   }
+  const endedNumber = cur.exists ? cur.number : 1
+  groups.push(b => { b.set(doc(db, 'seasonResults', String(endedNumber)), { name: cur.name, endedAt: serverTimestamp(), rewards, paid: paid.filter(p => p.points > 0) }); return 1 })
   // Final podium of the season that's ending, for the one-time TOP 3 reveal.
   const top = cands.docs
     .map(c => ({ id: c.id, ...(c.data() as CandidateDoc) }))
@@ -179,7 +203,7 @@ export async function resetSeason(db: Firestore, adminUid: string, newName: stri
     .slice(0, 3)
     .map(c => ({ id: c.id, name: c.name, score: c.score, frame: c.frame }))
   const last = { name: cur.name, top }
-  groups.push(b => { b.set(doc(db, 'meta', 'season'), { name, number: nextNumber, startedAt: serverTimestamp(), last }); return 1 })
+  groups.push(b => { b.set(doc(db, 'meta', 'season'), { name, number: nextNumber, startedAt: serverTimestamp(), last, ...(cur.rewards ? { rewards: cur.rewards } : {}) }); return 1 })
   await runAdminOp(db, adminUid, 'seasonReset', { name, nextNumber }, groups, onProgress)
 }
 

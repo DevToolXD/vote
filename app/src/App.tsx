@@ -2,7 +2,7 @@ import type { User } from 'firebase/auth'
 import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
-import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetPassword, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
+import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, castVote, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, inviteMembers, isUnread, leaveGroup, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
@@ -458,7 +458,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
           {tab === 'home' && (
             <HomeScreen
               all={all} loggedIn={loggedIn} query={homeQuery} onQuery={setHomeQuery} onPick={setSheet}
-              goRank={() => go('rank')} goAccount={() => go('acct')} onInstall={() => setInstallOpen(true)} myCount={mine.length} seasonName={season.name}
+              goRank={() => go('rank')} goAccount={() => go('acct')} onInstall={() => setInstallOpen(true)} myCount={mine.length} seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()}
             />
           )}
           {tab === 'rank' && (
@@ -518,6 +518,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
               tickets={tickets}
               onOpenTicket={setTicketId}
               postNotice={(t, b, p) => postNotice(db!, authUser.uid, t, b, p)}
+              setSeasonConfig={(e, r, p) => setSeasonConfig(db!, authUser.uid, e, r, p)}
               season={season}
               run={runAdmin}
               grantPoints={(t, n, p) => grantPoints(db!, authUser.uid, t, n, p)}

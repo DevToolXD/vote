@@ -8,7 +8,11 @@ rules_version = '2';
 //   votes/{voterUid}_{candidateId} one voter's history with one candidate:
 //                                 { season, ups, downs (this season), lastUpAt, lastDownAt }
 //                                 one vote every 7 days per person — 추천 or 비추천 (they add up); never undone
-//   meta/season                   { name, number, startedAt, last? }  last = the ended season's { name, top: [≤3 × {id,name,score,frame}] }
+//   meta/season                   { name, number, startedAt, last?, endsAt?, rewards? }
+//                                 last = the ended season's { name, top: [≤3 × {id,name,score,frame}] }
+//                                 endsAt = when the worker ends the season automatically (paying rewards)
+//                                 rewards = { first, second, third, top6, participant } points
+//   seasonResults/{number}        what each season paid out (written by the worker / admin reset)
 //   meta/adminLock                the admin operation currently being committed (see below)
 //   adminTokens/{random id}       single-use tokens for admin operations
 //   banned/{uid}                  accounts deleted by the admin; they can't re-join
@@ -56,6 +60,8 @@ service cloud.firestore {
 
     function validPersonName(n) { return n is string && n.size() >= 1 && n.size() <= 20; }
 
+    function rewardOk(n) { return n is int && n >= 0 && n <= 100000; }
+
     function validPayload(action, p) {
       return (action == 'grantPoints' && p.keys().hasOnly(['target', 'amount']) && p.keys().hasAll(['target', 'amount'])
                 && p.target is string && p.amount is int && p.amount != 0 && p.amount >= -1000000 && p.amount <= 1000000)
@@ -70,6 +76,10 @@ service cloud.firestore {
                 && p.id is string && p.id.matches('[A-Za-z0-9]{20}')
                 && p.title is string && p.title.size() >= 1 && p.title.size() <= 40
                 && p.body is string && p.body.size() >= 1 && p.body.size() <= 2000)
+          || (action == 'seasonConfig' && p.keys().hasOnly(['endsAt', 'first', 'second', 'third', 'top6', 'participant'])
+                && p.keys().hasAll(['endsAt', 'first', 'second', 'third', 'top6', 'participant'])
+                && p.endsAt is int && p.endsAt >= 0
+                && rewardOk(p.first) && rewardOk(p.second) && rewardOk(p.third) && rewardOk(p.top6) && rewardOk(p.participant))
           || (action == 'deleteAccount' && p.keys().hasOnly(['target']) && p.target is string && p.target != request.auth.uid);
     }
     function validSeasonName(n) { return n is string && n.size() >= 1 && n.size() <= 20; }
@@ -107,7 +117,7 @@ service cloud.firestore {
         && request.resource.data.used == false
         && request.resource.data.createdAt == request.time
         && request.resource.data.seq in [1, 2, 3]
-        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser', 'resetPassword', 'postNotice']
+        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser', 'resetPassword', 'postNotice', 'seasonConfig']
         && request.resource.data.payload is map;
       // Burned only together with a lock that lists it.
       allow update: if isAdmin()
@@ -130,10 +140,12 @@ service cloud.firestore {
 
     match /meta/season {
       allow read: if true;
-      allow write: if request.resource.data.keys().hasOnly(['name', 'number', 'startedAt', 'last']) && (
+      allow write: if request.resource.data.keys().hasOnly(['name', 'number', 'startedAt', 'last', 'endsAt', 'rewards']) && (
         (adminOp('setSeasonName')
           && request.resource.data.name == lock().payload.name
           && request.resource.data.get('last', null) == (resource == null ? null : resource.data.get('last', null))
+          && request.resource.data.get('endsAt', null) == (resource == null ? null : resource.data.get('endsAt', null))
+          && request.resource.data.get('rewards', null) == (resource == null ? null : resource.data.get('rewards', null))
           && (resource == null
                 ? request.resource.data.number == 1 && request.resource.data.startedAt == request.time
                 : request.resource.data.number == resource.data.number && request.resource.data.startedAt == resource.data.startedAt)) ||
@@ -142,7 +154,17 @@ service cloud.firestore {
           && request.resource.data.number == lock().payload.nextNumber
           && lock().payload.nextNumber == (resource == null ? 1 : resource.data.number) + 1
           && request.resource.data.startedAt == request.time
-          && lastOk(request.resource.data.get('last', null), resource == null ? 'BETA' : resource.data.name))
+          && lastOk(request.resource.data.get('last', null), resource == null ? 'BETA' : resource.data.name)
+          && !('endsAt' in request.resource.data)
+          && request.resource.data.get('rewards', null) == (resource == null ? null : resource.data.get('rewards', null))) ||
+        // End date and rewards; everything else stays.
+        (adminOp('seasonConfig')
+          && (resource == null
+                ? request.resource.data.name == 'BETA' && request.resource.data.number == 1 && request.resource.data.startedAt == request.time
+                : request.resource.data.diff(resource.data).affectedKeys().hasOnly(['endsAt', 'rewards']))
+          && request.resource.data.get('endsAt', null) == (lock().payload.endsAt == 0 ? null : timestamp.value(lock().payload.endsAt))
+          && request.resource.data.rewards == {'first': lock().payload.first, 'second': lock().payload.second, 'third': lock().payload.third,
+                                               'top6': lock().payload.top6, 'participant': lock().payload.participant})
       );
     }
 
@@ -252,7 +274,14 @@ service cloud.firestore {
       return adminOp('seasonReset')
         && d.diff(o).affectedKeys().hasOnly(['up', 'down', 'score', 'bonus'])
         && d.up == 0 && d.down == 0 && d.score == 0
-        && d.get('bonus', 0) == o.get('bonus', 0) + o.up;
+        // This season's 추천 carry over as points, plus the season reward (rank + taking part), at most 1st + participant.
+        && d.get('bonus', 0) >= o.get('bonus', 0) + o.up
+        && d.get('bonus', 0) <= o.get('bonus', 0) + o.up + maxReward();
+    }
+    function maxReward() {
+      let sp = /databases/$(database)/documents/meta/season;
+      let r = exists(sp) ? get(sp).data.get('rewards', null) : null;
+      return r == null ? 550 : r.first + r.participant;
     }
 
     // Deleting account T: take back T's vote on this candidate, deleting that vote doc in the same batch.
@@ -602,6 +631,13 @@ service cloud.firestore {
         && request.resource.data.seen.keys().hasAll(resource.data.seen.keys())
         && request.resource.data.seen.diff(resource.data.seen).affectedKeys().hasOnly(request.resource.data.seen.diff(resource.data.seen).addedKeys());
       allow delete: if false;
+    }
+
+    // ---- season results -------------------------------------------------------------
+    match /seasonResults/{n} {
+      allow read: if true;
+      allow create: if adminOp('seasonReset');
+      allow update, delete: if false;
     }
   }
 }

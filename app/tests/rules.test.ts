@@ -9,13 +9,14 @@ import {
   collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore,
   serverTimestamp, setDoc, updateDoc, writeBatch, type Firestore,
 } from 'firebase/firestore'
-import { deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonName, type AdminProgress } from '../src/backend/admin'
+import { deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, castVote, equipItem, pointsOf, updateMyProfile } from '../src/backend/candidates'
 import { createGroup, dmId, inviteMembers, leaveGroup, loadImage, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { markSupportRead, sendSupport } from '../src/backend/support'
 import { markNoticeSeen, nextUnseenNotice, postNotice } from '../src/backend/notices'
+import { DEFAULT_REWARDS } from '../src/backend/rewards'
 import type { CandidateDoc } from '../src/backend/types'
 import { priceOf } from '../src/data'
 
@@ -330,8 +331,12 @@ describe('admin: single-use tokens ×3', () => {
     await resetSeason(admin, ADMIN.uid, '시즌 2', p => seen.push(p))
     assert.ok(seen.at(-1)!.batches > 1, 'expected the reset to span several batches')
     const u0 = await read(admin, 'candidates/u0'), u1 = await read(admin, 'candidates/u1')
-    assert.deepEqual([u0.up, u0.down, u0.score, u0.bonus], [0, 0, 0, 11 + 5])
-    assert.deepEqual([u1.up, u1.down, u1.score], [0, 0, 0])
+    // Rewards (defaults): u0 is 1st (500), u2–u11 tie for 2nd (300), u1 (−4) is 3rd (150); everyone took part (+50).
+    assert.deepEqual([u0.up, u0.down, u0.score, u0.bonus], [0, 0, 0, 11 + 5 + 500 + 50])
+    assert.deepEqual([u1.up, u1.down, u1.score, u1.bonus], [0, 0, 0, 150 + 50])
+    assert.equal((await read(admin, 'candidates/u2')).bonus, 1 + 300 + 50)
+    const results = (await getDoc(doc(admin, 'seasonResults', '1'))).data()!
+    assert.equal(results.name, 'BETA'); assert.equal(results.paid.length, 12)
     // Vote docs stay: the 7-day timer and the one-time 비추천 carry over into the new season.
     assert.equal((await getDocs(collection(admin, 'votes'))).size, 25)
     const s = (await getDoc(doc(admin, 'meta', 'season'))).data()!
@@ -550,6 +555,45 @@ describe('공지', () => {
     await denied(getDoc(doc(dbAs(null), 'notices', ids[0])))
     await denied(setDoc(doc(b, 'notices', 'x'.repeat(20)), { title: 't', body: 'b', by: 'b', createdAt: serverTimestamp() }))
     await denied(setDoc(doc(b, 'meta', 'noticeIndex'), { ids: [] }))
+  })
+})
+
+describe('season end date and rewards', () => {
+  test('only the admin sets them, exactly as confirmed', async () => {
+    await signUp('a'); const b = userDb('b'); const admin = dbAs(ADMIN)
+    const ends = Date.now() + 3 * 86400_000
+    const rw = { first: 700, second: 400, third: 200, top6: 100, participant: 60 }
+    await assert.rejects(setSeasonConfig(b, 'b', ends, rw))
+    await setSeasonConfig(admin, ADMIN.uid, ends, rw)
+    const s1 = (await getDoc(doc(admin, 'meta', 'season'))).data()!
+    assert.equal(s1.endsAt.toMillis(), ends); assert.deepEqual(s1.rewards, rw)
+    await setSeasonName(admin, ADMIN.uid, '가을') // keeps end date and rewards
+    assert.deepEqual((await getDoc(doc(admin, 'meta', 'season'))).data()!.rewards, rw)
+    await setSeasonConfig(admin, ADMIN.uid, 0, DEFAULT_REWARDS) // clear the end date
+    assert.equal((await getDoc(doc(admin, 'meta', 'season'))).data()!.endsAt, undefined)
+    await assert.rejects(runAdminOp(admin, ADMIN.uid, 'seasonConfig', { endsAt: 0, ...rw }, [w => { w.update(doc(admin, 'meta', 'season'), { rewards: { ...rw, first: 99999 } }); return 1 }]))
+    await assert.rejects(setSeasonConfig(admin, ADMIN.uid, 0, { ...rw, first: 100001 }))
+  })
+  test('the worker ends a due season: rewards paid, tallies reset, next season started, once', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); await signUp('c')
+    await castVote(b, 'b', 'a', 'up')
+    await castVote(a, 'a', 'b', 'down')
+    await setSeasonConfig(dbAs(ADMIN), ADMIN.uid, Date.now() + 86400_000, { first: 500, second: 300, third: 150, top6: 90, participant: 50 })
+    await seed('meta/season', { endsAt: new Date(Date.now() - 1000) })
+    const run = () => new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
+      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '0', SETTLE_MS: '0' },
+    }, (err, stdout, stderr) => err ? reject(new Error(stderr || stdout)) : resolve()))
+    await run()
+    const s2 = (await getDoc(doc(a, 'meta', 'season'))).data()!
+    assert.deepEqual([s2.number, s2.name, s2.endsAt, s2.last.name, s2.last.top[0].id], [2, '2', undefined, 'BETA', 'a'])
+    // a: 1st (+1 carried 추천) ; c: 2nd with 0 (tied with nobody below) ; b: −1 → 3rd. a and b took part.
+    const [ca, cb, cc] = await Promise.all(['a', 'b', 'c'].map(u => read(a, `candidates/${u}`)))
+    assert.deepEqual([ca.score, ca.bonus], [0, 1 + 500 + 50])
+    assert.deepEqual([cc.bonus], [300])
+    assert.deepEqual([cb.score, cb.bonus], [0, 150 + 50])
+    assert.equal((await getDoc(doc(a, 'seasonResults', '1'))).data()!.auto, true)
+    await run() // not due any more: nothing changes
+    assert.equal((await read(a, 'candidates/a')).bonus, 551)
   })
 })
 

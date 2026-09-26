@@ -1,3 +1,4 @@
+import { Countdown } from './Countdown'
 import { css } from '../css'
 import { isInstalledApp } from '../install'
 import type { Person } from '../model'
@@ -15,9 +16,11 @@ type Props = {
   onInstall: () => void
   myCount: number
   seasonName: string
+  /** When the season ends (ms), for the countdown; undefined = no end date. */
+  seasonEndsAt?: number
 }
 
-export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAccount, onInstall, myCount, seasonName }: Props) {
+export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAccount, onInstall, myCount, seasonName, seasonEndsAt }: Props) {
   const q = query.trim()
   // You can't vote for yourself, so you never appear in the pick list.
   const votable = all.filter(d => !d.isMe)
@@ -32,7 +35,7 @@ export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAc
       </header>
 
       <div style={css('padding:12px 24px 24px')}>
-        <div style={css('font-size:13px;line-height:19.5px;font-weight:700;color:#6b7684')}>시즌 {seasonName} · 실시간</div>
+        <div style={css('font-size:13px;line-height:19.5px;font-weight:700;color:#6b7684')}>시즌 {seasonName} · {seasonEndsAt ? <Countdown to={seasonEndsAt} /> : '실시간'}</div>
         <h1 style={css('margin:4px 0 0;font-size:26px;line-height:35px;font-weight:700;color:#191f28')}>{all.length ? <>지금 1위는<br />{all[0].name}님이에요</> : '아직 등록된 후보가 없어요'}</h1>
       </div>
 
