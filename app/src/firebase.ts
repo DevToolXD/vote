@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { browserLocalPersistence, browserSessionPersistence, connectAuthEmulator, indexedDBLocalPersistence, initializeAuth } from 'firebase/auth'
-import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore'
+import { connectFirestoreEmulator, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore'
 
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -19,7 +19,11 @@ export const app = firebaseConfigured ? initializeApp(config) : null
 // isn't available (some in-app browsers / WebViews). Session-only is listed too so
 // a "로그인 상태 유지" off login is found again after a reload in the same tab.
 export const auth = app ? initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence] }) : null
-export const db = app ? getFirestore(app) : null
+// On-device cache (IndexedDB): the app opens instantly from what it saw last, and a
+// listener that reconnects within 30 minutes only downloads what changed — each doc
+// Firestore sends counts toward the free daily read limit. Falls back to memory
+// where IndexedDB isn't available.
+export const db = app ? initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }) : null
 
 // Local end-to-end testing only (VITE_USE_EMULATORS=1 at build time): talk to the Firebase emulators.
 if (import.meta.env.VITE_USE_EMULATORS && auth && db) {

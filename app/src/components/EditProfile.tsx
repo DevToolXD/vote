@@ -1,22 +1,16 @@
-import { css, sx } from '../css'
-import { FRAMES, SKINS, priceOf, skinGeom, type ItemKind } from '../data'
+import { css } from '../css'
+import type { ItemKind } from '../data'
 import { Segmented } from './AccountScreen'
 import { Avatar } from './Avatar'
-import { BackIcon, LockIcon } from './icons'
-import { Nameplate } from './Nameplate'
-import { TowerSkin } from './TowerSkin'
+import { BackIcon } from './icons'
 
 type Props = {
-  name: string
   bio: string
   photoCss: string
   equipped: Record<ItemKind, string>
-  owned: Record<ItemKind, string[]>
   points: number
-  tab: ItemKind
-  onTab: (t: ItemKind) => void
-  /** Equips an owned item or opens the purchase dialog for a locked one. */
-  onPick: (kind: ItemKind, key: string, label: string) => void
+  /** Frames, nameplates and bar skins are in the 상점 tab. */
+  onShop: () => void
   onClose: () => void
   gender: string
   onPhoto: (f: File) => void
@@ -24,20 +18,8 @@ type Props = {
   onGender: (g: string) => void
 }
 
-const check = (size: number, style: string) => (
-  <span style={sx(`position:absolute;z-index:3;border-radius:9999px;background:#3182f6;color:#ffffff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;${style}`, { width: size, height: size })}>✓</span>
-)
-const tile = 'position:relative;border-radius:16px;display:flex;flex-direction:column;align-items:center'
-
-/** Full-screen editor + point shop for frame, nameplate and bar skin. */
-export function EditProfile({ name, bio, photoCss, equipped, owned, points, tab, onTab, onPick, onClose, gender, onPhoto, onBio, onGender }: Props) {
-  const item = (kind: ItemKind, k: string) => ({ on: equipped[kind] === k, locked: !owned[kind].includes(k), price: priceOf(kind, k) + 'P' })
-  const priceTag = (price: string) => (
-    <span style={css('position:absolute;top:8px;left:8px;z-index:3;height:20px;padding:0 7px;border-radius:9999px;background:#191f28;color:#ffffff;font-size:11px;font-weight:700;display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums')}><LockIcon size={9} />{price}</span>
-  )
-  const tileColors = (on: boolean) => ({ background: on ? '#e8f3ff' : '#f9fafb', boxShadow: on ? 'inset 0 0 0 1.5px #3182f6' : 'none' })
-  const tileFg = (on: boolean) => (on ? '#1b64da' : '#4e5968')
-
+/** Full-screen editor for photo, bio and gender. */
+export function EditProfile({ bio, photoCss, equipped, points, onShop, onClose, gender, onPhoto, onBio, onGender }: Props) {
   return (
     <div style={css('position:fixed;inset:0;z-index:150;display:flex;justify-content:center;background:rgba(0,0,0,0.2);animation:fade 200ms ease both')}>
       <div data-g="app" style={css('width:100%;max-width:430px;height:100%;overflow-y:auto;background:#ffffff;animation:sheetUp 420ms cubic-bezier(0.22,1,0.36,1) both')}>
@@ -66,71 +48,13 @@ export function EditProfile({ name, bio, photoCss, equipped, owned, points, tab,
           </div>
         </div>
         <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
-        <div style={css('padding:20px 24px 8px;display:flex;flex-direction:column;gap:12px')}>
-          <span style={css('font-size:17px;line-height:25.5px;font-weight:700;color:#191f28')}>꾸미기</span>
-          <div style={{ height: 60 }}>
-            <Nameplate kind={equipped.plate} person={name} sub={bio || '소개를 적으면 이름표에 보여요'} frame={equipped.frame} photo={photoCss} style={{ width: '100%', height: 60 }} />
-          </div>
-          <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>받은 추천 1개가 1P예요. 포인트로 꾸미기 아이템을 살 수 있어요</span>
-        </div>
-        <div style={css('padding:8px 24px 16px')}>
-          <Segmented<ItemKind> options={['frame', 'plate', 'skin']} labels={['프레임', '이름표', '막대 스킨']} value={tab} onPick={onTab} />
-        </div>
-
-        {tab === 'frame' && (
-          <div style={css('display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 24px 32px')}>
-            {FRAMES.map(([k, l]) => {
-              const it = item('frame', k)
-              return (
-                <button key={k} className="pr-96" onClick={() => onPick('frame', k, l)} style={sx(tile + ';padding:22px 0 12px;gap:12px;transition:transform 150ms,background 200ms,box-shadow 200ms', tileColors(it.on))}>
-                  <span style={css('width:52px;height:52px')}><Avatar frame={k} photo={photoCss} size={52} /></span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: tileFg(it.on) }}>{l}</span>
-                  {it.locked && priceTag(it.price)}
-                  {it.on && check(20, 'top:8px;right:8px')}
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {tab === 'plate' && (
-          <div style={css('display:flex;flex-direction:column;gap:8px;padding:0 24px 32px')}>
-            {FRAMES.map(([k, l]) => {
-              const it = item('plate', k)
-              return (
-                <button key={k} className="pr-98" onClick={() => onPick('plate', k, l + ' 이름표')} aria-pressed={it.on} style={sx('position:relative;display:block;width:100%;height:60px;padding:2px;border-radius:17px;transition:transform 300ms cubic-bezier(0.34,1.4,0.64,1),box-shadow 200ms', { boxShadow: it.on ? '0 0 0 2px #3182f6' : 'none' })}>
-                  <Nameplate kind={k} person={name} sub={l + ' 이름표'} frame={equipped.frame} photo={photoCss} style={{ width: '100%', height: 56 }} />
-                  {it.locked && (
-                    <span style={css('position:absolute;top:50%;right:14px;margin-top:-12px;z-index:3;height:24px;padding:0 9px;border-radius:9999px;background:#191f28;color:#ffffff;box-shadow:0 0 0 2px rgba(255,255,255,0.9);font-size:12px;font-weight:700;display:flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums')}><LockIcon size={10} />{it.price}</span>
-                  )}
-                  {it.on && check(22, 'top:50%;right:14px;margin-top:-11px;box-shadow:0 0 0 2px #ffffff')}
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {tab === 'skin' && (
-          <>
-            <div style={css('padding:0 24px 8px;font-size:13px;line-height:19.5px;color:#6b7684')}>랭킹 그래프에서 내 막대가 이 모양으로 보여요. 마이너스면 거꾸로 뒤집혀요</div>
-            <div style={css('display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 24px 32px')}>
-              {SKINS.map(([k, l]) => {
-                const it = item('skin', k), g = skinGeom(k, 132, false)
-                return (
-                  <button key={k} className="pr-97" onClick={() => onPick('skin', k, l)} aria-pressed={it.on} aria-label={`${l} 스킨`} style={sx(tile + ';height:200px;padding:12px 0 12px;justify-content:flex-end;gap:10px;transition:transform 300ms cubic-bezier(0.34,1.4,0.64,1),background 200ms,box-shadow 200ms', tileColors(it.on))}>
-                    <span style={css('position:relative;width:32px;height:132px;flex:none')}>
-                      {g ? <TowerSkin g={g} /> : <span style={css('position:absolute;left:2px;right:2px;bottom:0;height:86px;border:1.5px solid #191f28;border-radius:6px;background:#ffffff;box-sizing:border-box')} />}
-                    </span>
-                    <span style={css('width:44px;height:1px;background:#d1d6db;flex:none')} />
-                    <span style={sx('font-size:13px;line-height:18px;font-weight:600;text-align:center;word-break:keep-all', { color: tileFg(it.on) })}>{l}</span>
-                    {it.locked && priceTag(it.price)}
-                    {it.on && check(20, 'top:8px;right:8px')}
-                  </button>
-                )
-              })}
-            </div>
-          </>
-        )}
+        <button className="pr-dim" onClick={onShop} style={css('width:100%;display:flex;align-items:center;gap:12px;padding:18px 24px;text-align:left')}>
+          <span style={css('flex:1;display:flex;flex-direction:column;gap:2px')}>
+            <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#191f28')}>프레임 · 이름표 · 막대 스킨</span>
+            <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>상점에서 사고 바꿔 낄 수 있어요</span>
+          </span>
+          <span style={css('font-size:15px;font-weight:600;color:#3182f6')}>상점 가기</span>
+        </button>
       </div>
     </div>
   )

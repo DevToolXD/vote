@@ -259,6 +259,18 @@ service cloud.firestore {
         && d.spent == o.spent - g0.amount;
     }
 
+    // 투표 2배권: 5000P, good for the current season.
+    function passBuy() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let cur = curSeason();
+      return request.auth.uid == o.ownerUid
+        && d.diff(o).affectedKeys().hasOnly(['spent', 'pass2x'])
+        && o.get('pass2x', 0) != cur && d.pass2x == cur
+        && d.spent == o.spent + 5000
+        && d.spent <= d.up + d.get('bonus', 0);
+    }
+
     // 300P once per account for opening the installed app.
     function appBonusClaim() {
       let d = request.resource.data;
@@ -358,7 +370,7 @@ service cloud.firestore {
         && request.resource.data.owned == {'frame': ['none'], 'plate': ['none'], 'skin': ['none']};
 
       allow update: if signedIn() && (
-        ownerEdit() || voteTally(candidateId) || appBonusClaim() || loginIdBackfill() || giftSend() || giftClaim() || giftCancel() ||
+        ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || loginIdBackfill() || giftSend() || giftClaim() || giftCancel() ||
         adminGrant(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId)
       );
 
@@ -379,8 +391,13 @@ service cloud.firestore {
         && c1.down == c0.down + downsNow(request.resource.data, cur) - downsNow(o, cur);
     }
 
-    // One vote a week per person. Within the week it can be switched (추천 ⇄ 비추천) or cancelled;
-    // after the week, a new vote starts a new week. The tally moves by exactly the difference.
+    // One vote a week per person (two with the season's 투표 2배권, candidates/{me}.pass2x).
+    // Within the week it can be switched (추천 ⇄ 비추천, moving every vote of the week),
+    // cancelled, or — with the pass — cast once more the same way. After the week, a new
+    // vote starts a new week. The tally moves by exactly the difference.
+    function hasPass(cur) {
+      return get(/databases/$(database)/documents/candidates/$(request.auth.uid)).data.get('pass2x', 0) == cur;
+    }
     function voteAction() {
       let d = request.resource.data;
       let o = resource == null ? {} : resource.data;
@@ -389,16 +406,17 @@ service cloud.firestore {
       let oDowns = downsNow(o, cur);
       let oWeekAt = o.get('weekAt', null);
       let oKind = o.get('weekKind', 'none');
+      let oN = o.get('weekN', oKind in ['up', 'down'] ? 1 : 0);
       let inWeek = oWeekAt != null && request.time < oWeekAt + duration.value(7, 'd');
-      let up = d.weekKind == 'up' ? 1 : 0;
-      let down = d.weekKind == 'down' ? 1 : 0;
       return d.season == cur && d.ups is int && d.downs is int && d.weekKind in ['up', 'down', 'none']
+        && d.weekN is int && d.weekN >= 0 && d.weekN <= 2 && ((d.weekKind == 'none') == (d.weekN == 0))
         && (inWeek
-          ? (o.get('season', 0) == cur && d.weekAt == oWeekAt && d.weekKind != oKind
-              && d.ups == oUps + up - (oKind == 'up' ? 1 : 0)
-              && d.downs == oDowns + down - (oKind == 'down' ? 1 : 0))
-          : (d.weekKind in ['up', 'down'] && d.weekAt == request.time
-              && d.ups == oUps + up && d.downs == oDowns + down));
+          ? (o.get('season', 0) == cur && d.weekAt == oWeekAt && (d.weekKind != oKind || d.weekN != oN)
+              && (d.weekN <= oN || (oN == 0 && d.weekN == 1) || (d.weekKind == oKind && oN == 1 && d.weekN == 2 && hasPass(cur)))
+              && d.ups == oUps + (d.weekKind == 'up' ? d.weekN : 0) - (oKind == 'up' ? oN : 0)
+              && d.downs == oDowns + (d.weekKind == 'down' ? d.weekN : 0) - (oKind == 'down' ? oN : 0))
+          : (d.weekKind in ['up', 'down'] && d.weekN == 1 && d.weekAt == request.time
+              && d.ups == oUps + (d.weekKind == 'up' ? 1 : 0) && d.downs == oDowns + (d.weekKind == 'down' ? 1 : 0)));
     }
 
     match /votes/{voteId} {
@@ -406,7 +424,7 @@ service cloud.firestore {
       allow read: if signedIn() && (isAdmin() || (resource == null ? voteId.split('_')[0] == request.auth.uid : resource.data.uid == request.auth.uid));
 
       allow create, update: if signedIn()
-        && request.resource.data.keys().hasOnly(['uid', 'candidateId', 'season', 'ups', 'downs', 'weekAt', 'weekKind', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'candidateId', 'season', 'ups', 'downs', 'weekAt', 'weekKind', 'weekN', 'updatedAt'])
         && request.resource.data.uid == request.auth.uid
         && voteId == request.auth.uid + '_' + request.resource.data.candidateId
         && request.resource.data.updatedAt == request.time

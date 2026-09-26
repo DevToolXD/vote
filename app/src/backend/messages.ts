@@ -4,12 +4,14 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
+  startAfter,
   updateDoc,
   where,
   writeBatch,
@@ -60,12 +62,28 @@ export function subscribeMyChats(db: Firestore, uid: string, cb: (rows: ChatRow[
   }, onError)
 }
 
-/** The latest messages of one chat, oldest first. */
+/** Messages per page: the room listens to the latest page and loads older ones on scroll. */
+export const PAGE = 40
+const rowsOf = (docs: { id: string; data: (o: { serverTimestamps: 'estimate' }) => unknown }[]) =>
+  docs.map(d => ({ id: d.id, ...(d.data({ serverTimestamps: 'estimate' }) as Omit<MessageRow, 'id'>) })).reverse()
+
+/** The latest PAGE messages of one chat, oldest first. */
 export function subscribeMessages(db: Firestore, chatId: string, cb: (rows: MessageRow[]) => void, onError?: (e: unknown) => void): Unsubscribe {
-  const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('at', 'desc'), limit(200))
-  return onSnapshot(q, snap => {
-    cb(snap.docs.map(d => ({ id: d.id, ...(d.data({ serverTimestamps: 'estimate' }) as Omit<MessageRow, 'id'>) })).reverse())
-  }, onError)
+  const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('at', 'desc'), limit(PAGE))
+  return onSnapshot(q, snap => cb(rowsOf(snap.docs)), onError)
+}
+
+/** The PAGE messages before `before` (oldest first), read once when scrolling up. */
+export async function loadOlderMessages(db: Firestore, chatId: string, before: Timestamp): Promise<MessageRow[]> {
+  const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('at', 'desc'), startAfter(before), limit(PAGE))
+  return rowsOf((await getDocs(q)).docs)
+}
+
+/** Merges a fresh page into what the room already shows (by id), oldest first. */
+export function mergeMessages(prev: MessageRow[] | null, rows: MessageRow[]) {
+  const byId = new Map((prev ?? []).map(m => [m.id, m]))
+  for (const r of rows) byId.set(r.id, r)
+  return [...byId.values()].sort((a, b) => ms(a.at) - ms(b.at))
 }
 
 export const isUnread = (c: ChatDoc, me: string) =>

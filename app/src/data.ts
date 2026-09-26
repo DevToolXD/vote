@@ -2,7 +2,7 @@
 
 export type Vote = -1 | 0 | 1
 export type ItemKind = 'frame' | 'plate' | 'skin'
-export type Tab = 'home' | 'acct' | 'rank' | 'msg' | 'admin'
+export type Tab = 'shop' | 'acct' | 'rank' | 'msg' | 'admin'
 
 export const PER = 10
 export const FRAMES: [string, string][] = [['none','기본'],['neon','네온'],['crown','왕관'],['sakura','벚꽃'],['cat','고양이'],['stars','별빛'],['flame','불꽃'],['ocean','파도'],['bunny','토끼'],['halo','천사'],['devil','악마'],['butterfly','나비']]

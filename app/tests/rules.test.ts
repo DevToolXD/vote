@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore'
 import { deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
-import { buyItem, castVote, equipItem, pointsOf, updateMyProfile } from '../src/backend/candidates'
+import { buyItem, buyPass, castVote, equipItem, pointsOf, updateMyProfile } from '../src/backend/candidates'
 import { createGroup, dmId, inviteMembers, leaveGroup, loadImage, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
@@ -114,6 +114,30 @@ describe('voting', () => {
     // …and that new vote can still be changed this week, without touching last week's.
     await castVote(b, 'b', 'a', 'up')
     assert.deepEqual(await tally(b, 'a'), [2, 0, 2])
+  })
+  test('투표 2배권: 5000P for the season; then twice a week per person, switch/cancel move both', async () => {
+    await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
+    await denied(buyPass(b, 'b', 1)) // no points
+    await grantPoints(admin, ADMIN.uid, 'b', 5000)
+    await denied(updateDoc(doc(b, 'candidates', 'b'), { pass2x: 2, spent: 5000 })) // not this season
+    await denied(updateDoc(doc(b, 'candidates', 'b'), { pass2x: 1, spent: 10 })) // underpaid
+    await castVote(b, 'b', 'a', 'up')
+    await denied(castVote(b, 'b', 'a', 'up', 2)) // no pass yet
+    await buyPass(b, 'b', 1)
+    assert.equal(pointsOf((await getDoc(doc(b, 'candidates', 'b'))).data() as never), 0)
+    await denied(buyPass(b, 'b', 1)) // already has it
+    await castVote(b, 'b', 'a', 'up', 2)
+    assert.deepEqual(await tally(b, 'a'), [2, 0, 2])
+    await castVote(b, 'b', 'a', 'down', 2) // switching moves both votes
+    assert.deepEqual(await tally(b, 'a'), [0, 2, -2])
+    await castVote(b, 'b', 'a', 'none') // cancel removes both
+    assert.deepEqual(await tally(b, 'a'), [0, 0, 0])
+    await denied(castVote(b, 'b', 'a', 'up', 2)) // from nothing it's one at a time
+    await castVote(b, 'b', 'a', 'up')
+    await castVote(b, 'b', 'a', 'up', 2)
+    const v = (await getDoc(doc(b, 'votes', 'b_a'))).data()!
+    const w = writeBatch(b); w.set(doc(b, 'votes', 'b_a'), { ...v, ups: 3, weekN: 3, updatedAt: serverTimestamp() }); w.update(doc(b, 'candidates', 'a'), { up: 3, score: 3 })
+    await denied(w.commit()) // never three
   })
   test('refused: a second vote in the same week, a back-dated week, a tally that doesn’t match', async () => {
     await signUp('a'); const b = await signUp('b')

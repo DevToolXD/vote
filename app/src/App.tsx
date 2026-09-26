@@ -3,10 +3,10 @@ import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
-import { buyItem, castVote, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { buyItem, buyPass, castVote, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, inviteMembers, isUnread, leaveGroup, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
-import { DEFAULT_SEASON, type MyVote, type Season, type WeekKind } from './backend/types'
+import { DEFAULT_OWNED, DEFAULT_SEASON, PASS_PRICE, type MyVote, type Season, type WeekKind } from './backend/types'
 import { deviceRegistered, disablePush, enablePush, pushErrorMessage, pushSupport, refreshPush } from './push'
 import { fileToChatImage, fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
@@ -14,7 +14,7 @@ import { AdminProgressOverlay, AdminScreen } from './components/AdminScreen'
 import { BottomNav } from './components/BottomNav'
 import { EditProfile } from './components/EditProfile'
 import { GlassFilters } from './components/GlassFilters'
-import { HomeScreen } from './components/HomeScreen'
+import { ShopScreen, type ShopTab } from './components/ShopScreen'
 import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScreen'
 import { NotifySettings } from './components/NotifySettings'
 import { MessageBanner, type Banner } from './components/MessageBanner'
@@ -56,9 +56,8 @@ function loadTheme() {
 }
 
 /** Real backend: Firebase Auth for accounts, Firestore for the live leaderboard/votes/shop. See app/README.md. */
-export function App({ startTab = 'home', startChat = null, startSupport = null, swapPalette = false }: AppProps) {
+export function App({ startTab = 'rank', startChat = null, startSupport = null, swapPalette = false }: AppProps) {
   const [tab, setTab] = useState<Tab>(startTab)
-  const [homeQuery, setHomeQuery] = useState('')
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const [sheet, setSheet] = useState<string | null>(null)
@@ -78,7 +77,8 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   const [, setPhotoBusy] = useState(false)
   const [bioDraft, setBioDraft] = useState('')
   const [editOpen, setEditOpen] = useState(false)
-  const [editTab, setEditTab] = useState<ItemKind>('frame')
+  const [shopTab, setShopTab] = useState<ShopTab>('frame')
+  const [passAsk, setPassAsk] = useState(false)
   const [buy, setBuy] = useState<Buy | null>(null)
 
   const [acctView, setAcctView] = useState<'login' | 'signup'>('login')
@@ -202,6 +202,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   const me = authUser ? all.find(d => d.id === authUser.uid) : undefined
   const mine = all.filter(d => d.my && (d.my.ups > 0 || d.my.downs > 0 || d.inWeek))
   const points = me ? pointsOf(me) : 0
+  const passActive = !!me && me.pass2x === season.number
   const isAdmin = isAdminEmail(authUser?.email)
   const byId = useMemo(() => new Map(all.map(p => [p.id, p])), [all])
   const unreadChats = authUser ? chats.filter(c => isUnread(c, authUser.uid)).length : 0
@@ -238,7 +239,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chats])
-  useEffect(() => { if (tab === 'admin' && !isAdmin && authReady) setTab('home') }, [tab, isAdmin, authReady])
+  useEffect(() => { if (tab === 'admin' && !isAdmin && authReady) setTab('rank') }, [tab, isAdmin, authReady])
   useEffect(() => (isAdmin && db ? subscribeTickets(db, setTickets) : setTickets([])), [isAdmin])
   const openTicket = tickets.find(t => t.id === ticketId)
   const ticketAccount = openTicket ? all.find(p => p.loginId && p.loginId === openTicket.loginId) : undefined
@@ -322,16 +323,16 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   }
 
   /** kind = what this week's vote should become ('none' cancels it). */
-  const vote = async (id: string, kind: WeekKind) => {
+  const vote = async (id: string, kind: WeekKind, count?: number) => {
     if (!authUser) return
     const d = all.find(x => x.id === id)
     if (!d) return
     setSheet(null)
     const was = d.weekKind
     try {
-      await castVote(db!, authUser.uid, id, kind)
+      await castVote(db!, authUser.uid, id, kind, count)
       const label = kind === 'up' ? '추천' : '비추천'
-      showToast(kind === 'none' ? `${d.name}님 투표를 취소했어요` : was !== 'none' ? `${d.name}님 투표를 ${label}으로 바꿨어요` : `${d.name}님을 ${label}했어요`)
+      showToast(count === 2 ? `${d.name}님을 한 번 더 ${label}했어요 (2배권)` : kind === 'none' ? `${d.name}님 투표를 취소했어요` : was !== 'none' ? `${d.name}님 투표를 ${label}으로 바꿨어요` : `${d.name}님을 ${label}했어요`)
     } catch (e) {
       if ((e as Error)?.message === 'vote-too-soon') showToast('이번 주에는 더 바꿀 수 없어요')
       else failToast('투표하지 못했어요. 다시 시도해주세요', e)
@@ -491,16 +492,21 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
       <GlassFilters />
       <div data-g="app" style={css('width:100%;max-width:430px;min-height:100vh;background:#ffffff;position:relative;display:flex;flex-direction:column')}>
         <main style={css('flex:1;display:flex;flex-direction:column')}>
-          {tab === 'home' && (
-            <HomeScreen
-              all={all} loggedIn={loggedIn} query={homeQuery} onQuery={setHomeQuery} onPick={setSheet}
-              goRank={() => go('rank')} goAccount={() => go('acct')} onInstall={() => setInstallOpen(true)} myCount={mine.length} seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()} points={me ? points : undefined}
+          {tab === 'shop' && (
+            <ShopScreen
+              loggedIn={loggedIn} name={me?.name ?? '내 이름'} bio={me ? bioDraft : ''} photoCss={me?.photoCss ?? 'none'}
+              equipped={me ? { frame: me.frame, plate: me.plate, skin: me.skin } : { frame: 'none', plate: 'none', skin: 'none' }}
+              owned={me?.owned ?? DEFAULT_OWNED} points={points} tab={shopTab} onTab={setShopTab}
+              onPick={(k, key, l) => (me ? pickItem(k, key, l) : go('acct'))}
+              passActive={passActive} onBuyPass={() => setPassAsk(true)} onLogin={() => go('acct')}
             />
           )}
           {tab === 'rank' && (
             <RankScreen
               all={all} query={query} onQuery={q => { setQuery(q); setPage(0) }}
               page={page} onPage={setPage} onOpenProfile={setProfile}
+              seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()} points={me ? points : undefined}
+              onPoints={() => go('shop')} onInstall={() => setInstallOpen(true)}
             />
           )}
           {tab === 'acct' && (
@@ -528,10 +534,10 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
               onGender={g => authUser && updateMyProfile(db!, authUser.uid, { gender: g }).catch(e => failToast('저장하지 못했어요', e))}
               points={points}
               mine={mine}
-              onOpenVote={d => { setTab('home'); setSheet(d.id) }}
+              onOpenVote={d => setSheet(d.id)}
               openEdit={() => setEditOpen(true)}
               openTheme={() => setThemeOpen(true)}
-              goHome={() => go('home')}
+              goHome={() => go('rank')}
               onForgot={() => setSupportOpen('new')}
               supportSlot={supportCard}
               notifySlot={
@@ -573,10 +579,10 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
           )}
         </main>
 
-        <BottomNav tab={tab === 'admin' && !isAdmin ? 'home' : tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} adminUnread={unreadTickets} />
+        <BottomNav tab={tab === 'admin' && !isAdmin ? 'rank' : tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} adminUnread={unreadTickets} />
 
         {sheetPerson && (
-          <VoteSheet d={sheetPerson} loggedIn={loggedIn} colors={colors} onVote={kind => vote(sheetPerson.id, kind)} onClose={() => setSheet(null)} onLogin={() => go('acct')} />
+          <VoteSheet d={sheetPerson} loggedIn={loggedIn} colors={colors} onVote={(kind, n) => vote(sheetPerson.id, kind, n)} onClose={() => setSheet(null)} onLogin={() => go('acct')} pass={passActive} onShop={() => { setShopTab('pass'); go('shop') }} />
         )}
         {ruleOpen && (
           <RuleDialog
@@ -598,8 +604,8 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
         )}
         {editOpen && me && (
           <EditProfile
-            name={me.name} bio={bioDraft} photoCss={me.photoCss} equipped={{ frame: me.frame, plate: me.plate, skin: me.skin }} owned={me.owned} points={points}
-            tab={editTab} onTab={setEditTab} onPick={pickItem} onClose={() => setEditOpen(false)}
+            bio={bioDraft} photoCss={me.photoCss} equipped={{ frame: me.frame, plate: me.plate, skin: me.skin }} points={points}
+            onShop={() => go('shop')} onClose={() => setEditOpen(false)}
             gender={me.gender} onPhoto={onPhoto} onBio={v => setBioDraft(v.slice(0, 60))}
             onGender={g => authUser && updateMyProfile(db!, authUser.uid, { gender: g }).catch(e => failToast('저장하지 못했어요', e))}
           />
@@ -616,6 +622,24 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
             }}
             onClose={() => setBuy(null)}
             onConfirm={confirmBuy}
+          />
+        )}
+        {passAsk && me && (
+          <BuyDialog
+            b={{
+              title: '투표 2배권을 살까요?',
+              desc: points >= PASS_PRICE ? `${season.name} 시즌이 끝날 때까지 한 사람에게 일주일에 두 번 투표할 수 있어요` : '포인트가 더 쌓이면 살 수 있어요',
+              price: PASS_PRICE.toLocaleString() + 'P',
+              remain: (points - PASS_PRICE).toLocaleString() + 'P',
+              can: points >= PASS_PRICE,
+              cta: points >= PASS_PRICE ? PASS_PRICE.toLocaleString() + 'P로 사기' : '포인트가 부족해요',
+            }}
+            onClose={() => setPassAsk(false)}
+            onConfirm={async () => {
+              if (points < PASS_PRICE) return
+              try { await buyPass(db!, me.id, season.number); setPassAsk(false); showToast('투표 2배권을 샀어요. 이번 시즌 동안 한 번 더 투표할 수 있어요') }
+              catch (e) { failToast('사지 못했어요. 다시 시도해주세요', e) }
+            }}
           />
         )}
         {revealOpen && podium && (

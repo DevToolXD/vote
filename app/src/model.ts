@@ -8,6 +8,8 @@ export type Person = CandidateRow & {
   my?: MyVote
   /** This week's vote for them ('none' = not voted this week, or cancelled). */
   weekKind: WeekKind
+  /** How many votes this week (0–2; 2 only with the 투표 2배권). */
+  weekN: number
   /** A week is running (I voted in the last 7 days): I can switch/cancel until it ends. */
   inWeek: boolean
   /** Time left in this week, e.g. "3일" ('' when no week is running). */
@@ -44,6 +46,7 @@ export function buildPeople(rows: CandidateRow[], myVotes: Record<string, MyVote
       rank,
       my,
       weekKind: left > 0 ? my?.weekKind ?? 'none' : 'none',
+      weekN: left > 0 ? my?.weekN ?? 0 : 0,
       inWeek: left > 0,
       weekLeft: waitLabel(left).replace(/ 후$/, ''),
       upN: d.up,

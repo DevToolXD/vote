@@ -1,13 +1,19 @@
 // Background worker. Runs from .github/workflows/notify.yml (which re-starts
-// itself when a run ends) and polls Firestore for:
+// itself when a run ends) and, from real-time listeners only, sends:
 //   - new chat messages  → each other member (unless they muted that chat, already
 //     read it, or turned 새 메시지 off)
 //   - new 추천 / 비추천   → the person who received it (never says who voted)
-//   - new 상담 (support) messages from users → the admin
-// and sends them through Firebase Cloud Messaging (HTTP v1) to every device in
-// pushTokens. Progress is kept in meta/notifyCursor so nothing is sent twice.
-// It also applies admin password resets (pwResets/{uid}, status 'pending'):
-// sets the account's password to the one-time code the admin gave the user.
+//   - 상담 (support) messages → the admin, and 상담원 replies → the linked account
+// through Firebase Cloud Messaging (HTTP v1) to every device in pushTokens.
+// meta/notifyCursor remembers how far it got, so nothing is sent twice across runs.
+// It also applies admin password resets (pwResets/{uid}, status 'pending') and ends
+// seasons when their end date passes.
+//
+// Firestore reads are the scarce resource (the free plan allows 50,000 a day). Every
+// input comes from a listener — the chat doc already carries the latest message
+// (chat.last), settings and push tokens are held in memory — so a message costs the
+// worker about one read, and a run's start-up costs roughly one read per settings /
+// token doc. Runs last hours, so start-ups are rare.
 // Uses the service account (rules don't apply); clients can't read any of it.
 
 import { call, getAccessToken, loadServiceAccount, notice, warn } from './lib/google.mjs'
@@ -51,36 +57,21 @@ async function runQuery(parent, structuredQuery) {
   if (!r.ok) throw new Error(`runQuery ${r.status} ${JSON.stringify(r.json).slice(0, 300)}`)
   return (Array.isArray(r.json) ? r.json : []).filter(x => x.document).map(x => docData(x.document))
 }
-const ts = ms => ({ timestampValue: new Date(ms).toISOString() })
-const between = (field, from, to) => ({
-  compositeFilter: { op: 'AND', filters: [
-    { fieldFilter: { field: { fieldPath: field }, op: 'GREATER_THAN', value: ts(from) } },
-    { fieldFilter: { field: { fieldPath: field }, op: 'LESS_THAN_OR_EQUAL', value: ts(to) } },
-  ] },
-})
-async function getDoc(path) {
-  const r = await call(`${api}/${path}`, { headers: await headers() })
-  return r.ok ? docData(r.json) : null
+// ---- in-memory state, kept fresh by listeners (see main loop) ----
+const settings = new Map() // uid → { notify, notifyMsg, notifyVote }
+const tokens = new Map()   // uid → [{ token, platform, ref }]
+const names = new Map()    // uid → name (read once per run)
+const settingsOf = uid => ({ notify: true, notifyMsg: true, notifyVote: true, ...settings.get(uid) })
+const tokensOf = uid => tokens.get(uid) ?? []
+async function nameOf(uid) {
+  if (!names.has(uid)) names.set(uid, (await fdb.doc(`candidates/${uid}`).get()).get('name') ?? '알 수 없음')
+  return names.get(uid)
 }
-
-// ---- lookups (cached per poll) ----
-let cache = {}
-async function cached(kind, id, load) {
-  const k = kind + '/' + id
-  if (!(k in cache)) cache[k] = await load()
-  return cache[k]
-}
-const nameOf = uid => cached('name', uid, async () => (await getDoc(`candidates/${uid}`))?.name ?? '알 수 없음')
-const settingsOf = uid => cached('settings', uid, async () => ({ notify: true, notifyMsg: true, notifyVote: true, ...(await getDoc(`settings/${uid}`)) }))
-const tokensOf = uid => cached('tokens', uid, () => runQuery(docsRoot, {
-  from: [{ collectionId: 'pushTokens' }],
-  where: { fieldFilter: { field: { fieldPath: 'uid' }, op: 'EQUAL', value: { stringValue: uid } } },
-}))
 
 // ---- sending ----
 let sent = 0, dropped = 0
 async function push(uid, { title, body, url, tag }) {
-  for (const t of await tokensOf(uid)) {
+  for (const t of tokensOf(uid)) {
     const message = t.platform === 'android'
       ? { token: t.token, notification: { title, body }, data: { url, tag }, android: { priority: 'HIGH', notification: {
           tag, sound: 'default', channel_id: tag.startsWith('chat-') || tag.startsWith('support-') ? 'messages' : 'votes',
@@ -92,7 +83,7 @@ async function push(uid, { title, body, url, tag }) {
     const code = r.json?.error?.details?.find?.(d => d.errorCode)?.errorCode ?? r.json?.error?.status
     if (r.status === 404 || code === 'UNREGISTERED' || code === 'INVALID_ARGUMENT') {
       // The app was uninstalled / permission revoked / token rotated: forget this device.
-      await call(`${FS}/${t.path}`, { method: 'DELETE', headers: await headers() })
+      await t.ref.delete().catch(() => {})
       dropped++
     } else {
       warn(`FCM send failed (${r.status} ${code ?? ''})`)
@@ -100,46 +91,25 @@ async function push(uid, { title, body, url, tag }) {
   }
 }
 
-async function messages(from, to) {
-  const chats = await runQuery(docsRoot, { from: [{ collectionId: 'chats' }], where: between('updatedAt', from, to) })
-  for (const chat of chats) {
-    const msgs = await runQuery(chat.path, {
-      from: [{ collectionId: 'messages' }],
-      where: between('at', from, to),
-      orderBy: [{ field: { fieldPath: 'at' }, direction: 'ASCENDING' }],
-    })
-    if (!msgs.length) continue
-    for (const member of chat.members ?? []) {
-      const incoming = msgs.filter(m => m.uid !== member)
-      if (!incoming.length) continue
-      if (chat.mutes?.[member]) continue
-      const last = incoming[incoming.length - 1]
-      if ((chat.reads?.[member] ?? 0) >= last.at) continue // already read it in the open chat
-      const s = await settingsOf(member)
-      if (s.notify === false || s.notifyMsg === false) continue
-      const sender = await nameOf(last.uid)
-      if (last.kind === 'image') last.text = '사진을 보냈어요'
-      const more = incoming.length > 1 ? ` (+${incoming.length - 1})` : ''
-      await push(member, chat.type === 'group'
-        ? { title: chat.name || '단톡방', body: `${sender}: ${last.text}${more}`, url: `${SITE}?tab=msg&chat=${chat.id}`, tag: `chat-${chat.id}` }
-        : { title: sender, body: last.text + more, url: `${SITE}?tab=msg&chat=${chat.id}`, tag: `chat-${chat.id}` })
-    }
+// A chat whose latest message (chat.last) is new → each other member, once per burst.
+async function notifyChat(chat, count) {
+  const last = chat.last
+  for (const member of chat.members ?? []) {
+    if (member === last.uid || chat.mutes?.[member]) continue
+    if ((chat.reads?.[member]?.toMillis?.() ?? 0) >= last.at.toMillis()) continue // already read it in the open chat
+    const s = settingsOf(member)
+    if (s.notify === false || s.notifyMsg === false) continue
+    const sender = await nameOf(last.uid)
+    const more = count > 1 ? ` (+${count - 1})` : ''
+    await push(member, chat.type === 'group'
+      ? { title: chat.name || '단톡방', body: `${sender}: ${last.text}${more}`, url: `${SITE}?tab=msg&chat=${chat.id}`, tag: `chat-${chat.id}` }
+      : { title: sender, body: last.text + more, url: `${SITE}?tab=msg&chat=${chat.id}`, tag: `chat-${chat.id}` })
   }
 }
 
-async function votes(from, to) {
-  const changed = await runQuery(docsRoot, { from: [{ collectionId: 'votes' }], where: between('updatedAt', from, to) })
-  const per = {}
-  for (const v of changed) {
-    if (!v.candidateId) continue
-    // This week's vote as it is now (a new vote or a switch); a cancel isn't announced.
-    const kind = v.weekKind === 'up' || v.weekKind === 'down' ? v.weekKind : null
-    if (!kind) continue
-    per[v.candidateId] ??= { up: 0, down: 0 }
-    per[v.candidateId][kind]++
-  }
-  for (const [uid, n] of Object.entries(per)) {
-    const s = await settingsOf(uid)
+async function notifyVotes(per) {
+  for (const [uid, n] of per) {
+    const s = settingsOf(uid)
     if (s.notify === false || s.notifyVote === false) continue
     const body = n.up && n.down ? `추천 ${n.up}개, 비추천 ${n.down}개를 받았어요`
       : n.up ? (n.up > 1 ? `추천 ${n.up}개를 받았어요` : '누군가 회원님을 추천했어요')
@@ -148,19 +118,14 @@ async function votes(from, to) {
   }
 }
 
-async function support(from, to) {
-  const tickets = await runQuery(docsRoot, { from: [{ collectionId: 'support' }], where: between('updatedAt', from, to) })
-  // 상담원's replies reach the person once the 상담 is linked to their account (after a password reset).
-  for (const t of tickets.filter(t => t.last?.from === 'admin' && t.accountUid)) {
-    await push(t.accountUid, { title: '상담원', body: t.last.text, url: `${SITE}?tab=acct`, tag: `support-${t.id}` })
+async function notifySupport(t) {
+  if (t.last?.from === 'admin') {
+    // 상담원's replies reach the person once the 상담 is linked to their account (after a password reset).
+    if (t.accountUid) await push(t.accountUid, { title: '상담원', body: t.last.text, url: `${SITE}?tab=acct`, tag: `support-${t.id}` })
+    return
   }
-  const fromUsers = tickets.filter(t => t.last?.from === 'user')
-  if (!fromUsers.length) return
   const admin = await adminUid()
-  if (!admin) return
-  for (const t of fromUsers) {
-    await push(admin, { title: `상담 · ${t.name || t.loginId || '이름 없음'}`, body: t.last.text, url: `${SITE}?tab=admin&support=${t.id}`, tag: `support-${t.id}` })
-  }
+  if (admin) await push(admin, { title: `상담 · ${t.name || t.loginId || '이름 없음'}`, body: t.last.text, url: `${SITE}?tab=admin&support=${t.id}`, tag: `support-${t.id}` })
 }
 
 let adminCache
@@ -254,10 +219,7 @@ async function endSeasonIfDue() {
 }
 
 // ---- main loop ----
-// Firestore reads are the scarce resource (the free plan allows 50,000 a day), so
-// nothing is polled: real-time listeners (firebase-admin) tell us when chats,
-// votes, 상담, password resets or the season change, and only then do we run
-// the queries above. With nothing happening, a whole run costs a handful of reads.
+import { execFile } from 'node:child_process'
 import { cert, initializeApp } from 'firebase-admin/app'
 import { Timestamp, getFirestore } from 'firebase-admin/firestore'
 
@@ -265,49 +227,111 @@ if (LOCAL) process.env.FIRESTORE_EMULATOR_HOST = new URL(FS).host
 const adminApp = initializeApp(LOCAL ? { projectId: project } : { credential: cert(key), projectId: project })
 const fdb = getFirestore(adminApp)
 
-const cursorPath = 'meta/notifyCursor'
+const cursorRef = fdb.doc('meta/notifyCursor')
 const started = Date.now()
-let cursor = (await getDoc(cursorPath))?.at ?? Date.now() - 5 * 60_000
+let cursor = (await cursorRef.get()).get('at')?.toMillis() ?? Date.now() - 5 * 60_000
 const since = Timestamp.fromMillis(cursor)
-const dirty = { chats: false, votes: false, support: false, resets: false }
+const ms = t => t?.toMillis?.() ?? 0
+
+// Events waiting to be sent (each is sent once it is SETTLE_MS old, so someone who has
+// the chat open has time to mark it read first).
+const chatEvents = new Map()    // chatId → { chat, count, at }
+const voteEvents = []            // { candidateId, kind, at }
+const supportEvents = new Map()  // ticketId → { ticket, at }
+const lastSeenAt = new Map()     // chatId → last.at already queued (a chat doc also changes on read receipts)
+let resetsPending = false
 let seasonEndsAt = null
-let firstSnapshots = 0
+
 const listeners = []
 const firstDone = new Promise(resolve => {
-  const seen = new Set()
-  const listen = (name, ref, onSnap) => ref.onSnapshot(snap => {
-    onSnap(snap)
-    if (!seen.has(name)) { seen.add(name); firstSnapshots++; if (seen.size === 5) resolve() }
-  }, err => { warn(`Listener ${name} failed: ${err.message}`); if (!seen.has(name)) { seen.add(name); if (seen.size === 5) resolve() } })
+  const seen = new Set(), total = 7
+  const done = name => { if (!seen.has(name)) { seen.add(name); if (seen.size === total) resolve() } }
+  const listen = (name, ref, onSnap) => ref.onSnapshot(snap => { onSnap(snap); done(name) }, err => { warn(`Listener ${name} failed: ${err.message}`); done(name) })
   listeners.push(
-    listen('chats', fdb.collection('chats').where('updatedAt', '>', since), snap => { if (snap.docChanges().length) dirty.chats = true }),
-    listen('votes', fdb.collection('votes').where('updatedAt', '>', since), snap => { if (snap.docChanges().length) dirty.votes = true }),
-    listen('support', fdb.collection('support').where('updatedAt', '>', since), snap => { if (snap.docChanges().length) dirty.support = true }),
-    listen('resets', fdb.collection('pwResets').where('status', '==', 'pending'), snap => { if (!snap.empty) dirty.resets = true }),
+    listen('settings', fdb.collection('settings'), snap => snap.docChanges().forEach(c => c.type === 'removed' ? settings.delete(c.doc.id) : settings.set(c.doc.id, c.doc.data()))),
+    listen('tokens', fdb.collection('pushTokens'), snap => {
+      tokens.clear()
+      snap.forEach(d => { const t = d.data(); if (!t.uid) return; if (!tokens.has(t.uid)) tokens.set(t.uid, []); tokens.get(t.uid).push({ token: t.token ?? d.id, platform: t.platform, ref: d.ref }) })
+    }),
+    listen('chats', fdb.collection('chats').where('updatedAt', '>', since), snap => {
+      for (const c of snap.docChanges()) {
+        if (c.type === 'removed') continue
+        const chat = { id: c.doc.id, ...c.doc.data() }
+        const at = ms(chat.last?.at)
+        const queued = chatEvents.get(chat.id)
+        if (queued) queued.chat = chat // keep reads / mutes current
+        if (!chat.last?.uid || at <= cursor || at <= (lastSeenAt.get(chat.id) ?? 0)) continue
+        lastSeenAt.set(chat.id, at)
+        chatEvents.set(chat.id, { chat, count: (queued?.count ?? 0) + 1, at })
+      }
+    }),
+    listen('votes', fdb.collection('votes').where('updatedAt', '>', since), snap => {
+      for (const c of snap.docChanges()) {
+        if (c.type === 'removed') continue
+        const v = c.doc.data(), at = ms(v.updatedAt)
+        // This week's vote as it is now (a new vote or a switch); a cancel isn't announced.
+        if (at > cursor && v.candidateId && (v.weekKind === 'up' || v.weekKind === 'down')) voteEvents.push({ candidateId: v.candidateId, kind: v.weekKind, at })
+      }
+    }),
+    listen('support', fdb.collection('support').where('updatedAt', '>', since), snap => {
+      for (const c of snap.docChanges()) {
+        if (c.type === 'removed') continue
+        const t = { id: c.doc.id, ...c.doc.data() }, at = ms(t.last?.at)
+        if (t.last?.text && at > cursor && at > (supportEvents.get(t.id)?.at ?? 0)) supportEvents.set(t.id, { ticket: { ...t, last: { ...t.last } }, at })
+      }
+    }),
+    listen('resets', fdb.collection('pwResets').where('status', '==', 'pending'), snap => { if (!snap.empty) resetsPending = true }),
     listen('season', fdb.doc('meta/season'), snap => { const e = snap.get('endsAt'); seasonEndsAt = e ? e.toMillis() : null }),
   )
 })
 await firstDone
 
+// A newer commit on main (new worker code or rules): stop, and the workflow starts a fresh run.
+async function newerCodeOnMain() {
+  if (LOCAL || !process.env.GITHUB_TOKEN || !process.env.GITHUB_SHA) return false
+  try {
+    const r = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/commits/main`, { headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.sha' } })
+    return r.ok && (await r.text()).trim() !== process.env.GITHUB_SHA
+  } catch { return false }
+}
+// Firestore rules: re-deployed hourly if they differ from this checkout (no Firestore reads).
+const rulesCheck = () => new Promise(res => execFile('node', ['.github/scripts/deploy-firestore-rules.mjs'], { env: { ...process.env, SKIP_IF_SAME: '1' } }, err => { if (err) warn('Hourly rules check failed: ' + err.message); res() }))
+
 let rounds = 0
 const TICK_MS = Number(process.env.TICK_MS ?? 3000)
+let nextCodeCheck = Date.now() + 10 * 60_000, nextRules = Date.now() + 60 * 60_000
 while (true) {
-  const to = Date.now() - SETTLE_MS
-  if ((dirty.chats || dirty.votes || dirty.support) && to > cursor) {
-    const work = { ...dirty }
-    dirty.chats = dirty.votes = dirty.support = false
-    cache = {}
-    if (work.chats) await messages(cursor, to)
-    if (work.votes) await votes(cursor, to)
-    if (work.support) await support(cursor, to)
-    const r = await call(`${api}/${cursorPath}?updateMask.fieldPaths=at`, { method: 'PATCH', headers: await headers(), body: JSON.stringify({ fields: { at: ts(to) } }) })
-    if (!r.ok) throw new Error(`Saving the cursor failed (${r.status})`)
-    cursor = to
+  const due = Date.now() - SETTLE_MS
+  let sentUpTo = 0
+  for (const [id, e] of chatEvents) {
+    if (e.at > due) continue
+    chatEvents.delete(id)
+    await notifyChat(e.chat, e.count)
+    sentUpTo = Math.max(sentUpTo, e.at)
+  }
+  const readyVotes = voteEvents.filter(v => v.at <= due)
+  if (readyVotes.length) {
+    voteEvents.splice(0, voteEvents.length, ...voteEvents.filter(v => v.at > due))
+    const per = new Map()
+    for (const v of readyVotes) { const n = per.get(v.candidateId) ?? { up: 0, down: 0 }; n[v.kind]++; per.set(v.candidateId, n); sentUpTo = Math.max(sentUpTo, v.at) }
+    await notifyVotes(per)
+  }
+  for (const [id, e] of supportEvents) {
+    if (e.at > due) continue
+    supportEvents.delete(id)
+    await notifySupport(e.ticket)
+    sentUpTo = Math.max(sentUpTo, e.at)
+  }
+  if (sentUpTo > cursor) {
+    cursor = sentUpTo
+    await cursorRef.set({ at: Timestamp.fromMillis(cursor) }, { merge: true })
     rounds++
   }
-  if (dirty.resets) { dirty.resets = false; await passwordResets() }
+  if (resetsPending) { resetsPending = false; await passwordResets() }
   if (seasonEndsAt && Date.now() >= seasonEndsAt) { seasonEndsAt = null; await endSeasonIfDue().catch(e => warn('Season end check failed: ' + e)) }
-  if (Date.now() - started + TICK_MS > RUN_FOR_MS) break
+  if (Date.now() >= nextRules && !LOCAL) { nextRules = Date.now() + 60 * 60_000; await rulesCheck() }
+  if (Date.now() >= nextCodeCheck) { nextCodeCheck = Date.now() + 10 * 60_000; if (await newerCodeOnMain()) { notice('Newer code on main; handing over to a fresh run.'); break } }
+  if (Date.now() - started + TICK_MS > RUN_FOR_MS && !chatEvents.size && !voteEvents.length && !supportEvents.size) break
   await new Promise(res => setTimeout(res, TICK_MS))
 }
 listeners.forEach(stop => stop())

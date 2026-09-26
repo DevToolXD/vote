@@ -4,7 +4,7 @@ import { css, sx } from '../css'
 import { MAX_SUPPORT_TEXT, markSupportRead, sendSupport, subscribeSupportMessages, subscribeTicket, type SupportFrom, type SupportMessage, type Ticket } from '../backend/support'
 import { restartSupport, signInForSupport } from '../backend/auth'
 import { BackIcon } from './icons'
-import { PlaneIcon, useKeyboardSafeBox } from './MessagesScreen'
+import { KeyboardUnderlay, PlaneIcon, useKeyboardSafeBox } from './MessagesScreen'
 
 // 상담 (support chat) screens: the user side opens from 로그인 → 비밀번호를 잊었어요
 // (no account needed — an anonymous login), the admin side from 관리 → 상담.
@@ -58,6 +58,8 @@ export function SupportRoom({ db, ticketUid, as, title, subtitle, exists, profil
   }
 
   return (
+    <>
+    <KeyboardUnderlay z={249} />
     <div style={sx('position:fixed;left:0;right:0;z-index:250;display:flex;justify-content:center', { top: box.top, height: box.height })}>
       <div data-g="app" style={css(`width:100%;max-width:430px;height:100%;background:#ffffff;display:flex;flex-direction:column;animation:roomIn 360ms ${EASE} backwards`)}>
         <div style={css('flex:none;display:flex;align-items:center;gap:4px;padding:calc(4px + env(safe-area-inset-top)) 8px 4px')}>
@@ -104,6 +106,7 @@ export function SupportRoom({ db, ticketUid, as, title, subtitle, exists, profil
         )}
       </div>
     </div>
+    </>
   )
 }
 

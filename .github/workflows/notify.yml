@@ -5,14 +5,14 @@ name: Notifications
 # It also re-checks the Firestore rules once an hour (deploying only if the live
 # rules differ from firestore.rules on main) and purges deleted accounts' logins.
 #
-# It doesn't poll: firebase-admin real-time listeners report changes, and only then
-# does it query (Firestore's free plan allows 50,000 reads a day; polling every
-# 10 s once used them all up). GitHub's scheduled (cron) runs never fire reliably
-# for this repo, so the worker keeps itself alive instead: each run lasts ~25 minutes,
-# then starts the next run (workflow_dispatch with the built-in token is allowed
-# to trigger workflows). Pushing changes to the worker, the schedule below (when
-# GitHub does run it) and the Firebase backend workflow all (re)start the chain;
-# the concurrency group keeps it to one run plus at most one waiting.
+# It doesn't poll: firebase-admin real-time listeners report every change and carry
+# all it needs (Firestore's free plan allows 50,000 reads a day; polling every 10 s
+# once used them all up). GitHub's scheduled (cron) runs never fire reliably for this
+# repo, so the worker keeps itself alive instead: each run lasts ~5.5 hours (or until
+# newer code lands on main), then starts the next run (workflow_dispatch with the
+# built-in token is allowed to trigger workflows). Pushing changes to the worker, the
+# schedule below (when GitHub does run it) and the Firebase backend workflow all
+# (re)start the chain; the concurrency group keeps it to one run plus at most one waiting.
 
 on:
   schedule:
@@ -35,7 +35,7 @@ concurrency:
 jobs:
   work:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 350
     steps:
       - name: Note the start time
         run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
@@ -69,7 +69,11 @@ jobs:
         continue-on-error: true
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          RUN_FOR_MS: '1500000'
+          # ~5.5 hours per run (public repos have no Actions minute limit): every start-up
+          # re-reads settings and push tokens, so fewer start-ups = fewer Firestore reads.
+          # The worker hands over early when newer code lands on main.
+          RUN_FOR_MS: '19800000'
+          GITHUB_TOKEN: ${{ github.token }}
         run: node .github/scripts/send-notifications.mjs
       - name: Start the next run
         if: always()

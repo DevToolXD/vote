@@ -3,7 +3,10 @@ import { css, sx } from '../css'
 import { CHART_H, MEDALS, PER, skinGeom } from '../data'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
-import { SearchIcon } from './icons'
+import { ChevronRight, SearchIcon } from './icons'
+import { Countdown } from './Countdown'
+import { PointsChip } from './PointsChip'
+import { isInstalledApp } from '../install'
 import { TowerSkin } from './TowerSkin'
 
 const EASE = '550ms cubic-bezier(0.22,1,0.36,1)'
@@ -17,13 +20,20 @@ type Props = {
   page: number
   onPage: (p: number) => void
   onOpenProfile: (id: string) => void
+  seasonName: string
+  /** When the season ends (ms), for the countdown; undefined = no end date. */
+  seasonEndsAt?: number
+  /** My points (signed in only). */
+  points?: number
+  onPoints: () => void
+  onInstall: () => void
 }
 
 /**
  * Vertical net-score chart, 10 per page. Bar length is each entry's rank-based share of the page (see pageShares).
  * Rows are keyed by slot index so paging animates heights instead of remounting.
  */
-export function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile }: Props) {
+export function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile, seasonName, seasonEndsAt, points, onPoints, onInstall }: Props) {
   const q = query.trim()
   const filtered = q ? all.filter(d => d.name.includes(q)) : all
   const nPages = Math.max(1, Math.ceil(filtered.length / PER))
@@ -58,11 +68,24 @@ export function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile }:
 
   return (
     <div data-g="clear" style={css('flex:1;background:#ffffff;padding-bottom:32px')}>
-      <div style={{ height: 8 }} />
-      <div style={css('padding:24px 24px 20px;display:flex;flex-direction:column;gap:4px')}>
-        <h1 style={css('margin:0;font-size:22px;line-height:31px;font-weight:700;color:#191f28')}>실시간 랭킹</h1>
-        <p style={css('margin:0;font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684')}>추천에서 비추천을 뺀 점수로 순위를 매겨요</p>
+      <div style={css('height:56px;padding:6px 16px 0 24px;display:flex;align-items:center;justify-content:space-between;gap:8px')}>
+        <span style={css('min-width:0;font-size:13px;line-height:19.5px;font-weight:700;color:#6b7684;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>시즌 {seasonName} · {seasonEndsAt ? <Countdown to={seasonEndsAt} /> : '실시간'}</span>
+        {points !== undefined && <PointsChip points={points} onClick={onPoints} />}
       </div>
+      <div style={css('padding:8px 24px 20px;display:flex;flex-direction:column;gap:4px')}>
+        <h1 style={css('margin:0;font-size:22px;line-height:31px;font-weight:700;color:#191f28')}>{all.length ? <>지금 1위는 {all[0].name}님이에요</> : '실시간 랭킹'}</h1>
+        <p style={css('margin:0;font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684')}>추천에서 비추천을 뺀 점수로 순위를 매겨요. 이름을 누르면 투표할 수 있어요</p>
+      </div>
+      {!isInstalledApp() && (
+        <button className="pr-98" onClick={onInstall} style={css('width:calc(100% - 32px);margin:0 16px 16px;background:#f9fafb;border-radius:20px;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left;transition:transform 150ms')}>
+          <img src="icons/icon-192.png" alt="" width={40} height={40} style={css('flex:none;border-radius:12px')} />
+          <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+            <span style={css('font-size:16px;line-height:24px;font-weight:700;color:#191f28')}>앱 설치하기</span>
+            <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>홈 화면에서 바로 열고, 설치하면 300P를 받아요</span>
+          </span>
+          <ChevronRight />
+        </button>
+      )}
       <div style={css('padding:0 24px')}>
         <label data-g="l1" className="ring-within" style={css('height:48px;border-radius:14px;background:#f2f4f6;padding:0 8px 0 14px;display:flex;align-items:center;gap:8px')}>
           <SearchIcon size={20} stroke="#8b95a1" />

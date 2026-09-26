@@ -28,6 +28,8 @@ export type CandidateDoc = {
   msgOff?: boolean
   owned: Record<ItemKind, string[]>
   createdAt: unknown
+  /** Season number the 투표 2배권 was bought for (valid while it's the current season). */
+  pass2x?: number
 }
 
 export const DEFAULT_OWNED: Record<ItemKind, string[]> = { frame: ['none'], plate: ['none'], skin: ['none'] }
@@ -45,6 +47,8 @@ export type VoteDoc = {
   weekAt: { toMillis(): number } | null
   /** This week's vote — can be changed or cancelled until the week is over. */
   weekKind: 'up' | 'down' | 'none'
+  /** Votes cast this week (0 = cancelled, 2 = twice with the 투표 2배권). Older docs lack it: 1 unless 'none'. */
+  weekN?: number
   updatedAt: unknown
 }
 
@@ -52,7 +56,8 @@ export const VOTE_EVERY_MS = 7 * 24 * 60 * 60 * 1000
 
 /** My history with one candidate, as the app needs it. */
 export type WeekKind = 'up' | 'down' | 'none'
-export type MyVote = { ups: number; downs: number; weekEndsAt: number; weekKind: WeekKind }
+export type MyVote = { ups: number; downs: number; weekEndsAt: number; weekKind: WeekKind; weekN: number }
+export const PASS_PRICE = 5000
 
 export type PodiumEntry = { id: string; name: string; score: number; frame: string }
 export type Season = {

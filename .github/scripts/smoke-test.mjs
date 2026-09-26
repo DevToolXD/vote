@@ -83,7 +83,7 @@ try {
   // B recommends A: same two writes the app's castVote() transaction makes.
   const seasonDoc = await call(`${fsApi}/${dbRoot}/meta/season?key=${apiKey}`)
   const season = seasonDoc.ok ? Number(seasonDoc.json.fields?.number?.integerValue ?? 1) : 1
-  const upVote = (voter, cand, ups) => withServerTime(update(`votes/${voter}_${cand}`, { uid: voter, candidateId: cand, season, ups, downs: 0, weekKind: 'up' }), 'weekAt', 'updatedAt')
+  const upVote = (voter, cand, ups) => withServerTime(update(`votes/${voter}_${cand}`, { uid: voter, candidateId: cand, season, ups, downs: 0, weekKind: 'up', weekN: 1 }), 'weekAt', 'updatedAt')
   docs.push(`votes/${b.uid}_${a.uid}`)
   const vote = await commit(b.token, [
     update(`candidates/${a.uid}`, { up: 1, down: 0, score: 1 }, ['up', 'down', 'score']),

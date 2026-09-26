@@ -12,7 +12,7 @@ const tab = params.get('tab')
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App
-      startTab={tab === 'acct' || tab === 'rank' || tab === 'msg' || tab === 'admin' ? (tab as Tab) : 'home'}
+      startTab={tab === 'acct' || tab === 'shop' || tab === 'msg' || tab === 'admin' ? (tab as Tab) : 'rank'}
       startSupport={params.get('support')}
       startChat={params.get('chat')}
       swapPalette={params.get('palette') === 'swap'}
@@ -38,7 +38,10 @@ if (import.meta.env.PROD) {
     try {
       const html = await (await fetch('./index.html', { cache: 'no-store' })).text()
       const deployed = bundleOf(html)
-      if (deployed && deployed !== running) location.reload()
+      if (!deployed || deployed === running) return
+      // Never reload under someone's typing; try again on the next check.
+      if ((document.activeElement as HTMLElement | null)?.matches?.('input, textarea')) { last = 0; return }
+      location.reload()
     } catch { /* offline — try again next time */ }
   }
   document.addEventListener('visibilitychange', check)

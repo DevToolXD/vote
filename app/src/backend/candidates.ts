@@ -14,7 +14,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore'
 import type { ItemKind } from '../data'
-import { VOTE_EVERY_MS, type CandidateDoc, type MyVote, type VoteDoc, type WeekKind } from './types'
+import { PASS_PRICE, VOTE_EVERY_MS, type CandidateDoc, type MyVote, type VoteDoc, type WeekKind } from './types'
 
 // Every function takes the Firestore instance so the rules tests (app/tests) run
 // this exact code against the emulator.
@@ -36,7 +36,8 @@ export function subscribeMyVotes(db: Firestore, uid: string, cb: (votes: Record<
       const v = d.data({ serverTimestamps: 'estimate' }) as Partial<VoteDoc>
       if (!v.candidateId) return
       const weekEndsAt = v.weekAt ? v.weekAt.toMillis() + VOTE_EVERY_MS : 0
-      out[v.candidateId] = { ups: v.ups ?? 0, downs: v.downs ?? 0, weekEndsAt, weekKind: weekEndsAt > Date.now() ? v.weekKind ?? 'none' : 'none' }
+      const kind = weekEndsAt > Date.now() ? v.weekKind ?? 'none' : 'none'
+      out[v.candidateId] = { ups: v.ups ?? 0, downs: v.downs ?? 0, weekEndsAt, weekKind: kind, weekN: kind === 'none' ? 0 : v.weekN ?? 1 }
     })
     cb(out)
   })
@@ -44,13 +45,15 @@ export function subscribeMyVotes(db: Firestore, uid: string, cb: (votes: Record<
 
 
 /**
- * One vote a week per person. `kind` is what this week's vote should be: a new
- * week starts with 추천 or 비추천; within the week it can be switched or set to
- * 'none' (cancelled). Runs in a transaction so the tally moves by exactly the
- * difference; firestore.rules (voteAction) checks the same.
+ * One vote a week per person (two with the 투표 2배권). `kind` and `count` are what
+ * this week's vote should become: a new week starts with one 추천 or 비추천; within
+ * the week it can be switched (all of the week's votes move), set to 'none'
+ * (cancelled), or — with the pass — raised to 2. Runs in a transaction so the tally
+ * moves by exactly the difference; firestore.rules (voteAction) checks the same.
  */
-export async function castVote(db: Firestore, myUid: string, candidateId: string, kind: WeekKind) {
+export async function castVote(db: Firestore, myUid: string, candidateId: string, kind: WeekKind, count = kind === 'none' ? 0 : 1) {
   if (candidateId === myUid) throw new Error('cannot-vote-self')
+  if (kind === 'none') count = 0
   const voteRef = doc(db, 'votes', `${myUid}_${candidateId}`)
   const candidateRef = doc(db, 'candidates', candidateId)
   const seasonRef = doc(db, 'meta', 'season')
@@ -62,19 +65,26 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
     const thisSeason = o.season === cur
     const inWeek = !!o.weekAt && Date.now() < o.weekAt.toMillis() + VOTE_EVERY_MS
     const oKind: WeekKind = inWeek ? o.weekKind ?? 'none' : 'none'
+    const oN = oKind === 'none' ? 0 : o.weekN ?? 1
     if (inWeek && !thisSeason) throw new Error('vote-too-soon')
     if (!inWeek && kind === 'none') return
-    if (kind === oKind) return
-    const dUp = (kind === 'up' ? 1 : 0) - (oKind === 'up' ? 1 : 0)
-    const dDown = (kind === 'down' ? 1 : 0) - (oKind === 'down' ? 1 : 0)
+    if (!inWeek) count = 1
+    if (kind === oKind && count === oN) return
+    const dUp = (kind === 'up' ? count : 0) - (oKind === 'up' ? oN : 0)
+    const dDown = (kind === 'down' ? count : 0) - (oKind === 'down' ? oN : 0)
     const c = candSnap.data() as CandidateDoc
     tx.set(voteRef, {
       uid: myUid, candidateId, season: cur, updatedAt: serverTimestamp(),
       ups: (thisSeason ? o.ups ?? 0 : 0) + dUp, downs: (thisSeason ? o.downs ?? 0 : 0) + dDown,
-      weekAt: inWeek ? o.weekAt : serverTimestamp(), weekKind: kind,
+      weekAt: inWeek ? o.weekAt : serverTimestamp(), weekKind: kind, weekN: count,
     })
     tx.update(candidateRef, { up: c.up + dUp, down: c.down + dDown, score: c.up + dUp - (c.down + dDown) })
   })
+}
+
+/** 투표 2배권 for the current season (firestore.rules: passBuy). */
+export async function buyPass(db: Firestore, myUid: string, season: number) {
+  await updateDoc(doc(db, 'candidates', myUid), { pass2x: season, spent: increment(PASS_PRICE) })
 }
 
 /** Points available to spend: this season's recommendations + carried-over/admin bonus − spent. */

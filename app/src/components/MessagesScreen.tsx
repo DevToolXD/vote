@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type R
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { MEDALS } from '../data'
-import { MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, isUnread, loadImage, markRead, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
+import { MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, loadImage, loadOlderMessages, markRead, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, subscribeGift, type Gift } from '../backend/gifts'
 import { saveImage } from '../saveImage'
 import type { Person } from '../model'
@@ -213,10 +213,12 @@ export function useKeyboardSafeBox() {
       setBox({ top: vv ? vv.offsetTop : 0, height: vv ? vv.height : window.innerHeight })
     }
     update()
+    const t1 = setTimeout(update, 120), t2 = setTimeout(update, 450)
     vv?.addEventListener('resize', update)
     vv?.addEventListener('scroll', update)
     window.addEventListener('resize', update)
     return () => {
+      clearTimeout(t1); clearTimeout(t2)
       vv?.removeEventListener('resize', update)
       vv?.removeEventListener('scroll', update)
       window.removeEventListener('resize', update)
@@ -225,6 +227,14 @@ export function useKeyboardSafeBox() {
     }
   }, [])
   return box
+}
+
+/**
+ * White layer under a full-screen chat, reaching below the screen: the iPhone keyboard
+ * (and its ⌃⌄✓ bar) is see-through, so without it the screen underneath showed through.
+ */
+export function KeyboardUnderlay({ z }: { z: number }) {
+  return <div aria-hidden="true" style={sx('position:fixed;left:0;right:0;top:0;height:200vh;background:#ffffff;pointer-events:none;animation:fade 160ms ease both', { zIndex: z })} />
 }
 
 // ---- 채팅방 -----------------------------------------------------------------------
@@ -304,31 +314,65 @@ export function ChatRoom(p: RoomProps) {
   const bgCss = (BGS.find(b => b[0] === bg) ?? BGS[0])[2]
   const tinted = bg !== 'default'
 
+  // Only the latest page is live; older pages load (once) when you scroll up. What has
+  // been shown stays, so the live window sliding forward never drops messages.
+  const [hasOlder, setHasOlder] = useState(false)
+  const loadingOlder = useRef(false)
+  const keepFromBottom = useRef<number | null>(null)
   useEffect(() => subscribeMessages(db, chat.id, rows => {
-    if (!firstIds.current) firstIds.current = new Set(rows.map(r => r.id))
-    setMsgs(rows)
+    if (!firstIds.current) { firstIds.current = new Set(rows.map(r => r.id)); setHasOlder(rows.length >= PAGE) }
+    setMsgs(prev => mergeMessages(prev, rows))
   }, e => onError('메시지를 불러오지 못했어요', e)), [db, chat.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const loadOlder = async () => {
+    const el = listRef.current, oldest = msgs?.[0]?.at
+    if (!el || !oldest || loadingOlder.current || !hasOlder) return
+    loadingOlder.current = true
+    try {
+      const rows = await loadOlderMessages(db, chat.id, oldest)
+      rows.forEach(r => firstIds.current?.add(r.id)) // no entry animation for history
+      keepFromBottom.current = el.scrollHeight - el.scrollTop
+      if (rows.length < PAGE) setHasOlder(false)
+      setMsgs(prev => mergeMessages(prev, rows))
+    } catch (e) { onError('이전 메시지를 불러오지 못했어요', e) }
+    loadingOlder.current = false
+  }
   // Opening the room (and every new message while it's open) marks it read.
-  useEffect(() => { if (isUnread(chat, me.id)) markRead(db, me.id, chat.id).catch(() => {}) }, [db, chat, me.id])
+  // Every read receipt is sent to every member's chat list (each counts as a Firestore
+  // read for them), so a burst of messages is marked read once, after it settles, and
+  // only while the app is actually on screen.
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined
+    const mark = () => {
+      clearTimeout(t)
+      if (document.visibilityState !== 'visible' || !isUnread(chat, me.id)) return
+      t = setTimeout(() => markRead(db, me.id, chat.id).catch(() => {}), 1200)
+    }
+    mark()
+    document.addEventListener('visibilitychange', mark)
+    return () => { clearTimeout(t); document.removeEventListener('visibilitychange', mark) }
+  }, [db, chat, me.id])
   const toBottom = (smooth = false) => { const el = listRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); nearBottom.current = true; setNewBelow(0) }
   // Follow new messages only while you're at the bottom; if you've scrolled up to read,
   // stay put and offer a "새 메시지" button instead of yanking the view down.
   const nearBottom = useRef(true)
   const [newBelow, setNewBelow] = useState(0)
-  const seenCount = useRef(0)
+  const lastId = useRef<string | null>(null)
   const onListScroll = () => {
     const el = listRef.current
     if (!el) return
     nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
     if (nearBottom.current && newBelow) setNewBelow(0)
+    if (el.scrollTop < 200) loadOlder()
   }
   useLayoutEffect(() => {
     if (!msgs) return
-    const added = msgs.length - seenCount.current
-    const first = seenCount.current === 0
-    seenCount.current = msgs.length
-    if (first) { toBottom(); return }
-    if (added <= 0) return
+    // Older messages were put on top: keep what you were looking at in place.
+    if (keepFromBottom.current != null) { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight - keepFromBottom.current; keepFromBottom.current = null }
+    const prevLast = lastId.current
+    lastId.current = msgs.length ? msgs[msgs.length - 1].id : null
+    if (prevLast === null) { toBottom(); return }
+    if (lastId.current === prevLast) return
+    const added = Math.max(1, msgs.length - 1 - msgs.findIndex(m => m.id === prevLast))
     const last = msgs[msgs.length - 1]
     if (last.uid === me.id) toBottom()
     else if (nearBottom.current) toBottom(true)
@@ -370,6 +414,8 @@ export function ChatRoom(p: RoomProps) {
   }
 
   return (
+    <>
+    <KeyboardUnderlay z={199} />
     <div style={sx('position:fixed;left:0;right:0;z-index:200;display:flex;justify-content:center', { top: box.top, height: box.height })}>
       <div data-g="app" style={css(`width:100%;max-width:430px;height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;background:#ffffff;animation:roomIn 360ms ${EASE} backwards`)}>
         <div style={sx('flex:none;display:flex;align-items:center;gap:4px;padding:4px 8px;position:relative;z-index:2', { paddingTop: box.top ? 4 : 'calc(4px + env(safe-area-inset-top))', background: tinted ? 'rgba(255,255,255,0.72)' : '#ffffff', backdropFilter: tinted ? 'blur(12px)' : undefined })}>
@@ -544,6 +590,7 @@ export function ChatRoom(p: RoomProps) {
         )}
       </div>
     </div>
+    </>
   )
 }
 

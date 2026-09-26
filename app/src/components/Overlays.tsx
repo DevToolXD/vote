@@ -29,7 +29,11 @@ export function useVisibleViewport() {
     if (!vv) return
     const u = () => setV(read())
     vv.addEventListener('resize', u); vv.addEventListener('scroll', u)
-    return () => { vv.removeEventListener('resize', u); vv.removeEventListener('scroll', u) }
+    // A sheet whose input auto-focuses opens the keyboard before this effect runs, so that
+    // first resize is missed: read again now and after the keyboard animation.
+    u()
+    const t1 = setTimeout(u, 120), t2 = setTimeout(u, 450)
+    return () => { clearTimeout(t1); clearTimeout(t2); vv.removeEventListener('resize', u); vv.removeEventListener('scroll', u) }
   }, [])
   return v
 }
@@ -47,7 +51,9 @@ export function BottomSheet({ onScrim, scrim, sheetStyle, children }: { onScrim:
   return toRoot(
     <>
       <div data-g="scrim" onClick={onScrim} style={sx('position:fixed;inset:0;z-index:260;animation:fade 200ms ease both', { background: scrim })} />
-      <div style={sx('position:fixed;left:0;right:0;z-index:261;display:flex;justify-content:center;pointer-events:none;transition:bottom 220ms cubic-bezier(0.16,1,0.3,1)', { bottom: vp.inset })}>
+      {/* Pinned to the visible area itself (top + height), not to innerHeight: on iPhone
+          innerHeight can shrink with the keyboard too, which put the sheet behind it. */}
+      <div style={sx('position:fixed;left:0;right:0;z-index:261;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;pointer-events:none', { top: vp.top, height: vp.height })}>
         <div data-g="l4" style={sx('width:100%;max-width:430px;background:#ffffff;pointer-events:auto;overflow-y:auto;overscroll-behavior:contain;' + sheetStyle, { maxHeight: vp.height - 16 })}>{children}</div>
       </div>
     </>
@@ -71,10 +77,12 @@ export function Dialog({ onScrim, labelledBy, gap, children }: { onScrim: () => 
 
 type VoteColors = { up: string; down: string; downWeak: string; downWeakFg: string }
 
-export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin }: { d: Person; loggedIn: boolean; colors: VoteColors; onVote: (kind: WeekKind) => void; onClose: () => void; onLogin: () => void }) {
+export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin, pass = false, onShop }: { d: Person; loggedIn: boolean; colors: VoteColors; onVote: (kind: WeekKind, count?: number) => void; onClose: () => void; onLogin: () => void; pass?: boolean; onShop?: () => void }) {
+  const twice = d.weekN >= 2
+  const kindName = d.weekKind === 'up' ? '추천' : '비추천'
   const sub = !d.inWeek ? '일주일에 한 번 추천이나 비추천을 할 수 있어요. 7일 안에는 바꾸거나 취소할 수 있어요'
     : d.weekKind === 'none' ? `이번 주 투표를 취소했어요. ${d.weekLeft} 안에 다시 고를 수 있어요`
-    : `이번 주에 ${d.weekKind === 'up' ? '추천' : '비추천'}했어요. ${d.weekLeft} 안에는 바꾸거나 취소할 수 있어요`
+    : `이번 주에 ${kindName}${twice ? '을 두 번' : ''}했어요. ${d.weekLeft} 안에는 바꾸거나 취소할 수 있어요`
   const upOn = d.weekKind === 'up', downOn = d.weekKind === 'down'
   return (
     <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle="border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));animation:sheetUp 400ms cubic-bezier(0.16,1,0.3,1) both">
@@ -110,6 +118,18 @@ export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin }: { d
             <button className="pr-96" aria-pressed={downOn} onClick={() => onVote(downOn ? 'none' : 'down')} style={sx(bigBtn + ';transition:transform 150ms,background 200ms', downOn ? { background: colors.down, color: '#ffffff' } : { background: colors.downWeak, color: colors.downWeakFg })}>{downOn ? '✓ 비추천 · 취소' : upOn ? '비추천으로 바꾸기' : '비추천'}</button>
             <button className="pr-96" aria-pressed={upOn} onClick={() => onVote(upOn ? 'none' : 'up')} style={sx(bigBtn + ';transition:transform 150ms,background 200ms', upOn ? { background: '#f2f4f6', color: colors.up, boxShadow: `inset 0 0 0 2px ${colors.up}` } : { background: colors.up, color: '#ffffff' })}>{upOn ? '✓ 추천 · 취소' : downOn ? '추천으로 바꾸기' : '추천'}</button>
           </div>
+          {/* 투표 2배권: a second vote the same way this week. */}
+          {d.inWeek && d.weekKind !== 'none' && (
+            <div style={css('padding:8px 20px 0')}>
+              {twice ? (
+                <div style={css('height:48px;border-radius:14px;background:#f3eeff;color:#6a3cf0;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center')}>×2 이번 주 {kindName} 두 번 했어요</div>
+              ) : pass ? (
+                <button className="pr-96" onClick={() => onVote(d.weekKind, 2)} style={css('width:100%;height:48px;border-radius:14px;background:linear-gradient(135deg,#1b64da,#6a3cf0);color:#ffffff;font-size:15px;font-weight:700;transition:transform 150ms')}>×2 한 번 더 {kindName}하기</button>
+              ) : onShop ? (
+                <button className="pr-dim" onClick={onShop} style={css('width:100%;height:44px;border-radius:12px;color:#6a3cf0;font-size:14px;font-weight:600')}>투표 2배권이 있으면 한 번 더 할 수 있어요 ›</button>
+              ) : null}
+            </div>
+          )}
         </>
       )}
     </BottomSheet>
