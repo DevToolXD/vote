@@ -15,7 +15,14 @@ const project = key.project_id
 const mgmt = { Authorization: `Bearer ${await getAccessToken(key)}`, 'Content-Type': 'application/json' }
 const base = `https://firebasedatabase.googleapis.com/v1beta/projects/${project}/locations`
 
-const list = await call(`${base}/-/instances`, { headers: mgmt })
+let list = await call(`${base}/-/instances`, { headers: mgmt })
+if (list.status === 403 && JSON.stringify(list.json).includes('has not been used')) {
+  // The management API is off in new projects: turn it on (Service Usage API), then wait for it.
+  const en = await call(`https://serviceusage.googleapis.com/v1/projects/${project}/services/firebasedatabase.googleapis.com:enable`, { method: 'POST', headers: mgmt, body: '{}' })
+  if (!en.ok) fail(`Turning on the Realtime Database Management API failed (${en.status}).`, en.json)
+  notice('Turned on the Realtime Database Management API; waiting for it…')
+  for (let i = 0; i < 20 && !list.ok; i++) { await new Promise(r => setTimeout(r, 15_000)); list = await call(`${base}/-/instances`, { headers: mgmt }) }
+}
 if (!list.ok) fail(`Listing Realtime Database instances failed (${list.status}).`, list.json)
 let inst = (list.json.instances ?? []).find(i => i.type === 'DEFAULT_DATABASE')
 if (!inst) {
