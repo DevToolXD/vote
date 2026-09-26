@@ -338,19 +338,32 @@ export function ChatRoom(p: RoomProps) {
   }
   // Opening the room (and every new message while it's open) marks it read.
   // Every read receipt is sent to every member's chat list (each counts as a Firestore
-  // read for them), so a burst of messages is marked read once, after it settles, and
-  // only while the app is actually on screen.
+  // read for them), so while the app is on screen it's sent at most once every 4 s,
+  // 1.2 s after the latest message at the earliest; a busy chat doesn't send one per message.
+  const lastMark = useRef(0)
+  const markTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const chatNow = useRef(chat)
+  chatNow.current = chat
   useEffect(() => {
-    let t: ReturnType<typeof setTimeout> | undefined
     const mark = () => {
-      clearTimeout(t)
-      if (document.visibilityState !== 'visible' || !isUnread(chat, me.id)) return
-      t = setTimeout(() => markRead(db, me.id, chat.id).catch(() => {}), 1200)
+      if (markTimer.current || document.visibilityState !== 'visible' || !isUnread(chat, me.id)) return
+      markTimer.current = setTimeout(() => {
+        markTimer.current = undefined
+        if (document.visibilityState !== 'visible' || !isUnread(chatNow.current, me.id)) return
+        lastMark.current = Date.now()
+        markRead(db, me.id, chat.id).catch(() => {})
+      }, Math.max(1200, 4000 - (Date.now() - lastMark.current)))
     }
     mark()
     document.addEventListener('visibilitychange', mark)
-    return () => { clearTimeout(t); document.removeEventListener('visibilitychange', mark) }
+    return () => document.removeEventListener('visibilitychange', mark)
   }, [db, chat, me.id])
+  // Leaving the room with a receipt still waiting: send it now, so the chat isn't left unread.
+  useEffect(() => () => {
+    if (!markTimer.current) return
+    clearTimeout(markTimer.current)
+    if (isUnread(chatNow.current, me.id)) markRead(db, me.id, chatNow.current.id).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const toBottom = (smooth = false) => { const el = listRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); nearBottom.current = true; setNewBelow(0) }
   // Follow new messages only while you're at the bottom; if you've scrolled up to read,
   // stay put and offer a "새 메시지" button instead of yanking the view down.

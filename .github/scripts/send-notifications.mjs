@@ -28,7 +28,8 @@ const docsRoot = `projects/${project}/databases/(default)/documents`
 const api = `${FS}/${docsRoot}`
 const SITE = process.env.SITE_URL || 'https://devtoolxd.github.io/vote/'
 const RUN_FOR_MS = Number(process.env.RUN_FOR_MS ?? 4 * 60_000)
-const SETTLE_MS = Number(process.env.SETTLE_MS ?? 2000)
+// Long enough for someone with the chat open to send their read receipt (the app sends one within ~4 s).
+const SETTLE_MS = Number(process.env.SETTLE_MS ?? 5000)
 const AUTH = process.env.AUTH_BASE || 'https://identitytoolkit.googleapis.com'
 
 let token = null, tokenAt = 0
