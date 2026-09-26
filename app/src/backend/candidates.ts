@@ -10,6 +10,7 @@ import {
   serverTimestamp,
   updateDoc,
   where,
+  writeBatch,
   type Firestore,
   type Unsubscribe,
 } from 'firebase/firestore'
@@ -27,58 +28,95 @@ export function subscribeCandidates(db: Firestore, cb: (rows: CandidateRow[]) =>
   return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...(d.data() as CandidateDoc) }))))
 }
 
+// My vote docs exactly as the server has them (not ones with a write still in flight),
+// so castVote can write straight away instead of reading them again in a transaction.
+const myVoteDocs = new Map<string, Partial<VoteDoc> | null>()
+
 /** The signed-in voter's own vote history, as { candidateId: MyVote }. */
 export function subscribeMyVotes(db: Firestore, uid: string, cb: (votes: Record<string, MyVote>) => void): Unsubscribe {
   const q = query(collection(db, 'votes'), where('uid', '==', uid))
-  return onSnapshot(q, snap => {
+  myVoteDocs.clear()
+  const stop = onSnapshot(q, snap => {
     const out: Record<string, MyVote> = {}
+    myVoteDocs.clear()
     snap.forEach(d => {
       const v = d.data({ serverTimestamps: 'estimate' }) as Partial<VoteDoc>
       if (!v.candidateId) return
+      myVoteDocs.set(v.candidateId, d.metadata.hasPendingWrites ? null : v)
       const weekEndsAt = v.weekAt ? v.weekAt.toMillis() + VOTE_EVERY_MS : 0
       const kind = weekEndsAt > Date.now() ? v.weekKind ?? 'none' : 'none'
       out[v.candidateId] = { ups: v.ups ?? 0, downs: v.downs ?? 0, weekEndsAt, weekKind: kind, weekN: kind === 'none' ? 0 : v.weekN ?? 1 }
     })
+    ready = !snap.metadata.fromCache
     cb(out)
   })
+  let ready = false
+  known = () => ready
+  return () => { stop(); myVoteDocs.clear(); known = () => false }
 }
+let known = () => false
 
+/** What this week's vote becomes (see castVote), or null when nothing changes. */
+function planVote(o: Partial<VoteDoc>, cur: number, kind: WeekKind, count: number, now: number) {
+  const thisSeason = o.season === cur
+  const inWeek = !!o.weekAt && now < o.weekAt.toMillis() + VOTE_EVERY_MS
+  const oKind: WeekKind = inWeek ? o.weekKind ?? 'none' : 'none'
+  const oN = oKind === 'none' ? 0 : o.weekN ?? 1
+  if (kind === 'none') count = 0
+  if (inWeek && !thisSeason) throw new Error('vote-too-soon')
+  if (!inWeek && kind === 'none') return null
+  if (!inWeek) count = 1
+  if (kind === oKind && count === oN) return null
+  const dUp = (kind === 'up' ? count : 0) - (oKind === 'up' ? oN : 0)
+  const dDown = (kind === 'down' ? count : 0) - (oKind === 'down' ? oN : 0)
+  return {
+    dUp, dDown,
+    vote: {
+      season: cur, ups: (thisSeason ? o.ups ?? 0 : 0) + dUp, downs: (thisSeason ? o.downs ?? 0 : 0) + dDown,
+      weekAt: inWeek ? o.weekAt : serverTimestamp(), weekKind: kind, weekN: count,
+    },
+  }
+}
 
 /**
  * One vote a week per person (two with the 투표 2배권). `kind` and `count` are what
  * this week's vote should become: a new week starts with one 추천 or 비추천; within
  * the week it can be switched (all of the week's votes move), set to 'none'
- * (cancelled), or — with the pass — raised to 2. Runs in a transaction so the tally
- * moves by exactly the difference; firestore.rules (voteAction) checks the same.
+ * (cancelled), or — with the pass — raised to 2. firestore.rules (voteAction +
+ * voteTally) checks that the tally moves by exactly the difference.
+ *
+ * With `season` given and my votes already loaded, it writes straight away (the
+ * tally with increments, so other voters at the same moment don't clash) — no reads,
+ * so it also works when the day's read quota is used up. If what the app had was
+ * out of date the rules refuse it, and it retries as a transaction that reads first.
  */
-export async function castVote(db: Firestore, myUid: string, candidateId: string, kind: WeekKind, count = kind === 'none' ? 0 : 1) {
+export async function castVote(db: Firestore, myUid: string, candidateId: string, kind: WeekKind, count = kind === 'none' ? 0 : 1, season?: number) {
   if (candidateId === myUid) throw new Error('cannot-vote-self')
-  if (kind === 'none') count = 0
   const voteRef = doc(db, 'votes', `${myUid}_${candidateId}`)
   const candidateRef = doc(db, 'candidates', candidateId)
+  const base = { uid: myUid, candidateId, updatedAt: serverTimestamp() }
+  const local = myVoteDocs.get(candidateId)
+  if (season && known() && local !== null) {
+    try {
+      const p = planVote(local ?? {}, season, kind, count, Date.now())
+      if (!p) return
+      const b = writeBatch(db)
+      b.set(voteRef, { ...base, ...p.vote })
+      b.update(candidateRef, { up: increment(p.dUp), down: increment(p.dDown), score: increment(p.dUp - p.dDown) })
+      await b.commit()
+      return
+    } catch { /* out of date: read and retry below */ }
+  }
   const seasonRef = doc(db, 'meta', 'season')
   await runTransaction(db, async tx => {
     const [voteSnap, candSnap, seasonSnap] = await Promise.all([tx.get(voteRef), tx.get(candidateRef), tx.get(seasonRef)])
     if (!candSnap.exists()) throw new Error('candidate-not-found')
     const cur = seasonSnap.exists() ? (seasonSnap.data().number as number) : 1
-    const o = (voteSnap.data() ?? {}) as Partial<VoteDoc>
-    const thisSeason = o.season === cur
-    const inWeek = !!o.weekAt && Date.now() < o.weekAt.toMillis() + VOTE_EVERY_MS
-    const oKind: WeekKind = inWeek ? o.weekKind ?? 'none' : 'none'
-    const oN = oKind === 'none' ? 0 : o.weekN ?? 1
-    if (inWeek && !thisSeason) throw new Error('vote-too-soon')
-    if (!inWeek && kind === 'none') return
-    if (!inWeek) count = 1
-    if (kind === oKind && count === oN) return
-    const dUp = (kind === 'up' ? count : 0) - (oKind === 'up' ? oN : 0)
-    const dDown = (kind === 'down' ? count : 0) - (oKind === 'down' ? oN : 0)
+    const p = planVote((voteSnap.data() ?? {}) as Partial<VoteDoc>, cur, kind, count, Date.now())
+    if (!p) return
     const c = candSnap.data() as CandidateDoc
-    tx.set(voteRef, {
-      uid: myUid, candidateId, season: cur, updatedAt: serverTimestamp(),
-      ups: (thisSeason ? o.ups ?? 0 : 0) + dUp, downs: (thisSeason ? o.downs ?? 0 : 0) + dDown,
-      weekAt: inWeek ? o.weekAt : serverTimestamp(), weekKind: kind, weekN: count,
-    })
-    tx.update(candidateRef, { up: c.up + dUp, down: c.down + dDown, score: c.up + dUp - (c.down + dDown) })
+    tx.set(voteRef, { ...base, ...p.vote })
+    tx.update(candidateRef, { up: c.up + p.dUp, down: c.down + p.dDown, score: c.up + p.dUp - (c.down + p.dDown) })
   })
 }
 

@@ -342,7 +342,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     setSheet(null)
     const was = d.weekKind
     try {
-      await castVote(db!, authUser.uid, id, kind, count)
+      await castVote(db!, authUser.uid, id, kind, count, season.number)
       const label = kind === 'up' ? '추천' : '비추천'
       showToast(count === 2 ? `${d.name}님을 한 번 더 ${label}했어요 (2배권)` : kind === 'none' ? `${d.name}님 투표를 취소했어요` : was !== 'none' ? `${d.name}님 투표를 ${label}으로 바꿨어요` : `${d.name}님을 ${label}했어요`)
     } catch (e) {

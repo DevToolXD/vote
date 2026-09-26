@@ -11,11 +11,11 @@ import {
 } from 'firebase/firestore'
 import { deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
-import { buyItem, buyPass, castVote, equipItem, pointsOf, updateMyProfile } from '../src/backend/candidates'
+import { buyItem, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, updateMyProfile } from '../src/backend/candidates'
 import { createGroup, dmId, inviteMembers, leaveGroup, loadImage, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
-import { cancelGift, claimGift, sendGift } from '../src/backend/gifts'
+import { cancelGift, claimGift, sendGift, subscribeGift } from '../src/backend/gifts'
 import { markNoticeSeen, nextUnseenNotice, postNotice } from '../src/backend/notices'
 import { DEFAULT_REWARDS } from '../src/backend/rewards'
 import type { CandidateDoc } from '../src/backend/types'
@@ -114,6 +114,23 @@ describe('voting', () => {
     // …and that new vote can still be changed this week, without touching last week's.
     await castVote(b, 'b', 'a', 'up')
     assert.deepEqual(await tally(b, 'a'), [2, 0, 2])
+  })
+  test('direct write (no reads) when my votes are loaded; stale knowledge falls back to a transaction', async () => {
+    await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
+    let snaps = 0
+    const stop = subscribeMyVotes(b, 'b', () => { snaps++ })
+    while (!snaps) await new Promise(r => setTimeout(r, 50))
+    await new Promise(r => setTimeout(r, 300))
+    await castVote(b, 'b', 'a', 'up', 1, 1)
+    assert.deepEqual(await tally(b, 'a'), [1, 0, 1])
+    await new Promise(r => setTimeout(r, 300))
+    await castVote(b, 'b', 'a', 'down', 1, 1) // switch, written directly
+    assert.deepEqual(await tally(b, 'a'), [0, 1, -1])
+    await castVote(c, 'c', 'a', 'up') // someone else at the same time: increments don't clash
+    await new Promise(r => setTimeout(r, 300))
+    await castVote(b, 'b', 'a', 'none', 0, 7) // wrong season: refused, then done by transaction
+    assert.deepEqual(await tally(b, 'a'), [1, 0, 1])
+    stop()
   })
   test('투표 2배권: 5000P once, kept for good; then twice a week per person, switch/cancel move both', async () => {
     await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
@@ -680,6 +697,23 @@ describe('포인트 선물', () => {
     await cancelGift(a, 'a', gifts[1])
     assert.equal(await points(a, 'a'), 300 - (await getDoc(doc(a, 'gifts', gifts[0]))).data()!.amount) // the cancelled one came back
     await assert.rejects(claimGift(b, 'b', gifts[1])) // cancelled
+  })
+  test('받기 / 취소 write directly for a gift on screen; racing claimers still get exactly one', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
+    await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 300)
+    const id = await createGroup(a, 'a', ['b', 'c'], '모임')
+    await sendGift(a, 'a', await chatOf(a, id), 100)
+    await sendGift(a, 'a', await chatOf(a, id), 40)
+    const gifts = (await getDocs(collection(a, 'chats', id, 'messages'))).docs.map(m => m.data()).filter(m => m.kind === 'gift').map(m => m.giftId)
+    const stops = gifts.map(g => subscribeGift(b, g, () => {}))
+    await new Promise(r => setTimeout(r, 500))
+    const results = await Promise.allSettled([claimGift(b, 'b', gifts[0]), claimGift(c, 'c', gifts[0])])
+    assert.equal(results.filter(r => r.status === 'fulfilled').length, 1)
+    const winner = (await getDoc(doc(a, 'gifts', gifts[0]))).data()!.claimedBy as string
+    assert.equal(await points(winner === 'b' ? b : c, winner), (await getDoc(doc(a, 'gifts', gifts[0]))).data()!.amount)
+    await cancelGift(a, 'a', gifts[1])
+    await assert.rejects(claimGift(b, 'b', gifts[1]), /gift-gone/) // it was cancelled even if the screen was behind
+    stops.forEach(s => s())
   })
   test('refused: faking the points side or the gift side', async () => {
     const a = await signUp('a'); await signUp('b')

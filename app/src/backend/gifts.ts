@@ -35,9 +35,27 @@ export async function sendGift(db: Firestore, me: string, chat: ChatRow, amount:
   await b.commit()
 }
 
-/** 받기 — first come first served in a group; throws 'gift-gone' if someone was faster or it was cancelled. */
+// Latest server state of each gift a chat is showing (see subscribeGift), so 받기 / 취소
+// can write straight away; the rules re-check the gift is still open at commit time.
+const seen = new Map<string, Gift>()
+
+/**
+ * 받기 — first come first served in a group; throws 'gift-gone' if someone was faster
+ * or it was cancelled. Writes directly when the gift is on screen (no reads, works even
+ * when the day's read quota is used up); falls back to a transaction otherwise.
+ */
 export async function claimGift(db: Firestore, me: string, giftId: string) {
   const ref = doc(db, 'gifts', giftId)
+  const g = seen.get(giftId)
+  if (g && g.status === 'open' && g.from !== me && (!g.to || g.to === me)) {
+    try {
+      const b = writeBatch(db)
+      b.update(ref, { status: 'claimed', claimedBy: me, doneAt: serverTimestamp() })
+      b.update(doc(db, 'candidates', me), { bonus: increment(g.amount), lastGift: giftId })
+      await b.commit()
+      return
+    } catch { /* taken meanwhile, or out of date: check below */ }
+  }
   await runTransaction(db, async tx => {
     const g = (await tx.get(ref)).data() as Gift | undefined
     if (!g || g.status !== 'open') throw new Error('gift-gone')
@@ -50,6 +68,16 @@ export async function claimGift(db: Firestore, me: string, giftId: string) {
 /** 취소 — only while nobody has taken it; the points come back. */
 export async function cancelGift(db: Firestore, me: string, giftId: string) {
   const ref = doc(db, 'gifts', giftId)
+  const g = seen.get(giftId)
+  if (g && g.status === 'open' && g.from === me) {
+    try {
+      const b = writeBatch(db)
+      b.update(ref, { status: 'cancelled', doneAt: serverTimestamp() })
+      b.update(doc(db, 'candidates', me), { spent: increment(-g.amount), lastGift: giftId })
+      await b.commit()
+      return
+    } catch { /* taken meanwhile, or out of date: check below */ }
+  }
   await runTransaction(db, async tx => {
     const g = (await tx.get(ref)).data() as Gift | undefined
     if (!g || g.status !== 'open') throw new Error('gift-gone')
@@ -65,7 +93,12 @@ export function subscribeGift(db: Firestore, id: string, cb: (g: Gift | null) =>
   let timer: ReturnType<typeof setTimeout> | undefined
   let tries = 0
   const listen = () => {
-    stop = onSnapshot(doc(db, 'gifts', id), s => { if (s.exists()) cb({ id: s.id, ...s.data() } as Gift) }, () => {
+    stop = onSnapshot(doc(db, 'gifts', id), s => {
+      if (!s.exists()) return
+      const g = { id: s.id, ...s.data() } as Gift
+      if (!s.metadata.hasPendingWrites && !s.metadata.fromCache) seen.set(id, g); else seen.delete(id)
+      cb(g)
+    }, () => {
       if (tries++ < 5) timer = setTimeout(listen, 800 * tries)
     })
   }
