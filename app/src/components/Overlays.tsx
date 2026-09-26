@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { css, sx } from '../css'
 import { BANNERS, MEDALS, THEMES } from '../data'
 import { APK_URL, canPromptInstall, detectPlatform, isIosSafari, onInstallPromptChange, promptInstall } from '../install'
@@ -33,13 +34,20 @@ export function useVisibleViewport() {
   return v
 }
 
+/**
+ * Sheets and dialogs render at the page root: inside an animated screen (e.g. the
+ * chat room, whose entry animation leaves a transform) position:fixed would be
+ * relative to that screen and clipped by it, which put the 선물 sheet behind the keyboard.
+ */
+const toRoot = (node: ReactNode) => createPortal(node, document.getElementById('overlay-root') ?? document.body)
+
 /** Dimmed scrim + bottom sheet shell, centred to the app column; rides above the keyboard. */
 export function BottomSheet({ onScrim, scrim, sheetStyle, children }: { onScrim: () => void; scrim: string; sheetStyle: string; children: ReactNode }) {
   const vp = useVisibleViewport()
-  return (
+  return toRoot(
     <>
-      <div data-g="scrim" onClick={onScrim} style={sx('position:fixed;inset:0;z-index:100;animation:fade 200ms ease both', { background: scrim })} />
-      <div style={sx('position:fixed;left:0;right:0;z-index:101;display:flex;justify-content:center;pointer-events:none;transition:bottom 220ms cubic-bezier(0.16,1,0.3,1)', { bottom: vp.inset })}>
+      <div data-g="scrim" onClick={onScrim} style={sx('position:fixed;inset:0;z-index:260;animation:fade 200ms ease both', { background: scrim })} />
+      <div style={sx('position:fixed;left:0;right:0;z-index:261;display:flex;justify-content:center;pointer-events:none;transition:bottom 220ms cubic-bezier(0.16,1,0.3,1)', { bottom: vp.inset })}>
         <div data-g="l4" style={sx('width:100%;max-width:430px;background:#ffffff;pointer-events:auto;overflow-y:auto;overscroll-behavior:contain;' + sheetStyle, { maxHeight: vp.height - 16 })}>{children}</div>
       </div>
     </>
@@ -49,7 +57,7 @@ export function BottomSheet({ onScrim, scrim, sheetStyle, children }: { onScrim:
 /** Centred modal dialog (real-name rule, purchase, admin confirmations). */
 export function Dialog({ onScrim, labelledBy, gap, children }: { onScrim: () => void; labelledBy?: string; gap: number; children: ReactNode }) {
   const vp = useVisibleViewport()
-  return (
+  return toRoot(
     <>
       <div data-g="scrim" onClick={onScrim} style={css('position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.4);animation:fade 200ms ease both')} />
       <div style={sx('position:fixed;left:0;right:0;z-index:301;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:none;transition:top 220ms,height 220ms', { top: vp.top, height: vp.height })}>

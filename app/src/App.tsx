@@ -121,6 +121,8 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   /** Error toast that keeps the Firebase error code visible, so a screenshot is enough to diagnose it. */
   const failToast = (msg: string, e: unknown) => {
     const code = (e as { code?: string })?.code
+    // Firebase's free daily limit is used up (it resets at 16:00 KST).
+    if (code === 'resource-exhausted') return showToast(`${msg}. 오늘 서버 사용량이 다 찼어요. 오후 4시 이후에 다시 해주세요`)
     showToast(code ? `${msg} (${code})` : msg)
   }
 
@@ -692,6 +694,8 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
         {banner && <MessageBanner banner={banner} onDone={() => setBanner(null)} onOpen={id => { setProfile(null); setSheet(null); setTab('msg'); setChatId(id) }} />}
         {toast && <Toast msg={toast} />}
       </div>
+      {/* Sheets and dialogs portal here (see Overlays.tsx) so they're never inside an animated screen. */}
+      <div id="overlay-root" />
     </div>
   )
 }

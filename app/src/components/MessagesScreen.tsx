@@ -207,7 +207,11 @@ export function useKeyboardSafeBox() {
     const prev = { position: b.position, top: b.top, width: b.width, overflow: b.overflow }
     Object.assign(b, { position: 'fixed', top: `-${y}px`, width: '100%', overflow: 'hidden' })
     const vv = window.visualViewport
-    const update = () => setBox({ top: vv ? vv.offsetTop : 0, height: vv ? vv.height : window.innerHeight })
+    const update = () => {
+      // iPhone sometimes leaves the page scrolled after the keyboard closes; the body is locked, so put it back.
+      if (vv && vv.height >= window.innerHeight - 1 && window.scrollY !== 0) window.scrollTo(0, 0)
+      setBox({ top: vv ? vv.offsetTop : 0, height: vv ? vv.height : window.innerHeight })
+    }
     update()
     vv?.addEventListener('resize', update)
     vv?.addEventListener('scroll', update)
@@ -330,7 +334,20 @@ export function ChatRoom(p: RoomProps) {
     else if (nearBottom.current) toBottom(true)
     else setNewBelow(n => n + added)
   }, [msgs]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (nearBottom.current) toBottom() }, [box.height]) // eslint-disable-line react-hooks/exhaustive-deps
+  // When the keyboard opens or closes the list changes size. iPhone Safari can leave the
+  // old scroll position painted (the messages stuck at the top with a blank area below),
+  // so re-apply the position now and once more after the keyboard animation ends.
+  useEffect(() => {
+    const fix = () => {
+      const el = listRef.current
+      if (!el) return
+      if (nearBottom.current) toBottom()
+      else el.scrollTop = Math.min(el.scrollTop, el.scrollHeight - el.clientHeight)
+    }
+    fix()
+    const t = setTimeout(fix, 350)
+    return () => clearTimeout(t)
+  }, [box.height]) // eslint-disable-line react-hooks/exhaustive-deps
   const keepBottom = () => { if (nearBottom.current) toBottom() }
   // Auto-grow the input up to ~5 lines.
   useLayoutEffect(() => { const t = inputRef.current; if (t) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px' } }, [draft])
@@ -354,7 +371,7 @@ export function ChatRoom(p: RoomProps) {
 
   return (
     <div style={sx('position:fixed;left:0;right:0;z-index:200;display:flex;justify-content:center', { top: box.top, height: box.height })}>
-      <div data-g="app" style={css(`width:100%;max-width:430px;height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;background:#ffffff;animation:roomIn 360ms ${EASE} both`)}>
+      <div data-g="app" style={css(`width:100%;max-width:430px;height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;background:#ffffff;animation:roomIn 360ms ${EASE} backwards`)}>
         <div style={sx('flex:none;display:flex;align-items:center;gap:4px;padding:4px 8px;position:relative;z-index:2', { paddingTop: box.top ? 4 : 'calc(4px + env(safe-area-inset-top))', background: tinted ? 'rgba(255,255,255,0.72)' : '#ffffff', backdropFilter: tinted ? 'blur(12px)' : undefined })}>
           <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28')}><BackIcon /></button>
           <button className="pr-dim" onClick={() => (chat.type === 'dm' && v.people[0] ? onOpenProfile(v.people[0].id) : setMenu(true))} style={css('flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:4px;border-radius:12px;text-align:left')}>
@@ -367,7 +384,7 @@ export function ChatRoom(p: RoomProps) {
           <button className="pr-dim" onClick={() => setMenu(true)} aria-label="채팅방 메뉴" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#4e5968')}><MenuIcon /></button>
         </div>
 
-        <div ref={listRef} onScroll={onListScroll} style={sx('flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;-webkit-overflow-scrolling:touch;transition:background 400ms ease', { background: bgCss })}>
+        <div ref={listRef} onScroll={onListScroll} style={sx('flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;transition:background 400ms ease', { background: bgCss })}>
           {msgs === null ? null : msgs.length === 0 ? (
             <div className="anim-list" style={css('margin:auto;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center')}>
               <ChatAvatar people={v.people} size={72} photo={chat.photo} />
