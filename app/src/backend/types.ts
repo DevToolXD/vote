@@ -38,18 +38,21 @@ export type VoteDoc = {
   candidateId: string
   /** Season `ups` belongs to; a season reset leaves the doc but it stops counting. */
   season: number
-  /** 추천 / 비추천 given this season (each one every 7 days, never undone). */
+  /** 추천 / 비추천 counted this season (one vote a week, adding up). */
   ups: number
   downs: number
-  lastUpAt: { toMillis(): number } | null
-  lastDownAt: { toMillis(): number } | null
+  /** When this week's vote was first cast; the week lasts 7 days from here. */
+  weekAt: { toMillis(): number } | null
+  /** This week's vote — can be changed or cancelled until the week is over. */
+  weekKind: 'up' | 'down' | 'none'
   updatedAt: unknown
 }
 
 export const VOTE_EVERY_MS = 7 * 24 * 60 * 60 * 1000
 
 /** My history with one candidate, as the app needs it. */
-export type MyVote = { ups: number; downs: number; nextUpAt: number; nextDownAt: number }
+export type WeekKind = 'up' | 'down' | 'none'
+export type MyVote = { ups: number; downs: number; weekEndsAt: number; weekKind: WeekKind }
 
 export type PodiumEntry = { id: string; name: string; score: number; frame: string }
 export type Season = {

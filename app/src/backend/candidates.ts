@@ -14,7 +14,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore'
 import type { ItemKind } from '../data'
-import { VOTE_EVERY_MS, type CandidateDoc, type MyVote, type VoteDoc } from './types'
+import { VOTE_EVERY_MS, type CandidateDoc, type MyVote, type VoteDoc, type WeekKind } from './types'
 
 // Every function takes the Firestore instance so the rules tests (app/tests) run
 // this exact code against the emulator.
@@ -35,25 +35,21 @@ export function subscribeMyVotes(db: Firestore, uid: string, cb: (votes: Record<
     snap.forEach(d => {
       const v = d.data({ serverTimestamps: 'estimate' }) as Partial<VoteDoc>
       if (!v.candidateId) return
-      out[v.candidateId] = {
-        ups: v.ups ?? 0,
-        downs: v.downs ?? 0,
-        nextUpAt: v.lastUpAt ? v.lastUpAt.toMillis() + VOTE_EVERY_MS : 0,
-        nextDownAt: v.lastDownAt ? v.lastDownAt.toMillis() + VOTE_EVERY_MS : 0,
-      }
+      const weekEndsAt = v.weekAt ? v.weekAt.toMillis() + VOTE_EVERY_MS : 0
+      out[v.candidateId] = { ups: v.ups ?? 0, downs: v.downs ?? 0, weekEndsAt, weekKind: weekEndsAt > Date.now() ? v.weekKind ?? 'none' : 'none' }
     })
     cb(out)
   })
 }
 
-export type VoteKind = 'up' | 'down'
 
 /**
- * 추천 or 비추천 — one vote every 7 days per person (either kind), adding up;
- * never undone. Runs in a transaction so concurrent voters can't corrupt the tally;
- * firestore.rules checks the same limits server side.
+ * One vote a week per person. `kind` is what this week's vote should be: a new
+ * week starts with 추천 or 비추천; within the week it can be switched or set to
+ * 'none' (cancelled). Runs in a transaction so the tally moves by exactly the
+ * difference; firestore.rules (voteAction) checks the same.
  */
-export async function castVote(db: Firestore, myUid: string, candidateId: string, kind: VoteKind) {
+export async function castVote(db: Firestore, myUid: string, candidateId: string, kind: WeekKind) {
   if (candidateId === myUid) throw new Error('cannot-vote-self')
   const voteRef = doc(db, 'votes', `${myUid}_${candidateId}`)
   const candidateRef = doc(db, 'candidates', candidateId)
@@ -64,23 +60,20 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
     const cur = seasonSnap.exists() ? (seasonSnap.data().number as number) : 1
     const o = (voteSnap.data() ?? {}) as Partial<VoteDoc>
     const thisSeason = o.season === cur
-    const next = {
-      uid: myUid, candidateId, season: cur, updatedAt: serverTimestamp(),
-      ups: thisSeason ? o.ups ?? 0 : 0, downs: thisSeason ? o.downs ?? 0 : 0,
-      lastUpAt: o.lastUpAt ?? null, lastDownAt: o.lastDownAt ?? null,
-    } as Record<string, unknown> & { ups: number; downs: number }
-    // One shared timer: after either kind of vote, the next one (either kind) waits 7 days.
-    const last = Math.max(o.lastUpAt?.toMillis() ?? 0, o.lastDownAt?.toMillis() ?? 0)
-    if (last && Date.now() < last + VOTE_EVERY_MS) throw new Error('vote-too-soon')
+    const inWeek = !!o.weekAt && Date.now() < o.weekAt.toMillis() + VOTE_EVERY_MS
+    const oKind: WeekKind = inWeek ? o.weekKind ?? 'none' : 'none'
+    if (inWeek && !thisSeason) throw new Error('vote-too-soon')
+    if (!inWeek && kind === 'none') return
+    if (kind === oKind) return
+    const dUp = (kind === 'up' ? 1 : 0) - (oKind === 'up' ? 1 : 0)
+    const dDown = (kind === 'down' ? 1 : 0) - (oKind === 'down' ? 1 : 0)
     const c = candSnap.data() as CandidateDoc
-    if (kind === 'up') {
-      next.ups += 1; next.lastUpAt = serverTimestamp()
-      tx.update(candidateRef, { up: c.up + 1, score: c.up + 1 - c.down })
-    } else {
-      next.downs += 1; next.lastDownAt = serverTimestamp()
-      tx.update(candidateRef, { down: c.down + 1, score: c.up - (c.down + 1) })
-    }
-    tx.set(voteRef, next)
+    tx.set(voteRef, {
+      uid: myUid, candidateId, season: cur, updatedAt: serverTimestamp(),
+      ups: (thisSeason ? o.ups ?? 0 : 0) + dUp, downs: (thisSeason ? o.downs ?? 0 : 0) + dDown,
+      weekAt: inWeek ? o.weekAt : serverTimestamp(), weekKind: kind,
+    })
+    tx.update(candidateRef, { up: c.up + dUp, down: c.down + dDown, score: c.up + dUp - (c.down + dDown) })
   })
 }
 

@@ -6,8 +6,10 @@ rules_version = '2';
 // Data model
 //   candidates/{uid}              a signed-up user's leaderboard entry (doc id == Auth uid)
 //   votes/{voterUid}_{candidateId} one voter's history with one candidate:
-//                                 { season, ups, downs (this season), lastUpAt, lastDownAt }
-//                                 one vote every 7 days per person — 추천 or 비추천 (they add up); never undone
+//                                 { season, ups, downs (this season), weekAt, weekKind }
+//                                 one vote a week per person: weekAt starts the week, weekKind is this
+//                                 week's vote ('up' | 'down' | 'none'); it can be changed or cancelled
+//                                 until the week is over, then a new week's vote can be cast (votes add up)
 //   meta/season                   { name, number, startedAt, last?, endsAt?, rewards? }
 //                                 last = the ended season's { name, top: [≤3 × {id,name,score,frame}] }
 //                                 endsAt = when the worker ends the season automatically (paying rewards)
@@ -377,20 +379,26 @@ service cloud.firestore {
         && c1.down == c0.down + downsNow(request.resource.data, cur) - downsNow(o, cur);
     }
 
-    // One vote every 7 days per person — either 추천 or 비추천 (one shared timer), adding up. Never undone.
+    // One vote a week per person. Within the week it can be switched (추천 ⇄ 비추천) or cancelled;
+    // after the week, a new vote starts a new week. The tally moves by exactly the difference.
     function voteAction() {
       let d = request.resource.data;
       let o = resource == null ? {} : resource.data;
       let cur = curSeason();
       let oUps = upsNow(o, cur);
       let oDowns = downsNow(o, cur);
-      let oLastUp = o.get('lastUpAt', null);
-      let oLastDown = o.get('lastDownAt', null);
-      return d.season == cur && d.ups is int && d.downs is int
-        && (oLastUp == null || request.time >= oLastUp + duration.value(7, 'd'))
-        && (oLastDown == null || request.time >= oLastDown + duration.value(7, 'd'))
-        && ((d.ups == oUps + 1 && d.lastUpAt == request.time && d.downs == oDowns && d.lastDownAt == oLastDown)
-          || (d.downs == oDowns + 1 && d.lastDownAt == request.time && d.ups == oUps && d.lastUpAt == oLastUp));
+      let oWeekAt = o.get('weekAt', null);
+      let oKind = o.get('weekKind', 'none');
+      let inWeek = oWeekAt != null && request.time < oWeekAt + duration.value(7, 'd');
+      let up = d.weekKind == 'up' ? 1 : 0;
+      let down = d.weekKind == 'down' ? 1 : 0;
+      return d.season == cur && d.ups is int && d.downs is int && d.weekKind in ['up', 'down', 'none']
+        && (inWeek
+          ? (o.get('season', 0) == cur && d.weekAt == oWeekAt && d.weekKind != oKind
+              && d.ups == oUps + up - (oKind == 'up' ? 1 : 0)
+              && d.downs == oDowns + down - (oKind == 'down' ? 1 : 0))
+          : (d.weekKind in ['up', 'down'] && d.weekAt == request.time
+              && d.ups == oUps + up && d.downs == oDowns + down));
     }
 
     match /votes/{voteId} {
@@ -398,7 +406,7 @@ service cloud.firestore {
       allow read: if signedIn() && (isAdmin() || (resource == null ? voteId.split('_')[0] == request.auth.uid : resource.data.uid == request.auth.uid));
 
       allow create, update: if signedIn()
-        && request.resource.data.keys().hasOnly(['uid', 'candidateId', 'season', 'ups', 'downs', 'lastUpAt', 'lastDownAt', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'candidateId', 'season', 'ups', 'downs', 'weekAt', 'weekKind', 'updatedAt'])
         && request.resource.data.uid == request.auth.uid
         && voteId == request.auth.uid + '_' + request.resource.data.candidateId
         && request.resource.data.updatedAt == request.time

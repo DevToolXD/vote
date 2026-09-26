@@ -83,7 +83,7 @@ try {
   // B recommends A: same two writes the app's castVote() transaction makes.
   const seasonDoc = await call(`${fsApi}/${dbRoot}/meta/season?key=${apiKey}`)
   const season = seasonDoc.ok ? Number(seasonDoc.json.fields?.number?.integerValue ?? 1) : 1
-  const upVote = (voter, cand, ups) => withServerTime(update(`votes/${voter}_${cand}`, { uid: voter, candidateId: cand, season, ups, downs: 0, lastDownAt: null }), 'lastUpAt', 'updatedAt')
+  const upVote = (voter, cand, ups) => withServerTime(update(`votes/${voter}_${cand}`, { uid: voter, candidateId: cand, season, ups, downs: 0, weekKind: 'up' }), 'weekAt', 'updatedAt')
   docs.push(`votes/${b.uid}_${a.uid}`)
   const vote = await commit(b.token, [
     update(`candidates/${a.uid}`, { up: 1, down: 0, score: 1 }, ['up', 'down', 'score']),
@@ -94,7 +94,7 @@ try {
     update(`candidates/${a.uid}`, { up: 2, down: 0, score: 2 }, ['up', 'down', 'score']),
     upVote(b.uid, a.uid, 2),
   ])
-  check(again.status === 403, 'A second 추천 within 7 days is refused', `A second 추천 within 7 days was NOT refused (${again.status})`)
+  check(again.status === 403, 'A second vote in the same week is refused', `A second vote in the same week was NOT refused (${again.status})`)
 
   const readA = await call(`${fsApi}/${dbRoot}/candidates/${a.uid}?key=${apiKey}`)
   check(readA.ok && readA.json.fields?.up?.integerValue === '1' && readA.json.fields?.score?.integerValue === '1',

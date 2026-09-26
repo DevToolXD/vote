@@ -3,6 +3,7 @@ import { css, sx } from '../css'
 import { BANNERS, MEDALS, THEMES } from '../data'
 import { APK_URL, canPromptInstall, detectPlatform, isIosSafari, onInstallPromptChange, promptInstall } from '../install'
 import type { Person } from '../model'
+import type { WeekKind } from '../backend/types'
 import { Segmented } from './AccountScreen'
 import { Avatar } from './Avatar'
 import { CloseIcon } from './icons'
@@ -62,9 +63,11 @@ export function Dialog({ onScrim, labelledBy, gap, children }: { onScrim: () => 
 
 type VoteColors = { up: string; down: string; downWeak: string; downWeakFg: string }
 
-export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin }: { d: Person; loggedIn: boolean; colors: VoteColors; onVote: (kind: 'up' | 'down') => void; onClose: () => void; onLogin: () => void }) {
-  const sub = d.upReady ? '7일마다 추천이나 비추천 중 하나를 할 수 있어요. 취소할 수 없어요'
-    : `${d.upWait}에 다시 투표할 수 있어요`
+export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin }: { d: Person; loggedIn: boolean; colors: VoteColors; onVote: (kind: WeekKind) => void; onClose: () => void; onLogin: () => void }) {
+  const sub = !d.inWeek ? '일주일에 한 번 추천이나 비추천을 할 수 있어요. 7일 안에는 바꾸거나 취소할 수 있어요'
+    : d.weekKind === 'none' ? `이번 주 투표를 취소했어요. ${d.weekLeft} 안에 다시 고를 수 있어요`
+    : `이번 주에 ${d.weekKind === 'up' ? '추천' : '비추천'}했어요. ${d.weekLeft} 안에는 바꾸거나 취소할 수 있어요`
+  const upOn = d.weekKind === 'up', downOn = d.weekKind === 'down'
   return (
     <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle="border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));animation:sheetUp 400ms cubic-bezier(0.16,1,0.3,1) both">
       {handle}
@@ -82,7 +85,7 @@ export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin }: { d
       ) : (
         <>
           <div style={css('padding:24px 24px 0;display:flex;flex-direction:column;gap:4px')}>
-            <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{d.name}님에게 투표할까요?</span>
+            <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{d.inWeek && d.weekKind !== 'none' ? `${d.name}님 투표를 바꿀까요?` : `${d.name}님에게 투표할까요?`}</span>
             <span style={css('font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684')}>{sub}</span>
           </div>
           <div style={css('padding:20px 24px 0;display:flex;flex-direction:column;gap:8px')}>
@@ -96,8 +99,8 @@ export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin }: { d
             </div>
           </div>
           <div style={css('padding:24px 20px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
-            <button className="pr-96" disabled={!d.downReady} onClick={() => onVote('down')} style={sx(bigBtn + ';transition:transform 150ms,background 200ms', { background: d.downReady ? colors.downWeak : '#f2f4f6', color: d.downReady ? colors.downWeakFg : '#b0b8c1' })}>{d.downReady ? '비추천' : `${d.downWait} 가능`}</button>
-            <button className="pr-96" disabled={!d.upReady} onClick={() => onVote('up')} style={sx(bigBtn + ';transition:transform 150ms,background 200ms', { background: d.upReady ? colors.up : '#f2f4f6', color: d.upReady ? '#ffffff' : '#b0b8c1' })}>{d.upReady ? '추천' : `${d.upWait} 가능`}</button>
+            <button className="pr-96" aria-pressed={downOn} onClick={() => onVote(downOn ? 'none' : 'down')} style={sx(bigBtn + ';transition:transform 150ms,background 200ms', downOn ? { background: colors.down, color: '#ffffff' } : { background: colors.downWeak, color: colors.downWeakFg })}>{downOn ? '✓ 비추천 · 취소' : upOn ? '비추천으로 바꾸기' : '비추천'}</button>
+            <button className="pr-96" aria-pressed={upOn} onClick={() => onVote(upOn ? 'none' : 'up')} style={sx(bigBtn + ';transition:transform 150ms,background 200ms', upOn ? { background: '#f2f4f6', color: colors.up, boxShadow: `inset 0 0 0 2px ${colors.up}` } : { background: colors.up, color: '#ffffff' })}>{upOn ? '✓ 추천 · 취소' : downOn ? '추천으로 바꾸기' : '추천'}</button>
           </div>
         </>
       )}

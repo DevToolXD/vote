@@ -1,5 +1,5 @@
 import { Countdown } from './Countdown'
-import { css } from '../css'
+import { css, sx } from '../css'
 import { isInstalledApp } from '../install'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
@@ -69,8 +69,8 @@ export function HomeScreen({ all, loggedIn, query, onQuery, onPick, goRank, goAc
               <span style={css('font-size:17px;line-height:25.5px;font-weight:500;color:#333d4b')}>{t.name}</span>
               <span style={css('font-size:13px;line-height:19.5px;color:#6b7684;font-variant-numeric:tabular-nums')}>{t.rank}위 · {t.scoreLabel}점</span>
             </span>
-            {!t.upReady
-              ? <span style={css('height:24px;padding:0 10px;border-radius:9999px;font-size:12px;font-weight:600;display:flex;align-items:center;background:#f2f4f6;color:#6b7684;font-variant-numeric:tabular-nums')}>{t.upWait} 투표 가능</span>
+            {t.weekKind !== 'none'
+              ? <span style={sx('height:24px;padding:0 10px;border-radius:9999px;font-size:12px;font-weight:600;display:flex;align-items:center', t.weekKind === 'up' ? { background: 'rgba(49,130,246,0.12)', color: '#1b64da' } : { background: 'rgba(240,68,82,0.12)', color: '#d22030' })}>{t.weekKind === 'up' ? '✓ 추천함' : '✓ 비추천함'}</span>
               : <span style={css('height:32px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:600;display:flex;align-items:center;background:rgba(100,168,255,0.15);color:#2272eb')}>투표</span>}
           </button>
         ))}

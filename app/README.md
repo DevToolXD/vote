@@ -3,7 +3,7 @@
 React + TypeScript + Vite build of `project/Popular Vote v2.dc.html` (Claude Design handoff), backed by **Firebase** (Auth + Firestore) so accounts, votes, the leaderboard and the point shop are real and shared across everyone who opens the site.
 
 - Signing up creates a Firebase Auth account **and** a leaderboard entry for that person — every registered voter is also a candidate others can vote on (that's how the point shop, "받은 추천 1개가 1P", makes sense).
-- **Voting:** one vote per person every 7 days — 추천 or 비추천 (one shared timer, counted from your last vote for them; votes add up). Votes can't be undone. `firestore.rules` enforces it (`voteAction`); a season reset zeroes the tallies but keeps the timer.
+- **Voting:** one vote per person per week — 추천 or 비추천. Within the 7 days after casting it you can switch it or cancel it (the tally moves by exactly the difference); after that it counts for good and a new vote starts a new week, adding up. `firestore.rules` enforces it (`voteAction`, vote docs keep `weekAt` + `weekKind`); a season reset zeroes the tallies but keeps the current week.
 - Voting, the shop, and profile edits (bio/gender/frame/nameplate/bar skin) are stored in Firestore and update live for everyone.
 - Login uses an "아이디" (username), not email — under the hood it's Firebase Auth email/password with `id@vote.local` as a synthetic email.
 - Profile photos are stored too, but not via Firebase Storage (see "Known trade-offs" — that now needs the paid Blaze plan). Instead the client shrinks the photo to a small square JPEG and saves it as a data URL directly on the candidate doc, so it persists and everyone can see it, no billing required.

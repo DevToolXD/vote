@@ -1,18 +1,17 @@
 import type { CandidateRow } from './backend/candidates'
-import type { MyVote } from './backend/types'
+import type { MyVote, WeekKind } from './backend/types'
 import { fmt } from './data'
 
 export type Person = CandidateRow & {
   rank: number
   /** My history with this person (undefined = never voted for them). */
   my?: MyVote
-  /** I can 추천 them right now (never, or 7+ days since my last 추천). */
-  upReady: boolean
-  /** When I can 추천 again, e.g. "3일 후" ('' when ready). */
-  upWait: string
-  /** Same for 비추천. */
-  downReady: boolean
-  downWait: string
+  /** This week's vote for them ('none' = not voted this week, or cancelled). */
+  weekKind: WeekKind
+  /** A week is running (I voted in the last 7 days): I can switch/cancel until it ends. */
+  inWeek: boolean
+  /** Time left in this week, e.g. "3일" ('' when no week is running). */
+  weekLeft: string
   upN: number
   downN: number
   scoreLabel: string
@@ -38,18 +37,15 @@ export function buildPeople(rows: CandidateRow[], myVotes: Record<string, MyVote
   let rank = 0
   return rows.map((d, i) => {
     const my = myVotes[d.id]
-    // One vote a week per person, 추천 or 비추천: both wait on the later of the two.
-    const wait = my ? Math.max(my.nextUpAt, my.nextDownAt) - now : 0
-    const downWait = wait
+    const left = my ? my.weekEndsAt - now : 0
     if (i === 0 || d.score !== rows[i - 1].score) rank += 1
     return {
       ...d,
       rank,
       my,
-      upReady: wait <= 0,
-      upWait: waitLabel(wait),
-      downReady: downWait <= 0,
-      downWait: waitLabel(downWait),
+      weekKind: left > 0 ? my?.weekKind ?? 'none' : 'none',
+      inWeek: left > 0,
+      weekLeft: waitLabel(left).replace(/ 후$/, ''),
       upN: d.up,
       downN: d.down,
       scoreLabel: fmt(d.score),

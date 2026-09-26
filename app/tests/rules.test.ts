@@ -90,52 +90,47 @@ async function seed(path: string, fields: Record<string, unknown>) {
 }
 const tally = async (db: Firestore, id: string) => { const c = await read(db, `candidates/${id}`); return [c.up, c.down, c.score] }
 const voteDoc = (uid: string, cand: string, extra: Record<string, unknown>) =>
-  ({ uid, candidateId: cand, season: 1, ups: 0, downs: 0, lastUpAt: null, lastDownAt: null, updatedAt: serverTimestamp(), ...extra })
+  ({ uid, candidateId: cand, season: 1, ups: 0, downs: 0, weekAt: null, weekKind: 'none', updatedAt: serverTimestamp(), ...extra })
 
 describe('voting', () => {
-  test('one vote per 7 days per person — 추천 or 비추천; nothing undoes', async () => {
+  test('one vote a week: switch or cancel within the week, a new vote after it', async () => {
     await signUp('a'); const b = await signUp('b'); await signUp('c')
     await castVote(b, 'b', 'a', 'up')
     assert.deepEqual(await tally(b, 'a'), [1, 0, 1])
-    await assert.rejects(castVote(b, 'b', 'a', 'up'), /vote-too-soon/)
-    await assert.rejects(castVote(b, 'b', 'a', 'down'), /vote-too-soon/) // same timer for both kinds
+    await castVote(b, 'b', 'a', 'up') // same again: nothing changes
+    assert.deepEqual(await tally(b, 'a'), [1, 0, 1])
+    await castVote(b, 'b', 'a', 'down') // switch within the week
+    assert.deepEqual(await tally(b, 'a'), [0, 1, -1])
+    await castVote(b, 'b', 'a', 'none') // cancel
+    assert.deepEqual(await tally(b, 'a'), [0, 0, 0])
+    await castVote(b, 'b', 'a', 'up') // pick again, same week
+    assert.deepEqual(await tally(b, 'a'), [1, 0, 1])
     await castVote(b, 'b', 'c', 'down') // other people are separate
     assert.deepEqual(await tally(b, 'c'), [0, 1, -1])
-    // A week later: 비추천 this time.
-    await seed('votes/b_a', { lastUpAt: new Date(Date.now() - 8 * 86400_000) })
+    // A week later this week's 추천 stays counted and a new vote adds up.
+    await seed('votes/b_a', { weekAt: new Date(Date.now() - 8 * 86400_000) })
     await castVote(b, 'b', 'a', 'down')
     assert.deepEqual(await tally(b, 'a'), [1, 1, 0])
-    await assert.rejects(castVote(b, 'b', 'a', 'up'), /vote-too-soon/)
-    // Server side too, skipping the client checks: a second vote within 7 days, taking one back.
+    // …and that new vote can still be changed this week, without touching last week's.
+    await castVote(b, 'b', 'a', 'up')
+    assert.deepEqual(await tally(b, 'a'), [2, 0, 2])
+  })
+  test('refused: a second vote in the same week, a back-dated week, a tally that doesn’t match', async () => {
+    await signUp('a'); const b = await signUp('b')
+    await castVote(b, 'b', 'a', 'up')
     const ref = doc(b, 'votes', 'b_a'), cand = doc(b, 'candidates', 'a')
     const tryWrite = (vote: Record<string, unknown>, c: Record<string, unknown>) => { const w = writeBatch(b); w.set(ref, voteDoc('b', 'a', vote)); w.update(cand, c); return w.commit() }
     const v = (await getDoc(ref)).data()!
-    await denied(tryWrite({ ups: 2, downs: 1, lastUpAt: serverTimestamp(), lastDownAt: v.lastDownAt }, { up: 2, score: 1 }))
-    await denied(tryWrite({ ups: 1, downs: 2, lastUpAt: v.lastUpAt, lastDownAt: serverTimestamp() }, { down: 2, score: -1 }))
-    await denied(tryWrite({ ups: 0, downs: 1, lastUpAt: v.lastUpAt, lastDownAt: v.lastDownAt }, { up: 0, score: -1 }))
-    // Both timers past: votes add up.
-    await seed('votes/b_a', { lastUpAt: new Date(Date.now() - 9 * 86400_000), lastDownAt: new Date(Date.now() - 8 * 86400_000) })
-    await castVote(b, 'b', 'a', 'down')
-    assert.deepEqual(await tally(b, 'a'), [1, 2, -1])
-  })
-  test('after 7 days, 추천 works again and adds up; a back-dated 추천 is refused', async () => {
-    await signUp('a'); const b = await signUp('b')
-    await castVote(b, 'b', 'a', 'up')
-    await seed('votes/b_a', { lastUpAt: new Date(Date.now() - 8 * 86400_000) })
-    await castVote(b, 'b', 'a', 'up')
-    assert.deepEqual(await tally(b, 'a'), [2, 0, 2])
-    assert.equal((await getDoc(doc(b, 'votes', 'b_a'))).data()!.ups, 2)
-    await seed('votes/b_a', { lastUpAt: new Date(Date.now() - 6 * 86400_000) })
-    await assert.rejects(castVote(b, 'b', 'a', 'up'))
-    const w = writeBatch(b)
-    w.set(doc(b, 'votes', 'b_a'), voteDoc('b', 'a', { ups: 3, lastUpAt: new Date(Date.now() - 30 * 86400_000) }))
-    w.update(doc(b, 'candidates', 'a'), { up: 3, score: 3 })
-    await denied(w.commit())
+    await denied(tryWrite({ ups: 2, weekAt: serverTimestamp(), weekKind: 'up' }, { up: 2, score: 2 })) // new week too early
+    await denied(tryWrite({ ups: 1, downs: 1, weekAt: v.weekAt, weekKind: 'down' }, { down: 1, score: 0 })) // switch without removing the 추천
+    await denied(tryWrite({ ups: 0, weekAt: v.weekAt, weekKind: 'none' }, { up: 1, score: 1 })) // cancel without the tally
+    await denied(tryWrite({ ups: 0, downs: 1, weekAt: new Date(Date.now() - 30 * 86400_000), weekKind: 'down' }, { up: 0, down: 1, score: -1 })) // back-dated
+    await denied(tryWrite({ ups: 1, weekAt: v.weekAt, weekKind: 'up' }, { up: 1 })) // "changing" to the same
   })
   test('refused: voting for yourself', async () => {
     const a = await signUp('a')
     await assert.rejects(castVote(a, 'a', 'a', 'up'))
-    await denied(setDoc(doc(a, 'votes', 'a_a'), voteDoc('a', 'a', { ups: 1, lastUpAt: serverTimestamp() })))
+    await denied(setDoc(doc(a, 'votes', 'a_a'), voteDoc('a', 'a', { ups: 1, weekAt: serverTimestamp(), weekKind: 'up' })))
   })
   test('refused: bumping a tally without a matching vote (the old infinite-votes hole)', async () => {
     await signUp('a'); const b = await signUp('b')
@@ -145,15 +140,15 @@ describe('voting', () => {
   })
   test('refused: changing a vote doc without the tally, or with a bigger jump', async () => {
     await signUp('a'); const b = await signUp('b')
-    await denied(setDoc(doc(b, 'votes', 'b_a'), voteDoc('b', 'a', { ups: 1, lastUpAt: serverTimestamp() })))
+    await denied(setDoc(doc(b, 'votes', 'b_a'), voteDoc('b', 'a', { ups: 1, weekAt: serverTimestamp(), weekKind: 'up' })))
     const batch = writeBatch(b)
-    batch.set(doc(b, 'votes', 'b_a'), voteDoc('b', 'a', { ups: 1, lastUpAt: serverTimestamp() }))
+    batch.set(doc(b, 'votes', 'b_a'), voteDoc('b', 'a', { ups: 1, weekAt: serverTimestamp(), weekKind: 'up' }))
     batch.update(doc(b, 'candidates', 'a'), { up: 5, score: 5 })
     await denied(batch.commit())
   })
   test('refused: casting a vote in someone else’s name; editing someone else’s profile; signed-out writes', async () => {
     await signUp('a'); const b = await signUp('b'); await signUp('c')
-    await denied(setDoc(doc(b, 'votes', 'c_a'), voteDoc('c', 'a', { ups: 1, lastUpAt: serverTimestamp() })))
+    await denied(setDoc(doc(b, 'votes', 'c_a'), voteDoc('c', 'a', { ups: 1, weekAt: serverTimestamp(), weekKind: 'up' })))
     await denied(updateDoc(doc(b, 'candidates', 'a'), { bio: 'hacked' }))
     await denied(updateDoc(doc(dbAs(null), 'candidates', 'a'), { bio: 'x' }))
   })
@@ -351,7 +346,7 @@ describe('admin: single-use tokens ×3', () => {
     // New season: the tally starts from zero, but the per-person limits still apply.
     await assert.rejects(castVote(dbs[3], 'u3', 'u0', 'up'), /vote-too-soon/)
     await assert.rejects(castVote(dbs[3], 'u3', 'u1', 'down'), /vote-too-soon/)
-    await seed('votes/u3_u0', { lastUpAt: new Date(Date.now() - 8 * 86400_000) })
+    await seed('votes/u3_u0', { weekAt: new Date(Date.now() - 8 * 86400_000) })
     await castVote(dbs[3], 'u3', 'u0', 'up')
     await castVote(dbs[7], 'u7', 'u1', 'down')
     assert.deepEqual(await tally(admin, 'u0'), [1, 0, 1])

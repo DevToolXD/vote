@@ -6,7 +6,7 @@ import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetPassword, se
 import { buyItem, castVote, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, inviteMembers, isUnread, leaveGroup, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
-import { DEFAULT_SEASON, type MyVote, type Season } from './backend/types'
+import { DEFAULT_SEASON, type MyVote, type Season, type WeekKind } from './backend/types'
 import { deviceRegistered, disablePush, enablePush, pushErrorMessage, pushSupport, refreshPush } from './push'
 import { fileToChatImage, fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
@@ -193,7 +193,7 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
   const loggedIn = !!authUser
   const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null, Date.now()), [rows, votes, authUser, minute]) // eslint-disable-line react-hooks/exhaustive-deps
   const me = authUser ? all.find(d => d.id === authUser.uid) : undefined
-  const mine = all.filter(d => d.my && (d.my.ups > 0 || d.my.downs > 0 || !d.upReady || !d.downReady))
+  const mine = all.filter(d => d.my && (d.my.ups > 0 || d.my.downs > 0 || d.inWeek))
   const points = me ? pointsOf(me) : 0
   const isAdmin = isAdminEmail(authUser?.email)
   const byId = useMemo(() => new Map(all.map(p => [p.id, p])), [all])
@@ -292,17 +292,19 @@ export function App({ startTab = 'home', startChat = null, startSupport = null, 
     window.scrollTo(0, 0)
   }
 
-  const vote = async (id: string, kind: 'up' | 'down') => {
+  /** kind = what this week's vote should become ('none' cancels it). */
+  const vote = async (id: string, kind: WeekKind) => {
     if (!authUser) return
     const d = all.find(x => x.id === id)
     if (!d) return
     setSheet(null)
+    const was = d.weekKind
     try {
       await castVote(db!, authUser.uid, id, kind)
-      showToast(kind === 'up' ? `${d.name}님을 추천했어요` : `${d.name}님을 비추천했어요`)
+      const label = kind === 'up' ? '추천' : '비추천'
+      showToast(kind === 'none' ? `${d.name}님 투표를 취소했어요` : was !== 'none' ? `${d.name}님 투표를 ${label}으로 바꿨어요` : `${d.name}님을 ${label}했어요`)
     } catch (e) {
-      const m = (e as Error)?.message
-      if (m === 'vote-too-soon') showToast('투표는 한 사람에게 7일마다 한 번 할 수 있어요')
+      if ((e as Error)?.message === 'vote-too-soon') showToast('이번 주에는 더 바꿀 수 없어요')
       else failToast('투표하지 못했어요. 다시 시도해주세요', e)
     }
   }
