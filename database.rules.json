@@ -27,12 +27,12 @@
         },
         "members": {
           "$uid": {
-            ".write": "auth != null && ((($chat.contains('_') && ($chat.beginsWith(auth.uid + '_') || $chat.endsWith('_' + auth.uid))) && ($chat.beginsWith($uid + '_') || $chat.endsWith('_' + $uid)) && !data.exists() && newData.val() === true && ($uid === auth.uid || root.child('msgOff/' + $uid).val() !== true)) || (!$chat.contains('_') && ((!root.child('chats/' + $chat + '/members').exists() && newData.parent().child(auth.uid).val() === true && newData.val() === true && newData.parent().numChildren() <= 10 && ($uid === auth.uid || root.child('msgOff/' + $uid).val() !== true)) || (root.child('chats/' + $chat + '/members/' + auth.uid).val() === true && !data.exists() && newData.val() === true && newData.parent().numChildren() <= 10 && root.child('msgOff/' + $uid).val() !== true) || ($uid === auth.uid && data.exists() && !newData.exists()))))",
+            ".write": "auth != null && ((($chat.contains('_') && ($chat.beginsWith(auth.uid + '_') || $chat.endsWith('_' + auth.uid))) && ($chat.beginsWith($uid + '_') || $chat.endsWith('_' + $uid)) && !data.exists() && newData.val() === true && ($uid === auth.uid || root.child('msgOff/' + $uid).val() !== true)) || (!$chat.contains('_') && ((!root.child('chats/' + $chat + '/members').exists() && newData.parent().child(auth.uid).val() === true && newData.val() === true && ($uid === auth.uid || root.child('msgOff/' + $uid).val() !== true)) || (root.child('chats/' + $chat + '/members/' + auth.uid).val() === true && !data.exists() && newData.val() === true && root.child('msgOff/' + $uid).val() !== true) || ($uid === auth.uid && data.exists() && !newData.exists()))))",
             ".validate": "newData.val() === true"
           }
         },
         "last": {
-          ".write": "auth != null && root.child('chats/' + $chat + '/members/' + auth.uid).val() === true && !(root.child('chats/' + $chat + '/timeouts/' + auth.uid).val() > now) && root.child('msgOff/' + auth.uid).val() !== true && (!$chat.contains('_') || root.child('msgOff/' + $chat.replace(auth.uid, '').replace('_', '')).val() !== true) && newData.child('uid').val() === auth.uid",
+          ".write": "auth != null && root.child('chats/' + $chat + '/members/' + auth.uid).val() === true && (!root.child('chats/' + $chat + '/timeouts/' + auth.uid).exists() || root.child('chats/' + $chat + '/timeouts/' + auth.uid).val() <= now) && root.child('msgOff/' + auth.uid).val() !== true && (!$chat.contains('_') || root.child('msgOff/' + $chat.replace(auth.uid, '').replace('_', '')).val() !== true) && newData.child('uid').val() === auth.uid",
           ".validate": "newData.hasChildren(['text', 'uid', 'at']) && newData.child('at').val() === now && newData.child('text').isString() && newData.child('text').val().length >= 1 && newData.child('text').val().length <= 100"
         },
         "mutes": {
@@ -66,7 +66,7 @@
           "at"
         ],
         "$msg": {
-          ".write": "!data.exists() && auth != null && root.child('chats/' + $chat + '/members/' + auth.uid).val() === true && !(root.child('chats/' + $chat + '/timeouts/' + auth.uid).val() > now) && root.child('msgOff/' + auth.uid).val() !== true && (!$chat.contains('_') || root.child('msgOff/' + $chat.replace(auth.uid, '').replace('_', '')).val() !== true) && newData.child('uid').val() === auth.uid",
+          ".write": "!data.exists() && auth != null && root.child('chats/' + $chat + '/members/' + auth.uid).val() === true && (!root.child('chats/' + $chat + '/timeouts/' + auth.uid).exists() || root.child('chats/' + $chat + '/timeouts/' + auth.uid).val() <= now) && root.child('msgOff/' + auth.uid).val() !== true && (!$chat.contains('_') || root.child('msgOff/' + $chat.replace(auth.uid, '').replace('_', '')).val() !== true) && newData.child('uid').val() === auth.uid",
           ".validate": "newData.hasChildren(['uid', 'text', 'at']) && newData.child('at').val() === now && (newData.child('kind').val() === 'image' || newData.child('text').val().length >= 1) && (!newData.child('kind').exists() || newData.child('kind').val() !== 'gift' || newData.child('giftId').isString())",
           "uid": {
             ".validate": "newData.isString()"

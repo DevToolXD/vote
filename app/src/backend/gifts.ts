@@ -2,7 +2,7 @@ import {
   collection, doc, increment, onSnapshot, runTransaction, serverTimestamp, writeBatch,
   type Firestore, type Timestamp, type Unsubscribe,
 } from 'firebase/firestore'
-import type { ChatRow } from './messages'
+import { postGift, type ChatRow } from './messages'
 
 // 포인트 선물 in chats. Sending holds the points (spent += amount); in a 1:1 only
 // the other person can take it, in a group the first member to tap does; the
@@ -24,15 +24,16 @@ export const MAX_GIFT = 100000
 export async function sendGift(db: Firestore, me: string, chat: ChatRow, amount: number) {
   if (!Number.isInteger(amount) || amount < 1 || amount > MAX_GIFT) throw new Error('invalid-amount')
   const giftRef = doc(collection(db, 'gifts'))
-  const chatRef = doc(db, 'chats', chat.id)
   const to = chat.type === 'dm' ? chat.members.find(m => m !== me) ?? null : null
-  const text = `🎁 ${amount.toLocaleString()}P 선물`
   const b = writeBatch(db)
   b.set(giftRef, { chatId: chat.id, from: me, to, amount, status: 'open', createdAt: serverTimestamp() })
   b.update(doc(db, 'candidates', me), { spent: increment(amount), lastGift: giftRef.id })
-  b.set(doc(collection(chatRef, 'messages')), { uid: me, text, kind: 'gift', giftId: giftRef.id, at: serverTimestamp() })
-  b.update(chatRef, { last: { text, uid: me, at: serverTimestamp() }, updatedAt: serverTimestamp(), [`reads.${me}`]: serverTimestamp() })
   await b.commit()
+  // The card in the chat (Realtime Database); retried a few times, since the points are already held.
+  const text = `🎁 ${amount.toLocaleString()}P 선물`
+  for (let i = 0; ; i++) {
+    try { await postGift(db, me, chat.id, giftRef.id, text); break } catch (e) { if (i >= 2) throw e; await new Promise(r => setTimeout(r, 800 * (i + 1))) }
+  }
 }
 
 // Latest server state of each gift a chat is showing (see subscribeGift), so 받기 / 취소
