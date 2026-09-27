@@ -273,7 +273,7 @@ export async function postGift(db: Firestore, me: string, chatId: string, giftId
  * tapping 받기 just shows "페이크입니다!". Only a chat message, nothing in Firestore.
  */
 export async function sendFakeGift(db: Firestore, me: string, chatId: string, amount: number) {
-  if (!Number.isInteger(amount) || amount < 1 || amount > 100000) throw new Error('invalid-amount')
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 1_000_000_000_000) throw new Error('invalid-amount')
   const text = `🎁 ${amount.toLocaleString()}P 선물`
   await post(db, me, chatId, { text, kind: 'fake', amount }, text)
 }

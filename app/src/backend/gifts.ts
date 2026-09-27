@@ -19,10 +19,11 @@ export type Gift = {
   claimedBy?: string
   createdAt: Timestamp | null
 }
-export const MAX_GIFT = 100000
+/** No real limit (only what you have); this just keeps the number sane to type. */
+export const MAX_GIFT = 1_000_000_000_000
 
 export async function sendGift(db: Firestore, me: string, chat: ChatRow, amount: number) {
-  if (!Number.isInteger(amount) || amount < 1 || amount > MAX_GIFT) throw new Error('invalid-amount')
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > MAX_GIFT) throw new Error('invalid-amount')
   const giftRef = doc(collection(db, 'gifts'))
   const to = chat.type === 'dm' ? chat.members.find(m => m !== me) ?? null : null
   const b = writeBatch(db)

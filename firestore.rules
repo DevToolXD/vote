@@ -68,7 +68,7 @@ service cloud.firestore {
 
     function validPayload(action, p) {
       return (action == 'grantPoints' && p.keys().hasOnly(['target', 'amount']) && p.keys().hasAll(['target', 'amount'])
-                && p.target is string && p.amount is int && p.amount != 0 && p.amount >= -1000000 && p.amount <= 1000000)
+                && p.target is string && p.amount is int && p.amount != 0)
           || (action == 'setSeasonName' && p.keys().hasOnly(['name']) && validSeasonName(p.name))
           || (action == 'seasonReset' && p.keys().hasOnly(['name', 'nextNumber']) && p.keys().hasAll(['name', 'nextNumber'])
                 && validSeasonName(p.name) && p.nextNumber is int)
@@ -85,6 +85,8 @@ service cloud.firestore {
                 && p.keys().hasAll(['endsAt', 'first', 'second', 'third', 'top6', 'participant'])
                 && p.endsAt is int && p.endsAt >= 0
                 && rewardOk(p.first) && rewardOk(p.second) && rewardOk(p.third) && rewardOk(p.top6) && rewardOk(p.participant))
+          || (action == 'tradeBan' && p.keys().hasOnly(['target', 'until']) && p.keys().hasAll(['target', 'until'])
+                && p.target is string && p.target != request.auth.uid && p.until is int && p.until >= 0)
           || (action == 'deleteAccount' && p.keys().hasOnly(['target']) && p.target is string && p.target != request.auth.uid);
     }
     function validSeasonName(n) { return n is string && n.size() >= 1 && n.size() <= 20; }
@@ -122,7 +124,7 @@ service cloud.firestore {
         && request.resource.data.used == false
         && request.resource.data.createdAt == request.time
         && request.resource.data.seq in [1, 2, 3]
-        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser', 'resetPassword', 'postNotice', 'seasonConfig']
+        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser', 'resetPassword', 'postNotice', 'seasonConfig', 'tradeBan']
         && request.resource.data.payload is map;
       // Burned only together with a lock that lists it.
       allow update: if isAdmin()
@@ -226,11 +228,13 @@ service cloud.firestore {
     // ---- 포인트 선물 (gifts): the candidate side of each step names the gift in lastGift ----
     function giftPath(id) { return /databases/$(database)/documents/gifts/$(id); }
     // Sending: the points leave (spent grows by the gift amount), as long as I have them.
+    // 거래 정지 (admin): candidates/{uid}.tradeBan = until when, in ms. No sending or taking gifts meanwhile.
+    function canTrade(c) { return c.get('tradeBan', 0) <= request.time.toMillis(); }
     function giftSend() {
       let d = request.resource.data;
       let o = resource.data;
       let g = getAfter(giftPath(d.lastGift)).data;
-      return request.auth.uid == o.ownerUid
+      return request.auth.uid == o.ownerUid && canTrade(o)
         && d.diff(o).affectedKeys().hasOnly(['spent', 'lastGift'])
         && !exists(giftPath(d.lastGift))
         && g.from == request.auth.uid && g.status == 'open'
@@ -243,7 +247,7 @@ service cloud.firestore {
       let o = resource.data;
       let g0 = get(giftPath(d.lastGift)).data;
       let g1 = getAfter(giftPath(d.lastGift)).data;
-      return request.auth.uid == o.ownerUid
+      return request.auth.uid == o.ownerUid && canTrade(o)
         && d.diff(o).affectedKeys().hasOnly(['bonus', 'lastGift'])
         && g0.status == 'open' && g1.status == 'claimed' && g1.claimedBy == request.auth.uid
         && d.bonus == o.get('bonus', 0) + g0.amount;
@@ -326,6 +330,14 @@ service cloud.firestore {
         && d.bonus == resource.data.get('bonus', 0) + lock().payload.amount;
     }
 
+    function adminTradeBan(candidateId) {
+      let d = request.resource.data;
+      let until = lock().payload.until;
+      return adminOp('tradeBan') && lock().payload.target == candidateId
+        && d.diff(resource.data).affectedKeys().hasOnly(['tradeBan'])
+        && (until == 0 ? !('tradeBan' in d) : d.tradeBan == until);
+    }
+
     function adminRename(candidateId) {
       let d = request.resource.data;
       return adminOp('renameUser') && lock().payload.target == candidateId
@@ -384,7 +396,7 @@ service cloud.firestore {
 
       allow update: if signedIn() && (
         ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || loginIdBackfill() || giftSend() || giftClaim() || giftCancel() ||
-        adminGrant(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId)
+        adminGrant(candidateId) || adminTradeBan(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId)
       );
 
       allow delete: if adminOp('deleteAccount') && lock().payload.target == candidateId;
@@ -813,7 +825,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly(['chatId', 'from', 'to', 'amount', 'status', 'createdAt'])
         && request.resource.data.from == request.auth.uid
-        && request.resource.data.amount is int && request.resource.data.amount >= 1 && request.resource.data.amount <= 100000
+        && request.resource.data.amount is int && request.resource.data.amount >= 1
         && request.resource.data.status == 'open'
         && request.resource.data.createdAt == request.time
         && canSend(get(/databases/$(database)/documents/chats/$(request.resource.data.chatId)).data)

@@ -30,7 +30,7 @@ import { byRank } from './rank'
 export const ADMIN_EMAIL = 'admin@vote.local'
 export const isAdminEmail = (email: string | null | undefined) => email === ADMIN_EMAIL
 
-export type AdminAction = 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount' | 'renameUser' | 'resetPassword' | 'postNotice' | 'seasonConfig'
+export type AdminAction = 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount' | 'renameUser' | 'resetPassword' | 'postNotice' | 'seasonConfig' | 'tradeBan'
 export type AdminProgress = { batch: number; batches: number; verified: number }
 
 /** Keep each batch's rule evaluation well under Firestore's per-request document-access limit. */
@@ -98,12 +98,21 @@ export async function runAdminOp(
 // ---- operations -------------------------------------------------------------
 
 export async function grantPoints(db: Firestore, adminUid: string, target: string, amount: number, onProgress?: (p: AdminProgress) => void) {
-  if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > 1_000_000) throw new Error('invalid-amount')
+  if (!Number.isSafeInteger(amount) || amount === 0) throw new Error('invalid-amount')
   const snap = await getDoc(doc(db, 'candidates', target))
   if (!snap.exists()) throw new Error('candidate-not-found')
   const bonus = ((snap.data() as CandidateDoc).bonus ?? 0) + amount
   await runAdminOp(db, adminUid, 'grantPoints', { target, amount }, [
     b => { b.update(doc(db, 'candidates', target), { bonus }); return 1 },
+  ], onProgress)
+}
+
+/** 거래 정지: no sending or taking 포인트 선물 until `until` (ms; 0 lifts it, TRADE_BAN_FOREVER = for good). */
+export const TRADE_BAN_FOREVER = 32503680000000 // year 3000
+export async function setTradeBan(db: Firestore, adminUid: string, target: string, until: number, onProgress?: (p: AdminProgress) => void) {
+  if (!Number.isSafeInteger(until) || until < 0) throw new Error('invalid-until')
+  await runAdminOp(db, adminUid, 'tradeBan', { target, until }, [
+    b => { b.update(doc(db, 'candidates', target), { tradeBan: until || deleteField() }); return 1 },
   ], onProgress)
 }
 

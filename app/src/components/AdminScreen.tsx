@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { css, sx } from '../css'
 import { AdminLedger, LedgerSheet } from './LedgerViews'
-import type { AdminProgress } from '../backend/admin'
+import { DurationInput, dhmsSeconds, durationLabel, leftLabel, type Dhms } from './Duration'
+import { TRADE_BAN_FOREVER, type AdminProgress } from '../backend/admin'
 import { pointsOf } from '../backend/candidates'
 import type { Ticket } from '../backend/support'
 import { DEFAULT_REWARDS, rewardNotice, type Rewards } from '../backend/rewards'
@@ -23,6 +24,8 @@ type Props = {
   /** Runs one admin operation; resolves when done, rejects with the Firebase error. */
   run: (label: string, op: (onProgress: (p: AdminProgress) => void) => Promise<void>) => Promise<boolean>
   grantPoints: (target: string, amount: number, onProgress: (p: AdminProgress) => void) => Promise<void>
+  /** 거래 정지 until (ms; 0 lifts it). */
+  setTradeBan: (target: string, until: number, onProgress: (p: AdminProgress) => void) => Promise<void>
   setSeasonName: (name: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   resetSeason: (name: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   setSeasonConfig: (endsAt: number, rewards: Rewards, onProgress: (p: AdminProgress) => void) => Promise<void>
@@ -40,7 +43,7 @@ const gap = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
 
 type Confirm = { title: string; desc: string; cta: string; danger?: boolean; go: () => void }
 
-export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls, setSeasonConfig, season, run, grantPoints, setSeasonName, resetSeason, renameUser, deleteAccount, resetPassword, onLogout }: Props) {
+export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls, setSeasonConfig, season, run, grantPoints, setTradeBan, setSeasonName, resetSeason, renameUser, deleteAccount, resetPassword, onLogout }: Props) {
   const [issued, setIssued] = useState<{ name: string; loginId?: string; code: string } | null>(null)
   const [nameDraft, setNameDraft] = useState('')
   const [notice, setNotice] = useState({ title: '', body: '' })
@@ -62,11 +65,13 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
   const [rename, setRename] = useState('')
   const [confirm, setConfirm] = useState<Confirm | null>(null)
   const [ledgerOf, setLedgerOf] = useState<string | null>(null)
+  const [ban, setBan] = useState<Dhms>({ d: '1', h: '', m: '', s: '' })
+  const banSec = dhmsSeconds(ban)
 
   const person = all.find(p => p.id === picked)
   const list = (q.trim() ? all.filter(p => p.name.includes(q.trim())) : all).slice(0, 30)
   const amt = Number(amount)
-  const amountOk = amount.trim() !== '' && Number.isInteger(amt) && amt !== 0 && Math.abs(amt) <= 1_000_000
+  const amountOk = amount.trim() !== '' && Number.isSafeInteger(amt) && amt !== 0
   const renameOk = !!person && rename.trim().length >= 1 && rename.trim().length <= 20 && rename.trim() !== person.name
   const nameOk = nameDraft.trim().length >= 1 && nameDraft.trim().length <= 20
 
@@ -273,6 +278,26 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
               })}
               style={sx('height:48px;padding:0 18px;border-radius:14px;background:#3182f6;color:#fff;font-size:15px;font-weight:600;flex:none;transition:opacity 200ms', { opacity: renameOk ? 1 : 0.4 })}>변경</button>
           </div>
+          {!person.isMe && (
+            <div data-g="l1" style={css('padding:16px;border-radius:16px;background:#f9fafb;display:flex;flex-direction:column;gap:10px')}>
+              <span style={css('display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:#191f28')}>거래 정지
+                {(person.tradeBan ?? 0) > Date.now() && <span style={css('height:22px;padding:0 8px;border-radius:9999px;background:#fff0f1;color:#e42939;font-size:12px;font-weight:700;display:flex;align-items:center')}>{person.tradeBan! >= TRADE_BAN_FOREVER ? '영구 정지 중' : `정지 중 · ${leftLabel(person.tradeBan! - Date.now())} 남음`}</span>}
+              </span>
+              <span style={css(hint)}>그동안 포인트 선물을 보내거나 받을 수 없어요 (보낸 선물 취소는 돼요)</span>
+              <DurationInput value={ban} onChange={setBan} maxDays={3650} presets={[[3600, '1시간'], [86400, '1일'], [7 * 86400, '7일'], [30 * 86400, '30일']]} />
+              <div style={css('display:flex;gap:8px')}>
+                <button className="pr-96" disabled={banSec < 1}
+                  onClick={() => setConfirm({ title: `${person.name}님을 ${durationLabel(banSec)} 동안 거래 정지할까요?`, desc: '포인트 선물을 보내거나 받을 수 없게 돼요. 언제든 풀 수 있어요.', cta: '거래 정지', danger: true,
+                    go: () => { run('거래 정지', p => setTradeBan(person.id, Date.now() + banSec * 1000, p)) } })}
+                  style={sx('flex:1;height:44px;border-radius:12px;background:#f04452;color:#fff;font-size:15px;font-weight:700;transition:opacity 200ms', { opacity: banSec >= 1 ? 1 : 0.4 })}>{banSec >= 1 ? `${durationLabel(banSec)} 정지` : '기간을 정해주세요'}</button>
+                <button className="pr-96"
+                  onClick={() => setConfirm({ title: `${person.name}님을 영구 거래 정지할까요?`, desc: '풀기 전까지 포인트 선물을 보내거나 받을 수 없어요.', cta: '영구 정지', danger: true,
+                    go: () => { run('거래 정지', p => setTradeBan(person.id, TRADE_BAN_FOREVER, p)) } })}
+                  style={css('flex:none;height:44px;padding:0 14px;border-radius:12px;background:#fff0f1;color:#e42939;font-size:15px;font-weight:700')}>영구</button>
+              </div>
+              {(person.tradeBan ?? 0) > Date.now() && <button className="pr-96" onClick={() => { run('거래 정지 풀기', p => setTradeBan(person.id, 0, p)) }} style={css('height:44px;border-radius:12px;background:#e8f3ff;color:#1b64da;font-size:15px;font-weight:700')}>거래 정지 풀기</button>}
+            </div>
+          )}
           {!person.isMe && <button className="pr-96"
             onClick={() => setConfirm({
               title: `${person.name}님 비밀번호를 초기화할까요?`,

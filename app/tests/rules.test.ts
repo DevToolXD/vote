@@ -11,7 +11,7 @@ import {
   collection, connectFirestoreEmulator, deleteDoc, deleteField, doc, getDoc, getDocs, getFirestore,
   increment, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Firestore,
 } from 'firebase/firestore'
-import { deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
+import { setTradeBan, TRADE_BAN_FOREVER, deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, updateMyProfile } from '../src/backend/candidates'
 import { loadOlderMessages, subscribeMessages, setChatDatabase, setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markGone, markHere, markRead, openDm, sendFakeGift, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
@@ -800,9 +800,25 @@ describe('포인트 선물', () => {
     const at = { '.sv': 'timestamp' }
     const R = (db: Firestore) => rtdbOf.get(db)!
     await denied(rtSet(rtRef(R(a), `msgs/${id}/f1`), { uid: 'a', text: '🎁', kind: 'fake', at })) // no amount
-    await denied(rtSet(rtRef(R(a), `msgs/${id}/f2`), { uid: 'a', text: '🎁', kind: 'fake', amount: 1e9, at }))
+    await denied(rtSet(rtRef(R(a), `msgs/${id}/f2`), { uid: 'a', text: '🎁', kind: 'fake', amount: 1e13, at }))
   })
 
+  test('no cap on gifts or admin grants; 거래 정지 blocks sending and taking (not cancelling) until lifted', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 5_000_000) // over the old 1,000,000 cap
+    const id = await openDm(a, 'a', 'b')
+    await sendGift(a, 'a', await chatOf(a, id), 2_000_000) // over the old 100,000 cap
+    const gid = (Object.values(await rt(a, `msgs/${id}`)) as { giftId: string }[])[0].giftId
+    await setTradeBan(admin, ADMIN.uid, 'b', Date.now() + 60_000)
+    await assert.rejects(claimGift(b, 'b', gid)) // b can't take it
+    await denied(updateDoc(doc(b, 'candidates', 'b'), { tradeBan: 0 })) // nor lift it themselves
+    await setTradeBan(admin, ADMIN.uid, 'b', 0)
+    await claimGift(b, 'b', gid)
+    assert.equal(await points(b, 'b'), 2_000_000)
+    await setTradeBan(admin, ADMIN.uid, 'a', TRADE_BAN_FOREVER)
+    await assert.rejects(sendGift(a, 'a', await chatOf(a, id), 10)) // a can't send
+    assert.equal(await points(a, 'a'), 3_000_000)
+  })
   test('group: first to tap wins; the sender can cancel an untaken gift', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c'); const d = await signUp('d')
     await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 300)

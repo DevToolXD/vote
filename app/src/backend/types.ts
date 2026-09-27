@@ -36,6 +36,8 @@ export type CandidateDoc = {
   pass2x?: boolean | number
   /** 페이크 선물 패스, bought once and kept. */
   passFake?: boolean
+  /** 거래 정지 (admin) until this time, in ms: no sending or taking 포인트 선물. */
+  tradeBan?: number
 }
 
 export const DEFAULT_OWNED: Record<ItemKind, string[]> = { frame: ['none'], plate: ['none'], skin: ['none'] }

@@ -9,6 +9,7 @@ import type { Person } from '../model'
 import { Avatar } from './Avatar'
 import { BackIcon, ChevronRight, CloseIcon, SearchIcon } from './icons'
 import { BottomSheet, Dialog } from './Overlays'
+import { DurationInput, dhmsSeconds, durationLabel, leftLabel, type Dhms } from './Duration'
 
 // Toss-style messages: grey-scale screens with blue500 as the only accent, lists on
 // white (no cards), 16px grey bands between sections, 해요체 copy. Motion is quick
@@ -70,15 +71,6 @@ export type ChatView = { title: string; people: Person[]; others: string[]; canS
 
 /** Who's in a chat and whether I can send in it right now (mirrors firestore.rules' canSend). */
 /** "12분" / "3시간" / "1일" — time left, rounded (at least 1분). */
-/** "1일 2시간", "5분 20초", "40초": the two largest units that aren't zero. */
-export function leftLabel(ms: number) {
-  return durationLabel(Math.max(1, Math.ceil(ms / 1000)), 2)
-}
-export function durationLabel(sec: number, parts = 4) {
-  const units: [number, string][] = [[Math.floor(sec / 86400), '일'], [Math.floor(sec / 3600) % 24, '시간'], [Math.floor(sec / 60) % 60, '분'], [sec % 60, '초']]
-  const first = units.findIndex(([n]) => n > 0)
-  return units.slice(Math.max(0, first), Math.max(0, first) + parts).filter(([n]) => n > 0).map(([n, u]) => n + u).join(' ') || '0초'
-}
 
 /** A member's name; "(탈퇴한 사람)" only once the people list has loaded and they're not in it. */
 export const nameIn = (byId: Map<string, Person>, id: string) => byId.get(id)?.name ?? (byId.size ? '(탈퇴한 사람)' : '')
@@ -812,7 +804,7 @@ function GiftSheet({ points, group, to, fake, onClose, onSend }: { points: numbe
         <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{fake ? '진짜 선물이랑 똑같이 보여요 · 포인트는 안 나가고, 받기를 누르면 "페이크입니다!"가 떠요' : <>{group ? '단톡방에서는 먼저 받는 한 명이 가져가요' : `${to ?? '상대'}님에게 보내요`} · 받기 전에는 취소할 수 있어요</>}</span>
       </div>
       <div style={css('padding:16px 24px 0;display:flex;align-items:baseline;gap:6px')}>
-        <input autoFocus inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} placeholder="0"
+        <input autoFocus inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 13))} placeholder="0"
           style={sx('flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:34px;line-height:44px;font-weight:700;font-variant-numeric:tabular-nums', { color: amount && !ok ? '#f04452' : '#191f28' })} />
         <span style={css('font-size:26px;font-weight:700;color:#191f28')}>P</span>
       </div>
@@ -1055,23 +1047,12 @@ export function NewChatSheet({ me, all, onClose, onCreate }: NewProps) {
 
 const TIMEOUT_PRESETS: [number, string][] = [[5 * 60, '5분'], [60 * 60, '1시간'], [86400, '1일'], [7 * 86400, '7일']]
 const MAX_TIMEOUT_DAYS = 365
-type Dhms = { d: string; h: string; m: string; s: string }
-const toDhms = (sec: number): Dhms => ({ d: String(Math.floor(sec / 86400) || ''), h: String(Math.floor(sec / 3600) % 24 || ''), m: String(Math.floor(sec / 60) % 60 || ''), s: String(sec % 60 || '') })
 
 /** Admin: how long this person can't talk in the group (they can still read) — any 일 / 시간 / 분 / 초. */
 function TimeoutSheet({ name, left, onPick, onClose }: { name: string; left: number; onPick: (ms: number, label: string) => void; onClose: () => void }) {
   const [v, setV] = useState<Dhms>({ d: '', h: '', m: '10', s: '' })
-  const num = (x: string) => Number(x || 0)
-  const sec = num(v.d) * 86400 + num(v.h) * 3600 + num(v.m) * 60 + num(v.s)
+  const sec = dhmsSeconds(v)
   const ok = sec >= 1 && sec <= MAX_TIMEOUT_DAYS * 86400
-  const field = (k: keyof Dhms, unit: string, max: number) => (
-    <label data-g="l1" className="ring-within" style={css('flex:1;min-width:0;height:60px;border-radius:14px;background:#f2f4f6;padding:0 10px;display:flex;align-items:center;gap:4px')}>
-      <input inputMode="numeric" aria-label={unit} value={v[k]} placeholder="0"
-        onChange={e => { const n = e.target.value.replace(/[^0-9]/g, '').slice(0, 3); setV(o => ({ ...o, [k]: n === '' ? '' : String(Math.min(max, Number(n))) })) }}
-        style={css('flex:1;min-width:0;width:100%;border:0;outline:none;background:transparent;font:inherit;font-size:22px;font-weight:700;color:#191f28;text-align:right;font-variant-numeric:tabular-nums')} />
-      <span style={css('flex:none;font-size:15px;font-weight:600;color:#6b7684')}>{unit}</span>
-    </label>
-  )
   return (
     <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(16px + env(safe-area-inset-bottom));animation:sheetUp 360ms ${EASE} both`}>
       <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
@@ -1079,13 +1060,8 @@ function TimeoutSheet({ name, left, onPick, onClose }: { name: string; left: num
         <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{name}님을 얼마나 타임아웃할까요?</span>
         <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{left > 0 ? `지금 타임아웃 중이에요 · ${leftLabel(left)} 남음. ` : ''}그동안 메시지를 읽을 수만 있고 보낼 수는 없어요. 채팅방에 누가 했는지 보여요</span>
       </div>
-      <div style={css('padding:4px 20px 0;display:flex;gap:6px')}>
-        {field('d', '일', MAX_TIMEOUT_DAYS)}{field('h', '시간', 23)}{field('m', '분', 59)}{field('s', '초', 59)}
-      </div>
-      <div className="anim-list" style={css('padding:12px 20px 0;display:flex;gap:6px;flex-wrap:wrap')}>
-        {TIMEOUT_PRESETS.map(([n, label]) => (
-          <button key={label} className="pr-96" onClick={() => setV(toDhms(n))} style={css('height:34px;padding:0 14px;border-radius:9999px;background:#f2f4f6;color:#4e5968;font-size:14px;font-weight:600')}>{label}</button>
-        ))}
+      <div style={css('padding:4px 20px 0')}>
+        <DurationInput value={v} onChange={setV} maxDays={MAX_TIMEOUT_DAYS} presets={TIMEOUT_PRESETS} />
       </div>
       <div style={css('padding:16px 20px 0;display:flex;flex-direction:column;gap:8px')}>
         <button className="pr-96" disabled={!ok} onClick={() => onPick(sec * 1000, durationLabel(sec))}

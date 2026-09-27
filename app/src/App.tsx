@@ -2,7 +2,7 @@ import type { User } from 'firebase/auth'
 import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
-import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
+import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, buyPass, castVote, hasFakePass, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, inviteMembers, isUnread, leaveGroup, onMyReads, setReadsUser, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
@@ -30,6 +30,7 @@ import { BLUE, fmt, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab
 import { db as maybeDb, firebaseConfigured, rtdb } from './firebase'
 import { isInstalledApp } from './install'
 import { LedgerSheet } from './components/LedgerViews'
+import { leftLabel } from './components/Duration'
 import { buildPeople } from './model'
 import { byRank } from './backend/rank'
 import { BOARD_STALE_MS, photoOf, subscribeBoard, subscribeCandidate, subscribeLiveBoard, type BoardExtra, type BoardRow } from './backend/board'
@@ -45,6 +46,9 @@ export type AppProps = {
 }
 
 const db = maybeDb
+/** 거래 정지 (admin): no sending or taking 포인트 선물 until candidates/{uid}.tradeBan. */
+const tradeBanned = (p?: { tradeBan?: number }) => (p?.tradeBan ?? 0) > Date.now()
+const banText = (p?: { tradeBan?: number }) => (p?.tradeBan ?? 0) >= TRADE_BAN_FOREVER ? '거래가 정지됐어요 · 관리자에게 문의해주세요' : `거래가 정지됐어요 · ${leftLabel((p?.tradeBan ?? 0) - Date.now())} 뒤에 풀려요`
 
 type Buy = { kind: ItemKind; key: string; label: string; price: number }
 
@@ -654,6 +658,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               season={season}
               run={runAdmin}
               grantPoints={(t, n, p) => grantPoints(db!, authUser.uid, t, n, p)}
+              setTradeBan={(t, until, p) => setTradeBan(db!, authUser.uid, t, until, p)}
               setSeasonName={(n, p) => setSeasonName(db!, authUser.uid, n, p)}
               resetSeason={(n, p) => resetSeason(db!, authUser.uid, n, p)}
               renameUser={(t, n, p) => renameUser(db!, authUser.uid, t, n, p)}
@@ -752,9 +757,12 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             onBuyFakePass={() => setPassAsk('passFake')}
             onToast={showToast}
             onSendGift={async amount => {
+              const other = openChat.type === 'dm' ? byId.get(openChat.members.find(m => m !== authUser.uid) ?? '') : undefined
+              if (tradeBanned(me)) { showToast(banText(me)); return false }
+              if (other && tradeBanned(other)) { showToast(`${other.name}님은 거래 정지 중이라 선물을 받을 수 없어요`); return false }
               try { await sendGift(db!, authUser.uid, openChat, amount); showToast(`${amount.toLocaleString()}P를 선물했어요`); return true } catch (e) { failToast('선물하지 못했어요', e); return false }
             }}
-            onClaimGift={id => claimGift(db!, authUser.uid, id).then(() => showToast('선물을 받았어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 다른 사람이 받았거나 취소된 선물이에요') : failToast('받지 못했어요', e))}
+            onClaimGift={id => tradeBanned(me) ? Promise.resolve(showToast(banText(me))) : claimGift(db!, authUser.uid, id).then(() => showToast('선물을 받았어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 다른 사람이 받았거나 취소된 선물이에요') : failToast('받지 못했어요', e))}
             onCancelGift={id => cancelGift(db!, authUser.uid, id).then(() => showToast('선물을 취소했어요. 포인트가 돌아왔어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 받은 선물이라 취소할 수 없어요') : failToast('취소하지 못했어요', e))}
             onSendImage={async file => {
               try { await sendImage(db!, authUser.uid, openChat.id, await fileToChatImage(file)); return true } catch (e) { failToast('사진을 보내지 못했어요', e); return false }
