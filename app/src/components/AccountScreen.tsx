@@ -218,7 +218,7 @@ function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot }:
         <div style={css('padding:40px 24px 48px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center')}>
           <span style={css('font-size:40px;line-height:1;margin-bottom:12px')}>🗳️</span>
           <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#333d4b')}>아직 투표한 후보가 없어요</span>
-          <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>홈에서 후보를 골라 투표해보세요</span>
+          <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>랭킹에서 후보를 골라 투표해보세요</span>
           <button className="pr-96" onClick={goHome} style={css('margin-top:16px;height:38px;padding:0 16px;border-radius:10px;background:rgba(100,168,255,0.15);color:#2272eb;font-size:15px;font-weight:600;transition:transform 150ms')}>투표하러 가기</button>
         </div>
       )}

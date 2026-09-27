@@ -31,7 +31,7 @@ import { db as maybeDb, firebaseConfigured } from './firebase'
 import { isInstalledApp } from './install'
 import { buildPeople } from './model'
 import { byRank } from './backend/rank'
-import { BOARD_STALE_MS, photoOf, subscribeBoard, subscribeCandidate, type BoardRow } from './backend/board'
+import { BOARD_STALE_MS, photoOf, subscribeBoard, subscribeCandidate, type BoardExtra, type BoardRow } from './backend/board'
 
 export type AppProps = {
   startTab?: Tab
@@ -71,7 +71,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   // Leaderboard: the one-doc board (meta/board) plus my own candidate doc live; photos
   // are fetched per version. If the board is missing or stale (worker down), fall back
   // to listening to every candidate doc like before.
-  const [board, setBoard] = useState<{ rows: BoardRow[] | null; at: number; server: boolean }>({ rows: null, at: 0, server: false })
+  const [board, setBoard] = useState<{ rows: BoardRow[] | null; at: number; server: boolean; extra: BoardExtra }>({ rows: null, at: 0, server: false, extra: {} })
   const [fallbackRows, setFallbackRows] = useState<CandidateRow[]>([])
   const [ownRow, setOwnRow] = useState<CandidateRow | null>(null)
   const [photoMap, setPhotoMap] = useState<Record<string, string>>({})
@@ -142,11 +142,23 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
 
   // An anonymous login is only for 상담 (forgot password); the app treats it as signed out.
   useEffect(() => onAuthChange(u => { setAuthUser(u && !u.isAnonymous ? u : null); setAnonUid(u?.isAnonymous ? u.uid : null); setAuthReady(true) }), [])
-  useEffect(() => (db ? subscribeBoard(db, (rows, at, fromCache) => setBoard(b => ({ rows, at, server: b.server || !fromCache }))) : undefined), [])
-  useEffect(() => (db ? subscribeSeason(db, setSeason) : undefined), [])
+  useEffect(() => (db ? subscribeBoard(db, (rows, at, fromCache, extra) => setBoard(b => ({ rows, at, server: b.server || !fromCache, extra }))) : undefined), [])
+  // The season and the notice list ride on the board (one read per launch instead of three);
+  // their own docs are only read when the board lacks them or is stale, and by the admin,
+  // who wants their season edits back without waiting for the worker.
+  const boardFallback = !board.rows || (board.server && Date.now() - board.at > BOARD_STALE_MS)
+  const boardSeason = !boardFallback && !isAdminEmail(authUser?.email) ? board.extra.season : undefined
+  const boardNotices = !boardFallback ? board.extra.notices : undefined
+  const seasonKey = boardSeason ? JSON.stringify(boardSeason) : ''
+  useEffect(() => { if (boardSeason) setSeason(boardSeason) }, [seasonKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => (db && !boardSeason ? subscribeSeason(db, setSeason) : undefined), [!boardSeason]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 공지: signed-in people see each new notice full-screen, once.
-  useEffect(() => (authUser && db ? subscribeNoticeIndex(db, setNoticeIds) : (setNoticeIds([]), setNotice(null), undefined)), [authUser])
+  useEffect(() => {
+    if (!authUser || !db) { setNoticeIds([]); setNotice(null); return }
+    if (boardNotices) { setNoticeIds(ids => ids.join() === boardNotices.join() ? ids : boardNotices); return }
+    return subscribeNoticeIndex(db, setNoticeIds)
+  }, [authUser, boardNotices?.join()]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!authUser || !db || !noticeIds.length || notice) return
     let live = true
@@ -235,7 +247,6 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const loggedIn = !!authUser
   // No board yet (first launch, or the worker hasn't written it) or a stale one: read the
   // candidates directly, so people never show up as "(탈퇴한 사람)" in the meantime.
-  const boardFallback = !board.rows || (board.server && Date.now() - board.at > BOARD_STALE_MS)
   useEffect(() => (db && boardFallback ? subscribeCandidates(db, setFallbackRows) : undefined), [boardFallback])
   useEffect(() => { setOwnRow(null); return db && authUser ? subscribeCandidate(db, authUser.uid, setOwnRow) : undefined }, [authUser])
   useEffect(() => {

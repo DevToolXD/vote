@@ -88,16 +88,22 @@ function boardRows() {
     return row
   }).sort((a, b) => byRank({ ...a, scoreAt: a.sa }, { ...b, scoreAt: b.sa }))
 }
+// The board also carries the season and the notice list, so opening the app is one read
+// instead of three. Rewrites are spaced BOARD_MIN_MS apart: each one costs a read in every
+// open app, and a burst of votes then goes out as one update (my own row is live anyway).
 let boardDirty = true, boardWrittenAt = 0, boardLast = ''
-const BOARD_HEARTBEAT_MS = 20 * 60_000
+let seasonDoc = null, noticeIds = []
+const BOARD_HEARTBEAT_MS = 30 * 60_000
+const BOARD_MIN_MS = Number(process.env.BOARD_MIN_MS ?? 15_000)
 async function writeBoard() {
   const rows = boardRows()
-  const json = JSON.stringify(rows)
+  const extra = { ...(seasonDoc ? { season: seasonDoc } : {}), notices: noticeIds }
+  const json = JSON.stringify([rows, extra])
   const heartbeat = Date.now() - boardWrittenAt > BOARD_HEARTBEAT_MS
   boardDirty = false
   if (json === boardLast && !heartbeat) return
   if (json.length > 900_000) { warn(`Board too big (${json.length} bytes); apps fall back to reading every candidate.`); return }
-  await fdb.doc('meta/board').set({ at: FieldValue.serverTimestamp(), rows })
+  await fdb.doc('meta/board').set({ at: FieldValue.serverTimestamp(), rows, ...extra })
   boardLast = json; boardWrittenAt = Date.now(); boardWrites++
 }
 let boardWrites = 0
@@ -336,7 +342,7 @@ let seasonEndsAt = null
 
 const listeners = []
 const firstDone = new Promise(resolve => {
-  const seen = new Set(), total = 7
+  const seen = new Set(), total = 8
   const done = name => { if (!seen.has(name)) { seen.add(name); if (seen.size === total) resolve() } }
   const listen = (name, ref, onSnap) => ref.onSnapshot(snap => { onSnap(snap); done(name) }, err => { warn(`Listener ${name} failed: ${err.message}`); done(name) })
   listeners.push(
@@ -365,7 +371,8 @@ const firstDone = new Promise(resolve => {
       }
     }),
     listen('resets', fdb.collection('pwResets').where('status', '==', 'pending'), snap => { if (!snap.empty) resetsPending = true }),
-    listen('season', fdb.doc('meta/season'), snap => { const e = snap.get('endsAt'); seasonEndsAt = e ? e.toMillis() : null }),
+    listen('season', fdb.doc('meta/season'), snap => { const e = snap.get('endsAt'); seasonEndsAt = e ? e.toMillis() : null; seasonDoc = snap.data() ?? null; boardDirty = true }),
+    listen('notices', fdb.doc('meta/noticeIndex'), snap => { noticeIds = snap.get('ids') ?? []; boardDirty = true }),
   )
 })
 await firstDone
@@ -430,7 +437,7 @@ while (true) {
     await cursorRef.set({ at: Timestamp.fromMillis(cursor) }, { merge: true })
     rounds++
   }
-  if (boardDirty || Date.now() - boardWrittenAt > BOARD_HEARTBEAT_MS) await writeBoard().catch(e => warn('Writing the board failed: ' + e.message))
+  if ((boardDirty && Date.now() - boardWrittenAt >= BOARD_MIN_MS) || Date.now() - boardWrittenAt > BOARD_HEARTBEAT_MS) await writeBoard().catch(e => warn('Writing the board failed: ' + e.message))
   if (!migrated && Date.now() >= nextMigration) { nextMigration = Date.now() + 30 * 60_000; migrated = await migrateChats().catch(e => { warn('Moving chats failed (will retry): ' + e.message); return false }) }
   if (resetsPending) { resetsPending = false; await passwordResets() }
   if (seasonEndsAt && Date.now() >= seasonEndsAt) { seasonEndsAt = null; await endSeasonIfDue().catch(e => warn('Season end check failed: ' + e)) }

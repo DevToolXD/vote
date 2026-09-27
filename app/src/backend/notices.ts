@@ -32,8 +32,12 @@ export function subscribeNoticeIndex(db: Firestore, cb: (ids: string[]) => void)
 
 /** The oldest notice I haven't seen yet among `ids`, or null. */
 export async function nextUnseenNotice(db: Firestore, uid: string, ids: string[]): Promise<Notice | null> {
+  // Seen ids are also kept on the device: when all of them are, launching costs no read.
+  const local = seenHere(uid)
+  if (ids.every(id => local.has(id))) return null
   const reads = await getDoc(doc(db, 'noticeReads', uid)).catch(() => null)
   const seen = (reads?.data()?.seen ?? {}) as Record<string, boolean>
+  rememberSeen(uid, Object.keys(seen).filter(id => seen[id]))
   for (const id of [...ids].reverse()) {
     if (seen[id]) continue
     try {
@@ -50,6 +54,17 @@ export async function nextUnseenNotice(db: Firestore, uid: string, ids: string[]
 
 export async function markNoticeSeen(db: Firestore, uid: string, id: string) {
   await setDoc(doc(db, 'noticeReads', uid), { seen: { [id]: true } }, { merge: true })
+  rememberSeen(uid, [id])
+}
+
+const seenKey = (uid: string) => 'pv-noticeSeen-' + uid
+function seenHere(uid: string): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(seenKey(uid)) ?? '[]') as string[]) } catch { return new Set() }
+}
+function rememberSeen(uid: string, ids: string[]) {
+  const all = seenHere(uid)
+  ids.forEach(id => all.add(id))
+  try { localStorage.setItem(seenKey(uid), JSON.stringify([...all].slice(-60))) } catch { /* private mode */ }
 }
 
 /** 공지 투표: my one choice (index into options). */

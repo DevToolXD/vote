@@ -1,5 +1,6 @@
 import { doc, getDoc, getDocFromCache, onSnapshot, type Firestore, type Unsubscribe } from 'firebase/firestore'
 import type { CandidateRow } from './candidates'
+import type { Season } from './types'
 
 // meta/board: the whole leaderboard in one doc, kept up to date by the background worker
 // (.github/scripts/send-notifications.mjs). Listening to every candidate doc cost one read
@@ -8,8 +9,11 @@ import type { CandidateRow } from './candidates'
 // the on-device cache.
 
 export type BoardRow = Omit<CandidateRow, 'photoURL'> & { pv: string }
-/** Older than this (the worker rewrites it at least every 20 minutes): read candidates directly. */
-export const BOARD_STALE_MS = 45 * 60_000
+/** Older than this (the worker rewrites it at least every 30 minutes): read candidates directly. */
+export const BOARD_STALE_MS = 75 * 60_000
+
+/** The board also carries meta/season and the notice list (undefined on a board from an older worker). */
+export type BoardExtra = { season?: Season; notices?: string[] }
 
 /** Same hash as the worker's photoVersion. */
 export function photoVersion(s: string) {
@@ -20,11 +24,11 @@ export function photoVersion(s: string) {
 }
 
 /** rows = null when there is no board; `fromCache` answers can be old, so staleness is judged on server ones. */
-export function subscribeBoard(db: Firestore, cb: (rows: BoardRow[] | null, at: number, fromCache: boolean) => void): Unsubscribe {
+export function subscribeBoard(db: Firestore, cb: (rows: BoardRow[] | null, at: number, fromCache: boolean, extra: BoardExtra) => void): Unsubscribe {
   return onSnapshot(doc(db, 'meta', 'board'), s => {
     const d = s.data({ serverTimestamps: 'estimate' })
-    cb(d ? (d.rows as BoardRow[]) : null, d?.at?.toMillis?.() ?? 0, s.metadata.fromCache)
-  }, () => cb(null, 0, false))
+    cb(d ? (d.rows as BoardRow[]) : null, d?.at?.toMillis?.() ?? 0, s.metadata.fromCache, { season: d?.season as Season | undefined, notices: d?.notices as string[] | undefined })
+  }, () => cb(null, 0, false, {}))
 }
 
 /** One candidate doc, live (my own: instant after my own changes, with my photo). */
