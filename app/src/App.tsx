@@ -13,7 +13,6 @@ import { AccountScreen, type LoginForm, type SignupForm } from './components/Acc
 import { AdminProgressOverlay, AdminScreen } from './components/AdminScreen'
 import { BottomNav } from './components/BottomNav'
 import { EditProfile } from './components/EditProfile'
-import { GlassFilters } from './components/GlassFilters'
 import { ShopScreen, type ShopTab } from './components/ShopScreen'
 import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScreen'
 import { NotifySettings } from './components/NotifySettings'
@@ -551,7 +550,6 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
 
   return (
     <div data-theme={theme} style={css("min-height:100vh;display:flex;justify-content:center;font-family:'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;color:#191f28;word-break:keep-all")}>
-      <GlassFilters />
       <div data-g="app" style={css('width:100%;max-width:var(--app-w);min-height:100vh;background:#ffffff;position:relative;display:flex;flex-direction:column')}>
         <main style={css('flex:1;display:flex;flex-direction:column')}>
           {tab === 'shop' && (
