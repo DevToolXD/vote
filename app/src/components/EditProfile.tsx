@@ -23,7 +23,7 @@ type Props = {
 export function EditProfile({ bio, photoCss, equipped, points, onShop, onClose, gender, onPhoto, onBio, onGender }: Props) {
   return (
     <div style={css('position:fixed;inset:0;z-index:150;display:flex;justify-content:center;background:rgba(0,0,0,0.2);animation:fade 200ms ease both')}>
-      <div data-g="app" style={css('width:100%;max-width:430px;height:100%;overflow-y:auto;background:#ffffff;animation:sheetUp 420ms cubic-bezier(0.22,1,0.36,1) both')}>
+      <div data-g="app" style={css('width:100%;max-width:var(--app-w);height:100%;overflow-y:auto;background:#ffffff;animation:sheetUp 420ms cubic-bezier(0.22,1,0.36,1) both')}>
         <div data-g="head" style={css('position:sticky;top:0;z-index:5;height:56px;padding:0 16px 0 8px;display:flex;align-items:center;gap:4px;background:#ffffff')}>
           <button className="pr-dim" onClick={onClose} aria-label="닫기" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28')}><BackIcon /></button>
           <span style={css('flex:1;font-size:17px;font-weight:700;color:#191f28')}>프로필 편집</span>

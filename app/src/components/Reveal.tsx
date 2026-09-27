@@ -48,7 +48,7 @@ export function Reveal({ top, seasonName, sound, onToggleSound, onClose }: Props
 
   return (
     <div style={css('position:fixed;inset:0;z-index:400;display:flex;justify-content:center;background:#07080c;animation:fade 300ms ease both')}>
-      <div style={css('position:relative;width:100%;max-width:430px;height:100%;display:flex;flex-direction:column;overflow-x:hidden;overflow-y:auto;color:#ffffff;animation:rvDark 1600ms cubic-bezier(.5,0,.2,1) both')}>
+      <div style={css('position:relative;width:100%;max-width:var(--app-w);height:100%;display:flex;flex-direction:column;overflow-x:hidden;overflow-y:auto;color:#ffffff;animation:rvDark 1600ms cubic-bezier(.5,0,.2,1) both')}>
         <div style={css('position:absolute;inset:0;pointer-events:none;background:radial-gradient(60% 42% at 50% 44%,rgba(255,214,140,0.22),rgba(255,214,140,0) 70%),radial-gradient(120% 80% at 50% 50%,rgba(0,0,0,0) 40%,rgba(0,0,0,0.75) 100%);animation:rvSpot 2400ms ease-in 600ms both')} />
         {/* Alternating keyframe names restart the flash animation on every reveal. */}
         <div style={sx('position:absolute;inset:0;pointer-events:none;z-index:5;background:#ffffff;opacity:0', { animation: `${flash ? (flash % 2 ? 'rvFlashA' : 'rvFlashB') : 'none'} 700ms ease-out both` })} />

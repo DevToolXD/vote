@@ -84,7 +84,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
 
         {inv && <InvTitle>프레임</InvTitle>}
         {(tab === 'frame' || inv) && (
-          <div style={css('display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 24px 32px')}>
+          <div style={css('display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;padding:0 24px 32px')}>
             {mineOr(FRAMES, 'frame').map(([k, l]) => {
               const it = item('frame', k)
               return (
@@ -121,7 +121,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
         {(tab === 'skin' || inv) && (
           <>
             {!inv && <div style={css('padding:0 24px 8px;font-size:13px;line-height:19.5px;color:#6b7684')}>랭킹 그래프에서 내 막대가 이 모양으로 보여요. 마이너스면 거꾸로 뒤집혀요</div>}
-            <div style={css('display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 24px 32px')}>
+            <div style={css('display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;padding:0 24px 32px')}>
               {mineOr(SKINS, 'skin').map(([k, l]) => {
                 const it = item('skin', k), g = skinGeom(k, 132, false)
                 return (

@@ -61,7 +61,7 @@ export function SupportRoom({ db, ticketUid, as, title, subtitle, exists, profil
     <>
     <KeyboardUnderlay z={249} />
     <div style={sx('position:fixed;left:0;right:0;z-index:250;display:flex;justify-content:center', { top: box.top, height: box.height })}>
-      <div data-g="app" className="no-select" style={css(`width:100%;max-width:430px;height:100%;background:#ffffff;display:flex;flex-direction:column;animation:roomIn 360ms ${EASE} backwards`)}>
+      <div data-g="app" className="no-select" style={css(`width:100%;max-width:var(--app-w);height:100%;background:#ffffff;display:flex;flex-direction:column;animation:roomIn 360ms ${EASE} backwards`)}>
         <div style={css('flex:none;display:flex;align-items:center;gap:4px;padding:calc(4px + env(safe-area-inset-top)) 8px 4px')}>
           <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28')}><BackIcon /></button>
           <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;padding-left:4px')}>
@@ -143,7 +143,7 @@ export function SupportFlow({ db, loginId, resume, onClose, onError }: { db: Fir
     const ok = name.trim().length >= 1 && /^[a-zA-Z0-9]{4,20}$/.test(id.trim())
     return (
       <div style={css('position:fixed;inset:0;z-index:250;display:flex;justify-content:center;background:#fff')}>
-        <div data-g="app" style={css(`width:100%;max-width:430px;display:flex;flex-direction:column;animation:roomIn 360ms ${EASE} backwards`)}>
+        <div data-g="app" style={css(`width:100%;max-width:var(--app-w);display:flex;flex-direction:column;animation:roomIn 360ms ${EASE} backwards`)}>
           <div style={css('padding:calc(4px + env(safe-area-inset-top)) 8px 4px')}>
             <button className="pr-dim" onClick={onClose} aria-label="뒤로" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28')}><BackIcon /></button>
           </div>

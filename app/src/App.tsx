@@ -547,12 +547,12 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   }
 
   if (!firebaseConfigured) return <SetupNotice />
-  if (!authReady) return <div data-g="app" style={css('width:100%;max-width:430px;min-height:100vh;background:#ffffff')} />
+  if (!authReady) return <div data-g="app" style={css('width:100%;max-width:var(--app-w);min-height:100vh;background:#ffffff')} />
 
   return (
     <div data-theme={theme} style={css("min-height:100vh;display:flex;justify-content:center;font-family:'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;color:#191f28;word-break:keep-all")}>
       <GlassFilters />
-      <div data-g="app" style={css('width:100%;max-width:430px;min-height:100vh;background:#ffffff;position:relative;display:flex;flex-direction:column')}>
+      <div data-g="app" style={css('width:100%;max-width:var(--app-w);min-height:100vh;background:#ffffff;position:relative;display:flex;flex-direction:column')}>
         <main style={css('flex:1;display:flex;flex-direction:column')}>
           {tab === 'shop' && (
             <ShopScreen

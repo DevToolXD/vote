@@ -55,7 +55,7 @@ export function BottomSheet({ onScrim, scrim, sheetStyle, children }: { onScrim:
       {/* Pinned to the visible area itself (top + height), not to innerHeight: on iPhone
           innerHeight can shrink with the keyboard too, which put the sheet behind it. */}
       <div style={sx('position:fixed;left:0;right:0;z-index:261;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;pointer-events:none', { top: vp.top, height: vp.height })}>
-        <div data-g="l4" style={sx('width:100%;max-width:430px;background:#ffffff;pointer-events:auto;overflow-y:auto;overscroll-behavior:contain;' + sheetStyle, { maxHeight: vp.height - 16 })}>{children}</div>
+        <div data-g="l4" style={sx('width:100%;max-width:var(--sheet-w);background:#ffffff;pointer-events:auto;overflow-y:auto;overscroll-behavior:contain;' + sheetStyle, { maxHeight: vp.height - 16 })}>{children}</div>
       </div>
     </>
   )

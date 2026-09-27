@@ -12,7 +12,7 @@ export function NoticeScreen({ notice, onDone, onVote }: { notice: Notice; onDon
   const date = notice.createdAt ? notice.createdAt.toDate().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) : ''
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="notice-title" style={css(`position:fixed;inset:0;z-index:350;display:flex;justify-content:center;background:#ffffff;animation:fade 240ms ease both`)}>
-      <div data-g="app" style={css(`width:100%;max-width:430px;height:100%;display:flex;flex-direction:column;animation:listIn 480ms ${EASE} both`)}>
+      <div data-g="app" style={css(`width:100%;max-width:var(--app-w);height:100%;display:flex;flex-direction:column;animation:listIn 480ms ${EASE} both`)}>
         <div style={css('flex:1;overflow-y:auto;padding:calc(56px + env(safe-area-inset-top)) 24px 24px;display:flex;flex-direction:column;gap:12px')}>
           <span style={css('align-self:flex-start;height:26px;padding:0 10px;border-radius:9999px;background:#e8f3ff;color:#1b64da;font-size:13px;font-weight:700;display:flex;align-items:center')}>공지</span>
           <h1 id="notice-title" style={css('margin:4px 0 0;font-size:26px;line-height:35px;font-weight:700;color:#191f28;word-break:keep-all')}>{notice.title}</h1>

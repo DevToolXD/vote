@@ -482,7 +482,7 @@ export function ChatRoom(p: RoomProps) {
     <>
     <KeyboardUnderlay z={199} />
     <div style={sx('position:fixed;left:0;right:0;z-index:200;display:flex;justify-content:center', { top: box.top, height: box.height })}>
-      <div data-g="app" className="no-select" style={css(`width:100%;max-width:430px;height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;background:#ffffff;animation:roomIn 360ms ${EASE} backwards`)}>
+      <div data-g="app" className="no-select" style={css(`width:100%;max-width:var(--app-w);height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;background:#ffffff;animation:roomIn 360ms ${EASE} backwards`)}>
         <div style={sx('flex:none;display:flex;align-items:center;gap:4px;padding:4px 8px;position:relative;z-index:2', { paddingTop: box.top ? 4 : 'calc(4px + env(safe-area-inset-top))', background: tinted ? 'rgba(255,255,255,0.72)' : '#ffffff', backdropFilter: tinted ? 'blur(12px)' : undefined })}>
           <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28')}><BackIcon /></button>
           <button className="pr-dim" onClick={() => (chat.type === 'dm' && v.people[0] ? onOpenProfile(v.people[0].id) : setMenu(true))} style={css('flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:4px;border-radius:12px;text-align:left')}>
