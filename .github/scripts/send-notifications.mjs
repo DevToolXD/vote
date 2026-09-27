@@ -140,6 +140,117 @@ async function mirrorPerks() {
   }
 }
 
+// ---- 거래 내역 (ledger) and 수상한 포인트 증가 (alerts), all in the Realtime Database ----
+// Every change to someone's points (up + bonus − spent) is written to ledger/{uid} (they
+// and the admin can read it) and ledgerFeed (admin), worked out from which fields of their
+// candidate doc changed. Points gained quickly (outside admin grants / season rewards) are
+// flagged in alerts/{uid} for the admin. ledgerState/{uid} remembers the last state seen,
+// so changes made while no worker was running are still recorded when the next one starts.
+const ledgerQueue = []
+const LEDGER_KEEP = 100, FEED_KEEP = 300
+const ALERT_WINDOW_MS = Number(process.env.ALERT_WINDOW_MS ?? 60 * 60_000)
+const ALERT_POINTS = Number(process.env.ALERT_POINTS ?? 1000), ALERT_VOTES = Number(process.env.ALERT_VOTES ?? 20)
+const pts = c => (c?.up ?? 0) + (c?.bonus ?? 0) - (c?.spent ?? 0)
+const stateOf = c => ({ up: c.up ?? 0, down: c.down ?? 0, bonus: c.bonus ?? 0, spent: c.spent ?? 0, lastGift: c.lastGift ?? '', appBonus: !!c.appBonus, pass2x: !!c.pass2x, passFake: !!c.passFake, owned: JSON.stringify(c.owned ?? {}) })
+const lastVote = new Map() // uid → { key, at, d, n }: 추천 within 30 minutes go into one line
+const gains = new Map()    // uid → [{ at, d, k }] within ALERT_WINDOW_MS
+const ledgerWrites = new Map()
+let feedWrites = 0
+
+async function giftOf(id) {
+  try { return (await fdb.doc(`gifts/${id}`).get()).data() ?? null } catch { return null }
+}
+function newItems(o, d) {
+  const a = JSON.parse(o.owned || '{}'), b = JSON.parse(d.owned || '{}'), out = []
+  for (const k of Object.keys(b)) for (const key of b[k] ?? []) if (!(a[k] ?? []).includes(key)) out.push(`${k}:${key}`)
+  return out
+}
+/** What happened between two states, as ledger lines { d: point change, k: kind, x?: detail }. */
+async function classify(o, d) {
+  const out = []
+  let dUp = d.up - o.up, dBonus = d.bonus - o.bonus, dSpent = d.spent - o.spent
+  if (d.up === 0 && d.down === 0 && (o.up !== 0 || o.down !== 0) && dBonus >= o.up) { out.push({ d: dBonus - o.up, k: 'season' }); dUp = 0; dBonus = 0 }
+  if (d.appBonus && !o.appBonus) { out.push({ d: 300, k: 'app' }); dBonus -= 300 }
+  if (d.lastGift && d.lastGift !== o.lastGift) {
+    const g = await giftOf(d.lastGift)
+    if (dSpent > 0) { out.push({ d: -dSpent, k: 'giftSent', x: g?.to ?? g?.chatId ?? '' }); dSpent = 0 }
+    else if (dSpent < 0) { out.push({ d: -dSpent, k: 'giftCancel' }); dSpent = 0 }
+    if (dBonus > 0) { out.push({ d: dBonus, k: 'giftClaim', x: g?.from ?? '' }); dBonus = 0 }
+  }
+  for (const pass of ['pass2x', 'passFake']) if (d[pass] && !o[pass] && dSpent > 0) { const cost = pass === 'passFake' ? Math.min(dSpent, 299) : Math.min(dSpent, 5000); out.push({ d: -cost, k: 'pass', x: pass }); dSpent -= cost }
+  const items = newItems(o, d)
+  if (items.length && dSpent > 0) { out.push({ d: -dSpent, k: 'buy', x: items.join(',') }); dSpent = 0 }
+  if (dUp) out.push({ d: dUp, k: 'vote' })
+  if (dBonus) out.push({ d: dBonus, k: 'grant' })
+  if (dSpent) out.push({ d: -dSpent, k: 'other' })
+  return out.filter(e => e.d !== 0)
+}
+async function record(uid, lines, at = Date.now()) {
+  const up = {}
+  for (const e of lines) {
+    const lv = lastVote.get(uid)
+    if (e.k === 'vote' && lv && at - lv.at < 30 * 60_000) {
+      lv.d += e.d; lv.n++; lv.at = at
+      up[`ledger/${uid}/${lv.key}/d`] = lv.d; up[`ledger/${uid}/${lv.key}/n`] = lv.n; up[`ledger/${uid}/${lv.key}/at`] = at
+      if (lv.feed) { up[`ledgerFeed/${lv.feed}/d`] = lv.d; up[`ledgerFeed/${lv.feed}/n`] = lv.n; up[`ledgerFeed/${lv.feed}/at`] = at }
+    } else {
+      const key = rdb.ref(`ledger/${uid}`).push().key, feed = rdb.ref('ledgerFeed').push().key
+      const row = { at, d: e.d, k: e.k, ...(e.x ? { x: e.x } : {}), ...(e.k === 'vote' ? { n: 1 } : {}) }
+      up[`ledger/${uid}/${key}`] = row
+      up[`ledgerFeed/${feed}`] = { ...row, u: uid }
+      if (e.k === 'vote') lastVote.set(uid, { key, feed, at, d: e.d, n: 1 })
+      ledgerWrites.set(uid, (ledgerWrites.get(uid) ?? 0) + 1); feedWrites++
+    }
+    // 수상한 포인트 증가: gains that aren't the admin's or the season's, within the window.
+    if (e.d > 0 && !['grant', 'season', 'app', 'giftCancel'].includes(e.k)) {
+      const list = (gains.get(uid) ?? []).filter(g => at - g.at < ALERT_WINDOW_MS)
+      list.push({ at, d: e.d, k: e.k }); gains.set(uid, list)
+      const total = list.reduce((n, g) => n + g.d, 0), votes = list.filter(g => g.k === 'vote').reduce((n, g) => n + g.d, 0)
+      if (total >= ALERT_POINTS || votes >= ALERT_VOTES) {
+        up[`alerts/${uid}`] = { at, since: list[0].at, gain: total, votes, gifts: list.filter(g => g.k === 'giftClaim').reduce((n, g) => n + g.d, 0), other: list.filter(g => g.k === 'other').reduce((n, g) => n + g.d, 0), points: pts(candidates.get(uid)) }
+      }
+    }
+  }
+  if (Object.keys(up).length) await rdb.ref().update(up)
+}
+async function saveState(uid, c) { await rdb.ref(`ledgerState/${uid}`).set(stateOf(c)) }
+async function ledgerInit() {
+  const saved = (await rdb.ref('ledgerState').once('value')).val() ?? {}
+  const snap = new Map(candidates)
+  ledgerQueue.length = 0 // already part of `snap`; later changes queue up as usual
+  for (const [uid, c] of snap) {
+    const now = stateOf(c), before = saved[uid]
+    if (before && JSON.stringify(before) === JSON.stringify(now)) continue
+    if (before) await record(uid, await classify({ ...stateOf({}), ...before }, now))
+    await saveState(uid, c)
+  }
+}
+async function processLedger() {
+  while (ledgerQueue.length) {
+    const { id, o, d } = ledgerQueue.shift()
+    if (!o) continue
+    const a = stateOf(o), b = stateOf(d)
+    if (JSON.stringify(a) === JSON.stringify(b)) continue
+    await record(id, await classify(a, b))
+    await saveState(id, d)
+  }
+}
+async function pruneLedger() {
+  for (const [uid, n] of ledgerWrites) {
+    if (n < 20) continue
+    ledgerWrites.set(uid, 0)
+    const all = (await rdb.ref(`ledger/${uid}`).orderByKey().once('value')).val() ?? {}
+    const drop = Object.keys(all).sort().slice(0, Math.max(0, Object.keys(all).length - LEDGER_KEEP))
+    if (drop.length) await rdb.ref(`ledger/${uid}`).update(Object.fromEntries(drop.map(k => [k, null])))
+  }
+  if (feedWrites >= 50) {
+    feedWrites = 0
+    const keys = Object.keys((await rdb.ref('ledgerFeed').orderByKey().once('value')).val() ?? {}).sort()
+    const drop = keys.slice(0, Math.max(0, keys.length - FEED_KEEP))
+    if (drop.length) await rdb.ref('ledgerFeed').update(Object.fromEntries(drop.map(k => [k, null])))
+  }
+}
+
 // ---- sending ----
 let sent = 0, dropped = 0
 async function push(uid, { title, body, url, tag }) {
@@ -379,7 +490,10 @@ const firstDone = new Promise(resolve => {
   const listen = (name, ref, onSnap) => ref.onSnapshot(snap => { onSnap(snap); done(name) }, err => { warn(`Listener ${name} failed: ${err.message}`); done(name) })
   listeners.push(
     listen('candidates', fdb.collection('candidates'), snap => {
-      for (const c of snap.docChanges()) c.type === 'removed' ? candidates.delete(c.doc.id) : candidates.set(c.doc.id, c.doc.data())
+      for (const c of snap.docChanges()) {
+        if (c.type === 'modified') ledgerQueue.push({ id: c.doc.id, o: candidates.get(c.doc.id), d: c.doc.data() })
+        c.type === 'removed' ? candidates.delete(c.doc.id) : candidates.set(c.doc.id, c.doc.data())
+      }
       if (snap.docChanges().length) boardDirty = rtDirty = true
     }),
     listen('settings', fdb.collection('settings'), snap => snap.docChanges().forEach(c => c.type === 'removed' ? settings.delete(c.doc.id) : settings.set(c.doc.id, c.doc.data()))),
@@ -408,6 +522,7 @@ const firstDone = new Promise(resolve => {
   )
 })
 await firstDone
+await ledgerInit().catch(e => warn('Ledger start failed: ' + e.message))
 
 // Chat (Realtime Database): every chats/{id} change; a new last.at is a new message.
 function onChatNode(snap) {
@@ -469,6 +584,8 @@ while (true) {
     await cursorRef.set({ at: Timestamp.fromMillis(cursor) }, { merge: true })
     rounds++
   }
+  await processLedger().catch(e => warn('Ledger failed: ' + e.message))
+  await pruneLedger().catch(e => warn('Ledger prune failed: ' + e.message))
   await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
   if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })
   if ((boardDirty && Date.now() - boardWrittenAt >= BOARD_MIN_MS) || Date.now() - boardWrittenAt > BOARD_HEARTBEAT_MS) await writeBoard().catch(e => warn('Writing the board failed: ' + e.message))

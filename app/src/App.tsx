@@ -29,6 +29,7 @@ import { css, sx } from './css'
 import { BLUE, fmt, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab } from './data'
 import { db as maybeDb, firebaseConfigured, rtdb } from './firebase'
 import { isInstalledApp } from './install'
+import { LedgerSheet } from './components/LedgerViews'
 import { buildPeople } from './model'
 import { byRank } from './backend/rank'
 import { BOARD_STALE_MS, photoOf, subscribeBoard, subscribeCandidate, subscribeLiveBoard, type BoardExtra, type BoardRow } from './backend/board'
@@ -86,6 +87,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [editOpen, setEditOpen] = useState(false)
   const [shopTab, setShopTab] = useState<ShopTab>('frame')
   const [passAsk, setPassAsk] = useState<PassKind | null>(null)
+  const [ledgerOpen, setLedgerOpen] = useState(false)
   const [buy, setBuy] = useState<Buy | null>(null)
 
   const [acctView, setAcctView] = useState<'login' | 'signup'>('login')
@@ -592,6 +594,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           )}
           {tab === 'acct' && (
             <AccountScreen
+              openLedger={() => setLedgerOpen(true)}
               loggedIn={loggedIn}
               view={acctView}
               onView={setAcctView}
@@ -706,6 +709,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             onConfirm={confirmBuy}
           />
         )}
+        {ledgerOpen && me && <LedgerSheet uid={me.id} title="거래 내역" byId={byId} onClose={() => setLedgerOpen(false)} />}
         {passAsk && me && (() => {
           const fake = passAsk === 'passFake'
           const price = fake ? FAKE_PASS_PRICE : PASS_PRICE

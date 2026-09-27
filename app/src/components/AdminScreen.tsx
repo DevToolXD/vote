@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { css, sx } from '../css'
+import { AdminLedger, LedgerSheet } from './LedgerViews'
 import type { AdminProgress } from '../backend/admin'
 import { pointsOf } from '../backend/candidates'
 import type { Ticket } from '../backend/support'
@@ -60,6 +61,7 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
   const [amount, setAmount] = useState('')
   const [rename, setRename] = useState('')
   const [confirm, setConfirm] = useState<Confirm | null>(null)
+  const [ledgerOf, setLedgerOf] = useState<string | null>(null)
 
   const person = all.find(p => p.id === picked)
   const list = (q.trim() ? all.filter(p => p.name.includes(q.trim())) : all).slice(0, 30)
@@ -74,6 +76,9 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
         <h1 style={css('margin:0;font-size:22px;line-height:31px;font-weight:700;color:#191f28')}>관리자</h1>
         <p style={css('margin:0;font-size:15px;line-height:22.5px;color:#6b7684')}>모든 작업은 1회용 보안 토큰 3개를 발급·확인한 뒤에 실행돼요</p>
       </div>
+
+      {gap}
+      <AdminLedger all={all} />
 
       {gap}
       <section style={css('padding:24px 24px;display:flex;flex-direction:column;gap:12px')}>
@@ -238,7 +243,9 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
 
       {person && (
         <section style={css('padding:16px 24px 8px;display:flex;flex-direction:column;gap:12px')}>
-          <span style={css('font-size:15px;font-weight:700;color:#191f28')}>{person.name}님에게</span>
+          <span style={css('display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:700;color:#191f28')}>{person.name}님에게
+            <button className="pr-dim" onClick={() => setLedgerOf(person.id)} style={css('height:32px;padding:0 10px;border-radius:8px;background:#f2f4f6;font-size:13px;font-weight:600;color:#333d4b')}>거래 내역</button>
+          </span>
           <div style={css('display:flex;gap:6px;flex-wrap:wrap')}>
             {[100, 500, 1000, -100].map(v => (
               <button key={v} className="pr-96" onClick={() => setAmount(String(v))} style={css('height:32px;padding:0 12px;border-radius:9999px;background:#f2f4f6;color:#4e5968;font-size:14px;font-weight:600')}>{v > 0 ? `+${v}` : v}</button>
@@ -315,6 +322,7 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
           </div>
         </Dialog>
       )}
+      {ledgerOf && <LedgerSheet uid={ledgerOf} title={`${all.find(p => p.id === ledgerOf)?.name ?? ''}님의 거래 내역`} byId={new Map(all.map(p => [p.id, p]))} onClose={() => setLedgerOf(null)} />}
     </div>
   )
 }

@@ -156,6 +156,29 @@
         ".read": "auth != null && auth.uid === $uid",
         ".write": false
       }
+    },
+    "ledger": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || (auth.token.email === 'admin@vote.local' || auth.token.admin === true))",
+        ".write": false,
+        ".indexOn": [
+          "at"
+        ]
+      }
+    },
+    "ledgerFeed": {
+      ".read": "auth != null && (auth.token.email === 'admin@vote.local' || auth.token.admin === true)",
+      ".write": false
+    },
+    "alerts": {
+      ".read": "auth != null && (auth.token.email === 'admin@vote.local' || auth.token.admin === true)",
+      "$uid": {
+        ".write": "auth != null && (auth.token.email === 'admin@vote.local' || auth.token.admin === true) && !newData.exists()"
+      }
+    },
+    "ledgerState": {
+      ".read": false,
+      ".write": false
     }
   }
 }

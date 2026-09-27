@@ -37,6 +37,8 @@ type Props = {
   mine: Person[]
   onOpenVote: (p: Person) => void
   openEdit: () => void
+  /** 거래 내역 (my point history). */
+  openLedger?: () => void
   openTheme: () => void
   goHome: () => void
   onForgot: () => void
@@ -157,7 +159,7 @@ function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus
   )
 }
 
-function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot }: Props & { me: Person }) {
+function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot, openLedger }: Props & { me: Person }) {
   const sep = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
   return (
     <>
@@ -192,6 +194,13 @@ function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot }:
           </div>
         ))}
       </div>
+      {openLedger && (
+        <div style={css('padding:0 24px 24px')}>
+          <button className="pr-dim" onClick={openLedger} style={css('width:100%;height:52px;padding:0 16px;border-radius:16px;background:#f9fafb;display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;color:#333d4b')}>
+            <span style={css('font-size:18px')}>🧾</span>거래 내역<span style={css('margin-left:auto;color:#b0b8c1;font-size:18px')}>›</span>
+          </button>
+        </div>
+      )}
       {sep}
       <div style={css('padding:24px 24px 8px;font-size:17px;line-height:25.5px;font-weight:700;color:#191f28')}>내 투표</div>
       {mine.map(d => (

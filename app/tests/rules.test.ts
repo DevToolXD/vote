@@ -741,6 +741,28 @@ describe('season end date and rewards', () => {
   })
 })
 
+describe('거래 내역 / 수상한 포인트 증가 (Realtime Database)', () => {
+  test('ledger: only its owner and the admin read it; alerts and the feed are admin-only; nobody but the worker writes', async () => {
+    const a = userDb('a'), b = userDb('b'), admin = dbAs(ADMIN)
+    const put = (path: string, v: unknown) => fetch(`${RTDB}/${path}.json?ns=${RTDB_NS}`, { method: 'PUT', headers: { Authorization: 'Bearer owner' }, body: JSON.stringify(v) })
+    await put('ledger/a/k1', { at: 1, d: 5, k: 'vote', n: 5 })
+    await put('ledgerFeed/k1', { at: 1, d: 5, k: 'vote', n: 5, u: 'a' })
+    await put('alerts/a', { at: 2, since: 1, gain: 2000, votes: 0, gifts: 2000, other: 0, points: 2100 })
+    await put('ledgerState/a', { up: 1 })
+    assert.equal((await rt(a, 'ledger/a')).k1.d, 5)
+    assert.equal((await rt(admin, 'ledger/a')).k1.d, 5)
+    await denied(rt(b, 'ledger/a'))
+    await denied(rt(a, 'ledgerFeed')); await denied(rt(a, 'alerts')); await denied(rt(a, 'ledgerState'))
+    assert.equal((await rt(admin, 'alerts')).a.gain, 2000)
+    assert.equal((await rt(admin, 'ledgerFeed')).k1.u, 'a')
+    await denied(rtSet(rtRef(rtdbOf.get(a)!, 'ledger/a/k2'), { at: 3, d: 999, k: 'grant' }))
+    await denied(rtSet(rtRef(rtdbOf.get(a)!, 'alerts/a'), null)) // only the admin dismisses
+    await denied(rtSet(rtRef(rtdbOf.get(admin)!, 'alerts/a'), { gain: 1 })) // …and only by removing it
+    await rtSet(rtRef(rtdbOf.get(admin)!, 'alerts/a'), null)
+    assert.equal(await rt(admin, 'alerts'), null)
+  })
+})
+
 describe('포인트 선물', () => {
   const chatOf = async (db: Firestore, id: string) => ({ id, ...(await getDoc(doc(db, 'chats', id))).data() } as never)
   const points = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
