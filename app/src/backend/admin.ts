@@ -1,6 +1,7 @@
 import {
   Timestamp,
   collection,
+  arrayRemove,
   deleteField,
   doc,
   getDoc,
@@ -30,7 +31,7 @@ import { byRank } from './rank'
 export const ADMIN_EMAIL = 'admin@vote.local'
 export const isAdminEmail = (email: string | null | undefined) => email === ADMIN_EMAIL
 
-export type AdminAction = 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount' | 'renameUser' | 'resetPassword' | 'postNotice' | 'seasonConfig' | 'tradeBan'
+export type AdminAction = 'revokeItem' | 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount' | 'renameUser' | 'resetPassword' | 'postNotice' | 'seasonConfig' | 'tradeBan'
 export type AdminProgress = { batch: number; batches: number; verified: number }
 
 /** Keep each batch's rule evaluation well under Firestore's per-request document-access limit. */
@@ -113,6 +114,19 @@ export async function setTradeBan(db: Firestore, adminUid: string, target: strin
   if (!Number.isSafeInteger(until) || until < 0) throw new Error('invalid-until')
   await runAdminOp(db, adminUid, 'tradeBan', { target, until }, [
     b => { b.update(doc(db, 'candidates', target), { tradeBan: until || deleteField() }); return 1 },
+  ], onProgress)
+}
+
+/** 수거: takes back an item (unequipped if worn; kind frame/plate/skin + key) or a pass (kind pass2x/passFake). No refund. */
+export async function revokeItem(db: Firestore, adminUid: string, target: string, kind: 'frame' | 'plate' | 'skin' | 'pass2x' | 'passFake', key: string, onProgress?: (p: AdminProgress) => void) {
+  const snap = await getDoc(doc(db, 'candidates', target))
+  if (!snap.exists()) throw new Error('candidate-not-found')
+  const c = snap.data() as CandidateDoc
+  const patch: Record<string, unknown> = kind === 'pass2x' || kind === 'passFake'
+    ? { [kind]: deleteField() }
+    : { [`owned.${kind}`]: arrayRemove(key), ...(c[kind] === key ? { [kind]: 'none' } : {}) }
+  await runAdminOp(db, adminUid, 'revokeItem', { target, kind, key }, [
+    b => { b.update(doc(db, 'candidates', target), patch); return 1 },
   ], onProgress)
 }
 

@@ -2,7 +2,7 @@ import type { User } from 'firebase/auth'
 import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
-import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
+import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, revokeItem, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, buyPass, castVote, hasFakePass, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, inviteMembers, isUnread, leaveGroup, onMyReads, setReadsUser, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
@@ -439,6 +439,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const canBuy = !!buy && points >= buy.price
   const confirmBuy = async () => {
     if (!buy || !canBuy || !me) return
+    if (tradeBanned(me)) { showToast(banText(me)); return }
     try {
       await buyItem(db!, me.id, buy.kind, buy.key, buy.price)
       setBuy(null)
@@ -659,6 +660,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               run={runAdmin}
               grantPoints={(t, n, p) => grantPoints(db!, authUser.uid, t, n, p)}
               setTradeBan={(t, until, p) => setTradeBan(db!, authUser.uid, t, until, p)}
+              revokeItem={(t, k, key, p) => revokeItem(db!, authUser.uid, t, k, key, p)}
               setSeasonName={(n, p) => setSeasonName(db!, authUser.uid, n, p)}
               resetSeason={(n, p) => resetSeason(db!, authUser.uid, n, p)}
               renameUser={(t, n, p) => renameUser(db!, authUser.uid, t, n, p)}
@@ -732,6 +734,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               onClose={() => setPassAsk(null)}
               onConfirm={async () => {
                 if (!can) return
+                if (tradeBanned(me)) { showToast(banText(me)); return }
                 try {
                   await buyPass(db!, me.id, passAsk); setPassAsk(null)
                   showToast(fake ? '페이크 선물 패스를 샀어요. 채팅 + 에서 보낼 수 있어요' : '투표 2배권을 샀어요. 이제 한 사람에게 일주일에 두 번 투표할 수 있어요')

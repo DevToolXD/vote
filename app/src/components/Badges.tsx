@@ -7,7 +7,7 @@ type BadgeDef = { key: string; label: string; desc: string; bg: string; fg: stri
 /** Badges for what someone owns (passes), shown on profiles under the bio, above the id. */
 export function badgesOf(p: { pass2x?: boolean | number; passFake?: boolean; tradeBan?: number }): BadgeDef[] {
   const out: BadgeDef[] = []
-  if ((p.tradeBan ?? 0) > Date.now()) out.push({ key: 'ban', label: '거래 정지', desc: '관리자가 거래를 정지했어요 · 포인트 선물을 보내거나 받을 수 없어요', bg: '#fff0f1', fg: '#e42939' })
+  if ((p.tradeBan ?? 0) > Date.now()) out.push({ key: 'ban', label: '거래 정지', desc: '관리자가 거래를 정지했어요 · 선물을 주고받거나 아이템·패스를 살 수 없어요', bg: '#fff0f1', fg: '#e42939' })
   if (hasPass(p)) out.push({ key: 'pass2x', label: '×2', desc: '투표 2배권 · 한 사람에게 일주일에 두 번 투표할 수 있어요', bg: 'linear-gradient(135deg,#1b64da,#6a3cf0)', fg: '#ffffff' })
   if (hasFakePass(p)) out.push({ key: 'passFake', label: '🤡', desc: '페이크 선물 패스 · 채팅에서 페이크 선물을 보낼 수 있어요', bg: 'linear-gradient(135deg,#8b5cf6,#c026d3)', fg: '#ffffff' })
   return out

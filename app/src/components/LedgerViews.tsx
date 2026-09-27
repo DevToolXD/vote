@@ -22,7 +22,7 @@ function Row({ r, nameOf, who }: { r: LedgerRow; nameOf: (id: string) => string;
         <span style={css('font-size:15px;line-height:22px;font-weight:600;color:#191f28;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{who ? <><b>{who}</b> · </> : null}{text}</span>
         <span style={css('font-size:13px;line-height:19px;color:#8b95a1')}>{when(r.at)}</span>
       </span>
-      <span style={sx('flex:none;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums', { color: r.d > 0 ? '#1b64da' : '#f04452' })}>{signed(r.d)}</span>
+      <span style={sx('flex:none;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums', { color: r.d > 0 ? '#1b64da' : r.d < 0 ? '#f04452' : '#8b95a1' })}>{r.k === 'revoke' ? '수거' : signed(r.d)}</span>
     </div>
   )
 }

@@ -5,7 +5,7 @@ import { FRAMES, SKINS } from '../data'
 // Realtime Database (ledger/{uid}; ledgerFeed and alerts for the admin). See
 // .github/scripts/send-notifications.mjs (classify / record).
 
-export type LedgerKind = 'vote' | 'giftSent' | 'giftClaim' | 'giftCancel' | 'buy' | 'pass' | 'grant' | 'season' | 'app' | 'other'
+export type LedgerKind = 'vote' | 'giftSent' | 'giftClaim' | 'giftCancel' | 'buy' | 'pass' | 'grant' | 'season' | 'app' | 'revoke' | 'other'
 /** d = point change; n = how many 추천 one 'vote' line adds up; x = detail (item, other person); u = whose (feed only). */
 export type LedgerRow = { id: string; at: number; d: number; k: LedgerKind; x?: string; n?: number; u?: string }
 /** 수상한 포인트 증가: gained within the worker's window (since → at). */
@@ -24,8 +24,8 @@ export function subscribeAlerts(rtdb: Database, cb: (a: Alert[]) => void) {
 }
 export const dismissAlert = (rtdb: Database, uid: string) => remove(ref(rtdb, `alerts/${uid}`))
 
-const ITEM_KIND: Record<string, string> = { frame: '프레임', plate: '이름표', skin: '막대 스킨' }
-const itemName = (kind: string, key: string) => (kind === 'frame' ? FRAMES : kind === 'skin' ? SKINS : []).find(([k]) => k === key)?.[1] ?? key
+export const ITEM_KIND: Record<string, string> = { frame: '프레임', plate: '이름표', skin: '막대 스킨' }
+export const itemName = (kind: string, key: string) => (kind === 'skin' ? SKINS : FRAMES).find(([k]) => k === key)?.[1] ?? key
 
 /** One line of 거래 내역 in words, and an emoji for it. */
 export function describe(r: LedgerRow, nameOf: (uid: string) => string): { icon: string; text: string } {
@@ -35,6 +35,7 @@ export function describe(r: LedgerRow, nameOf: (uid: string) => string): { icon:
     case 'giftClaim': return { icon: '🎁', text: r.x ? `${nameOf(r.x) || '누군가'}님이 준 선물 받음` : '선물 받음' }
     case 'giftCancel': return { icon: '↩️', text: '선물 취소 · 돌려받음' }
     case 'buy': return { icon: '🛒', text: (r.x ?? '').split(',').filter(Boolean).map(s => { const [k, key] = s.split(':'); return `${ITEM_KIND[k] ?? ''} ${itemName(k, key)}` }).join(', ') + ' 구매' }
+    case 'revoke': return { icon: '📦', text: (r.x ?? '').split(',').filter(Boolean).map(s => { if (s === 'pass2x') return '투표 2배권'; if (s === 'passFake') return '페이크 선물 패스'; const [k, key] = s.split(':'); return `${ITEM_KIND[k] ?? ''} ${itemName(k, key)}` }).join(', ') + ' 관리자가 수거' }
     case 'pass': return { icon: r.x === 'passFake' ? '🤡' : '×2', text: (r.x === 'passFake' ? '페이크 선물 패스' : '투표 2배권') + ' 구매' }
     case 'grant': return { icon: '🛠️', text: r.d > 0 ? '관리자가 지급' : '관리자가 회수' }
     case 'season': return { icon: '🏆', text: '시즌 보상' }

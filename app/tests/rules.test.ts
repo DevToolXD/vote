@@ -11,7 +11,7 @@ import {
   collection, connectFirestoreEmulator, deleteDoc, deleteField, doc, getDoc, getDocs, getFirestore,
   increment, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Firestore,
 } from 'firebase/firestore'
-import { setTradeBan, TRADE_BAN_FOREVER, deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
+import { revokeItem, setTradeBan, TRADE_BAN_FOREVER, deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, updateMyProfile } from '../src/backend/candidates'
 import { loadOlderMessages, subscribeMessages, setChatDatabase, setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markGone, markHere, markRead, openDm, sendFakeGift, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
@@ -818,6 +818,25 @@ describe('포인트 선물', () => {
     await setTradeBan(admin, ADMIN.uid, 'a', TRADE_BAN_FOREVER)
     await assert.rejects(sendGift(a, 'a', await chatOf(a, id), 10)) // a can't send
     assert.equal(await points(a, 'a'), 3_000_000)
+  })
+  test('거래 정지 also blocks buying items and passes (equipping still works); the admin can 수거 items and passes', async () => {
+    const a = await signUp('a'); const admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 20000)
+    await buyItem(a, 'a', 'frame', 'neon', priceOf('frame', 'neon'))
+    await setTradeBan(admin, ADMIN.uid, 'a', Date.now() + 60_000)
+    await denied(buyItem(a, 'a', 'frame', 'crown', priceOf('frame', 'crown')))
+    await denied(buyPass(a, 'a', 'passFake'))
+    await denied(buyPass(a, 'a'))
+    await equipItem(a, 'a', 'frame', 'neon') // using what you have is fine
+    await setTradeBan(admin, ADMIN.uid, 'a', 0)
+    await buyPass(a, 'a', 'passFake')
+    await assert.rejects(revokeItem(a, 'a', 'a', 'frame', 'neon')) // not the admin
+    await revokeItem(admin, ADMIN.uid, 'a', 'frame', 'neon')
+    const c = await read(a, 'candidates/a')
+    assert.deepEqual(c.owned.frame, ['none']); assert.equal(c.frame, 'none') // unequipped too
+    await revokeItem(admin, ADMIN.uid, 'a', 'passFake', '')
+    assert.equal((await read(a, 'candidates/a')).passFake, undefined)
+    await assert.rejects(revokeItem(admin, ADMIN.uid, 'a', 'frame', 'crown')) // doesn't have it
   })
   test('group: first to tap wins; the sender can cancel an untaken gift', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c'); const d = await signUp('d')

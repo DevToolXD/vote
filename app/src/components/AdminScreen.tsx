@@ -3,6 +3,10 @@ import { css, sx } from '../css'
 import { AdminLedger, LedgerSheet } from './LedgerViews'
 import { DurationInput, dhmsSeconds, durationLabel, leftLabel, type Dhms } from './Duration'
 import { TRADE_BAN_FOREVER, type AdminProgress } from '../backend/admin'
+import { ITEM_KIND, itemName } from '../backend/ledger'
+import { hasFakePass, hasPass } from '../backend/candidates'
+
+type RevokeKind = 'frame' | 'plate' | 'skin' | 'pass2x' | 'passFake'
 import { pointsOf } from '../backend/candidates'
 import type { Ticket } from '../backend/support'
 import { DEFAULT_REWARDS, rewardNotice, type Rewards } from '../backend/rewards'
@@ -26,6 +30,8 @@ type Props = {
   grantPoints: (target: string, amount: number, onProgress: (p: AdminProgress) => void) => Promise<void>
   /** 거래 정지 until (ms; 0 lifts it). */
   setTradeBan: (target: string, until: number, onProgress: (p: AdminProgress) => void) => Promise<void>
+  /** 수거: an item (frame/plate/skin + key) or a pass (pass2x/passFake). */
+  revokeItem: (target: string, kind: RevokeKind, key: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   setSeasonName: (name: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   resetSeason: (name: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   setSeasonConfig: (endsAt: number, rewards: Rewards, onProgress: (p: AdminProgress) => void) => Promise<void>
@@ -43,7 +49,7 @@ const gap = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
 
 type Confirm = { title: string; desc: string; cta: string; danger?: boolean; go: () => void }
 
-export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls, setSeasonConfig, season, run, grantPoints, setTradeBan, setSeasonName, resetSeason, renameUser, deleteAccount, resetPassword, onLogout }: Props) {
+export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls, setSeasonConfig, season, run, grantPoints, setTradeBan, revokeItem, setSeasonName, resetSeason, renameUser, deleteAccount, resetPassword, onLogout }: Props) {
   const [issued, setIssued] = useState<{ name: string; loginId?: string; code: string } | null>(null)
   const [nameDraft, setNameDraft] = useState('')
   const [notice, setNotice] = useState({ title: '', body: '' })
@@ -84,6 +90,24 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
 
       {gap}
       <AdminLedger all={all} />
+      {all.some(p => (p.tradeBan ?? 0) > Date.now()) && (
+        <>
+          {gap}
+          <section style={css('padding:24px 24px;display:flex;flex-direction:column;gap:10px')}>
+            <span style={css(sectionTitle)}>거래 정지된 사람</span>
+            {all.filter(p => (p.tradeBan ?? 0) > Date.now()).map(p => (
+              <div key={p.id} data-g="l1" style={css('padding:12px 14px;border-radius:14px;background:#f9fafb;display:flex;align-items:center;gap:10px')}>
+                <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+                  <span style={css('font-size:15px;font-weight:700;color:#191f28')}>{p.name}</span>
+                  <span style={css('font-size:13px;color:#e42939')}>{p.tradeBan! >= TRADE_BAN_FOREVER ? '영구 정지' : `${leftLabel(p.tradeBan! - Date.now())} 남음`}</span>
+                </span>
+                <button className="pr-96" onClick={() => setConfirm({ title: `${p.name}님 거래 정지를 풀까요?`, desc: '바로 다시 선물을 주고받고 아이템·패스를 살 수 있어요.', cta: '풀기', go: () => { run('거래 정지 풀기', pr => setTradeBan(p.id, 0, pr)) } })}
+                  style={css('flex:none;height:36px;padding:0 14px;border-radius:10px;background:#e8f3ff;color:#1b64da;font-size:14px;font-weight:700')}>풀기</button>
+              </div>
+            ))}
+          </section>
+        </>
+      )}
 
       {gap}
       <section style={css('padding:24px 24px;display:flex;flex-direction:column;gap:12px')}>
@@ -283,7 +307,8 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
               <span style={css('display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:#191f28')}>거래 정지
                 {(person.tradeBan ?? 0) > Date.now() && <span style={css('height:22px;padding:0 8px;border-radius:9999px;background:#fff0f1;color:#e42939;font-size:12px;font-weight:700;display:flex;align-items:center')}>{person.tradeBan! >= TRADE_BAN_FOREVER ? '영구 정지 중' : `정지 중 · ${leftLabel(person.tradeBan! - Date.now())} 남음`}</span>}
               </span>
-              <span style={css(hint)}>그동안 포인트 선물을 보내거나 받을 수 없어요 (보낸 선물 취소는 돼요)</span>
+              {(person.tradeBan ?? 0) > Date.now() && <button className="pr-96" onClick={() => { run('거래 정지 풀기', p => setTradeBan(person.id, 0, p)) }} style={css('height:44px;border-radius:12px;background:#e8f3ff;color:#1b64da;font-size:15px;font-weight:700')}>거래 정지 풀기</button>}
+              <span style={css(hint)}>그동안 포인트 선물을 주고받거나 아이템·패스를 살 수 없어요 (보낸 선물 취소는 돼요)</span>
               <DurationInput value={ban} onChange={setBan} maxDays={3650} presets={[[3600, '1시간'], [86400, '1일'], [7 * 86400, '7일'], [30 * 86400, '30일']]} />
               <div style={css('display:flex;gap:8px')}>
                 <button className="pr-96" disabled={banSec < 1}
@@ -295,9 +320,29 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
                     go: () => { run('거래 정지', p => setTradeBan(person.id, TRADE_BAN_FOREVER, p)) } })}
                   style={css('flex:none;height:44px;padding:0 14px;border-radius:12px;background:#fff0f1;color:#e42939;font-size:15px;font-weight:700')}>영구</button>
               </div>
-              {(person.tradeBan ?? 0) > Date.now() && <button className="pr-96" onClick={() => { run('거래 정지 풀기', p => setTradeBan(person.id, 0, p)) }} style={css('height:44px;border-radius:12px;background:#e8f3ff;color:#1b64da;font-size:15px;font-weight:700')}>거래 정지 풀기</button>}
             </div>
           )}
+          {(() => {
+            const owned: [RevokeKind, string, string][] = [
+              ...(hasPass(person) ? [['pass2x', '', '투표 2배권'] as [RevokeKind, string, string]] : []),
+              ...(hasFakePass(person) ? [['passFake', '', '페이크 선물 패스'] as [RevokeKind, string, string]] : []),
+              ...(['frame', 'plate', 'skin'] as const).flatMap(k => (person.owned?.[k] ?? []).filter(key => key !== 'none').map(key => [k, key, `${ITEM_KIND[k]} ${itemName(k, key)}`] as [RevokeKind, string, string])),
+            ]
+            return (
+              <div data-g="l1" style={css('padding:16px;border-radius:16px;background:#f9fafb;display:flex;flex-direction:column;gap:10px')}>
+                <span style={css('font-size:15px;font-weight:700;color:#191f28')}>아이템·패스 수거</span>
+                <span style={css(hint)}>누르면 가져가요. 쓰고 있던 아이템은 기본으로 바뀌고, 포인트는 돌려주지 않아요</span>
+                {owned.length === 0 ? <span style={css('font-size:14px;color:#8b95a1')}>가진 아이템·패스가 없어요</span> : (
+                  <span style={css('display:flex;gap:6px;flex-wrap:wrap')}>
+                    {owned.map(([kind, key, label]) => (
+                      <button key={kind + key} className="pr-96" onClick={() => setConfirm({ title: `${person.name}님의 ${label}을(를) 수거할까요?`, desc: '포인트는 돌려주지 않아요. 다시 사야 쓸 수 있어요.', cta: '수거하기', danger: true, go: () => { run('수거', p => revokeItem(person.id, kind, key, p)) } })}
+                        style={css('height:34px;padding:0 12px;border-radius:9999px;background:#ffffff;box-shadow:inset 0 0 0 1px #e5e8eb;color:#333d4b;font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px')}>{label}<span style={css('color:#e42939;font-weight:800')}>✕</span></button>
+                    ))}
+                  </span>
+                )}
+              </div>
+            )
+          })()}
           {!person.isMe && <button className="pr-96"
             onClick={() => setConfirm({
               title: `${person.name}님 비밀번호를 초기화할까요?`,

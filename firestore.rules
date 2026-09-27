@@ -87,6 +87,8 @@ service cloud.firestore {
                 && rewardOk(p.first) && rewardOk(p.second) && rewardOk(p.third) && rewardOk(p.top6) && rewardOk(p.participant))
           || (action == 'tradeBan' && p.keys().hasOnly(['target', 'until']) && p.keys().hasAll(['target', 'until'])
                 && p.target is string && p.target != request.auth.uid && p.until is int && p.until >= 0)
+          || (action == 'revokeItem' && p.keys().hasOnly(['target', 'kind', 'key']) && p.keys().hasAll(['target', 'kind', 'key'])
+                && p.target is string && p.kind in ['frame', 'plate', 'skin', 'pass2x', 'passFake'] && p.key is string)
           || (action == 'deleteAccount' && p.keys().hasOnly(['target']) && p.target is string && p.target != request.auth.uid);
     }
     function validSeasonName(n) { return n is string && n.size() >= 1 && n.size() <= 20; }
@@ -124,7 +126,7 @@ service cloud.firestore {
         && request.resource.data.used == false
         && request.resource.data.createdAt == request.time
         && request.resource.data.seq in [1, 2, 3]
-        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser', 'resetPassword', 'postNotice', 'seasonConfig', 'tradeBan']
+        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser', 'resetPassword', 'postNotice', 'seasonConfig', 'tradeBan', 'revokeItem']
         && request.resource.data.payload is map;
       // Burned only together with a lock that lists it.
       allow update: if isAdmin()
@@ -206,7 +208,7 @@ service cloud.firestore {
         && addF.size() + addP.size() + addS.size() <= 1
         && buyable('frame', addF) && buyable('plate', addP) && buyable('skin', addS)
         && d.spent == o.spent + cost
-        && (cost == 0 || d.spent <= d.up + d.get('bonus', 0))
+        && (cost == 0 || (d.spent <= d.up + d.get('bonus', 0) && canTrade(o)))
         && d.frame in d.owned.frame && d.plate in d.owned.plate && d.skin in d.owned.skin
         && d.bio is string && d.bio.size() <= 60
         && d.gender in ['', '남자', '여자']
@@ -270,7 +272,7 @@ service cloud.firestore {
       let o = resource.data;
       return request.auth.uid == o.ownerUid
         && d.diff(o).affectedKeys().hasOnly(['spent', 'pass2x'])
-        && o.get('pass2x', false) == false && d.pass2x == true
+        && o.get('pass2x', false) == false && d.pass2x == true && canTrade(o)
         && d.spent == o.spent + 5000
         && d.spent <= d.up + d.get('bonus', 0);
     }
@@ -282,7 +284,7 @@ service cloud.firestore {
       let o = resource.data;
       return request.auth.uid == o.ownerUid
         && d.diff(o).affectedKeys().hasOnly(['spent', 'passFake'])
-        && o.get('passFake', false) == false && d.passFake == true
+        && o.get('passFake', false) == false && d.passFake == true && canTrade(o)
         && d.spent == o.spent + 299
         && d.spent <= d.up + d.get('bonus', 0);
     }
@@ -336,6 +338,20 @@ service cloud.firestore {
       return adminOp('tradeBan') && lock().payload.target == candidateId
         && d.diff(resource.data).affectedKeys().hasOnly(['tradeBan'])
         && (until == 0 ? !('tradeBan' in d) : d.tradeBan == until);
+    }
+
+    // 수거: the admin takes back one item (unequipped if worn) or a pass. No refund.
+    function adminRevoke(candidateId) {
+      let d = request.resource.data;
+      let o = resource.data;
+      let p = lock().payload;
+      return adminOp('revokeItem') && p.target == candidateId && (
+        (p.kind in ['pass2x', 'passFake'] && d.diff(o).affectedKeys().hasOnly([p.kind]) && !(p.kind in d))
+        || (p.kind in ['frame', 'plate', 'skin'] && p.key != 'none' && p.key in o.owned[p.kind]
+            && d.diff(o).affectedKeys().hasOnly(['owned', p.kind])
+            && d.owned.diff(o.owned).affectedKeys().hasOnly([p.kind])
+            && d.owned[p.kind] == o.owned[p.kind].removeAll([p.key])
+            && d[p.kind] == (o[p.kind] == p.key ? 'none' : o[p.kind])));
     }
 
     function adminRename(candidateId) {
@@ -396,7 +412,7 @@ service cloud.firestore {
 
       allow update: if signedIn() && (
         ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || loginIdBackfill() || giftSend() || giftClaim() || giftCancel() ||
-        adminGrant(candidateId) || adminTradeBan(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId)
+        adminGrant(candidateId) || adminTradeBan(candidateId) || adminRevoke(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId)
       );
 
       allow delete: if adminOp('deleteAccount') && lock().payload.target == candidateId;

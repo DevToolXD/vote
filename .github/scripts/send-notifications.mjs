@@ -134,9 +134,9 @@ let boardWrites = 0
 const perksDone = new Set()
 async function mirrorPerks() {
   for (const [id, c] of candidates) {
-    if (!c.passFake || perksDone.has(id)) continue
-    await rdb.ref(`perks/${id}/fake`).set(true)
-    perksDone.add(id)
+    if (!!c.passFake === perksDone.has(id)) continue
+    await rdb.ref(`perks/${id}/fake`).set(c.passFake ? true : null) // taken back by the admin → gone
+    c.passFake ? perksDone.add(id) : perksDone.delete(id)
   }
 }
 
@@ -180,10 +180,12 @@ async function classify(o, d) {
   for (const pass of ['pass2x', 'passFake']) if (d[pass] && !o[pass] && dSpent > 0) { const cost = pass === 'passFake' ? Math.min(dSpent, 299) : Math.min(dSpent, 5000); out.push({ d: -cost, k: 'pass', x: pass }); dSpent -= cost }
   const items = newItems(o, d)
   if (items.length && dSpent > 0) { out.push({ d: -dSpent, k: 'buy', x: items.join(',') }); dSpent = 0 }
+  const gone = newItems(d, o).concat(['pass2x', 'passFake'].filter(k => o[k] && !d[k]))
+  if (gone.length && dSpent === 0) out.push({ d: 0, k: 'revoke', x: gone.join(',') })
   if (dUp) out.push({ d: dUp, k: 'vote' })
   if (dBonus) out.push({ d: dBonus, k: 'grant' })
   if (dSpent) out.push({ d: -dSpent, k: 'other' })
-  return out.filter(e => e.d !== 0)
+  return out.filter(e => e.d !== 0 || e.k === 'revoke')
 }
 async function record(uid, lines, at = Date.now()) {
   const up = {}
@@ -523,6 +525,7 @@ const firstDone = new Promise(resolve => {
 })
 await firstDone
 await ledgerInit().catch(e => warn('Ledger start failed: ' + e.message))
+try { for (const [id, v] of Object.entries((await rdb.ref('perks').once('value')).val() ?? {})) if (v?.fake) perksDone.add(id) } catch (e) { warn('Reading perks failed: ' + e.message) }
 
 // Chat (Realtime Database): every chats/{id} change; a new last.at is a new message.
 function onChatNode(snap) {
