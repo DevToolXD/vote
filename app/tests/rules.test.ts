@@ -245,6 +245,16 @@ describe('profile and shop', () => {
     await denied(updateMyProfile(a, 'a', { gender: '외계인' }))
     await denied(updateDoc(doc(a, 'candidates', 'a'), { name: '다른이름' }))
   })
+  test('매트릭스 (레전드 set): frame, 이름표 and 막대 스킨 at 2000P each', async () => {
+    const a = await signUp('a')
+    await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 6050)
+    assert.equal(priceOf('frame', 'matrix'), 2000); assert.equal(priceOf('plate', 'matrix'), 2000); assert.equal(priceOf('skin', 'matrix'), 2000)
+    await denied(buyItem(a, 'a', 'plate', 'matrix', 1000))
+    await denied(buyItem(a, 'a', 'skin', 'matrix', 1000))
+    for (const k of ['frame', 'plate', 'skin'] as const) await buyItem(a, 'a', k, 'matrix', 2000)
+    const c = await read(a, 'candidates/a')
+    assert.equal(pointsOf(c), 50); assert.deepEqual([c.frame, c.plate, c.skin], ['matrix', 'matrix', 'matrix'])
+  })
   test('아우라 (레전드 set): frame, 이름표 and 막대 스킨 at 1000P each', async () => {
     const a = await signUp('a')
     await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 3100)

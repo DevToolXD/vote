@@ -5,10 +5,10 @@ export type ItemKind = 'frame' | 'plate' | 'skin'
 export type Tab = 'shop' | 'acct' | 'rank' | 'msg' | 'admin'
 
 export const PER = 10
-export const FRAMES: [string, string][] = [['none','기본'],['aura','아우라'],['neon','네온'],['crown','왕관'],['sakura','벚꽃'],['cat','고양이'],['stars','별빛'],['flame','불꽃'],['ocean','파도'],['bunny','토끼'],['halo','천사'],['devil','악마'],['butterfly','나비']]
-export const BANNERS: Record<string, string> = {aura:'linear-gradient(135deg,#12022e,#5b1bd6 45%,#0e8fb8 80%,#ffcf5a)',flame:'linear-gradient(135deg,#3a0c00,#ff5a00)',ocean:'linear-gradient(135deg,#032a40,#0b8fb0)',bunny:'linear-gradient(135deg,#fff3f7,#ffc9da)',halo:'linear-gradient(135deg,#fffbea,#ffe08a)',devil:'linear-gradient(135deg,#1a0003,#8a0016)',butterfly:'linear-gradient(135deg,#efe9ff,#cfeaff)',none:'linear-gradient(135deg,#e8f3ff,#c9e2ff)',neon:'linear-gradient(135deg,#0d0f2b,#3a1c71 55%,#7c1e8f)',crown:'linear-gradient(135deg,#fff1c2,#f5b400)',sakura:'linear-gradient(135deg,#ffeef4,#ffb3cb)',cat:'linear-gradient(135deg,#2b2d31,#56596a)',stars:'linear-gradient(135deg,#140f38,#4b3ab8)'}
+export const FRAMES: [string, string][] = [['none','기본'],['matrix','매트릭스'],['aura','아우라'],['neon','네온'],['crown','왕관'],['sakura','벚꽃'],['cat','고양이'],['stars','별빛'],['flame','불꽃'],['ocean','파도'],['bunny','토끼'],['halo','천사'],['devil','악마'],['butterfly','나비']]
+export const BANNERS: Record<string, string> = {matrix:'linear-gradient(135deg,#000000,#02230c 55%,#00a83a)',aura:'linear-gradient(135deg,#12022e,#5b1bd6 45%,#0e8fb8 80%,#ffcf5a)',flame:'linear-gradient(135deg,#3a0c00,#ff5a00)',ocean:'linear-gradient(135deg,#032a40,#0b8fb0)',bunny:'linear-gradient(135deg,#fff3f7,#ffc9da)',halo:'linear-gradient(135deg,#fffbea,#ffe08a)',devil:'linear-gradient(135deg,#1a0003,#8a0016)',butterfly:'linear-gradient(135deg,#efe9ff,#cfeaff)',none:'linear-gradient(135deg,#e8f3ff,#c9e2ff)',neon:'linear-gradient(135deg,#0d0f2b,#3a1c71 55%,#7c1e8f)',crown:'linear-gradient(135deg,#fff1c2,#f5b400)',sakura:'linear-gradient(135deg,#ffeef4,#ffb3cb)',cat:'linear-gradient(135deg,#2b2d31,#56596a)',stars:'linear-gradient(135deg,#140f38,#4b3ab8)'}
 export const CHART_H = 300
-export const SKINS: [string, string][] = [['none','기본'],['aura','아우라'],['namsan','남산타워'],['eiffel','에펠탑'],['bigben','빅벤'],['victory','전승기념탑']]
+export const SKINS: [string, string][] = [['none','기본'],['matrix','매트릭스'],['aura','아우라'],['namsan','남산타워'],['eiffel','에펠탑'],['bigben','빅벤'],['victory','전승기념탑']]
 const SK: Record<string, { w: number; cap: number; base: number }> = {namsan:{w:24,cap:97.67,base:0},eiffel:{w:32,cap:9.67,base:28.33},bigben:{w:30,cap:90.67,base:0},victory:{w:32,cap:21,base:26.67}}
 export const SKIN_FILES = ["namsan-cap","namsan-mid","eiffel-cap","eiffel-mid","eiffel-base","bigben-cap","bigben-mid","victory-cap","victory-mid","victory-base"]
 
@@ -16,12 +16,12 @@ export type SkinGeom = {
   tf: string; w: number; ml: number; H: number; k: string
   capH: number; capUrl: string; mid: string; hasBase: boolean; baseUrl: string; baseH: number
   /** Drawn in code rather than from pictures (the 아우라 skin). */
-  special?: 'aura'
+  special?: 'aura' | 'matrix'
 }
 
 /** Cap and base keep their size; only the middle stretches. Too-short bars scale the whole tower down. */
 export function skinGeom(s: string, h: number, neg: boolean): SkinGeom | null {
-  if (s === 'aura') return { tf: neg ? 'scaleY(-1)' : 'none', w: 0, ml: 0, H: h, k: '1', capH: 0, capUrl: 'none', mid: 'none', hasBase: false, baseUrl: 'none', baseH: 0, special: 'aura' }
+  if (s === 'aura' || s === 'matrix') return { tf: neg ? 'scaleY(-1)' : 'none', w: 0, ml: 0, H: h, k: '1', capH: 0, capUrl: 'none', mid: 'none', hasBase: false, baseUrl: 'none', baseH: 0, special: s }
   const m = SK[s]
   if (!m) return null
   const mn = m.cap + m.base + 12, H = Math.max(h, mn), k = h < mn ? h / mn : 1
@@ -32,11 +32,13 @@ export function skinGeom(s: string, h: number, neg: boolean): SkinGeom | null {
   }
 }
 
-const PRICE: { frame: Record<string, number>; skin: Record<string, number> } = {frame:{aura:1000,neon:60,crown:90,sakura:50,cat:50,stars:70,flame:80,ocean:60,bunny:50,halo:75,devil:75,butterfly:60},skin:{aura:1000,namsan:100,eiffel:125,bigben:125,victory:110}}
+const PRICE: { frame: Record<string, number>; skin: Record<string, number> } = {frame:{matrix:2000,aura:1000,neon:60,crown:90,sakura:50,cat:50,stars:70,flame:80,ocean:60,bunny:50,halo:75,devil:75,butterfly:60},skin:{matrix:2000,aura:1000,namsan:100,eiffel:125,bigben:125,victory:110}}
+/** 이름표 that don't cost frame + 15 (the 레전드 sets). */
+const PLATE_PRICE: Record<string, number> = { aura: 1000, matrix: 2000 }
 export const priceOf = (kind: ItemKind, k: string) =>
-  k === 'none' ? 0 : kind === 'plate' ? (k === 'aura' ? 1000 : (PRICE.frame[k] || 60) + 15) : (PRICE[kind][k] || 75)
+  k === 'none' ? 0 : kind === 'plate' ? (PLATE_PRICE[k] ?? (PRICE.frame[k] || 60) + 15) : (PRICE[kind][k] || 75)
 /** The 1000P 레전드 set (frame + 이름표 + 막대 스킨 that match). */
-export const LEGENDARY = new Set(['aura'])
+export const LEGENDARY = new Set(['matrix', 'aura'])
 export const KIND_NAME: Record<ItemKind, string> = { frame: '프레임', plate: '', skin: '막대 스킨' }
 export const THEMES: [string, string][] = [['default','기본'],['glass','글라스']]
 export const fmt = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toLocaleString()

@@ -169,3 +169,19 @@ html,body{overscroll-behavior:none}
 .legend-tag{background:linear-gradient(90deg,#ffe27a,#ff9cf0,#9ff3ff,#ffe27a);background-size:300% 100%;animation:auraFlowX 3s linear infinite;box-shadow:0 0 8px rgba(255,156,240,0.7)}
 @keyframes auraFlowX{from{background-position:0% 50%}to{background-position:300% 50%}}
 @keyframes auraBreath{0%,100%{transform:scale(0.92);opacity:0.7}50%{transform:scale(1.08);opacity:1}}
+
+/* 매트릭스 (2000P 레전드 set) */
+@keyframes mxFall{from{transform:translateY(var(--mx-from))}to{transform:translateY(var(--mx-to))}}
+@keyframes mxDrop{from{top:-150px}to{top:105%}}
+@keyframes mxBreath{0%,100%{transform:scale(0.94);opacity:0.65}50%{transform:scale(1.06);opacity:1}}
+@keyframes mxScan{0%{top:-25%}100%{top:105%}}
+@keyframes mxScanX{0%{left:-20%}100%{left:105%}}
+@keyframes mxScanUp{0%{bottom:-20%}100%{bottom:110%}}
+@keyframes mxBlink{0%,49%{opacity:1}50%,100%{opacity:0.1}}
+@keyframes mxGlitch{0%,86%,90%,95%,100%{opacity:0}87%,89%{opacity:0.9}96%,98%{opacity:0.6}}
+@keyframes mxFlick{0%,70%,74%,100%{opacity:1}71%,73%{opacity:0.2}}
+@keyframes mxLock{0%,100%{transform:scale(1);opacity:0.9}50%{transform:scale(0.94);opacity:0.55}}
+@keyframes mxSlice{0%,78%,100%{opacity:0;transform:translateX(0)}79%{opacity:1;transform:translateX(-14px)}82%{opacity:0.8;transform:translateX(10px)}85%{opacity:0}92%{opacity:0.7;transform:translateX(-6px) translateY(9px)}94%{opacity:0}}
+@keyframes mxJitter{0%,88%,100%{transform:translateX(0);opacity:0}89%{transform:translateX(-2px);opacity:0.8}92%{transform:translateX(2px);opacity:0.6}95%{opacity:0}}
+@media (prefers-reduced-motion:reduce){[class^="mx-"],[class*=" mx-"]{animation:none !important}}
+.legend-tag.mx-tag{background:#00ff41;color:#001a07;animation:mxFlick 2.2s steps(1) infinite;box-shadow:0 0 8px #00ff41,0 0 16px rgba(0,255,65,0.6);font-family:ui-monospace,Menlo,monospace}

@@ -4,9 +4,11 @@ import { css } from '../css'
 import { Avatar } from './Avatar'
 import { PLATE_ART } from './plateArt'
 import { AURA_PLATE } from './auraArt'
+import { MATRIX_PLATE } from './matrixArt'
 
-const PLATES: Record<string, { bg: string; fg: string; sub: string; dark: boolean }> = {
+const PLATES: Record<string, { bg: string; fg: string; sub: string; dark: boolean; glow?: string }> = {
   none: { bg: '#f2f4f6', fg: '#191f28', sub: '#6b7684', dark: false },
+  matrix: { bg: '#000000', fg: '#eafff0', sub: '#39ff6a', dark: true, glow: '0 0 6px rgba(0,255,65,0.9),0 0 1px #00ff41' },
   aura: { bg: 'linear-gradient(90deg,#0a0220 0%,#1c0645 45%,#10204f 100%)', fg: '#ffffff', sub: '#e2d4ff', dark: true },
   neon: { bg: 'linear-gradient(90deg,#07081a 0%,#0d0f2b 45%,#1c0b3d 100%)', fg: '#ffffff', sub: '#9fe9ff', dark: true },
   crown: { bg: 'linear-gradient(90deg,#2a0612 0%,#5c0f2a 55%,#8a1c3c 100%)', fg: '#ffe7a3', sub: '#f5c88a', dark: true },
@@ -35,11 +37,11 @@ type Props = {
 export const Nameplate = memo(function Nameplate({ kind = 'none', person, sub, frame = 'none', photo = 'none', showAvatar = true, style }: Props) {
   const k = PLATES[kind] ? kind : 'none'
   const p = PLATES[k]
-  const shadow = p.dark ? '0 1px 2px rgba(0,0,0,0.45)' : 'none'
+  const shadow = p.glow ?? (p.dark ? '0 1px 2px rgba(0,0,0,0.45)' : 'none')
   const edge = p.dark
     ? 'inset 0 0 0 1px rgba(255,255,255,0.12),inset 0 1px 0 rgba(255,255,255,0.14)'
     : 'inset 0 0 0 1px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.8)'
-  const art = k === 'aura' ? AURA_PLATE : PLATE_ART[k]?.before
+  const art = k === 'aura' ? AURA_PLATE : k === 'matrix' ? MATRIX_PLATE : PLATE_ART[k]?.before
   return (
     <div style={{ display: 'block', ...style }}>
       <div style={{ ...css('position:relative;width:100%;height:100%;border-radius:14px;overflow:hidden;isolation:isolate'), background: p.bg }}>
@@ -74,10 +76,10 @@ export const Nameplate = memo(function Nameplate({ kind = 'none', person, sub, f
 export function PlateBanner({ kind = 'none', fallback, name, sub, height, children }: { kind?: string; fallback: string; name: string; sub: string; height: number; children?: React.ReactNode }) {
   const k = PLATES[kind] ? kind : 'none'
   const p = PLATES[k]
-  const art = k === 'aura' ? AURA_PLATE : k !== 'none' ? PLATE_ART[k]?.before : undefined
+  const art = k === 'aura' ? AURA_PLATE : k === 'matrix' ? MATRIX_PLATE : k !== 'none' ? PLATE_ART[k]?.before : undefined
   const fade = 'linear-gradient(180deg,#000 0%,#000 42%,rgba(0,0,0,0.55) 72%,rgba(0,0,0,0) 100%)'
   const dark = k !== 'none' ? p.dark : false
-  const shadow = dark ? '0 1px 3px rgba(0,0,0,0.45)' : '0 1px 2px rgba(255,255,255,0.6)'
+  const shadow = (k !== 'none' && p.glow) || (dark ? '0 1px 3px rgba(0,0,0,0.45)' : '0 1px 2px rgba(255,255,255,0.6)')
   return (
     <div style={{ position: 'relative', height }}>
       <div aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'hidden', isolation: 'isolate', background: k !== 'none' ? p.bg : fallback, WebkitMaskImage: fade, maskImage: fade }}>
