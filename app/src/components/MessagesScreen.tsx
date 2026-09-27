@@ -266,6 +266,9 @@ type RoomProps = {
   onSendImage: (file: File) => Promise<boolean>
   myPoints: number
   onSendGift: (amount: number) => Promise<boolean>
+  /** Owns the 페이크 선물 패스 (else the 페이크 선물 tile offers to buy it). */
+  fakePass: boolean
+  onBuyFakePass: () => void
   onClaimGift: (giftId: string) => Promise<unknown>
   onCancelGift: (giftId: string) => Promise<unknown>
   onToast: (msg: string) => void
@@ -654,7 +657,8 @@ export function ChatRoom(p: RoomProps) {
                 <span style={css('width:56px;height:56px;border-radius:9999px;background:#fff4d6;display:flex;align-items:center;justify-content:center;font-size:28px')}>🎁</span>
                 <span style={css('font-size:15px;font-weight:600;color:#333d4b')}>포인트 선물</span>
               </button>
-              <button className="pr-96" onClick={() => setAttach('fake')} style={css('display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 0;border-radius:20px;background:#f4eeff')}>
+              <button className="pr-96" onClick={() => { if (p.fakePass) setAttach('fake'); else { setAttach(null); p.onBuyFakePass() } }} style={css('position:relative;display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 0;border-radius:20px;background:#f4eeff')}>
+                {!p.fakePass && <span style={css('position:absolute;top:8px;right:8px;padding:1px 7px;border-radius:9999px;background:#8b5cf6;color:#fff;font-size:11px;font-weight:700')}>패스</span>}
                 <span style={css('width:56px;height:56px;border-radius:9999px;background:#8b5cf6;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 6px 16px -6px rgba(139,92,246,0.7)')}>🎁</span>
                 <span style={css('font-size:15px;font-weight:600;color:#7c3aed')}>페이크 선물</span>
               </button>
@@ -673,7 +677,7 @@ export function ChatRoom(p: RoomProps) {
             points={MAX_GIFT} group={chat.type === 'group'} to={chat.type === 'dm' ? v.people[0]?.name : undefined}
             onClose={() => setAttach(null)}
             onSend={async n => {
-              try { await sendFakeGift(db, me.id, chat.id, n); setAttach(null); p.onToast('페이크 선물을 보냈어요 😜') } catch { p.onToast('보내지 못했어요') }
+              try { await sendFakeGift(db, me.id, chat.id, n); setAttach(null); p.onToast('페이크 선물을 보냈어요 😜') } catch { p.onToast('보내지 못했어요. 패스를 방금 샀다면 잠시 후 다시 보내주세요') }
             }}
           />
         )}

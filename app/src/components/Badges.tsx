@@ -1,18 +1,19 @@
 import { useState } from 'react'
 import { css, sx } from '../css'
-import { hasPass } from '../backend/candidates'
+import { hasFakePass, hasPass } from '../backend/candidates'
 
 type BadgeDef = { key: string; label: string; desc: string; bg: string; fg: string }
 
 /** Badges for what someone owns (passes), shown on profiles under the bio, above the id. */
-export function badgesOf(p: { pass2x?: boolean | number }): BadgeDef[] {
+export function badgesOf(p: { pass2x?: boolean | number; passFake?: boolean }): BadgeDef[] {
   const out: BadgeDef[] = []
   if (hasPass(p)) out.push({ key: 'pass2x', label: '×2', desc: '투표 2배권 · 한 사람에게 일주일에 두 번 투표할 수 있어요', bg: 'linear-gradient(135deg,#1b64da,#6a3cf0)', fg: '#ffffff' })
+  if (hasFakePass(p)) out.push({ key: 'passFake', label: '🤡', desc: '페이크 선물 패스 · 채팅에서 페이크 선물을 보낼 수 있어요', bg: 'linear-gradient(135deg,#8b5cf6,#c026d3)', fg: '#ffffff' })
   return out
 }
 
 /** A row of badges; hovering (or tapping) one shows what it is. */
-export function Badges({ person, style }: { person: { pass2x?: boolean | number }; style?: string }) {
+export function Badges({ person, style }: { person: { pass2x?: boolean | number; passFake?: boolean }; style?: string }) {
   const list = badgesOf(person)
   const [open, setOpen] = useState<string | null>(null)
   if (!list.length) return null

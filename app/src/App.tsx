@@ -3,10 +3,10 @@ import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { deleteAccount, grantPoints, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
-import { buyItem, buyPass, castVote, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { buyItem, buyPass, castVote, hasFakePass, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, inviteMembers, isUnread, leaveGroup, onMyReads, setReadsUser, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
-import { DEFAULT_OWNED, DEFAULT_SEASON, PASS_PRICE, type MyVote, type Season, type WeekKind } from './backend/types'
+import { DEFAULT_OWNED, DEFAULT_SEASON, FAKE_PASS_PRICE, PASS_PRICE, type PassKind, type MyVote, type Season, type WeekKind } from './backend/types'
 import { deviceRegistered, disablePush, enablePush, pushErrorMessage, pushSupport, refreshPush } from './push'
 import { fileToChatImage, fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
@@ -85,7 +85,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [bioDraft, setBioDraft] = useState('')
   const [editOpen, setEditOpen] = useState(false)
   const [shopTab, setShopTab] = useState<ShopTab>('frame')
-  const [passAsk, setPassAsk] = useState(false)
+  const [passAsk, setPassAsk] = useState<PassKind | null>(null)
   const [buy, setBuy] = useState<Buy | null>(null)
 
   const [acctView, setAcctView] = useState<'login' | 'signup'>('login')
@@ -579,7 +579,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               equipped={me ? { frame: me.frame, plate: me.plate, skin: me.skin } : { frame: 'none', plate: 'none', skin: 'none' }}
               owned={me?.owned ?? DEFAULT_OWNED} points={points} tab={shopTab} onTab={setShopTab}
               onPick={(k, key, l) => (me ? pickItem(k, key, l) : go('acct'))}
-              passActive={passActive} onBuyPass={() => setPassAsk(true)} onLogin={() => go('acct')}
+              passes={{ pass2x: passActive, passFake: hasFakePass(me) }} onBuyPass={setPassAsk} onLogin={() => go('acct')}
             />
           )}
           {tab === 'rank' && (
@@ -706,24 +706,31 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             onConfirm={confirmBuy}
           />
         )}
-        {passAsk && me && (
-          <BuyDialog
-            b={{
-              title: '투표 2배권을 살까요?',
-              desc: points >= PASS_PRICE ? '영구 · 한 사람에게 일주일에 두 번까지 투표할 수 있어요' : '포인트가 더 쌓이면 살 수 있어요',
-              price: PASS_PRICE.toLocaleString() + 'P',
-              remain: (points - PASS_PRICE).toLocaleString() + 'P',
-              can: points >= PASS_PRICE,
-              cta: points >= PASS_PRICE ? PASS_PRICE.toLocaleString() + 'P로 사기' : '포인트가 부족해요',
-            }}
-            onClose={() => setPassAsk(false)}
-            onConfirm={async () => {
-              if (points < PASS_PRICE) return
-              try { await buyPass(db!, me.id); setPassAsk(false); showToast('투표 2배권을 샀어요. 이제 한 사람에게 일주일에 두 번 투표할 수 있어요') }
-              catch (e) { failToast('사지 못했어요. 다시 시도해주세요', e) }
-            }}
-          />
-        )}
+        {passAsk && me && (() => {
+          const fake = passAsk === 'passFake'
+          const price = fake ? FAKE_PASS_PRICE : PASS_PRICE
+          const can = points >= price
+          return (
+            <BuyDialog
+              b={{
+                title: fake ? '페이크 선물 패스를 살까요?' : '투표 2배권을 살까요?',
+                desc: !can ? '포인트가 더 쌓이면 살 수 있어요' : fake ? '영구 · 채팅에서 페이크 선물을 보낼 수 있어요' : '영구 · 한 사람에게 일주일에 두 번까지 투표할 수 있어요',
+                price: price.toLocaleString() + 'P',
+                remain: (points - price).toLocaleString() + 'P',
+                can,
+                cta: can ? price.toLocaleString() + 'P로 사기' : '포인트가 부족해요',
+              }}
+              onClose={() => setPassAsk(null)}
+              onConfirm={async () => {
+                if (!can) return
+                try {
+                  await buyPass(db!, me.id, passAsk); setPassAsk(null)
+                  showToast(fake ? '페이크 선물 패스를 샀어요. 채팅 + 에서 보낼 수 있어요' : '투표 2배권을 샀어요. 이제 한 사람에게 일주일에 두 번 투표할 수 있어요')
+                } catch (e) { failToast('사지 못했어요. 다시 시도해주세요', e) }
+              }}
+            />
+          )
+        })()}
         {revealOpen && podium && (
           <Reveal top={podium} seasonName={season.last!.name} sound={sound} onToggleSound={() => setSound(s => !s)} onClose={() => setRevealOpen(false)} />
         )}
@@ -737,6 +744,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             db={db!} chat={openChat} me={me} all={all} byId={byId}
             onOpenProfile={setProfile}
             myPoints={points}
+            fakePass={hasFakePass(me)}
+            onBuyFakePass={() => setPassAsk('passFake')}
             onToast={showToast}
             onSendGift={async amount => {
               try { await sendGift(db!, authUser.uid, openChat, amount); showToast(`${amount.toLocaleString()}P를 선물했어요`); return true } catch (e) { failToast('선물하지 못했어요', e); return false }

@@ -15,7 +15,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore'
 import type { ItemKind } from '../data'
-import { PASS_PRICE, VOTE_EVERY_MS, type CandidateDoc, type MyVote, type VoteDoc, type WeekKind } from './types'
+import { FAKE_PASS_PRICE, PASS_PRICE, VOTE_EVERY_MS, type CandidateDoc, type MyVote, type PassKind, type VoteDoc, type WeekKind } from './types'
 
 // Every function takes the Firestore instance so the rules tests (app/tests) run
 // this exact code against the emulator.
@@ -136,10 +136,11 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
   })
 }
 
-/** 투표 2배권, kept for good (firestore.rules: passBuy). */
-export async function buyPass(db: Firestore, myUid: string) {
-  await updateDoc(doc(db, 'candidates', myUid), { pass2x: true, spent: increment(PASS_PRICE) })
+/** A pass, kept for good (firestore.rules: passBuy / fakePassBuy). */
+export async function buyPass(db: Firestore, myUid: string, kind: PassKind = 'pass2x') {
+  await updateDoc(doc(db, 'candidates', myUid), { [kind]: true, spent: increment(kind === 'passFake' ? FAKE_PASS_PRICE : PASS_PRICE) })
 }
+export const hasFakePass = (c?: { passFake?: boolean }) => !!c?.passFake
 export const hasPass = (c?: { pass2x?: boolean | number }) => !!c?.pass2x
 
 /** Points available to spend: this season's recommendations + carried-over/admin bonus − spent. */

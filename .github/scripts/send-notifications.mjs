@@ -129,6 +129,17 @@ async function writeRtBoard() {
 }
 let boardWrites = 0
 
+// 페이크 선물 패스 lives on candidates/{uid}.passFake (bought in Firestore); the chat is in
+// the Realtime Database, whose rules can't see Firestore, so it's mirrored to perks/{uid}.
+const perksDone = new Set()
+async function mirrorPerks() {
+  for (const [id, c] of candidates) {
+    if (!c.passFake || perksDone.has(id)) continue
+    await rdb.ref(`perks/${id}/fake`).set(true)
+    perksDone.add(id)
+  }
+}
+
 // ---- sending ----
 let sent = 0, dropped = 0
 async function push(uid, { title, body, url, tag }) {
@@ -458,6 +469,7 @@ while (true) {
     await cursorRef.set({ at: Timestamp.fromMillis(cursor) }, { merge: true })
     rounds++
   }
+  await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
   if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })
   if ((boardDirty && Date.now() - boardWrittenAt >= BOARD_MIN_MS) || Date.now() - boardWrittenAt > BOARD_HEARTBEAT_MS) await writeBoard().catch(e => warn('Writing the board failed: ' + e.message))
   if (!migrated && Date.now() >= nextMigration) { nextMigration = Date.now() + 30 * 60_000; migrated = await migrateChats().catch(e => { warn('Moving chats failed (will retry): ' + e.message); return false }) }

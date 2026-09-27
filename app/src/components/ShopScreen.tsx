@@ -1,6 +1,6 @@
 import { css, sx } from '../css'
 import { FRAMES, SKINS, priceOf, skinGeom, type ItemKind } from '../data'
-import { PASS_PRICE } from '../backend/types'
+import { FAKE_PASS_PRICE, PASS_PRICE, type PassKind } from '../backend/types'
 import { Segmented } from './AccountScreen'
 import { Avatar } from './Avatar'
 import { BackIcon, LockIcon } from './icons'
@@ -23,8 +23,8 @@ type Props = {
   /** Equips an owned item or opens the purchase dialog for a locked one. */
   onPick: (kind: ItemKind, key: string, label: string) => void
   /** 투표 2배권: active for the current season? */
-  passActive: boolean
-  onBuyPass: () => void
+  passes: Record<PassKind, boolean>
+  onBuyPass: (kind: PassKind) => void
   onLogin: () => void
 }
 
@@ -43,7 +43,13 @@ export function CartIcon({ size = 24 }: { size?: number }) {
 }
 
 /** 상점: frames, nameplates and bar skins bought with points, plus the 패스 (투표 2배권). */
-export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, tab, onTab, onPick, passActive, onBuyPass, onLogin }: Props) {
+/** Passes sold in the 패스 tab (each bought once and kept). */
+export const PASSES: { key: PassKind; title: string; desc: string; icon: string; bg: string; price: number }[] = [
+  { key: 'pass2x', title: '투표 2배권', desc: '한 사람에게 일주일에 두 번 투표', icon: '×2', bg: 'linear-gradient(135deg,#1b64da,#6a3cf0)', price: PASS_PRICE },
+  { key: 'passFake', title: '페이크 선물 패스', desc: '채팅에서 페이크 선물을 보낼 수 있어요', icon: '🤡', bg: 'linear-gradient(135deg,#8b5cf6,#c026d3)', price: FAKE_PASS_PRICE },
+]
+
+export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, tab, onTab, onPick, passes, onBuyPass, onLogin }: Props) {
   const item = (kind: ItemKind, k: string) => ({ on: equipped[kind] === k, locked: !owned[kind].includes(k), price: priceOf(kind, k) + 'P' })
   const priceTag = (price: string) => (
     <span style={css('position:absolute;top:8px;left:8px;z-index:3;height:20px;padding:0 7px;border-radius:9999px;background:#191f28;color:#ffffff;font-size:11px;font-weight:700;display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums')}><LockIcon size={9} />{price}</span>
@@ -144,13 +150,17 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
           <>
             <InvTitle>패스</InvTitle>
             <div style={css('padding:0 24px 32px')}>
-              {passActive ? (
-                <div style={css('padding:16px 18px;border-radius:16px;background:linear-gradient(135deg,#1b64da,#6a3cf0);color:#fff;display:flex;align-items:center;gap:12px')}>
-                  <span style={css('font-size:22px;font-weight:800')}>×2</span>
-                  <span style={css('display:flex;flex-direction:column')}><span style={css('font-size:16px;font-weight:700')}>투표 2배권</span><span style={css('font-size:13px;opacity:0.85')}>영구 · 한 사람에게 일주일에 두 번 투표</span></span>
+              {PASSES.some(x => passes[x.key]) ? (
+                <div style={css('display:flex;flex-direction:column;gap:8px')}>
+                  {PASSES.filter(x => passes[x.key]).map(x => (
+                    <div key={x.key} style={sx('padding:16px 18px;border-radius:16px;color:#fff;display:flex;align-items:center;gap:12px', { background: x.bg })}>
+                      <span style={css('font-size:22px;font-weight:800;min-width:30px;text-align:center')}>{x.icon}</span>
+                      <span style={css('display:flex;flex-direction:column')}><span style={css('font-size:16px;font-weight:700')}>{x.title}</span><span style={css('font-size:13px;opacity:0.85')}>영구 · {x.desc}</span></span>
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <button className="pr-dim" onClick={() => onTab('pass')} style={css('width:100%;padding:16px 18px;border-radius:16px;background:#f9fafb;text-align:left;font-size:15px;color:#6b7684')}>아직 없어요 · 투표 2배권 보러 가기 ›</button>
+                <button className="pr-dim" onClick={() => onTab('pass')} style={css('width:100%;padding:16px 18px;border-radius:16px;background:#f9fafb;text-align:left;font-size:15px;color:#6b7684')}>아직 없어요 · 패스 보러 가기 ›</button>
               )}
             </div>
           </>
@@ -158,25 +168,29 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
 
         {tab === 'pass' && (
           <div className="anim-list" style={css('padding:0 24px 32px;display:flex;flex-direction:column;gap:8px')}>
-            <div data-g="l1" style={css('border-radius:18px;padding:14px;background:#f9fafb;display:flex;align-items:center;gap:12px')}>
-              <span aria-hidden="true" style={css('width:48px;height:48px;flex:none;border-radius:14px;background:linear-gradient(135deg,#1b64da,#6a3cf0);color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center')}>×2</span>
-              <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
-                <span style={css('display:flex;align-items:center;gap:6px')}>
-                  <span style={css('font-size:16px;line-height:24px;font-weight:700;color:#191f28')}>투표 2배권</span>
-                  <span style={css('height:20px;padding:0 7px;border-radius:9999px;background:#f3eeff;color:#6a3cf0;font-size:11px;font-weight:700;display:flex;align-items:center')}>영구</span>
-                </span>
-                <span style={css('font-size:13px;line-height:18px;color:#6b7684')}>한 사람에게 일주일에 두 번 투표</span>
-              </span>
-              {passActive ? (
-                <span style={css('flex:none;height:34px;padding:0 12px;border-radius:10px;background:#e8f3ff;color:#1b64da;font-size:14px;font-weight:700;display:flex;align-items:center')}>보유중</span>
-              ) : (
-                <button data-g="primary" className="pr-96" onClick={loggedIn ? onBuyPass : onLogin}
-                  style={css('flex:none;height:34px;padding:0 12px;border-radius:10px;background:#3182f6;color:#ffffff;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;transition:transform 150ms')}>
-                  {loggedIn ? `${PASS_PRICE.toLocaleString()}P` : '로그인'}
-                </button>
-              )}
-            </div>
-            {loggedIn && !passActive && points < PASS_PRICE && <span style={css('padding:0 4px;font-size:13px;color:#8b95a1')}>{(PASS_PRICE - points).toLocaleString()}P 더 필요해요</span>}
+            {PASSES.map(x => (
+              <div key={x.key} style={css('display:flex;flex-direction:column;gap:6px')}>
+                <div data-g="l1" style={css('border-radius:18px;padding:14px;background:#f9fafb;display:flex;align-items:center;gap:12px')}>
+                  <span aria-hidden="true" style={sx('width:48px;height:48px;flex:none;border-radius:14px;color:#fff;font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center', { background: x.bg })}>{x.icon}</span>
+                  <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
+                    <span style={css('display:flex;align-items:center;gap:6px')}>
+                      <span style={css('font-size:16px;line-height:24px;font-weight:700;color:#191f28')}>{x.title}</span>
+                      <span style={css('height:20px;padding:0 7px;border-radius:9999px;background:#f3eeff;color:#6a3cf0;font-size:11px;font-weight:700;display:flex;align-items:center')}>영구</span>
+                    </span>
+                    <span style={css('font-size:13px;line-height:18px;color:#6b7684')}>{x.desc}</span>
+                  </span>
+                  {passes[x.key] ? (
+                    <span style={css('flex:none;height:34px;padding:0 12px;border-radius:10px;background:#e8f3ff;color:#1b64da;font-size:14px;font-weight:700;display:flex;align-items:center')}>보유중</span>
+                  ) : (
+                    <button data-g="primary" className="pr-96" onClick={loggedIn ? () => onBuyPass(x.key) : onLogin} aria-label={loggedIn ? `${x.title} ${x.price}P에 사기` : '로그인'}
+                      style={sx('flex:none;height:34px;padding:0 12px;border-radius:10px;color:#ffffff;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;transition:transform 150ms', { background: x.key === 'passFake' ? '#8b5cf6' : '#3182f6' })}>
+                      {loggedIn ? `${x.price.toLocaleString()}P` : '로그인'}
+                    </button>
+                  )}
+                </div>
+                {loggedIn && !passes[x.key] && points < x.price && <span style={css('padding:0 4px;font-size:13px;color:#8b95a1')}>{(x.price - points).toLocaleString()}P 더 필요해요</span>}
+              </div>
+            ))}
           </div>
         )}
     </div>

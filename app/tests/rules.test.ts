@@ -9,7 +9,7 @@ import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app'
 import { connectDatabaseEmulator, get as rtGet, getDatabase, ref as rtRef, set as rtSet, update as rtUpdate, type Database } from 'firebase/database'
 import {
   collection, connectFirestoreEmulator, deleteDoc, deleteField, doc, getDoc, getDocs, getFirestore,
-  query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Firestore,
+  increment, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Firestore,
 } from 'firebase/firestore'
 import { deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
@@ -759,18 +759,28 @@ describe('포인트 선물', () => {
     await assert.rejects(cancelGift(a, 'a', gid)) // already taken
     assert.equal(await points(a, 'a'), 80)
   })
-  test('페이크 선물: a chat message only, points untouched; needs a sane amount', async () => {
-    const a = await signUp('a'); await signUp('b')
+  test('페이크 선물: needs the 299P 패스 (mirrored to perks/); a chat message only, points untouched', async () => {
+    const a = await signUp('a'); await signUp('b'); const admin = dbAs(ADMIN)
     const id = await openDm(a, 'a', 'b')
+    await denied(sendFakeGift(a, 'a', id, 5000)) // no pass yet
+    await assert.rejects(buyPass(a, 'a', 'passFake')) // 0P
+    await grantPoints(admin, ADMIN.uid, 'a', 300)
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { passFake: true, spent: increment(1) })) // must pay 299
+    await buyPass(a, 'a', 'passFake')
+    assert.equal(await points(a, 'a'), 1)
+    await assert.rejects(buyPass(a, 'a', 'passFake')) // only once
+    await denied(rtSet(rtRef(rtdbOf.get(a)!, 'perks/a/fake'), true)) // only the worker writes perks
+    await fetch(`${RTDB}/perks/a/fake.json?ns=${RTDB_NS}`, { method: 'PUT', headers: { Authorization: 'Bearer owner' }, body: 'true' }) // what the worker mirrors
     await sendFakeGift(a, 'a', id, 5000)
     const m = (Object.values(await rt(a, `msgs/${id}`)) as { kind?: string; amount?: number; text: string }[]).find(x => x.kind === 'fake')!
     assert.equal(m.amount, 5000); assert.equal(m.text, '🎁 5,000P 선물')
-    assert.equal(await points(a, 'a'), 0)
+    assert.equal(await points(a, 'a'), 1)
     const at = { '.sv': 'timestamp' }
     const R = (db: Firestore) => rtdbOf.get(db)!
     await denied(rtSet(rtRef(R(a), `msgs/${id}/f1`), { uid: 'a', text: '🎁', kind: 'fake', at })) // no amount
     await denied(rtSet(rtRef(R(a), `msgs/${id}/f2`), { uid: 'a', text: '🎁', kind: 'fake', amount: 1e9, at }))
   })
+
   test('group: first to tap wins; the sender can cancel an untaken gift', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c'); const d = await signUp('d')
     await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 300)

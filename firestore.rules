@@ -271,6 +271,18 @@ service cloud.firestore {
         && d.spent <= d.up + d.get('bonus', 0);
     }
 
+    // 페이크 선물 패스: 299P once, kept for good. The worker mirrors it to the Realtime
+    // Database (perks/{uid}/fake), where database.rules.json checks it on every 페이크 선물.
+    function fakePassBuy() {
+      let d = request.resource.data;
+      let o = resource.data;
+      return request.auth.uid == o.ownerUid
+        && d.diff(o).affectedKeys().hasOnly(['spent', 'passFake'])
+        && o.get('passFake', false) == false && d.passFake == true
+        && d.spent == o.spent + 299
+        && d.spent <= d.up + d.get('bonus', 0);
+    }
+
     // 300P once per account for opening the installed app.
     function appBonusClaim() {
       let d = request.resource.data;
@@ -371,7 +383,7 @@ service cloud.firestore {
         && request.resource.data.owned == {'frame': ['none'], 'plate': ['none'], 'skin': ['none']};
 
       allow update: if signedIn() && (
-        ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || loginIdBackfill() || giftSend() || giftClaim() || giftCancel() ||
+        ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || loginIdBackfill() || giftSend() || giftClaim() || giftCancel() ||
         adminGrant(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId)
       );
 

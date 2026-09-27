@@ -34,6 +34,8 @@ export type CandidateDoc = {
   createdAt: unknown
   /** 투표 2배권, bought once and kept (an early purchase stored the season number: also owned). */
   pass2x?: boolean | number
+  /** 페이크 선물 패스, bought once and kept. */
+  passFake?: boolean
 }
 
 export const DEFAULT_OWNED: Record<ItemKind, string[]> = { frame: ['none'], plate: ['none'], skin: ['none'] }
@@ -62,6 +64,9 @@ export const VOTE_EVERY_MS = 7 * 24 * 60 * 60 * 1000
 export type WeekKind = 'up' | 'down' | 'none'
 export type MyVote = { ups: number; downs: number; weekEndsAt: number; weekKind: WeekKind; weekN: number }
 export const PASS_PRICE = 5000
+/** 페이크 선물 패스: lets you send 페이크 선물 in chats. */
+export const FAKE_PASS_PRICE = 299
+export type PassKind = 'pass2x' | 'passFake'
 
 export type PodiumEntry = { id: string; name: string; score: number; frame: string }
 export type Season = {
