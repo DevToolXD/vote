@@ -143,6 +143,10 @@
     "meta": {
       ".read": "auth != null",
       ".write": false
+    },
+    "board": {
+      ".read": true,
+      ".write": false
     }
   }
 }

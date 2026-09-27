@@ -27,11 +27,11 @@ import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
 import { css, sx } from './css'
 import { BLUE, fmt, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab } from './data'
-import { db as maybeDb, firebaseConfigured } from './firebase'
+import { db as maybeDb, firebaseConfigured, rtdb } from './firebase'
 import { isInstalledApp } from './install'
 import { buildPeople } from './model'
 import { byRank } from './backend/rank'
-import { BOARD_STALE_MS, photoOf, subscribeBoard, subscribeCandidate, type BoardExtra, type BoardRow } from './backend/board'
+import { BOARD_STALE_MS, photoOf, subscribeBoard, subscribeCandidate, subscribeLiveBoard, type BoardExtra, type BoardRow } from './backend/board'
 
 export type AppProps = {
   startTab?: Tab
@@ -142,13 +142,23 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
 
   // An anonymous login is only for 상담 (forgot password); the app treats it as signed out.
   useEffect(() => onAuthChange(u => { setAuthUser(u && !u.isAnonymous ? u : null); setAnonUid(u?.isAnonymous ? u.uid : null); setAuthReady(true) }), [])
-  useEffect(() => (db ? subscribeBoard(db, (rows, at, fromCache, extra) => setBoard(b => ({ rows, at, server: b.server || !fromCache, extra }))) : undefined), [])
+  // The board comes from the Realtime Database (no Firestore reads). Only when that one is
+  // missing or stale (or doesn't answer within 6 s) is the Firestore copy read, and only
+  // when that is missing or stale too, every candidate doc.
+  const [live, setLive] = useState<{ rows: BoardRow[] | null; at: number; extra: BoardExtra; seen: boolean }>({ rows: null, at: 0, extra: {}, seen: false })
+  const [liveWaited, setLiveWaited] = useState(!rtdb)
+  useEffect(() => (rtdb ? subscribeLiveBoard(rtdb, (rows, at, extra) => setLive({ rows, at, extra, seen: true })) : undefined), [])
+  useEffect(() => { const t = setTimeout(() => setLiveWaited(true), 6000); return () => clearTimeout(t) }, [])
+  const liveOk = !!live.rows && Date.now() - live.at < BOARD_STALE_MS
+  const fsWanted = !liveOk && (live.seen || liveWaited)
+  useEffect(() => (db && fsWanted ? subscribeBoard(db, (rows, at, fromCache, extra) => setBoard(b => ({ rows, at, server: b.server || !fromCache, extra }))) : undefined), [fsWanted])
+  const src = liveOk ? { rows: live.rows, extra: live.extra } : board
   // The season and the notice list ride on the board (one read per launch instead of three);
   // their own docs are only read when the board lacks them or is stale, and by the admin,
   // who wants their season edits back without waiting for the worker.
-  const boardFallback = !board.rows || (board.server && Date.now() - board.at > BOARD_STALE_MS)
-  const boardSeason = !boardFallback && !isAdminEmail(authUser?.email) ? board.extra.season : undefined
-  const boardNotices = !boardFallback ? board.extra.notices : undefined
+  const boardFallback = !liveOk && fsWanted && (!board.rows || (board.server && Date.now() - board.at > BOARD_STALE_MS))
+  const boardSeason = !boardFallback && !isAdminEmail(authUser?.email) ? src.extra.season : undefined
+  const boardNotices = !boardFallback ? src.extra.notices : undefined
   const seasonKey = boardSeason ? JSON.stringify(boardSeason) : ''
   useEffect(() => { if (boardSeason) setSeason(boardSeason) }, [seasonKey]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => (db && !boardSeason ? subscribeSeason(db, setSeason) : undefined), [!boardSeason]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -250,22 +260,22 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   useEffect(() => (db && boardFallback ? subscribeCandidates(db, setFallbackRows) : undefined), [boardFallback])
   useEffect(() => { setOwnRow(null); return db && authUser ? subscribeCandidate(db, authUser.uid, setOwnRow) : undefined }, [authUser])
   useEffect(() => {
-    if (boardFallback || !board.rows || !db) return
-    let live = true
-    for (const r of board.rows) {
+    if (boardFallback || !src.rows || !db) return
+    let on = true
+    for (const r of src.rows) {
       if (!r.pv || photoMap[r.id + '@' + r.pv] !== undefined) continue
-      photoOf(db, r.id, r.pv).then(url => { if (live) setPhotoMap(m => ({ ...m, [r.id + '@' + r.pv]: url })) }).catch(() => {})
+      photoOf(db, r.id, r.pv).then(url => { if (on) setPhotoMap(m => ({ ...m, [r.id + '@' + r.pv]: url })) }).catch(() => {})
     }
-    return () => { live = false }
-  }, [board.rows, boardFallback]) // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { on = false }
+  }, [src.rows, boardFallback]) // eslint-disable-line react-hooks/exhaustive-deps
   const rows = useMemo<CandidateRow[]>(() => {
     const base: CandidateRow[] = boardFallback ? fallbackRows
-      : (board.rows ?? []).map(({ pv, ...r }) => ({ ...r, photoURL: pv ? photoMap[r.id + '@' + pv] ?? '' : '' }) as CandidateRow)
+      : (src.rows ?? []).map(({ pv, ...r }) => ({ ...r, photoURL: pv ? photoMap[r.id + '@' + pv] ?? '' : '' }) as CandidateRow)
     // Until the list itself has loaded, show nothing rather than just me (everyone else would look deleted).
     if (!ownRow || !base.length) return base
     const merged = base.some(r => r.id === ownRow.id) ? base.map(r => (r.id === ownRow.id ? ownRow : r)) : [...base, ownRow]
     return merged.sort(byRank)
-  }, [board.rows, boardFallback, fallbackRows, ownRow, photoMap])
+  }, [src.rows, boardFallback, fallbackRows, ownRow, photoMap])
   const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null, Date.now()), [rows, votes, authUser, minute]) // eslint-disable-line react-hooks/exhaustive-deps
   const me = authUser ? all.find(d => d.id === authUser.uid) : undefined
   const mine = all.filter(d => d.my && (d.my.ups > 0 || d.my.downs > 0 || d.inWeek))

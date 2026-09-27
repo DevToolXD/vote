@@ -1,4 +1,6 @@
-import { doc, getDoc, getDocFromCache, onSnapshot, type Firestore, type Unsubscribe } from 'firebase/firestore'
+import { doc, getDoc, getDocFromCache, onSnapshot, Timestamp, type Firestore, type Unsubscribe } from 'firebase/firestore'
+import { onValue, ref, type Database } from 'firebase/database'
+import { byRank } from './rank'
 import type { CandidateRow } from './candidates'
 import type { Season } from './types'
 
@@ -29,6 +31,24 @@ export function subscribeBoard(db: Firestore, cb: (rows: BoardRow[] | null, at: 
     const d = s.data({ serverTimestamps: 'estimate' })
     cb(d ? (d.rows as BoardRow[]) : null, d?.at?.toMillis?.() ?? 0, s.metadata.fromCache, { season: d?.season as Season | undefined, notices: d?.notices as string[] | undefined })
   }, () => cb(null, 0, false, {}))
+}
+
+/**
+ * The same board in the Realtime Database (board/: rows/{id} and extra as JSON strings, at
+ * in ms), which the worker keeps current on every change. Reading it costs no Firestore
+ * reads at all, so it's the first choice; rows = null when it isn't there.
+ */
+export function subscribeLiveBoard(rtdb: Database, cb: (rows: BoardRow[] | null, at: number, extra: BoardExtra) => void): () => void {
+  const revive = (_: string, v: unknown) => (v && typeof v === 'object' && typeof (v as { __ms?: unknown }).__ms === 'number' ? Timestamp.fromMillis((v as { __ms: number }).__ms) : v)
+  return onValue(ref(rtdb, 'board'), s => {
+    const d = s.val() as { rows?: Record<string, string>; extra?: string; at?: number } | null
+    if (!d?.rows) { cb(null, 0, {}); return }
+    try {
+      const rows = Object.values(d.rows).map(j => JSON.parse(j, revive) as BoardRow).sort(byRank)
+      const extra = d.extra ? JSON.parse(d.extra, revive) as { season?: Season | null; notices?: string[] } : {}
+      cb(rows, d.at ?? 0, { season: extra.season ?? undefined, notices: extra.notices ?? [] })
+    } catch { cb(null, 0, {}) }
+  }, () => cb(null, 0, {}))
 }
 
 /** One candidate doc, live (my own: instant after my own changes, with my photo). */

@@ -106,6 +106,27 @@ async function writeBoard() {
   await fdb.doc('meta/board').set({ at: FieldValue.serverTimestamp(), rows, ...extra })
   boardLast = json; boardWrittenAt = Date.now(); boardWrites++
 }
+
+// The same board in the Realtime Database, which apps read first: it has no per-read
+// charge (only data sent, and a change sends just the rows that changed), so it's written
+// on every change instead of every BOARD_MIN_MS. Each row is one JSON string, so arrays,
+// empty lists and timestamps come back exactly as in Firestore (timestamps as {__ms}).
+const plain = v => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && typeof x.toMillis === 'function' ? { __ms: x.toMillis() } : x))
+let rtRows = new Map(), rtExtra = '', rtAt = 0, rtDirty = true
+const RT_HEARTBEAT_MS = 10 * 60_000
+async function writeRtBoard() {
+  rtDirty = false
+  const next = new Map(boardRows().map(r => [r.id, plain(r)]))
+  const up = {}
+  for (const [id, j] of next) if (rtRows.get(id) !== j) up[`rows/${id}`] = j
+  for (const id of rtRows.keys()) if (!next.has(id)) up[`rows/${id}`] = null
+  const extra = plain({ season: seasonDoc, notices: noticeIds })
+  if (extra !== rtExtra) up.extra = extra
+  if (!Object.keys(up).length && Date.now() - rtAt < RT_HEARTBEAT_MS) return
+  up.at = ServerValue.TIMESTAMP
+  await rdb.ref('board').update(up)
+  rtRows = next; rtExtra = extra; rtAt = Date.now()
+}
 let boardWrites = 0
 
 // ---- sending ----
@@ -316,7 +337,7 @@ async function migrateChats() {
 import { execFile } from 'node:child_process'
 import { cert, initializeApp } from 'firebase-admin/app'
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore'
-import { getDatabase } from 'firebase-admin/database'
+import { getDatabase, ServerValue } from 'firebase-admin/database'
 
 if (LOCAL) process.env.FIRESTORE_EMULATOR_HOST = new URL(FS).host
 if (LOCAL) process.env.FIREBASE_DATABASE_EMULATOR_HOST ??= '127.0.0.1:9000'
@@ -348,7 +369,7 @@ const firstDone = new Promise(resolve => {
   listeners.push(
     listen('candidates', fdb.collection('candidates'), snap => {
       for (const c of snap.docChanges()) c.type === 'removed' ? candidates.delete(c.doc.id) : candidates.set(c.doc.id, c.doc.data())
-      if (snap.docChanges().length) boardDirty = true
+      if (snap.docChanges().length) boardDirty = rtDirty = true
     }),
     listen('settings', fdb.collection('settings'), snap => snap.docChanges().forEach(c => c.type === 'removed' ? settings.delete(c.doc.id) : settings.set(c.doc.id, c.doc.data()))),
     listen('tokens', fdb.collection('pushTokens'), snap => {
@@ -371,8 +392,8 @@ const firstDone = new Promise(resolve => {
       }
     }),
     listen('resets', fdb.collection('pwResets').where('status', '==', 'pending'), snap => { if (!snap.empty) resetsPending = true }),
-    listen('season', fdb.doc('meta/season'), snap => { const e = snap.get('endsAt'); seasonEndsAt = e ? e.toMillis() : null; seasonDoc = snap.data() ?? null; boardDirty = true }),
-    listen('notices', fdb.doc('meta/noticeIndex'), snap => { noticeIds = snap.get('ids') ?? []; boardDirty = true }),
+    listen('season', fdb.doc('meta/season'), snap => { const e = snap.get('endsAt'); seasonEndsAt = e ? e.toMillis() : null; seasonDoc = snap.data() ?? null; boardDirty = rtDirty = true }),
+    listen('notices', fdb.doc('meta/noticeIndex'), snap => { noticeIds = snap.get('ids') ?? []; boardDirty = rtDirty = true }),
   )
 })
 await firstDone
@@ -437,6 +458,7 @@ while (true) {
     await cursorRef.set({ at: Timestamp.fromMillis(cursor) }, { merge: true })
     rounds++
   }
+  if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })
   if ((boardDirty && Date.now() - boardWrittenAt >= BOARD_MIN_MS) || Date.now() - boardWrittenAt > BOARD_HEARTBEAT_MS) await writeBoard().catch(e => warn('Writing the board failed: ' + e.message))
   if (!migrated && Date.now() >= nextMigration) { nextMigration = Date.now() + 30 * 60_000; migrated = await migrateChats().catch(e => { warn('Moving chats failed (will retry): ' + e.message); return false }) }
   if (resetsPending) { resetsPending = false; await passwordResets() }
