@@ -3,9 +3,11 @@ import type React from 'react'
 import { css } from '../css'
 import { Avatar } from './Avatar'
 import { PLATE_ART } from './plateArt'
+import { AURA_PLATE } from './auraArt'
 
 const PLATES: Record<string, { bg: string; fg: string; sub: string; dark: boolean }> = {
   none: { bg: '#f2f4f6', fg: '#191f28', sub: '#6b7684', dark: false },
+  aura: { bg: 'linear-gradient(90deg,#0a0220 0%,#1c0645 45%,#10204f 100%)', fg: '#ffffff', sub: '#e2d4ff', dark: true },
   neon: { bg: 'linear-gradient(90deg,#07081a 0%,#0d0f2b 45%,#1c0b3d 100%)', fg: '#ffffff', sub: '#9fe9ff', dark: true },
   crown: { bg: 'linear-gradient(90deg,#2a0612 0%,#5c0f2a 55%,#8a1c3c 100%)', fg: '#ffe7a3', sub: '#f5c88a', dark: true },
   sakura: { bg: 'linear-gradient(90deg,#fff3f7 0%,#ffe0ea 55%,#ffc9da 100%)', fg: '#7a1f3d', sub: '#b0506f', dark: false },
@@ -37,7 +39,7 @@ export const Nameplate = memo(function Nameplate({ kind = 'none', person, sub, f
   const edge = p.dark
     ? 'inset 0 0 0 1px rgba(255,255,255,0.12),inset 0 1px 0 rgba(255,255,255,0.14)'
     : 'inset 0 0 0 1px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.8)'
-  const art = PLATE_ART[k]?.before
+  const art = k === 'aura' ? AURA_PLATE : PLATE_ART[k]?.before
   return (
     <div style={{ display: 'block', ...style }}>
       <div style={{ ...css('position:relative;width:100%;height:100%;border-radius:14px;overflow:hidden;isolation:isolate'), background: p.bg }}>
@@ -72,7 +74,7 @@ export const Nameplate = memo(function Nameplate({ kind = 'none', person, sub, f
 export function PlateBanner({ kind = 'none', fallback, name, sub, height, children }: { kind?: string; fallback: string; name: string; sub: string; height: number; children?: React.ReactNode }) {
   const k = PLATES[kind] ? kind : 'none'
   const p = PLATES[k]
-  const art = k !== 'none' ? PLATE_ART[k]?.before : undefined
+  const art = k === 'aura' ? AURA_PLATE : k !== 'none' ? PLATE_ART[k]?.before : undefined
   const fade = 'linear-gradient(180deg,#000 0%,#000 42%,rgba(0,0,0,0.55) 72%,rgba(0,0,0,0) 100%)'
   const dark = k !== 'none' ? p.dark : false
   const shadow = dark ? '0 1px 3px rgba(0,0,0,0.45)' : '0 1px 2px rgba(255,255,255,0.6)'

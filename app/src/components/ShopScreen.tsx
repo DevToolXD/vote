@@ -1,5 +1,5 @@
 import { css, sx } from '../css'
-import { FRAMES, SKINS, priceOf, skinGeom, type ItemKind } from '../data'
+import { FRAMES, LEGENDARY, SKINS, priceOf, skinGeom, type ItemKind } from '../data'
 import { FAKE_PASS_PRICE, PASS_PRICE, type PassKind } from '../backend/types'
 import { Segmented } from './AccountScreen'
 import { Avatar } from './Avatar'
@@ -56,6 +56,9 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
   )
   const tileColors = (on: boolean) => ({ background: on ? '#e8f3ff' : '#f9fafb', boxShadow: on ? 'inset 0 0 0 1.5px #3182f6' : 'none' })
   const tileFg = (on: boolean) => (on ? '#1b64da' : '#4e5968')
+  // The 레전드 set gets a night-sky tile, a spinning spectrum edge and a tag.
+  const legendTile = (on: boolean) => ({ background: 'radial-gradient(120% 90% at 50% 100%,#3a1380 0%,#160538 55%,#0a0220 100%)', boxShadow: on ? 'inset 0 0 0 2px #ffe27a,0 6px 18px -6px rgba(123,60,255,0.8)' : 'inset 0 0 0 1.5px rgba(181,140,255,0.55),0 6px 18px -8px rgba(123,60,255,0.7)' })
+  const legendTag = (pos: string) => <span className="legend-tag" style={css('position:absolute;z-index:4;height:18px;padding:0 7px;border-radius:9999px;font-size:10px;font-weight:800;letter-spacing:0.3px;color:#1a0633;display:flex;align-items:center;' + pos)}>레전드</span>
   // 보관함: only what I own, to wear with a tap.
   const inv = tab === 'inv'
   const mineOr = (list: [string, string][], kind: ItemKind) => (inv ? list.filter(([k]) => owned[kind].includes(k)) : list)
@@ -94,9 +97,10 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
             {mineOr(FRAMES, 'frame').map(([k, l]) => {
               const it = item('frame', k)
               return (
-                <button key={k} className="pr-96" onClick={() => onPick('frame', k, l)} style={sx(tile + ';padding:22px 0 12px;gap:12px;transition:transform 150ms,background 200ms,box-shadow 200ms', tileColors(it.on))}>
+                <button key={k} className="pr-96" onClick={() => onPick('frame', k, l)} style={sx(tile + ';padding:22px 0 12px;gap:12px;transition:transform 150ms,background 200ms,box-shadow 200ms', LEGENDARY.has(k) ? legendTile(it.on) : tileColors(it.on))}>
+                  {LEGENDARY.has(k) && legendTag('top:-7px;left:50%;margin-left:-22px')}
                   <span style={css('width:52px;height:52px')}><Avatar frame={k} photo={photoCss} size={52} /></span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: tileFg(it.on) }}>{l}</span>
+                  <span style={{ fontSize: 13, fontWeight: LEGENDARY.has(k) ? 800 : 600, color: LEGENDARY.has(k) ? '#ffffff' : tileFg(it.on) }}>{l}</span>
                   {it.locked && priceTag(it.price)}
                   {it.on && check(20, 'top:8px;right:8px')}
                 </button>
@@ -113,6 +117,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
               return (
                 <button key={k} className="pr-98" onClick={() => onPick('plate', k, l + ' 이름표')} aria-pressed={it.on} style={sx('position:relative;display:block;width:100%;height:60px;padding:2px;border-radius:17px;transition:transform 300ms cubic-bezier(0.34,1.4,0.64,1),box-shadow 200ms', { boxShadow: it.on ? '0 0 0 2px #3182f6' : 'none' })}>
                   <Nameplate kind={k} person={name} sub={l + ' 이름표'} frame={equipped.frame} photo={photoCss} style={{ width: '100%', height: 56 }} />
+                  {LEGENDARY.has(k) && legendTag('top:-6px;left:12px')}
                   {it.locked && (
                     <span style={css('position:absolute;top:50%;right:14px;margin-top:-12px;z-index:3;height:24px;padding:0 9px;border-radius:9999px;background:#191f28;color:#ffffff;box-shadow:0 0 0 2px rgba(255,255,255,0.9);font-size:12px;font-weight:700;display:flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums')}><LockIcon size={10} />{it.price}</span>
                   )}
@@ -131,7 +136,8 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
               {mineOr(SKINS, 'skin').map(([k, l]) => {
                 const it = item('skin', k), g = skinGeom(k, 132, false)
                 return (
-                  <button key={k} className="pr-97" onClick={() => onPick('skin', k, l)} aria-pressed={it.on} aria-label={`${l} 스킨`} style={sx(tile + ';height:200px;padding:12px 0 12px;justify-content:flex-end;gap:10px;transition:transform 300ms cubic-bezier(0.34,1.4,0.64,1),background 200ms,box-shadow 200ms', tileColors(it.on))}>
+                  <button key={k} className="pr-97" onClick={() => onPick('skin', k, l)} aria-pressed={it.on} aria-label={`${l} 스킨`} style={sx(tile + ';height:200px;padding:12px 0 12px;justify-content:flex-end;gap:10px;transition:transform 300ms cubic-bezier(0.34,1.4,0.64,1),background 200ms,box-shadow 200ms', (LEGENDARY.has(k) ? legendTile(it.on) : tileColors(it.on)))}>
+                    {LEGENDARY.has(k) && legendTag('top:-7px;left:50%;margin-left:-22px')}
                     <span style={css('position:relative;width:32px;height:132px;flex:none')}>
                       {g ? <TowerSkin g={g} /> : <span style={css('position:absolute;left:2px;right:2px;bottom:0;height:86px;border:1.5px solid #191f28;border-radius:6px;background:#ffffff;box-sizing:border-box')} />}
                     </span>

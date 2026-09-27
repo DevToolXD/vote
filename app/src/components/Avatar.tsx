@@ -1,5 +1,6 @@
 import { memo, type CSSProperties } from 'react'
 import { AVATAR_ART } from './avatarArt'
+import { AURA_AVATAR } from './auraArt'
 
 type Props = {
   frame?: string
@@ -11,7 +12,7 @@ type Props = {
 
 /** Profile photo with a Discord-style decoration frame that can overflow the circle. */
 export const Avatar = memo(function Avatar({ frame = 'none', photo = 'none', size, style }: Props) {
-  const art = AVATAR_ART[frame]
+  const art = frame === 'aura' ? AURA_AVATAR : AVATAR_ART[frame]
   const hasPhoto = !!photo && photo !== 'none'
   const innerRing = frame === 'none' || frame === 'cat' || frame === 'bunny' ? 'none' : '0 0 0 1px rgba(255,255,255,0.9)'
   return (

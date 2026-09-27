@@ -245,6 +245,18 @@ describe('profile and shop', () => {
     await denied(updateMyProfile(a, 'a', { gender: '외계인' }))
     await denied(updateDoc(doc(a, 'candidates', 'a'), { name: '다른이름' }))
   })
+  test('아우라 (레전드 set): frame, 이름표 and 막대 스킨 at 1000P each', async () => {
+    const a = await signUp('a')
+    await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 3100)
+    assert.equal(priceOf('frame', 'aura'), 1000); assert.equal(priceOf('plate', 'aura'), 1000); assert.equal(priceOf('skin', 'aura'), 1000)
+    await denied(buyItem(a, 'a', 'plate', 'aura', 1015)) // not frame + 15 like the others
+    await denied(buyItem(a, 'a', 'skin', 'aura', 125))
+    await buyItem(a, 'a', 'frame', 'aura', 1000)
+    await buyItem(a, 'a', 'plate', 'aura', 1000)
+    await buyItem(a, 'a', 'skin', 'aura', 1000)
+    const c = await read(a, 'candidates/a')
+    assert.equal(pointsOf(c), 100); assert.deepEqual([c.frame, c.plate, c.skin], ['aura', 'aura', 'aura'])
+  })
   test('buying needs enough points and the real price; no free items, no refunds', async () => {
     const a = await signUp('a')
     await denied(buyItem(a, 'a', 'frame', 'neon', priceOf('frame', 'neon')))
