@@ -67,7 +67,7 @@
         ],
         "$msg": {
           ".write": "!data.exists() && auth != null && root.child('chats/' + $chat + '/members/' + auth.uid).val() === true && (!root.child('chats/' + $chat + '/timeouts/' + auth.uid).exists() || root.child('chats/' + $chat + '/timeouts/' + auth.uid).val() <= now) && root.child('msgOff/' + auth.uid).val() !== true && (!$chat.contains('_') || root.child('msgOff/' + $chat.replace(auth.uid, '').replace('_', '')).val() !== true) && newData.child('uid').val() === auth.uid",
-          ".validate": "newData.hasChildren(['uid', 'text', 'at']) && newData.child('at').val() === now && (newData.child('kind').val() === 'image' || newData.child('text').val().length >= 1) && (!newData.child('kind').exists() || newData.child('kind').val() !== 'gift' || newData.child('giftId').isString())",
+          ".validate": "newData.hasChildren(['uid', 'text', 'at']) && newData.child('at').val() === now && (newData.child('kind').val() === 'image' || newData.child('text').val().length >= 1) && (!newData.child('kind').exists() || newData.child('kind').val() !== 'gift' || newData.child('giftId').isString()) && (newData.child('kind').val() !== 'fake' || newData.child('amount').isNumber())",
           "uid": {
             ".validate": "newData.isString()"
           },
@@ -78,7 +78,7 @@
             ".validate": "newData.isNumber()"
           },
           "kind": {
-            ".validate": "newData.isString() && newData.val().matches(/^(text|image|system|gift)$/)"
+            ".validate": "newData.isString() && newData.val().matches(/^(text|image|system|gift|fake)$/)"
           },
           "giftId": {
             ".validate": "newData.isString() && newData.val().length <= 40"
@@ -100,6 +100,9 @@
             "$other": {
               ".validate": false
             }
+          },
+          "amount": {
+            ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 100000"
           },
           "$other": {
             ".validate": false

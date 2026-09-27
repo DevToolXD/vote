@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type R
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { MEDALS } from '../data'
-import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
+import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, postFooled, sendFakeGift, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, subscribeGift, type Gift } from '../backend/gifts'
 import { saveImage } from '../saveImage'
 import type { Person } from '../model'
@@ -288,12 +288,13 @@ export function ChatRoom(p: RoomProps) {
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-  const [attach, setAttach] = useState<'menu' | 'gift' | null>(null)
+  const [attach, setAttach] = useState<'menu' | 'gift' | 'fake' | null>(null)
+  const [fooled, setFooled] = useState(false)
   // 답장: long-press (or right-click) a message for 답장/복사, or swipe it to the right.
   const [reply, setReply] = useState<ReplyRef | null>(null)
   const [actionFor, setActionFor] = useState<MessageRow | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
-  const snippet = (m: MessageRow) => m.kind === 'image' ? '사진' : m.kind === 'gift' ? m.text || '🎁 포인트 선물' : m.text
+  const snippet = (m: MessageRow) => m.kind === 'image' ? '사진' : m.kind === 'gift' || m.kind === 'fake' ? m.text || '🎁 포인트 선물' : m.text
   const startReply = (m: MessageRow) => { setReply({ id: m.id, uid: m.uid, text: snippet(m).slice(0, 100) }); setActionFor(null); setTimeout(() => inputRef.current?.focus(), 50) }
   const jumpTo = (id: string) => {
     const el = listRef.current?.querySelector(`[data-mid="${id}"]`) as HTMLElement | null
@@ -523,6 +524,11 @@ export function ChatRoom(p: RoomProps) {
             const sender = byId.get(m.uid)
             const bubble = m.kind === 'gift' && m.giftId
               ? <GiftBubble db={db} giftId={m.giftId} me={me.id} byId={byId} onClaim={p.onClaimGift} onCancel={p.onCancelGift} onLoaded={keepBottom} />
+              : m.kind === 'fake'
+              ? <FakeGiftBubble msg={m} mine={mine} dm={chat.type === 'dm'} onTake={() => {
+                  setFooled(true)
+                  if (markFooled(m.id)) postFooled(db, me.id, chat.id, `${me.name}님이 ${nameIn(byId, m.uid)}님의 페이크 선물에 속았어요 🤣`).catch(() => {})
+                }} />
               : m.kind === 'image'
               ? <ImageBubble db={db} chatId={chat.id} msgId={m.mediaId ?? m.id} onOpen={setViewer} onLoaded={keepBottom} />
               : <span style={sx('padding:10px 14px;border-radius:20px;font-size:15px;line-height:22px;white-space:pre-wrap;word-break:break-word;display:flex;flex-direction:column;gap:6px', { background: mine ? '#3182f6' : tinted ? '#ffffff' : '#f2f4f6', color: mine ? '#ffffff' : '#191f28', fontWeight: mine ? 500 : 400 })}>
@@ -639,7 +645,7 @@ export function ChatRoom(p: RoomProps) {
         {attach === 'menu' && (
           <BottomSheet onScrim={() => setAttach(null)} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));animation:sheetUp 380ms ${EASE} both`}>
             <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
-            <div className="anim-list" style={css('padding:24px 24px 8px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px')}>
+            <div className="anim-list" style={css('padding:24px 24px 8px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px')}>
               <button className="pr-96" onClick={() => { setAttach(null); fileRef.current?.click() }} style={css('display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 0;border-radius:20px;background:#f9fafb')}>
                 <span style={css('width:56px;height:56px;border-radius:9999px;background:#e8f3ff;color:#3182f6;display:flex;align-items:center;justify-content:center')}><PhotoIcon /></span>
                 <span style={css('font-size:15px;font-weight:600;color:#333d4b')}>사진</span>
@@ -647,6 +653,10 @@ export function ChatRoom(p: RoomProps) {
               <button className="pr-96" onClick={() => setAttach('gift')} style={css('display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 0;border-radius:20px;background:#f9fafb')}>
                 <span style={css('width:56px;height:56px;border-radius:9999px;background:#fff4d6;display:flex;align-items:center;justify-content:center;font-size:28px')}>🎁</span>
                 <span style={css('font-size:15px;font-weight:600;color:#333d4b')}>포인트 선물</span>
+              </button>
+              <button className="pr-96" onClick={() => setAttach('fake')} style={css('display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 0;border-radius:20px;background:#f4eeff')}>
+                <span style={css('width:56px;height:56px;border-radius:9999px;background:#8b5cf6;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 6px 16px -6px rgba(139,92,246,0.7)')}>🎁</span>
+                <span style={css('font-size:15px;font-weight:600;color:#7c3aed')}>페이크 선물</span>
               </button>
             </div>
           </BottomSheet>
@@ -658,6 +668,16 @@ export function ChatRoom(p: RoomProps) {
             onSend={async n => { if (await p.onSendGift(n)) setAttach(null) }}
           />
         )}
+        {attach === 'fake' && (
+          <GiftSheet fake
+            points={MAX_GIFT} group={chat.type === 'group'} to={chat.type === 'dm' ? v.people[0]?.name : undefined}
+            onClose={() => setAttach(null)}
+            onSend={async n => {
+              try { await sendFakeGift(db, me.id, chat.id, n); setAttach(null); p.onToast('페이크 선물을 보냈어요 😜') } catch { p.onToast('보내지 못했어요') }
+            }}
+          />
+        )}
+        {fooled && <FakeReveal onClose={() => setFooled(false)} />}
       </div>
     </div>
     </>
@@ -727,8 +747,48 @@ function GiftBubble({ db, giftId, me, byId, onClaim, onCancel, onLoaded }: { db:
   )
 }
 
+// 페이크 선물: whoever taps 받기 is told it once per message (remembered on the device).
+function wasFooled(id: string) { try { return localStorage.getItem('pv-fooled-' + id) === '1' } catch { return false } }
+function markFooled(id: string) { if (wasFooled(id)) return false; try { localStorage.setItem('pv-fooled-' + id, '1') } catch { /* private mode */ } return true }
+
+/** Looks exactly like an open GiftBubble to others; the sender sees a 페이크 tag. */
+function FakeGiftBubble({ msg, mine, dm, onTake }: { msg: MessageRow; mine: boolean; dm: boolean; onTake: () => void }) {
+  const [done, setDone] = useState(() => wasFooled(msg.id))
+  const status = mine ? '받기를 누르면 "페이크입니다!"가 떠요' : done ? '페이크였어요 😜' : dm ? '나에게 온 선물이에요' : '먼저 받는 사람이 가져가요'
+  return (
+    <span style={sx(`width:228px;border-radius:20px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px rgba(0,0,33,0.06);transition:filter 300ms ${EASE}`, { filter: done ? 'saturate(0.35)' : 'none', background: '#ffffff' })}>
+      <span style={css('padding:16px 16px 14px;background:linear-gradient(135deg,#fff1c2,#ffd66b);display:flex;align-items:center;gap:12px;position:relative')}>
+        <span style={css('font-size:34px;line-height:1')}>🎁</span>
+        <span style={css('display:flex;flex-direction:column')}>
+          <span style={css('font-size:13px;font-weight:600;color:#8a5a00')}>포인트 선물</span>
+          <span style={css('font-size:22px;line-height:30px;font-weight:800;color:#5c3d00;font-variant-numeric:tabular-nums')}>{(msg.amount ?? 0).toLocaleString()}P</span>
+        </span>
+        {mine && <span style={css('position:absolute;top:10px;right:10px;padding:2px 8px;border-radius:9999px;background:#8b5cf6;color:#fff;font-size:11px;font-weight:700')}>페이크</span>}
+      </span>
+      <span style={css('padding:10px 14px 12px;display:flex;flex-direction:column;gap:8px')}>
+        <span style={css('font-size:13px;line-height:19px;color:#6b7684')}>{status}</span>
+        {!mine && !done && <button className="pr-96" onClick={() => { setDone(true); onTake() }} style={css('height:40px;border-radius:12px;background:#3182f6;color:#fff;font-size:15px;font-weight:600')}>받기</button>}
+      </span>
+    </span>
+  )
+}
+
+/** "페이크입니다!" — full-screen pop, tap anywhere to close. */
+function FakeReveal({ onClose }: { onClose: () => void }) {
+  const close = useRef(onClose)
+  close.current = onClose
+  useEffect(() => { const t = setTimeout(() => close.current(), 2600); return () => clearTimeout(t) }, [])
+  return (
+    <div onClick={onClose} role="alert" style={css('position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(76,29,149,0.55);animation:fade 200ms ease both;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)')}>
+      <span style={css('font-size:88px;line-height:1;animation:popIn 520ms cubic-bezier(0.34,1.56,0.64,1) both')}>🤡</span>
+      <span style={css('padding:14px 26px;border-radius:9999px;background:#8b5cf6;color:#fff;font-size:30px;font-weight:800;box-shadow:0 18px 40px -12px rgba(76,29,149,0.8);animation:popIn 520ms 90ms cubic-bezier(0.34,1.56,0.64,1) both')}>페이크입니다!</span>
+      <span style={css('font-size:15px;color:rgba(255,255,255,0.9);animation:fade 300ms 300ms ease both')}>포인트는 없어요 😜</span>
+    </div>
+  )
+}
+
 /** "얼마를 선물할까요?" */
-function GiftSheet({ points, group, to, onClose, onSend }: { points: number; group: boolean; to?: string; onClose: () => void; onSend: (n: number) => Promise<void> }) {
+function GiftSheet({ points, group, to, fake, onClose, onSend }: { points: number; group: boolean; to?: string; fake?: boolean; onClose: () => void; onSend: (n: number) => Promise<void> }) {
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
   const n = Number(amount || 0)
@@ -738,22 +798,23 @@ function GiftSheet({ points, group, to, onClose, onSend }: { points: number; gro
     <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));animation:sheetUp 420ms ${EASE} both`}>
       <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
       <div style={css('padding:20px 24px 8px;display:flex;flex-direction:column;gap:4px')}>
-        <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>얼마를 선물할까요?</span>
-        <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{group ? '단톡방에서는 먼저 받는 한 명이 가져가요' : `${to ?? '상대'}님에게 보내요`} · 받기 전에는 취소할 수 있어요</span>
+        {fake && <span style={css('align-self:flex-start;margin-bottom:6px;padding:3px 10px;border-radius:9999px;background:#f4eeff;color:#7c3aed;font-size:13px;font-weight:700')}>페이크 선물</span>}
+        <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{fake ? '얼마짜리처럼 보일까요?' : '얼마를 선물할까요?'}</span>
+        <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{fake ? '진짜 선물이랑 똑같이 보여요 · 포인트는 안 나가고, 받기를 누르면 "페이크입니다!"가 떠요' : <>{group ? '단톡방에서는 먼저 받는 한 명이 가져가요' : `${to ?? '상대'}님에게 보내요`} · 받기 전에는 취소할 수 있어요</>}</span>
       </div>
       <div style={css('padding:16px 24px 0;display:flex;align-items:baseline;gap:6px')}>
         <input autoFocus inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} placeholder="0"
           style={sx('flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:34px;line-height:44px;font-weight:700;font-variant-numeric:tabular-nums', { color: amount && !ok ? '#f04452' : '#191f28' })} />
         <span style={css('font-size:26px;font-weight:700;color:#191f28')}>P</span>
       </div>
-      <div style={sx('padding:4px 24px 0;font-size:13px', { color: amount && !ok ? '#f04452' : '#8b95a1' })}>{amount && n > points ? `포인트가 모자라요 · 내 포인트 ${points.toLocaleString()}P` : `내 포인트 ${points.toLocaleString()}P`}</div>
+      {!fake && <div style={sx('padding:4px 24px 0;font-size:13px', { color: amount && !ok ? '#f04452' : '#8b95a1' })}>{amount && n > points ? `포인트가 모자라요 · 내 포인트 ${points.toLocaleString()}P` : `내 포인트 ${points.toLocaleString()}P`}</div>}
       <div className="anim-list" style={css('padding:16px 24px 0;display:flex;gap:6px;flex-wrap:wrap')}>
         {[10, 50, 100, 500].map(k => <button key={k} className="pr-96" onClick={() => add(k)} style={css('height:34px;padding:0 14px;border-radius:9999px;background:#f2f4f6;color:#4e5968;font-size:14px;font-weight:600')}>+{k}</button>)}
         <button className="pr-96" onClick={() => setAmount(String(Math.min(points, MAX_GIFT)))} style={css('height:34px;padding:0 14px;border-radius:9999px;background:#f2f4f6;color:#4e5968;font-size:14px;font-weight:600')}>전부</button>
       </div>
       <div style={css('padding:24px 20px 0')}>
         <button data-g="primary" className="pr-96" disabled={!ok || busy} onClick={async () => { setBusy(true); try { await onSend(n) } finally { setBusy(false) } }}
-          style={sx(`width:100%;height:56px;border-radius:16px;background:#3182f6;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms ${EASE}`, { opacity: ok && !busy ? 1 : 0.3 })}>{ok ? `${n.toLocaleString()}P 선물하기` : '선물하기'}</button>
+          style={sx(`width:100%;height:56px;border-radius:16px;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms ${EASE}`, { background: fake ? '#8b5cf6' : '#3182f6', opacity: ok && !busy ? 1 : 0.3 })}>{fake ? (ok ? `${n.toLocaleString()}P 페이크 선물 보내기` : '페이크 선물 보내기') : ok ? `${n.toLocaleString()}P 선물하기` : '선물하기'}</button>
       </div>
     </BottomSheet>
   )

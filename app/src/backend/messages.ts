@@ -71,9 +71,9 @@ export type ChatDoc = {
 }
 export type ChatRow = ChatDoc & { id: string }
 /** 'image': the photo itself is in Firestore chats/{id}/media/{mediaId ?? id}; 'system': e.g. "A님이 B님을 초대했어요". */
-export type MessageKind = 'text' | 'image' | 'system' | 'gift'
+export type MessageKind = 'text' | 'image' | 'system' | 'gift' | 'fake'
 export type ReplyRef = { id: string; uid: string; text: string }
-export type MessageRow = { id: string; uid: string; text: string; at: Stamp | null; kind?: MessageKind; giftId?: string; replyTo?: ReplyRef; mediaId?: string }
+export type MessageRow = { id: string; uid: string; text: string; at: Stamp | null; kind?: MessageKind; giftId?: string; amount?: number; replyTo?: ReplyRef; mediaId?: string }
 
 export const dmId = (a: string, b: string) => [a, b].sort().join('_')
 const ms = (t: Stamp | null | undefined) => (t ? t.toMillis() : 0)
@@ -146,7 +146,7 @@ export function subscribeMyChats(db: Firestore, uid: string, cb: (rows: ChatRow[
 
 /** Messages per page: the room listens to the latest page and loads older ones on scroll. */
 export const PAGE = 40
-type MsgNode = { uid: string; text: string; at: number; kind?: MessageKind; giftId?: string; replyTo?: ReplyRef; mediaId?: string }
+type MsgNode = { uid: string; text: string; at: number; kind?: MessageKind; giftId?: string; amount?: number; replyTo?: ReplyRef; mediaId?: string }
 const rowsOf = (val: Record<string, MsgNode> | null): MessageRow[] =>
   Object.entries(val ?? {}).map(([id, m]) => ({ ...m, id, at: stamp(m.at) })).sort((a, b) => (a.id < b.id ? -1 : 1))
 
@@ -266,6 +266,21 @@ export async function sendImage(db: Firestore, me: string, chatId: string, dataU
 /** A 포인트 선물 card (the gift itself is in Firestore, see gifts.ts). */
 export async function postGift(db: Firestore, me: string, chatId: string, giftId: string, text: string) {
   await post(db, me, chatId, { text, kind: 'gift', giftId }, text)
+}
+
+/**
+ * 페이크 선물: looks exactly like a 포인트 선물 card to everyone else, but no points move —
+ * tapping 받기 just shows "페이크입니다!". Only a chat message, nothing in Firestore.
+ */
+export async function sendFakeGift(db: Firestore, me: string, chatId: string, amount: number) {
+  if (!Number.isInteger(amount) || amount < 1 || amount > 100000) throw new Error('invalid-amount')
+  const text = `🎁 ${amount.toLocaleString()}P 선물`
+  await post(db, me, chatId, { text, kind: 'fake', amount }, text)
+}
+
+/** "…님이 페이크 선물에 속았어요" in the chat. */
+export async function postFooled(db: Firestore, me: string, chatId: string, text: string) {
+  await postSystem(db, me, chatId, text)
 }
 
 const imageCache = new Map<string, Promise<string>>()

@@ -14,7 +14,7 @@ import {
 import { deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, updateMyProfile } from '../src/backend/candidates'
-import { loadOlderMessages, subscribeMessages, setChatDatabase, setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markGone, markHere, markRead, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
+import { loadOlderMessages, subscribeMessages, setChatDatabase, setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markGone, markHere, markRead, openDm, sendFakeGift, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
 import { cancelGift, claimGift, sendGift, subscribeGift } from '../src/backend/gifts'
@@ -758,6 +758,18 @@ describe('포인트 선물', () => {
     await assert.rejects(claimGift(b, 'b', gid)) // only once
     await assert.rejects(cancelGift(a, 'a', gid)) // already taken
     assert.equal(await points(a, 'a'), 80)
+  })
+  test('페이크 선물: a chat message only, points untouched; needs a sane amount', async () => {
+    const a = await signUp('a'); await signUp('b')
+    const id = await openDm(a, 'a', 'b')
+    await sendFakeGift(a, 'a', id, 5000)
+    const m = (Object.values(await rt(a, `msgs/${id}`)) as { kind?: string; amount?: number; text: string }[]).find(x => x.kind === 'fake')!
+    assert.equal(m.amount, 5000); assert.equal(m.text, '🎁 5,000P 선물')
+    assert.equal(await points(a, 'a'), 0)
+    const at = { '.sv': 'timestamp' }
+    const R = (db: Firestore) => rtdbOf.get(db)!
+    await denied(rtSet(rtRef(R(a), `msgs/${id}/f1`), { uid: 'a', text: '🎁', kind: 'fake', at })) // no amount
+    await denied(rtSet(rtRef(R(a), `msgs/${id}/f2`), { uid: 'a', text: '🎁', kind: 'fake', amount: 1e9, at }))
   })
   test('group: first to tap wins; the sender can cancel an untaken gift', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c'); const d = await signUp('d')
