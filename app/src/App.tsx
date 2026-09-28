@@ -771,7 +771,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               if (other && tradeBanned(other)) { showToast(`${other.name}님은 거래 정지 중이라 선물을 받을 수 없어요`); return false }
               try { await sendGift(db!, authUser.uid, openChat, amount); showToast(`${amount.toLocaleString()}P를 선물했어요`); return true } catch (e) { failToast('선물하지 못했어요', e); return false }
             }}
-            onClaimGift={id => tradeBanned(me) ? Promise.resolve(showToast(banText(me))) : claimGift(db!, authUser.uid, id, me.owned).then(() => showToast('선물을 받았어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 다른 사람이 받았거나 취소된 선물이에요') : (e as Error)?.message === 'already-owned' ? showToast('이미 가지고 있는 아이템이에요') : failToast('받지 못했어요', e))}
+            onClaimGift={id => tradeBanned(me) ? Promise.resolve(showToast(banText(me))) : claimGift(db!, authUser.uid, id, me).then(() => showToast('선물을 받았어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 다른 사람이 받았거나 취소된 선물이에요') : (e as Error)?.message === 'already-owned' ? showToast('이미 가지고 있는 아이템이에요') : failToast('받지 못했어요', e))}
             onCancelGift={id => cancelGift(db!, authUser.uid, id).then(() => showToast('선물을 취소했어요. 포인트가 돌아왔어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 받은 선물이라 취소할 수 없어요') : failToast('취소하지 못했어요', e))}
             onSendImage={async file => {
               try { await sendImage(db!, authUser.uid, openChat.id, await fileToChatImage(file)); return true } catch (e) { failToast('사진을 보내지 못했어요', e); return false }

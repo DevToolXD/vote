@@ -256,6 +256,24 @@ service cloud.firestore {
         && d.bonus == o.get('bonus', 0) + g0.amount;
     }
     // 아이템 선물 받기: the item joins what they own (not something they already have).
+    // 패스 선물 받기: the pass becomes theirs (not one they already have). Cheap check first.
+    function giftClaimPass() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pass2x', 'passFake', 'lastGift'])
+        && 'lastGift' in request.resource.data.diff(resource.data).affectedKeys()
+        && giftClaimPassFull();
+    }
+    function giftClaimPassFull() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let g0 = get(giftPath(d.lastGift)).data;
+      let g1 = getAfter(giftPath(d.lastGift)).data;
+      let k = g0.get('itemKey', 'none');
+      return request.auth.uid == o.ownerUid && canTrade(o)
+        && g0.get('itemKind', 'none') == 'pass' && k in ['pass2x', 'passFake']
+        && d.diff(o).affectedKeys().hasOnly([k, 'lastGift'])
+        && o.get(k, false) == false && d[k] == true
+        && g0.status == 'open' && g1.status == 'claimed' && g1.claimedBy == request.auth.uid;
+    }
     // Cheap check first: this runs on every candidate update, so the gets below only happen
     // for writes that touch exactly `owned` + `lastGift`.
     function giftClaimItem() {
@@ -441,7 +459,7 @@ service cloud.firestore {
       allow update: if signedIn() && (
         (isAdmin() && existsAfter(lockPath()) && lock().at == request.time)
           ? (adminGrant(candidateId) || adminTradeBan(candidateId) || adminRevoke(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId))
-          : (ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || loginIdBackfill() || giftSend() || giftClaim() || giftClaimItem() || giftCancel())
+          : (ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || loginIdBackfill() || giftSend() || giftClaim() || giftClaimItem() || giftClaimPass() || giftCancel())
       );
 
       allow delete: if adminOp('deleteAccount') && lock().payload.target == candidateId;
@@ -877,12 +895,14 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['chatId', 'from', 'to', 'amount', 'status', 'createdAt', 'itemKind', 'itemKey'])
         && request.resource.data.from == request.auth.uid
         && request.resource.data.amount is int && request.resource.data.amount >= 1
-        // 아이템 선물: a real item (not 기본), held at exactly its shop price
+        // 아이템 선물: a real item (not 기본) or a pass, held at exactly its shop price
         && (!('itemKind' in request.resource.data) || (
               request.resource.data.itemKind in ['frame', 'plate', 'skin'] && request.resource.data.itemKey is string
               && request.resource.data.itemKey != 'none'
               && buyable(request.resource.data.itemKind, [request.resource.data.itemKey])
-              && request.resource.data.amount == price(request.resource.data.itemKind, request.resource.data.itemKey)))
+              && request.resource.data.amount == price(request.resource.data.itemKind, request.resource.data.itemKey))
+            || (request.resource.data.itemKind == 'pass' && request.resource.data.itemKey in ['pass2x', 'passFake']
+              && request.resource.data.amount == (request.resource.data.itemKey == 'pass2x' ? 5000 : 299)))
         && (('itemKind' in request.resource.data) == ('itemKey' in request.resource.data))
         && request.resource.data.status == 'open'
         && request.resource.data.createdAt == request.time
@@ -904,7 +924,9 @@ service cloud.firestore {
           && getAfter(me()).data.get('lastGift', '') == id
           && (resource.data.get('itemKind', null) == null
                 ? getAfter(me()).data.get('bonus', 0) == get(me()).data.get('bonus', 0) + resource.data.amount
-                : resource.data.itemKey in getAfter(me()).data.owned[resource.data.itemKind] && !(resource.data.itemKey in get(me()).data.owned[resource.data.itemKind]))) ||
+                : resource.data.itemKind == 'pass'
+                  ? getAfter(me()).data.get(resource.data.itemKey, false) == true && get(me()).data.get(resource.data.itemKey, false) == false
+                  : resource.data.itemKey in getAfter(me()).data.owned[resource.data.itemKind] && !(resource.data.itemKey in get(me()).data.owned[resource.data.itemKind]))) ||
         // 취소: the sender, while nobody has taken it
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'doneAt'])
           && request.resource.data.status == 'cancelled' && request.resource.data.doneAt == request.time

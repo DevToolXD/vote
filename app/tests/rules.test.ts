@@ -909,6 +909,35 @@ describe('포인트 선물', () => {
     bt.update(doc(a, 'candidates', 'a'), { spent: increment(1), lastGift: fake.id })
     await denied(bt.commit())
   })
+  test('패스 선물: 5000P / 299P held, the taker gets the pass (not if they have it), 취소 refunds', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 6000)
+    const id = await openDm(a, 'a', 'b')
+    const gids = () => rt(a, `msgs/${id}`).then(m => (Object.values(m) as { giftId?: string }[]).map(x => x.giftId).filter(Boolean) as string[])
+    await sendItemGift(a, 'a', await chatOf(a, id), 'pass', 'pass2x')
+    assert.equal(await points(a, 'a'), 1000)
+    const [g1] = await gids()
+    await claimGift(b, 'b', g1)
+    assert.equal((await read(b, 'candidates/b')).pass2x, true)
+    await sendItemGift(a, 'a', await chatOf(a, id), 'pass', 'passFake')
+    const g2 = (await gids()).find(g => g !== g1)!
+    await claimGift(b, 'b', g2)
+    assert.equal((await read(b, 'candidates/b')).passFake, true)
+    assert.equal(await points(a, 'a'), 701)
+    // b has both now: another 페이크 패스 can't be taken; a cancels it and gets the 299P back
+    await sendItemGift(a, 'a', await chatOf(a, id), 'pass', 'passFake')
+    const g3 = (await gids()).find(g => g !== g1 && g !== g2)!
+    await assert.rejects(claimGift(b, 'b', g3))
+    await cancelGift(a, 'a', g3)
+    assert.equal(await points(a, 'a'), 701)
+    // a pass at the wrong price is refused
+    const fake = doc(collection(a, 'gifts')), bt = writeBatch(a)
+    bt.set(fake, { chatId: id, from: 'a', to: 'b', amount: 1, status: 'open', createdAt: serverTimestamp(), itemKind: 'pass', itemKey: 'pass2x' })
+    bt.update(doc(a, 'candidates', 'a'), { spent: increment(1), lastGift: fake.id })
+    await denied(bt.commit())
+    // and nobody can just give themselves a pass
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { pass2x: true, lastGift: g1 }))
+  })
   test('group: first to tap wins; the sender can cancel an untaken gift', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c'); const d = await signUp('d')
     await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 300)

@@ -4,6 +4,15 @@ import {
 } from 'firebase/firestore'
 import { postGift, type ChatRow } from './messages'
 import { FRAMES, SKINS, priceOf, type ItemKind } from '../data'
+import { FAKE_PASS_PRICE, PASS_PRICE, type PassKind } from './types'
+
+/** What can be given: an item, or a pass. */
+export type GiftKind = ItemKind | 'pass'
+const PASS_NAME: Record<PassKind, string> = { pass2x: '투표 2배권', passFake: '페이크 선물 패스' }
+export const giftPrice = (kind: GiftKind, key: string) => (kind === 'pass' ? (key === 'pass2x' ? PASS_PRICE : FAKE_PASS_PRICE) : priceOf(kind, key))
+/** Does this person already have it? (then they can't take it) */
+export const hasGift = (who: { owned?: Partial<Record<ItemKind, string[]>>; pass2x?: boolean | number; passFake?: boolean } | undefined, kind: GiftKind, key: string) =>
+  !!who && (kind === 'pass' ? !!who[key as PassKind] : !!who.owned?.[kind]?.includes(key))
 
 // 포인트 선물 in chats. Sending holds the points (spent += amount); in a 1:1 only
 // the other person can take it, in a group the first member to tap does; the
@@ -20,13 +29,13 @@ export type Gift = {
   claimedBy?: string
   createdAt: Timestamp | null
   /** 아이템 선물: the item given (amount = its shop price, held from the sender). */
-  itemKind?: ItemKind
+  itemKind?: GiftKind
   itemKey?: string
 }
 
 const KIND_LABEL: Record<ItemKind, string> = { frame: '프레임', plate: '이름표', skin: '막대 스킨' }
 /** "매트릭스 프레임", "왕관 이름표" … */
-export const itemLabel = (kind: ItemKind, key: string) => `${((kind === 'skin' ? SKINS : FRAMES).find(([k]) => k === key)?.[1] ?? key)} ${KIND_LABEL[kind]}`
+export const itemLabel = (kind: GiftKind, key: string) => kind === 'pass' ? PASS_NAME[key as PassKind] ?? key : `${((kind === 'skin' ? SKINS : FRAMES).find(([k]) => k === key)?.[1] ?? key)} ${KIND_LABEL[kind]}`
 /** No real limit (only what you have); this just keeps the number sane to type. */
 export const MAX_GIFT = 1_000_000_000_000
 
@@ -46,8 +55,8 @@ export async function sendGift(db: Firestore, me: string, chat: ChatRow, amount:
 }
 
 /** 아이템 선물: holds the item's price like a 포인트 선물; whoever takes it gets the item, 취소 refunds the points. */
-export async function sendItemGift(db: Firestore, me: string, chat: ChatRow, kind: ItemKind, key: string) {
-  const amount = priceOf(kind, key)
+export async function sendItemGift(db: Firestore, me: string, chat: ChatRow, kind: GiftKind, key: string) {
+  const amount = giftPrice(kind, key)
   if (key === 'none' || amount < 1) throw new Error('invalid-item')
   const giftRef = doc(collection(db, 'gifts'))
   const to = chat.type === 'dm' ? chat.members.find(m => m !== me) ?? null : null
@@ -61,7 +70,9 @@ export async function sendItemGift(db: Firestore, me: string, chat: ChatRow, kin
   }
 }
 /** What taking a gift changes on my candidate doc: points, or the item. */
-const claimPatch = (g: Gift, giftId: string) => (g.itemKind && g.itemKey
+const claimPatch = (g: Gift, giftId: string) => (g.itemKind === 'pass' && g.itemKey
+  ? { [g.itemKey]: true, lastGift: giftId }
+  : g.itemKind && g.itemKey
   ? { [`owned.${g.itemKind}`]: arrayUnion(g.itemKey), lastGift: giftId }
   : { bonus: increment(g.amount), lastGift: giftId })
 
@@ -74,10 +85,10 @@ const seen = new Map<string, Gift>()
  * or it was cancelled. Writes directly when the gift is on screen (no reads, works even
  * when the day's read quota is used up); falls back to a transaction otherwise.
  */
-export async function claimGift(db: Firestore, me: string, giftId: string, myOwned?: Record<ItemKind, string[]>) {
+export async function claimGift(db: Firestore, me: string, giftId: string, mine?: Parameters<typeof hasGift>[0]) {
   const ref = doc(db, 'gifts', giftId)
   const g = seen.get(giftId)
-  if (g?.itemKind && g.itemKey && myOwned?.[g.itemKind]?.includes(g.itemKey)) throw new Error('already-owned')
+  if (g?.itemKind && g.itemKey && hasGift(mine, g.itemKind, g.itemKey)) throw new Error('already-owned')
   if (g && g.status === 'open' && g.from !== me && (!g.to || g.to === me)) {
     try {
       const b = writeBatch(db)
@@ -92,8 +103,8 @@ export async function claimGift(db: Firestore, me: string, giftId: string, myOwn
     if (!g || g.status !== 'open') throw new Error('gift-gone')
     if (g.from === me || (g.to && g.to !== me)) throw new Error('gift-not-yours')
     if (g.itemKind && g.itemKey) {
-      const mine = (await tx.get(doc(db, 'candidates', me))).data() as { owned?: Record<string, string[]> } | undefined
-      if (mine?.owned?.[g.itemKind]?.includes(g.itemKey)) throw new Error('already-owned')
+      const now = (await tx.get(doc(db, 'candidates', me))).data() as Parameters<typeof hasGift>[0]
+      if (hasGift(now, g.itemKind, g.itemKey)) throw new Error('already-owned')
     }
     tx.update(ref, { status: 'claimed', claimedBy: me, doneAt: serverTimestamp() })
     tx.update(doc(db, 'candidates', me), claimPatch(g, giftId))

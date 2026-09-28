@@ -174,7 +174,7 @@ async function classify(o, d) {
   if (d.lastGift && d.lastGift !== o.lastGift) {
     const g = await giftOf(d.lastGift)
     if (dSpent > 0) { out.push(g?.itemKind ? { d: -dSpent, k: 'giftItemSent', x: `${g.itemKind}:${g.itemKey}|${g.to ?? ''}` } : { d: -dSpent, k: 'giftSent', x: g?.to ?? g?.chatId ?? '' }); dSpent = 0 }
-    else if (g?.itemKind && dSpent === 0 && dBonus === 0 && newItems(o, d).length) out.push({ d: 0, k: 'giftItemClaim', x: `${g.itemKind}:${g.itemKey}|${g.from ?? ''}` })
+    else if (g?.itemKind && dSpent === 0 && dBonus === 0 && (newItems(o, d).length || (g.itemKind === 'pass' && d[g.itemKey] && !o[g.itemKey]))) out.push({ d: 0, k: 'giftItemClaim', x: `${g.itemKind}:${g.itemKey}|${g.from ?? ''}` })
     else if (dSpent < 0) { out.push({ d: -dSpent, k: 'giftCancel' }); dSpent = 0 }
     if (dBonus > 0) { out.push({ d: dBonus, k: 'giftClaim', x: g?.from ?? '' }); dBonus = 0 }
   }
