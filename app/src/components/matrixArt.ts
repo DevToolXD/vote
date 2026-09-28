@@ -51,7 +51,7 @@ function orbit(cx: number, r: number, n: number, size: number) {
 let rainFrame = ''
 for (let i = 0; i < 13; i++) rainFrame += column(5 + i * 7.5, 7 + Math.floor(rnd() * 5), 7.2, 1.2 + rnd() * 1.5, rnd() * 3, -60, 112)
 
-export const MATRIX_AVATAR = {
+export const MATRIX_AVATAR: { before: string; after: string } = {
   before:
     `<div class="mx-glow" style="position:absolute;inset:-24%;border-radius:50%;background:radial-gradient(closest-side,rgba(0,255,65,0.45),rgba(0,120,30,0.22) 55%,transparent 78%);animation:mxBreath 2.4s ease-in-out infinite"></div>` +
     // digital rain as a halo around the photo
@@ -126,3 +126,30 @@ export const MATRIX_PLATE =
 // ---- 막대 스킨 --------------------------------------------------------------------------------
 /** Glyph strips for the bar's rain columns (HTML, top to bottom; the last one is the head). */
 export const MX_STRIPS = Array.from({ length: 4 }, () => Array.from({ length: 14 }, glyph))
+
+// ---- orbiting cubes ---------------------------------------------------------------------------
+// A glowing green cube spinning in 3D, carried round an ellipse. Each orbit is drawn twice: once
+// behind the photo/bar (whole orbit) and once in front, clipped to the near half — so the cubes
+// really pass behind and in front. They also grow on the near side and shrink on the far side.
+function cube(s: string) {
+  const half = `calc(${s} / 2)`
+  const face = (t: string) => `<div style="position:absolute;inset:0;border:1px solid #7dffa0;background:rgba(0,255,65,0.16);box-shadow:inset 0 0 ${'calc(' + s + ' / 3)'} rgba(0,255,65,0.75),0 0 4px rgba(0,255,65,0.9);transform:${t} translateZ(${half})"></div>`
+  return `<div style="width:${s};height:${s};perspective:calc(${s} * 6)"><div class="mx-cube" style="position:relative;width:100%;height:100%;transform-style:preserve-3d;animation:mxCube 2.6s linear infinite">` +
+    face('rotateY(0deg)') + face('rotateY(90deg)') + face('rotateY(180deg)') + face('rotateY(-90deg)') + face('rotateX(90deg)') + face('rotateX(-90deg)') +
+    `</div></div>`
+}
+/**
+ * One orbit layer. `inset` sizes the orbit around the host, `tilt` turns the ellipse, `squash`
+ * flattens it (0.3 = seen from the side). `front` keeps only the near half.
+ */
+export function cubeOrbit({ size, inset, tilt, squash, dur, cubes, front }: { size: string; inset: string; tilt: number; squash: number; dur: number; cubes: number; front: boolean }) {
+  let out = ''
+  for (let i = 0; i < cubes; i++) {
+    const delay = -(dur / cubes) * i
+    out += `<div class="mx-orbit" style="position:absolute;inset:0;animation:avSpin ${dur}s linear ${delay}s infinite"><div style="position:absolute;left:50%;top:0;width:0;height:0"><div class="mx-orbit" style="animation:avSpin ${dur}s linear ${delay}s infinite reverse"><div style="transform:scaleY(${(1 / squash).toFixed(3)})"><div class="mx-depth" style="transform:translate(-50%,-50%);animation:mxDepth ${dur}s ease-in-out ${delay}s infinite">${cube(size)}</div></div></div></div></div>`
+  }
+  return `<div style="position:absolute;inset:${inset};transform:rotate(${tilt}deg);pointer-events:none;${front ? '-webkit-clip-path:inset(50% -40% -40% -40%);clip-path:inset(50% -40% -40% -40%)' : ''}"><div style="position:absolute;inset:0;transform:scaleY(${squash})">${out}</div></div>`
+}
+const FRAME_CUBES = { size: 'calc(var(--av, 52px) * 0.14)', inset: '-26%', tilt: -18, squash: 0.36, dur: 4.2, cubes: 2 }
+MATRIX_AVATAR.before += cubeOrbit({ ...FRAME_CUBES, front: false })
+MATRIX_AVATAR.after += cubeOrbit({ ...FRAME_CUBES, front: true })

@@ -1,7 +1,7 @@
 import { css } from '../css'
 import type { SkinGeom } from '../data'
 import { GEM } from './auraArt'
-import { MX_FONT, MX_STRIPS } from './matrixArt'
+import { MX_FONT, MX_STRIPS, cubeOrbit } from './matrixArt'
 
 const segment = 'display:block;width:100%;flex:none;background-repeat:no-repeat;background-size:100% 100%'
 
@@ -52,6 +52,18 @@ function AuraBar({ flip }: { flip: boolean }) {
   )
 }
 
+// Cubes circling the bar: a flat ellipse round the pillar that also drifts up and down it.
+const BAR_CUBES = { size: '9px', inset: '0', tilt: -8, squash: 0.3, cubes: 1 }
+const barOrbit = (front: boolean) => [
+  { top: '12%', html: cubeOrbit({ ...BAR_CUBES, dur: 3.2, front }), drift: 'mxRise 6s ease-in-out infinite alternate' },
+  { top: '60%', html: cubeOrbit({ ...BAR_CUBES, dur: 2.6, front }), drift: 'mxRise 7s ease-in-out -3s infinite alternate-reverse' },
+  { top: '35%', html: cubeOrbit({ ...BAR_CUBES, dur: 3.8, front }), drift: 'mxRise 8.5s ease-in-out -5s infinite alternate' },
+]
+const ORBIT_BACK = barOrbit(false), ORBIT_FRONT = barOrbit(true)
+const orbitLayer = (list: typeof ORBIT_BACK) => list.map(o => (
+  <span key={o.top} className="mx-rise" style={{ position: 'absolute', left: '50%', width: 60, height: 60, marginLeft: -30, marginTop: -30, top: o.top, animation: o.drift }} dangerouslySetInnerHTML={{ __html: o.html }} />
+))
+
 const RAIN: [string, number, number][] = [['14%', 1.35, 0], ['40%', 2.05, 0.7], ['66%', 1.6, 1.3], ['88%', 2.4, 0.4]]
 /** Far layer: smaller, dimmer, slower columns behind the near ones (depth). */
 const RAIN_FAR: [string, number, number][] = [['26%', 3.1, 0.3], ['54%', 2.7, 1.9], ['78%', 3.4, 1.1]]
@@ -66,6 +78,7 @@ function MatrixBar({ flip }: { flip: boolean }) {
   return (
     <span style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       <span className="mx-glow" style={css('position:absolute;left:-60%;right:-60%;top:-12px;bottom:-6px;border-radius:40%;background:radial-gradient(closest-side,rgba(0,255,65,0.35),rgba(0,120,30,0.15) 60%,transparent);animation:mxBreath 2.4s ease-in-out infinite')} />
+      {orbitLayer(ORBIT_BACK)}
       <span className="mx-glitch" style={css('position:absolute;inset:0;border-radius:5px;box-shadow:inset 0 0 0 1.5px #ff2b6a;animation:mxJitter 2.9s steps(1) infinite')} />
       <span className="mx-glitch" style={css('position:absolute;inset:0;border-radius:5px;box-shadow:inset 0 0 0 1.5px #35f0ff;animation:mxJitter 2.9s steps(1) .06s infinite')} />
       <span className="mx-shake" style={css('position:absolute;inset:0;border-radius:5px;overflow:hidden;background:linear-gradient(180deg,#03260f 0%,#010f06 45%,#000 100%);box-shadow:inset 0 0 0 1px #00ff41,inset 0 0 10px rgba(0,255,65,0.35),0 0 8px rgba(0,255,65,0.6),0 0 18px rgba(0,255,65,0.25);animation:mxShake 3.3s steps(1) infinite')}>
@@ -86,6 +99,7 @@ function MatrixBar({ flip }: { flip: boolean }) {
         <span style={css('position:absolute;inset:0;background:repeating-linear-gradient(180deg,rgba(0,0,0,0.3) 0 1px,transparent 1px 3px)')} />
       </span>
       <span className="mx-blink" style={{ ...css('position:absolute;left:50%;width:10px;margin-left:-5px;height:4px;background:#00ff41;box-shadow:0 0 6px #00ff41,0 0 12px #00ff41;animation:mxBlink 1s steps(1) infinite'), [tip]: -7 }} />
+      {orbitLayer(ORBIT_FRONT)}
       {/* shockwave off the tip, and glyphs bursting out of it */}
       <span className="mx-wave" style={{ ...css('position:absolute;left:50%;width:30px;height:8px;margin-left:-15px;border-radius:50%;border:1.5px dashed #00ff41;animation:mxWave 2.2s ease-out infinite'), [tip]: -9 }} />
       {[['-6px', 0], ['2px', 0.6], ['-1px', 1.2]].map(([dx, delay]) => (

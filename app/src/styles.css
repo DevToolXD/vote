@@ -194,3 +194,6 @@ html,body{overscroll-behavior:none}
 @keyframes mxBurstDown{0%{transform:translateY(0) scale(1);opacity:0}15%{opacity:1}100%{transform:translateY(28px) scale(0.6);opacity:0}}
 .mx-name{animation:mxName 3.4s steps(1) infinite}
 @keyframes mxName{0%,88%,100%{transform:none}89%{transform:translateX(-1.5px);text-shadow:-2px 0 #ff2b6a,2px 0 #35f0ff,0 0 6px #00ff41}91%{transform:translateX(1.5px);text-shadow:2px 0 #ff2b6a,-2px 0 #35f0ff,0 0 6px #00ff41}93%{transform:none}}
+@keyframes mxCube{from{transform:rotateX(0deg) rotateY(0deg)}to{transform:rotateX(360deg) rotateY(720deg)}}
+@keyframes mxDepth{0%,100%{transform:translate(-50%,-50%) scale(0.62);opacity:0.55;filter:brightness(0.7)}50%{transform:translate(-50%,-50%) scale(1.18);opacity:1;filter:brightness(1.25)}}
+@keyframes mxRise{from{top:10%}to{top:88%}}
