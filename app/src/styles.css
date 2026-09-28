@@ -185,3 +185,12 @@ html,body{overscroll-behavior:none}
 @keyframes mxJitter{0%,88%,100%{transform:translateX(0);opacity:0}89%{transform:translateX(-2px);opacity:0.8}92%{transform:translateX(2px);opacity:0.6}95%{opacity:0}}
 @media (prefers-reduced-motion:reduce){[class^="mx-"],[class*=" mx-"]{animation:none !important}}
 .legend-tag.mx-tag{background:#00ff41;color:#001a07;animation:mxFlick 2.2s steps(1) infinite;box-shadow:0 0 8px #00ff41,0 0 16px rgba(0,255,65,0.6);font-family:ui-monospace,Menlo,monospace}
+@keyframes mxDash{from{stroke-dashoffset:0}to{stroke-dashoffset:-317.3}}
+@keyframes mxWave{0%{transform:scale(1);opacity:0.9}100%{transform:scale(1.45);opacity:0}}
+@keyframes mxDrip{0%{transform:translateY(-4px);opacity:0}15%{opacity:1}100%{transform:translateY(26px);opacity:0}}
+@keyframes mxTicker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes mxShake{0%,90%,100%{transform:translateX(0)}91%{transform:translateX(-2px)}93%{transform:translateX(2px)}95%{transform:translateX(-1px)}}
+@keyframes mxBurst{0%{transform:translateY(0) scale(1);opacity:0}15%{opacity:1}100%{transform:translateY(-28px) scale(0.6);opacity:0}}
+@keyframes mxBurstDown{0%{transform:translateY(0) scale(1);opacity:0}15%{opacity:1}100%{transform:translateY(28px) scale(0.6);opacity:0}}
+.mx-name{animation:mxName 3.4s steps(1) infinite}
+@keyframes mxName{0%,88%,100%{transform:none}89%{transform:translateX(-1.5px);text-shadow:-2px 0 #ff2b6a,2px 0 #35f0ff,0 0 6px #00ff41}91%{transform:translateX(1.5px);text-shadow:2px 0 #ff2b6a,-2px 0 #35f0ff,0 0 6px #00ff41}93%{transform:none}}

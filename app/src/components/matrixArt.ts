@@ -31,6 +31,22 @@ const ticks = (cx: number, r1: number, r2: number, n: number, every: number) => 
 }
 const bracket = (x: number, y: number, sx: number, sy: number) => `<path d="M${x} ${y + 9 * sy}V${y}H${x + 9 * sx}" fill="none" stroke="#00ff41" stroke-width="1.6" stroke-linecap="square"></path>`
 
+/** A short column that drips down and fades out (code bleeding off the frame). */
+function drip(x: number, y: number, len: number, size: number, dur: number, delay: number) {
+  let t = ''
+  for (let i = 0; i < len; i++) t += `<tspan x="0" dy="${i ? size : 0}" fill="${i === len - 1 ? '#eafff0' : '#00ff41'}" fill-opacity="${(0.25 + 0.75 * i / (len - 1)).toFixed(2)}">${esc(glyph())}</tspan>`
+  return `<g transform="translate(${x} ${y})"><g class="mx-drip" style="animation:mxDrip ${dur}s ease-in ${delay}s infinite;opacity:0"><text transform="scale(-1 1)" font-size="${size}" font-family="${MX_FONT.replace(/"/g, '')}" text-anchor="middle" style="filter:drop-shadow(0 0 1.5px #00ff41)">${t}</text></g></g>`
+}
+/** Glyphs set around a circle (the group turns, so the code orbits). */
+function orbit(cx: number, r: number, n: number, size: number) {
+  let t = ''
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * 360, bright = i % 7 === 0
+    t += `<text transform="rotate(${a.toFixed(1)} ${cx} ${cx})" x="${cx}" y="${cx - r}" font-size="${size}" text-anchor="middle" fill="${bright ? '#eafff0' : '#00ff41'}" fill-opacity="${bright ? 1 : (0.35 + 0.5 * ((i * 37) % 10) / 10).toFixed(2)}">${esc(glyph())}</text>`
+  }
+  return t
+}
+
 // ---- frame ----------------------------------------------------------------------------------
 let rainFrame = ''
 for (let i = 0; i < 13; i++) rainFrame += column(5 + i * 7.5, 7 + Math.floor(rnd() * 5), 7.2, 1.2 + rnd() * 1.5, rnd() * 3, -60, 112)
@@ -43,7 +59,7 @@ export const MATRIX_AVATAR = {
     `<div style="position:absolute;inset:-32%;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,255,65,0.0);-webkit-mask:radial-gradient(closest-side,transparent 84%,#000 86%,#000 87%,transparent 89%);mask:radial-gradient(closest-side,transparent 84%,#000 86%,#000 87%,transparent 89%);background:#00ff41;opacity:0.55"></div>`,
   after:
     // scan line over the photo
-    `<div style="position:absolute;inset:0;border-radius:50%;overflow:hidden"><div class="mx-scan" style="position:absolute;left:0;right:0;height:22%;background:linear-gradient(180deg,transparent,rgba(0,255,65,0.28) 70%,rgba(200,255,215,0.75) 96%,transparent);animation:mxScan 2.6s cubic-bezier(.5,0,.5,1) infinite"></div><div style="position:absolute;inset:0;background:repeating-linear-gradient(180deg,rgba(0,0,0,0.08) 0 1px,transparent 1px 3px)"></div></div>` +
+    `<div style="position:absolute;inset:0;border-radius:50%;overflow:hidden"><div class="mx-scan" style="position:absolute;left:0;right:0;height:22%;background:linear-gradient(180deg,transparent,rgba(0,255,65,0.28) 70%,rgba(200,255,215,0.75) 96%,transparent);animation:mxScan 2.6s cubic-bezier(.5,0,.5,1) infinite"></div><div style="position:absolute;inset:0;background:repeating-linear-gradient(180deg,rgba(0,0,0,0.08) 0 1px,transparent 1px 3px)"></div><div class="mx-slice" style="position:absolute;left:0;right:0;top:55%;height:10%;background:linear-gradient(90deg,rgba(0,255,65,0.1),rgba(0,255,65,0.55),rgba(234,255,240,0.6),rgba(0,255,65,0.1));mix-blend-mode:screen;animation:mxSlice 3.7s steps(1) .4s infinite"></div></div>` +
     `<svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">` +
     // glitch ghosts of the main ring (flash now and then)
     `<circle class="mx-glitch" cx="61.6" cy="60" r="50.5" fill="none" stroke="#ff2b6a" stroke-width="1.4" style="animation:mxGlitch 3.1s steps(1) infinite"></circle>` +
@@ -57,6 +73,14 @@ export const MATRIX_AVATAR = {
     `<g class="mx-spin" style="transform-box:view-box;transform-origin:60px 60px;animation:avSpin 30s linear infinite"><path d="${ticks(60, 61.5, 64, 60, 5)}" stroke="#00ff41" stroke-width="0.8" opacity="0.75"></path></g>` +
     // targeting brackets
     `<g class="mx-lock" style="transform-box:view-box;transform-origin:60px 60px;animation:mxLock 3.6s ease-in-out infinite">${bracket(2, 2, 1, 1)}${bracket(118, 2, -1, 1)}${bracket(2, 118, 1, -1)}${bracket(118, 118, -1, -1)}</g>` +
+    // a streak of light running round the main ring
+    `<circle class="mx-dash" cx="60" cy="60" r="50.5" fill="none" stroke="#eafff0" stroke-width="3" stroke-linecap="round" stroke-dasharray="16 301.3" style="animation:mxDash 1.6s linear infinite;filter:drop-shadow(0 0 3px #00ff41) drop-shadow(0 0 6px #00ff41)"></circle>` +
+    // digital shockwaves
+    `<g style="transform-box:view-box;transform-origin:60px 60px"><circle class="mx-wave" cx="60" cy="60" r="52" fill="none" stroke="#00ff41" stroke-width="1.4" stroke-dasharray="3 3" style="transform-box:view-box;transform-origin:60px 60px;animation:mxWave 2.4s ease-out infinite"></circle><circle class="mx-wave" cx="60" cy="60" r="52" fill="none" stroke="#7dffa0" stroke-width="1" stroke-dasharray="1 4" style="transform-box:view-box;transform-origin:60px 60px;animation:mxWave 2.4s ease-out 1.2s infinite"></circle></g>` +
+    // a ring of code orbiting the frame
+    `<g class="mx-spin" style="transform-box:view-box;transform-origin:60px 60px;animation:avSpin 18s linear infinite reverse;font-family:${MX_FONT.replace(/"/g, '')};filter:drop-shadow(0 0 1.5px #00ff41)">${orbit(60, 68, 30, 5.2)}</g>` +
+    // code dripping off the bottom
+    drip(46, 112, 4, 5, 2.2, 0) + drip(60, 116, 5, 5.4, 2.6, 0.9) + drip(74, 112, 4, 5, 2.0, 1.6) +
     // blinking cursor + node lights on the ring
     `<rect class="mx-blink" x="56" y="3.5" width="8" height="4.2" fill="#00ff41" style="animation:mxBlink 1s steps(1) infinite;filter:drop-shadow(0 0 3px #00ff41)"></rect>` +
     `<circle cx="110.5" cy="60" r="1.8" fill="#eafff0" class="mx-blink" style="animation:mxBlink 1.4s steps(1) .3s infinite;filter:drop-shadow(0 0 3px #00ff41)"></circle>` +
@@ -66,6 +90,8 @@ export const MATRIX_AVATAR = {
 
 // ---- 이름표 ------------------------------------------------------------------------------------
 let rainPlate = ''
+// far layer first (small, dim, slow) for depth, then the near layer
+for (let i = 0; i < 40; i++) rainPlate += column(2 + i * 8, 6 + Math.floor(rnd() * 5), 5.4, 2.8 + rnd() * 2.6, rnd() * 5, -50, 90, 0.18 + 0.3 * (i / 40))
 for (let i = 0; i < 33; i++) {
   const x = 4 + i * 9.8
   rainPlate += column(x, 5 + Math.floor(rnd() * 5), 8.6, 1.4 + rnd() * 2.4, rnd() * 4, -70, 110, (0.22 + 0.78 * (x / 320) ** 1.3))
@@ -79,9 +105,13 @@ const reticle =
   `<text class="mx-flick" y="5.5" text-anchor="middle" font-size="15" font-family="${MX_FONT.replace(/"/g, '')}" fill="#eafff0" style="filter:drop-shadow(0 0 3px #00ff41);animation:mxFlick 2.2s steps(1) infinite">ﾏ</text>` +
   `</g>`
 
+const TICKER = Array.from({ length: 90 }, (_, i) => (i % 9 === 8 ? ' ' : rnd() > 0.5 ? '1' : '0')).join('') + ' WAKE UP NEO · FOLLOW THE WHITE RABBIT · '
+
 export const MATRIX_PLATE =
   `<div style="position:absolute;inset:0;overflow:hidden;border-radius:14px;background:radial-gradient(120% 140% at 85% 50%,#021f0b 0%,#010d05 55%,#000 100%)">` +
   `<svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">${rainPlate}${reticle}</svg>` +
+  // binary ticker along the bottom
+  `<div style="position:absolute;left:0;right:0;bottom:1px;height:8px;overflow:hidden;opacity:0.55"><div class="mx-ticker" style="white-space:nowrap;font:600 7px/8px ui-monospace,Menlo,monospace;color:#00ff41;text-shadow:0 0 3px #00ff41;animation:mxTicker 9s linear infinite">${TICKER}${TICKER}</div></div>` +
   // glitch slice: a band that jumps sideways now and then
   `<div class="mx-slice" style="position:absolute;left:0;right:0;top:38%;height:9%;background:linear-gradient(90deg,transparent,rgba(0,255,65,0.35),rgba(234,255,240,0.5),rgba(0,255,65,0.35),transparent);mix-blend-mode:screen;animation:mxSlice 4.2s steps(1) infinite"></div>` +
   // scan line + CRT lines + vignette
