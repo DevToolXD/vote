@@ -197,3 +197,15 @@ html,body{overscroll-behavior:none}
 @keyframes mxCube{from{transform:rotateX(0deg) rotateY(0deg)}to{transform:rotateX(360deg) rotateY(720deg)}}
 @keyframes mxDepth{0%,100%{transform:translate(-50%,-50%) scale(0.62);opacity:0.55;filter:brightness(0.7)}50%{transform:translate(-50%,-50%) scale(1.18);opacity:1;filter:brightness(1.25)}}
 @keyframes mxRise{from{top:10%}to{top:88%}}
+
+/* 대한민국 (3000P 레전드 set) */
+@keyframes krTurn{to{transform:rotate(360deg)}}
+@keyframes krHalo{0%,100%{transform:scale(0.85);opacity:0.5}50%{transform:scale(1.15);opacity:1}}
+@keyframes krFw{0%{transform:translateX(0) scale(1);opacity:0}8%{opacity:1}70%{opacity:1}100%{transform:translateX(var(--kr-r,12px)) scale(0.35);opacity:0}}
+@keyframes krFlash{0%{transform:scale(0.3);opacity:0}6%{transform:scale(1.2);opacity:1}25%{transform:scale(0.6);opacity:0}100%{opacity:0}}
+@keyframes krPetal{0%{transform:translate(0,0) rotate(0deg);opacity:0}12%{opacity:1}100%{transform:translate(-14px,60px) rotate(260deg);opacity:0}}
+@keyframes krBand{from{background-position:0 0}to{background-position:26px 0}}
+@keyframes krSpiral{from{background-position:0 0}to{background-position:0 -48px}}
+@keyframes krFall{0%{transform:translateY(0) rotate(0deg);opacity:0}15%{opacity:1}100%{transform:translateY(70px) rotate(220deg) translateX(-8px);opacity:0}}
+@media (prefers-reduced-motion:reduce){[class^="kr-"],[class*=" kr-"]{animation:none !important}}
+.legend-tag.kr-tag{background:linear-gradient(90deg,#cd2e3a,#ffffff 45%,#ffffff 55%,#0047a0);background-size:200% 100%;color:#0b1d4a;animation:auraFlowX 3s linear infinite;box-shadow:0 0 8px rgba(242,199,92,0.9)}

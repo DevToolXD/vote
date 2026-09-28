@@ -5,7 +5,7 @@ import { FRAMES, SKINS } from '../data'
 // Realtime Database (ledger/{uid}; ledgerFeed and alerts for the admin). See
 // .github/scripts/send-notifications.mjs (classify / record).
 
-export type LedgerKind = 'vote' | 'giftSent' | 'giftClaim' | 'giftCancel' | 'buy' | 'pass' | 'grant' | 'season' | 'app' | 'revoke' | 'other'
+export type LedgerKind = 'vote' | 'giftSent' | 'giftClaim' | 'giftCancel' | 'buy' | 'pass' | 'grant' | 'season' | 'app' | 'revoke' | 'giftItemSent' | 'giftItemClaim' | 'other'
 /** d = point change; n = how many 추천 one 'vote' line adds up; x = detail (item, other person); u = whose (feed only). */
 export type LedgerRow = { id: string; at: number; d: number; k: LedgerKind; x?: string; n?: number; u?: string }
 /** 수상한 포인트 증가: gained within the worker's window (since → at). */
@@ -33,6 +33,13 @@ export function describe(r: LedgerRow, nameOf: (uid: string) => string): { icon:
     case 'vote': return r.d > 0 ? { icon: '👍', text: r.n && r.n > 1 ? `추천 ${r.d}개 받음` : '추천 받음' } : { icon: '↩️', text: '추천 취소됨' }
     case 'giftSent': return { icon: '🎁', text: r.x && !r.x.includes('_') && nameOf(r.x) ? `${nameOf(r.x)}님에게 선물` : '포인트 선물 보냄' }
     case 'giftClaim': return { icon: '🎁', text: r.x ? `${nameOf(r.x) || '누군가'}님이 준 선물 받음` : '선물 받음' }
+    case 'giftItemSent': case 'giftItemClaim': {
+      const [item, who] = (r.x ?? '').split('|'), [k, key] = item.split(':')
+      const label = `${itemName(k, key)} ${ITEM_KIND[k] ?? ''}`
+      return r.k === 'giftItemSent'
+        ? { icon: '🛍️', text: who && nameOf(who) ? `${nameOf(who)}님에게 ${label} 선물` : `${label} 선물 보냄` }
+        : { icon: '🛍️', text: `${nameOf(who) || '누군가'}님이 준 ${label} 받음` }
+    }
     case 'giftCancel': return { icon: '↩️', text: '선물 취소 · 돌려받음' }
     case 'buy': return { icon: '🛒', text: (r.x ?? '').split(',').filter(Boolean).map(s => { const [k, key] = s.split(':'); return `${ITEM_KIND[k] ?? ''} ${itemName(k, key)}` }).join(', ') + ' 구매' }
     case 'revoke': return { icon: '📦', text: (r.x ?? '').split(',').filter(Boolean).map(s => { if (s === 'pass2x') return '투표 2배권'; if (s === 'passFake') return '페이크 선물 패스'; const [k, key] = s.split(':'); return `${ITEM_KIND[k] ?? ''} ${itemName(k, key)}` }).join(', ') + ' 관리자가 수거' }

@@ -142,11 +142,11 @@ function cube(s: string) {
  * One orbit layer. `inset` sizes the orbit around the host, `tilt` turns the ellipse, `squash`
  * flattens it (0.3 = seen from the side). `front` keeps only the near half.
  */
-export function cubeOrbit({ size, inset, tilt, squash, dur, cubes, front }: { size: string; inset: string; tilt: number; squash: number; dur: number; cubes: number; front: boolean }) {
+export function cubeOrbit({ size, inset, tilt, squash, dur, cubes, front, inner }: { size: string; inset: string; tilt: number; squash: number; dur: number; cubes: number; front: boolean; inner?: (i: number) => string }) {
   let out = ''
   for (let i = 0; i < cubes; i++) {
     const delay = -(dur / cubes) * i
-    out += `<div class="mx-orbit" style="position:absolute;inset:0;animation:avSpin ${dur}s linear ${delay}s infinite"><div style="position:absolute;left:50%;top:0;width:0;height:0"><div class="mx-orbit" style="animation:avSpin ${dur}s linear ${delay}s infinite reverse"><div style="transform:scaleY(${(1 / squash).toFixed(3)})"><div class="mx-depth" style="transform:translate(-50%,-50%);animation:mxDepth ${dur}s ease-in-out ${delay}s infinite">${cube(size)}</div></div></div></div></div>`
+    out += `<div class="mx-orbit" style="position:absolute;inset:0;animation:avSpin ${dur}s linear ${delay}s infinite"><div style="position:absolute;left:50%;top:0;width:0;height:0"><div class="mx-orbit" style="animation:avSpin ${dur}s linear ${delay}s infinite reverse"><div style="transform:scaleY(${(1 / squash).toFixed(3)})"><div class="mx-depth" style="transform:translate(-50%,-50%);animation:mxDepth ${dur}s ease-in-out ${delay}s infinite">${inner ? inner(i) : cube(size)}</div></div></div></div></div>`
   }
   return `<div style="position:absolute;inset:${inset};transform:rotate(${tilt}deg);pointer-events:none;${front ? '-webkit-clip-path:inset(50% -40% -40% -40%);clip-path:inset(50% -40% -40% -40%)' : ''}"><div style="position:absolute;inset:0;transform:scaleY(${squash})">${out}</div></div>`
 }

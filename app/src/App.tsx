@@ -21,7 +21,7 @@ import { SupportFlow, SupportRoom } from './components/SupportScreen'
 import { closeTicket, linkTicket, sendSupport, subscribeLinkedTickets, subscribeTicket, subscribeTickets, type Ticket } from './backend/support'
 import { markNoticeSeen, nextUnseenNotice, pollResults, postNotice, subscribeNoticeIndex, voteNotice, type Notice } from './backend/notices'
 import { NoticeScreen } from './components/NoticeScreen'
-import { cancelGift, claimGift, sendGift } from './backend/gifts'
+import { cancelGift, claimGift, itemLabel, sendGift, sendItemGift } from './backend/gifts'
 import { BuyDialog, Dialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
@@ -759,13 +759,19 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             fakePass={hasFakePass(me)}
             onBuyFakePass={() => setPassAsk('passFake')}
             onToast={showToast}
+            onSendItemGift={async (kind, key) => {
+              const other = openChat.type === 'dm' ? byId.get(openChat.members.find(m => m !== authUser.uid) ?? '') : undefined
+              if (tradeBanned(me)) { showToast(banText(me)); return false }
+              if (other && tradeBanned(other)) { showToast(`${other.name}님은 거래 정지 중이라 선물을 받을 수 없어요`); return false }
+              try { await sendItemGift(db!, authUser.uid, openChat, kind, key); showToast(`${itemLabel(kind, key)}을(를) 선물했어요`); return true } catch (e) { failToast('선물하지 못했어요', e); return false }
+            }}
             onSendGift={async amount => {
               const other = openChat.type === 'dm' ? byId.get(openChat.members.find(m => m !== authUser.uid) ?? '') : undefined
               if (tradeBanned(me)) { showToast(banText(me)); return false }
               if (other && tradeBanned(other)) { showToast(`${other.name}님은 거래 정지 중이라 선물을 받을 수 없어요`); return false }
               try { await sendGift(db!, authUser.uid, openChat, amount); showToast(`${amount.toLocaleString()}P를 선물했어요`); return true } catch (e) { failToast('선물하지 못했어요', e); return false }
             }}
-            onClaimGift={id => tradeBanned(me) ? Promise.resolve(showToast(banText(me))) : claimGift(db!, authUser.uid, id).then(() => showToast('선물을 받았어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 다른 사람이 받았거나 취소된 선물이에요') : failToast('받지 못했어요', e))}
+            onClaimGift={id => tradeBanned(me) ? Promise.resolve(showToast(banText(me))) : claimGift(db!, authUser.uid, id, me.owned).then(() => showToast('선물을 받았어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 다른 사람이 받았거나 취소된 선물이에요') : (e as Error)?.message === 'already-owned' ? showToast('이미 가지고 있는 아이템이에요') : failToast('받지 못했어요', e))}
             onCancelGift={id => cancelGift(db!, authUser.uid, id).then(() => showToast('선물을 취소했어요. 포인트가 돌아왔어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 받은 선물이라 취소할 수 없어요') : failToast('취소하지 못했어요', e))}
             onSendImage={async file => {
               try { await sendImage(db!, authUser.uid, openChat.id, await fileToChatImage(file)); return true } catch (e) { failToast('사진을 보내지 못했어요', e); return false }

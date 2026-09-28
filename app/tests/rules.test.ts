@@ -17,7 +17,7 @@ import { buyItem, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, upda
 import { loadOlderMessages, subscribeMessages, setChatDatabase, setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markGone, markHere, markRead, openDm, sendFakeGift, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
-import { cancelGift, claimGift, sendGift, subscribeGift } from '../src/backend/gifts'
+import { cancelGift, claimGift, sendGift, sendItemGift, subscribeGift } from '../src/backend/gifts'
 import { markNoticeSeen, nextUnseenNotice, pollResults, postNotice, voteNotice } from '../src/backend/notices'
 import { DEFAULT_REWARDS, computeRewards } from '../src/backend/rewards'
 import { buildPeople } from '../src/model'
@@ -244,6 +244,15 @@ describe('profile and shop', () => {
     await denied(updateMyProfile(a, 'a', { bio: 'x'.repeat(61) }))
     await denied(updateMyProfile(a, 'a', { gender: '외계인' }))
     await denied(updateDoc(doc(a, 'candidates', 'a'), { name: '다른이름' }))
+  })
+  test('대한민국 (레전드 set): frame, 이름표 and 막대 스킨 at 3000P each', async () => {
+    const a = await signUp('a')
+    await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 9000)
+    for (const k of ['frame', 'plate', 'skin'] as const) assert.equal(priceOf(k, 'korea'), 3000)
+    await denied(buyItem(a, 'a', 'plate', 'korea', 2000))
+    for (const k of ['frame', 'plate', 'skin'] as const) await buyItem(a, 'a', k, 'korea', 3000)
+    const c = await read(a, 'candidates/a')
+    assert.equal(pointsOf(c), 0); assert.deepEqual([c.frame, c.plate, c.skin], ['korea', 'korea', 'korea'])
   })
   test('매트릭스 (레전드 set): frame, 이름표 and 막대 스킨 at 2000P each', async () => {
     const a = await signUp('a')
@@ -859,6 +868,31 @@ describe('포인트 선물', () => {
     await revokeItem(admin, ADMIN.uid, 'a', 'passFake', '')
     assert.equal((await read(a, 'candidates/a')).passFake, undefined)
     await assert.rejects(revokeItem(admin, ADMIN.uid, 'a', 'frame', 'crown')) // doesn't have it
+  })
+  test('아이템 선물: the price is held, the taker gets the item (not twice, not if owned), 취소 refunds', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 5000)
+    const id = await openDm(a, 'a', 'b')
+    await sendItemGift(a, 'a', await chatOf(a, id), 'frame', 'matrix')
+    assert.equal(await points(a, 'a'), 3000)
+    const gids = () => rt(a, `msgs/${id}`).then(m => (Object.values(m) as { giftId?: string }[]).map(x => x.giftId).filter(Boolean) as string[])
+    const [g1] = await gids()
+    await claimGift(b, 'b', g1)
+    const cb = await read(b, 'candidates/b')
+    assert.ok(cb.owned.frame.includes('matrix')); assert.equal(pointsOf(cb), 0) // the item, not points
+    await assert.rejects(claimGift(b, 'b', g1)) // only once
+    // b already has it now: a second copy can't be taken, and a can cancel it for a refund
+    await sendItemGift(a, 'a', await chatOf(a, id), 'frame', 'matrix')
+    const g2 = (await gids()).find(g => g !== g1)!
+    await assert.rejects(claimGift(b, 'b', g2))
+    await cancelGift(a, 'a', g2)
+    assert.equal(await points(a, 'a'), 3000)
+    // a price that isn't the shop price, or 기본, is refused
+    const fake = doc(collection(a, 'gifts'))
+    const bt = writeBatch(a)
+    bt.set(fake, { chatId: id, from: 'a', to: 'b', amount: 1, status: 'open', createdAt: serverTimestamp(), itemKind: 'frame', itemKey: 'matrix' })
+    bt.update(doc(a, 'candidates', 'a'), { spent: increment(1), lastGift: fake.id })
+    await denied(bt.commit())
   })
   test('group: first to tap wins; the sender can cancel an untaken gift', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c'); const d = await signUp('d')

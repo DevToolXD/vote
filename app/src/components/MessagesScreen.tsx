@@ -3,7 +3,10 @@ import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { MEDALS } from '../data'
 import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, postFooled, sendFakeGift, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
-import { MAX_GIFT, subscribeGift, type Gift } from '../backend/gifts'
+import { MAX_GIFT, itemLabel, subscribeGift, type Gift } from '../backend/gifts'
+import { FRAMES, SKINS, LEGENDARY, priceOf, skinGeom, type ItemKind } from '../data'
+import { Nameplate } from './Nameplate'
+import { TowerSkin } from './TowerSkin'
 import { saveImage } from '../saveImage'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
@@ -263,6 +266,8 @@ type RoomProps = {
   onSendImage: (file: File) => Promise<boolean>
   myPoints: number
   onSendGift: (amount: number) => Promise<boolean>
+  /** 아이템 선물: sends an item (its price is held until someone takes it). */
+  onSendItemGift: (kind: ItemKind, key: string) => Promise<boolean>
   /** Owns the 페이크 선물 패스 (else the 페이크 선물 tile offers to buy it). */
   fakePass: boolean
   onBuyFakePass: () => void
@@ -288,7 +293,7 @@ export function ChatRoom(p: RoomProps) {
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-  const [attach, setAttach] = useState<'menu' | 'gift' | 'fake' | null>(null)
+  const [attach, setAttach] = useState<'menu' | 'gift' | 'item' | 'fake' | null>(null)
   const [fooled, setFooled] = useState(false)
   // 답장: long-press (or right-click) a message for 답장/복사, or swipe it to the right.
   const [reply, setReply] = useState<ReplyRef | null>(null)
@@ -523,7 +528,7 @@ export function ChatRoom(p: RoomProps) {
             const lastOfRun = !next || next.uid !== m.uid || next.kind === 'system' || (next.at?.toMillis() ?? 0) - at > 60_000 || clock(next.at?.toMillis() ?? 0) !== clock(at)
             const sender = byId.get(m.uid)
             const bubble = m.kind === 'gift' && m.giftId
-              ? <GiftBubble db={db} giftId={m.giftId} me={me.id} byId={byId} onClaim={p.onClaimGift} onCancel={p.onCancelGift} onLoaded={keepBottom} />
+              ? <GiftBubble db={db} giftId={m.giftId} me={me.id} myOwned={me.owned} byId={byId} onClaim={p.onClaimGift} onCancel={p.onCancelGift} onLoaded={keepBottom} />
               : m.kind === 'fake'
               ? <FakeGiftBubble msg={m} mine={mine} dm={chat.type === 'dm'} onTake={() => {
                   setFooled(true)
@@ -645,7 +650,7 @@ export function ChatRoom(p: RoomProps) {
         {attach === 'menu' && (
           <BottomSheet onScrim={() => setAttach(null)} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));animation:sheetUp 380ms ${EASE} both`}>
             <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
-            <div className="anim-list" style={css('padding:24px 24px 8px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px')}>
+            <div className="anim-list" style={css('padding:24px 24px 8px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px')}>
               <button className="pr-96" onClick={() => { setAttach(null); fileRef.current?.click() }} style={css('display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 0;border-radius:20px;background:#f9fafb')}>
                 <span style={css('width:56px;height:56px;border-radius:9999px;background:#e8f3ff;color:#3182f6;display:flex;align-items:center;justify-content:center')}><PhotoIcon /></span>
                 <span style={css('font-size:15px;font-weight:600;color:#333d4b')}>사진</span>
@@ -653,6 +658,10 @@ export function ChatRoom(p: RoomProps) {
               <button className="pr-96" onClick={() => setAttach('gift')} style={css('display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 0;border-radius:20px;background:#f9fafb')}>
                 <span style={css('width:56px;height:56px;border-radius:9999px;background:#fff4d6;display:flex;align-items:center;justify-content:center;font-size:28px')}>🎁</span>
                 <span style={css('font-size:15px;font-weight:600;color:#333d4b')}>포인트 선물</span>
+              </button>
+              <button className="pr-96" onClick={() => setAttach('item')} style={css('display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 0;border-radius:20px;background:#f9fafb')}>
+                <span style={css('width:56px;height:56px;border-radius:9999px;background:#e5fbef;display:flex;align-items:center;justify-content:center;font-size:28px')}>🛍️</span>
+                <span style={css('font-size:15px;font-weight:600;color:#333d4b')}>아이템 선물</span>
               </button>
               <button className="pr-96" onClick={() => { if (p.fakePass) setAttach('fake'); else { setAttach(null); p.onBuyFakePass() } }} style={css('position:relative;display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 0;border-radius:20px;background:#f4eeff')}>
                 {!p.fakePass && <span style={css('position:absolute;top:8px;right:8px;padding:1px 7px;border-radius:9999px;background:#8b5cf6;color:#fff;font-size:11px;font-weight:700')}>패스</span>}
@@ -668,6 +677,11 @@ export function ChatRoom(p: RoomProps) {
             onClose={() => setAttach(null)}
             onSend={async n => { if (await p.onSendGift(n)) setAttach(null) }}
           />
+        )}
+        {attach === 'item' && (
+          <ItemGiftSheet points={p.myPoints} group={chat.type === 'group'} to={chat.type === 'dm' ? v.people[0] : undefined}
+            onClose={() => setAttach(null)}
+            onSend={async (k, key) => { if (await p.onSendItemGift(k, key)) setAttach(null) }} />
         )}
         {attach === 'fake' && (
           <GiftSheet fake
@@ -716,7 +730,7 @@ function ImageViewer({ src, onClose, onToast }: { src: string; onClose: () => vo
 }
 
 /** Kakao-style gift card in the chat: 받기 / 취소하기 / who got it. */
-function GiftBubble({ db, giftId, me, byId, onClaim, onCancel, onLoaded }: { db: Firestore; giftId: string; me: string; byId: Map<string, Person>; onClaim: (id: string) => Promise<unknown>; onCancel: (id: string) => Promise<unknown>; onLoaded?: () => void }) {
+function GiftBubble({ db, giftId, me, myOwned, byId, onClaim, onCancel, onLoaded }: { db: Firestore; giftId: string; me: string; myOwned?: Record<ItemKind, string[]>; byId: Map<string, Person>; onClaim: (id: string) => Promise<unknown>; onCancel: (id: string) => Promise<unknown>; onLoaded?: () => void }) {
   const [g, setG] = useState<Gift | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   // Listen only while it can still change; a taken or cancelled gift is final.
@@ -725,13 +739,26 @@ function GiftBubble({ db, giftId, me, byId, onClaim, onCancel, onLoaded }: { db:
   useEffect(() => { if (g) onLoaded?.() }, [g?.status]) // eslint-disable-line react-hooks/exhaustive-deps
   const amount = g ? g.amount.toLocaleString() + 'P' : ''
   const mine = g?.from === me
-  const canTake = !!g && g.status === 'open' && !mine && (!g.to || g.to === me)
+  const item = g?.itemKind && g.itemKey ? { kind: g.itemKind, key: g.itemKey } : null
+  const haveIt = !!item && !!myOwned?.[item.kind]?.includes(item.key)
+  const canTake = !!g && g.status === 'open' && !mine && (!g.to || g.to === me) && !haveIt
   const done = g?.status !== 'open'
   const status = !g ? '불러오는 중이에요' : g.status === 'claimed' ? (g.claimedBy === me ? '내가 받았어요' : `${byId.get(g.claimedBy ?? '')?.name ?? '누군가'}님이 받았어요`)
     : g.status === 'cancelled' ? '취소된 선물이에요'
+    : haveIt && !mine ? '이미 가지고 있는 아이템이라 받을 수 없어요'
     : mine ? (g.to ? '아직 받지 않았어요' : '먼저 받는 한 명이 가져가요') : g.to ? '나에게 온 선물이에요' : '먼저 받는 사람이 가져가요'
   return (
     <span style={sx(`width:228px;border-radius:20px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px rgba(0,0,33,0.06);transition:filter 300ms ${EASE}`, { filter: done ? 'saturate(0.35)' : 'none', background: '#ffffff' })}>
+      {item ? (
+        <span style={css('padding:14px 14px 12px;background:linear-gradient(135deg,#e9fff3,#b9f5d3);display:flex;flex-direction:column;gap:10px')}>
+          <span style={css('display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#0a6b3a')}>🛍️ 아이템 선물{LEGENDARY.has(item.key) && <span className="legend-tag" style={css('height:16px;padding:0 6px;border-radius:9999px;font-size:10px;font-weight:800;color:#1a0633;display:flex;align-items:center')}>레전드</span>}</span>
+          <ItemPreview kind={item.kind} k={item.key} name={byId.get(g!.from)?.name ?? ''} />
+          <span style={css('display:flex;justify-content:space-between;align-items:baseline')}>
+            <span style={css('font-size:16px;font-weight:800;color:#063d22')}>{itemLabel(item.kind, item.key)}</span>
+            <span style={css('font-size:12px;font-weight:600;color:#2f7a52;font-variant-numeric:tabular-nums')}>{g!.amount.toLocaleString()}P</span>
+          </span>
+        </span>
+      ) : (
       <span style={css('padding:16px 16px 14px;background:linear-gradient(135deg,#fff1c2,#ffd66b);display:flex;align-items:center;gap:12px')}>
         <span style={css('font-size:34px;line-height:1')}>🎁</span>
         <span style={css('display:flex;flex-direction:column')}>
@@ -739,6 +766,7 @@ function GiftBubble({ db, giftId, me, byId, onClaim, onCancel, onLoaded }: { db:
           <span style={css('font-size:22px;line-height:30px;font-weight:800;color:#5c3d00;font-variant-numeric:tabular-nums')}>{amount}</span>
         </span>
       </span>
+      )}
       <span style={css('padding:10px 14px 12px;display:flex;flex-direction:column;gap:8px')}>
         <span style={css('font-size:13px;line-height:19px;color:#6b7684')}>{status}</span>
         {canTake && <button className="pr-96" disabled={busy} onClick={() => { setBusy(true); onClaim(giftId).finally(() => setBusy(false)) }} style={sx('height:40px;border-radius:12px;background:#3182f6;color:#fff;font-size:15px;font-weight:600', { opacity: busy ? 0.5 : 1 })}>받기</button>}
@@ -785,6 +813,58 @@ function FakeReveal({ onClose }: { onClose: () => void }) {
       <span style={css('padding:14px 26px;border-radius:9999px;background:#8b5cf6;color:#fff;font-size:30px;font-weight:800;box-shadow:0 18px 40px -12px rgba(76,29,149,0.8);animation:popIn 520ms 90ms cubic-bezier(0.34,1.56,0.64,1) both')}>페이크입니다!</span>
       <span style={css('font-size:15px;color:rgba(255,255,255,0.9);animation:fade 300ms 300ms ease both')}>포인트는 없어요 😜</span>
     </div>
+  )
+}
+
+/** What the item looks like: a frame on an avatar, the 이름표 itself, or the bar skin. */
+function ItemPreview({ kind, k, name }: { kind: ItemKind; k: string; name: string }) {
+  if (kind === 'frame') return <span style={css('align-self:center;width:64px;height:64px;margin:6px 0')}><Avatar frame={k} size={64} /></span>
+  if (kind === 'plate') return <Nameplate kind={k} person={name || '이름'} sub="선물 받은 이름표" style={{ width: '100%', height: 48 }} />
+  const g = skinGeom(k, 70, false)
+  return <span style={css('align-self:center;position:relative;width:26px;height:70px;margin:12px 0 2px')}>{g && <TowerSkin g={g} />}</span>
+}
+
+/** 아이템 선물: pick a frame / 이름표 / 막대 스킨 to give. */
+function ItemGiftSheet({ points, group, to, onClose, onSend }: { points: number; group: boolean; to?: Person; onClose: () => void; onSend: (kind: ItemKind, key: string) => Promise<void> }) {
+  const [kind, setKind] = useState<ItemKind>('frame')
+  const [pick, setPick] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const list = (kind === 'skin' ? SKINS : FRAMES).filter(([k]) => k !== 'none')
+  const has = (k: string) => !!to?.owned?.[kind]?.includes(k)
+  const price = pick ? priceOf(kind, pick) : 0
+  const ok = !!pick && price <= points && !has(pick)
+  return (
+    <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(16px + env(safe-area-inset-bottom));animation:sheetUp 420ms ${EASE} both`}>
+      <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
+      <div style={css('padding:20px 24px 8px;display:flex;flex-direction:column;gap:4px')}>
+        <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>어떤 아이템을 선물할까요?</span>
+        <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{group ? '단톡방에서는 먼저 받는 한 명이 가져가요' : `${to?.name ?? '상대'}님에게 보내요`} · 받기 전에 취소하면 포인트가 돌아와요</span>
+      </div>
+      <div style={css('padding:8px 24px 12px;display:flex;gap:6px')}>
+        {(['frame', 'plate', 'skin'] as ItemKind[]).map(k => (
+          <button key={k} className="pr-96" onClick={() => { setKind(k); setPick(null) }} style={sx('height:34px;padding:0 14px;border-radius:9999px;font-size:14px;font-weight:700', { background: kind === k ? '#191f28' : '#f2f4f6', color: kind === k ? '#fff' : '#4e5968' })}>{k === 'frame' ? '프레임' : k === 'plate' ? '이름표' : '막대 스킨'}</button>
+        ))}
+      </div>
+      <div className="anim-list" style={sx('padding:4px 24px 0;max-height:38vh;overflow-y:auto;display:grid;gap:8px', { gridTemplateColumns: kind === 'plate' ? '1fr' : 'repeat(auto-fill,minmax(92px,1fr))' })}>
+        {list.map(([k, l]) => {
+          const on = pick === k, owned = has(k), legend = LEGENDARY.has(k)
+          return (
+            <button key={k} className="pr-96" disabled={owned} onClick={() => setPick(k)}
+              style={sx('position:relative;border-radius:16px;padding:10px 8px 8px;display:flex;flex-direction:column;align-items:center;gap:6px;transition:box-shadow 150ms', { background: legend ? (k === 'matrix' ? '#021a0b' : k === 'korea' ? '#0d1b3d' : '#160538') : '#f9fafb', boxShadow: on ? 'inset 0 0 0 2px #3182f6' : 'none', opacity: owned ? 0.45 : 1 })}>
+              {kind === 'frame' && <span style={css('width:48px;height:48px;margin:4px')}><Avatar frame={k} size={48} /></span>}
+              {kind === 'plate' && <Nameplate kind={k} person={to?.name ?? '이름'} sub={l + ' 이름표'} style={{ width: '100%', height: 46 }} />}
+              {kind === 'skin' && <span style={css('position:relative;width:22px;height:60px;margin:6px 0 2px')}>{skinGeom(k, 60, false) && <TowerSkin g={skinGeom(k, 60, false)!} />}</span>}
+              <span style={sx('font-size:12px;font-weight:700', { color: legend ? '#fff' : '#333d4b' })}>{kind === 'plate' ? '' : l} {owned ? '· 이미 있음' : `${priceOf(kind, k).toLocaleString()}P`}</span>
+            </button>
+          )
+        })}
+      </div>
+      <div style={css('padding:14px 20px 0')}>
+        <div style={sx('padding:0 4px 8px;font-size:13px', { color: pick && price > points ? '#f04452' : '#8b95a1' })}>{pick && price > points ? `포인트가 모자라요 · 내 포인트 ${points.toLocaleString()}P` : `내 포인트 ${points.toLocaleString()}P`}</div>
+        <button data-g="primary" className="pr-96" disabled={!ok || busy} onClick={async () => { if (!pick) return; setBusy(true); try { await onSend(kind, pick) } finally { setBusy(false) } }}
+          style={sx(`width:100%;height:56px;border-radius:16px;background:#3182f6;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms ${EASE}`, { opacity: ok && !busy ? 1 : 0.3 })}>{pick ? `${itemLabel(kind, pick)} 선물하기 · ${price.toLocaleString()}P` : '아이템을 골라주세요'}</button>
+      </div>
+    </BottomSheet>
   )
 }
 

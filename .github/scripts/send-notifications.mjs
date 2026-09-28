@@ -173,19 +173,20 @@ async function classify(o, d) {
   if (d.appBonus && !o.appBonus) { out.push({ d: 300, k: 'app' }); dBonus -= 300 }
   if (d.lastGift && d.lastGift !== o.lastGift) {
     const g = await giftOf(d.lastGift)
-    if (dSpent > 0) { out.push({ d: -dSpent, k: 'giftSent', x: g?.to ?? g?.chatId ?? '' }); dSpent = 0 }
+    if (dSpent > 0) { out.push(g?.itemKind ? { d: -dSpent, k: 'giftItemSent', x: `${g.itemKind}:${g.itemKey}|${g.to ?? ''}` } : { d: -dSpent, k: 'giftSent', x: g?.to ?? g?.chatId ?? '' }); dSpent = 0 }
+    else if (g?.itemKind && dSpent === 0 && dBonus === 0 && newItems(o, d).length) out.push({ d: 0, k: 'giftItemClaim', x: `${g.itemKind}:${g.itemKey}|${g.from ?? ''}` })
     else if (dSpent < 0) { out.push({ d: -dSpent, k: 'giftCancel' }); dSpent = 0 }
     if (dBonus > 0) { out.push({ d: dBonus, k: 'giftClaim', x: g?.from ?? '' }); dBonus = 0 }
   }
   for (const pass of ['pass2x', 'passFake']) if (d[pass] && !o[pass] && dSpent > 0) { const cost = pass === 'passFake' ? Math.min(dSpent, 299) : Math.min(dSpent, 5000); out.push({ d: -cost, k: 'pass', x: pass }); dSpent -= cost }
   const items = newItems(o, d)
   if (items.length && dSpent > 0) { out.push({ d: -dSpent, k: 'buy', x: items.join(',') }); dSpent = 0 }
-  const gone = newItems(d, o).concat(['pass2x', 'passFake'].filter(k => o[k] && !d[k]))
+  const gone = (d.lastGift !== o.lastGift ? [] : newItems(d, o)).concat(['pass2x', 'passFake'].filter(k => o[k] && !d[k]))
   if (gone.length && dSpent === 0) out.push({ d: 0, k: 'revoke', x: gone.join(',') })
   if (dUp) out.push({ d: dUp, k: 'vote' })
   if (dBonus) out.push({ d: dBonus, k: 'grant' })
   if (dSpent) out.push({ d: -dSpent, k: 'other' })
-  return out.filter(e => e.d !== 0 || e.k === 'revoke')
+  return out.filter(e => e.d !== 0 || e.k === 'revoke' || e.k === 'giftItemClaim')
 }
 async function record(uid, lines, at = Date.now()) {
   const up = {}
