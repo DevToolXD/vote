@@ -44,7 +44,8 @@ import {
 // photos stay in Firestore at chats/{id}/media/{messageId} (read once, then cached).
 // A 1:1 chat's id is the two uids sorted and joined with '_', so there's only ever one per pair.
 
-export const MAX_GROUP = 10
+/** No limit on how many people a group chat can have. */
+export const MAX_GROUP = Infinity
 export const MAX_TEXT = 500
 export const MAX_GROUP_NAME = 30
 

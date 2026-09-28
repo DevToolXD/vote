@@ -208,7 +208,7 @@ service cloud.firestore {
         && addF.size() + addP.size() + addS.size() <= 1
         && buyable('frame', addF) && buyable('plate', addP) && buyable('skin', addS)
         && d.spent == o.spent + cost
-        && (cost == 0 || (d.spent <= d.up + d.get('bonus', 0) && canTrade(o)))
+        && (cost == 0 || (d.spent <= d.get('earned', d.up) + d.get('bonus', 0) && canTrade(o)))
         && d.frame in d.owned.frame && d.plate in d.owned.plate && d.skin in d.owned.skin
         && d.bio is string && d.bio.size() <= 60
         && d.gender in ['', '남자', '여자']
@@ -241,7 +241,7 @@ service cloud.firestore {
         && !exists(giftPath(d.lastGift))
         && g.from == request.auth.uid && g.status == 'open'
         && d.spent == o.spent + g.amount
-        && d.spent <= d.up + d.get('bonus', 0);
+        && d.spent <= d.get('earned', d.up) + d.get('bonus', 0);
     }
     // Claiming: the points arrive as bonus.
     function giftClaim() {
@@ -297,7 +297,7 @@ service cloud.firestore {
         && d.diff(o).affectedKeys().hasOnly(['spent', 'pass2x'])
         && o.get('pass2x', false) == false && d.pass2x == true && canTrade(o)
         && d.spent == o.spent + 5000
-        && d.spent <= d.up + d.get('bonus', 0);
+        && d.spent <= d.get('earned', d.up) + d.get('bonus', 0);
     }
 
     // 페이크 선물 패스: 299P once, kept for good. The worker mirrors it to the Realtime
@@ -309,7 +309,7 @@ service cloud.firestore {
         && d.diff(o).affectedKeys().hasOnly(['spent', 'passFake'])
         && o.get('passFake', false) == false && d.passFake == true && canTrade(o)
         && d.spent == o.spent + 299
-        && d.spent <= d.up + d.get('bonus', 0);
+        && d.spent <= d.get('earned', d.up) + d.get('bonus', 0);
     }
 
     // 300P once per account for opening the installed app.
@@ -340,7 +340,9 @@ service cloud.firestore {
       let cur = curSeason();
       return request.auth.uid != o.ownerUid
         && existsAfter(vp)
-        && d.diff(o).affectedKeys().hasOnly(['up', 'down', 'score', 'scoreAt'])
+        && d.diff(o).affectedKeys().hasOnly(['up', 'down', 'score', 'scoreAt', 'earned'])
+        // 10P for every vote received (추천 or 비추천), paid once: cancelling never takes it back
+        && d.get('earned', d.up) == o.get('earned', o.up) + 10 * (getAfter(vp).data.get('given', 0) - before.get('given', 0))
         && (!('scoreAt' in d.diff(o).affectedKeys()) || d.scoreAt == request.time)
         && d.up == o.up + upsNow(getAfter(vp).data, cur) - upsNow(before, cur)
         && d.down == o.down + downsNow(getAfter(vp).data, cur) - downsNow(before, cur)
@@ -389,11 +391,12 @@ service cloud.firestore {
       let d = request.resource.data;
       let o = resource.data;
       return adminOp('seasonReset')
-        && d.diff(o).affectedKeys().hasOnly(['up', 'down', 'score', 'bonus'])
+        && d.diff(o).affectedKeys().hasOnly(['up', 'down', 'score', 'bonus', 'earned'])
         && d.up == 0 && d.down == 0 && d.score == 0
-        // This season's 추천 carry over as points, plus the season reward (rank + taking part), at most 1st + participant.
-        && d.get('bonus', 0) >= o.get('bonus', 0) + o.up
-        && d.get('bonus', 0) <= o.get('bonus', 0) + o.up + maxReward();
+        // Points already earned stay; the season reward (rank + taking part) is added, at most 1st + participant.
+        && d.get('earned', 0) == o.get('earned', o.up)
+        && d.get('bonus', 0) >= o.get('bonus', 0)
+        && d.get('bonus', 0) <= o.get('bonus', 0) + maxReward();
     }
     function maxReward() {
       let sp = /databases/$(database)/documents/meta/season;
@@ -476,7 +479,13 @@ service cloud.firestore {
       let oKind = o.get('weekKind', 'none');
       let oN = o.get('weekN', oKind in ['up', 'down'] ? 1 : 0);
       let inWeek = oWeekAt != null && request.time < oWeekAt + duration.value(7, 'd');
+      // paid = most votes this week that already earned the candidate 10P each; given = all ever.
+      // Only votes above what was paid this week pay again, so cancel + vote again can't farm points.
       return d.season == cur && d.ups is int && d.downs is int && d.weekKind in ['up', 'down', 'none']
+        && d.paid is int && d.given is int
+        && (inWeek
+          ? d.paid == (d.weekN > o.get('paid', oN) ? d.weekN : o.get('paid', oN)) && d.given == o.get('given', 0) + d.paid - o.get('paid', oN)
+          : d.paid == 1 && d.given == o.get('given', 0) + 1)
         && d.weekN is int && d.weekN >= 0 && d.weekN <= 2 && ((d.weekKind == 'none') == (d.weekN == 0))
         && (inWeek
           ? (o.get('season', 0) == cur && d.weekAt == oWeekAt && (d.weekKind != oKind || d.weekN != oN)
@@ -492,7 +501,7 @@ service cloud.firestore {
       allow read: if signedIn() && (isAdmin() || (resource == null ? voteId.split('_')[0] == request.auth.uid : resource.data.uid == request.auth.uid));
 
       allow create, update: if signedIn()
-        && request.resource.data.keys().hasOnly(['uid', 'candidateId', 'season', 'ups', 'downs', 'weekAt', 'weekKind', 'weekN', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'candidateId', 'season', 'ups', 'downs', 'weekAt', 'weekKind', 'weekN', 'updatedAt', 'paid', 'given'])
         && request.resource.data.uid == request.auth.uid
         && voteId == request.auth.uid + '_' + request.resource.data.candidateId
         && request.resource.data.updatedAt == request.time
@@ -523,7 +532,7 @@ service cloud.firestore {
     }
     function memberOn(m, i) { return m.size() <= i || msgOn(m[i]); }
     function membersOk(m) {
-      return m is list && m.size() >= 2 && m.size() <= 10 && m.toSet().size() == m.size()
+      return m is list && m.size() >= 2 && m.toSet().size() == m.size()
         && request.auth.uid in m
         && memberOn(m, 0) && memberOn(m, 1) && memberOn(m, 2) && memberOn(m, 3) && memberOn(m, 4)
         && memberOn(m, 5) && memberOn(m, 6) && memberOn(m, 7) && memberOn(m, 8) && memberOn(m, 9);
@@ -602,7 +611,7 @@ service cloud.firestore {
         return o.type == 'group'
           && d.diff(o).affectedKeys().hasOnly(['members'])
           && d.members.hasAll(o.members)
-          && d.members.size() <= 10 && d.members.toSet().size() == d.members.size()
+          && d.members.toSet().size() == d.members.size()
           && added.size() >= 1
           && memberOn(added, 0) && memberOn(added, 1) && memberOn(added, 2) && memberOn(added, 3) && memberOn(added, 4)
           && memberOn(added, 5) && memberOn(added, 6) && memberOn(added, 7) && memberOn(added, 8);

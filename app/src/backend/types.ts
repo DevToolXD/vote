@@ -38,6 +38,8 @@ export type CandidateDoc = {
   passFake?: boolean
   /** 거래 정지 (admin) until this time, in ms: no sending or taking 포인트 선물. */
   tradeBan?: number
+  /** Points from votes received (10 each, 추천 or 비추천); never goes down. Missing on older docs (then `up`). */
+  earned?: number
 }
 
 export const DEFAULT_OWNED: Record<ItemKind, string[]> = { frame: ['none'], plate: ['none'], skin: ['none'] }
@@ -58,6 +60,10 @@ export type VoteDoc = {
   /** Votes cast this week (0 = cancelled, 2 = twice with the 투표 2배권). Older docs lack it: 1 unless 'none'. */
   weekN?: number
   updatedAt: unknown
+  /** Votes this week that already paid the candidate 10P each (0–2). */
+  paid?: number
+  /** Every vote ever paid for (so the candidate side can check its 10P). */
+  given?: number
 }
 
 export const VOTE_EVERY_MS = 7 * 24 * 60 * 60 * 1000

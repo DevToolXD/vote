@@ -134,6 +134,20 @@ describe('voting', () => {
     await castVote(b, 'b', 'a', 'up')
     assert.deepEqual(await tally(b, 'a'), [2, 0, 2])
   })
+  test('10P per vote received (추천 or 비추천); cancelling never takes it back; cancel + vote again pays nothing', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
+    const pts = async () => pointsOf(await read(a, 'candidates/a'))
+    await castVote(b, 'b', 'a', 'up'); assert.equal(await pts(), 10)
+    await castVote(c, 'c', 'a', 'down'); assert.equal(await pts(), 20) // 비추천 pays too
+    await castVote(b, 'b', 'a', 'none'); assert.equal(await pts(), 20) // cancelled: points stay
+    await castVote(b, 'b', 'a', 'up'); assert.equal(await pts(), 20) // same week again: nothing more
+    await castVote(b, 'b', 'a', 'down'); assert.equal(await pts(), 20) // switching: nothing more
+    // a forged tally that pays more than the vote allows is refused
+    await denied(updateDoc(doc(b, 'candidates', 'a'), { earned: 999 }))
+    // next week, a new vote pays again
+    await seed('votes/b_a', { weekAt: new Date(Date.now() - 8 * 86400_000) })
+    await castVote(b, 'b', 'a', 'up'); assert.equal(await pts(), 30)
+  })
   test('direct write (no reads) when my votes are loaded; stale knowledge falls back to a transaction', async () => {
     await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
     let snaps = 0
@@ -405,7 +419,7 @@ describe('admin: single-use tokens ×3', () => {
     await denied(setDoc(doc(userDb('z'), 'meta', 'season'), { name: 'hack', number: 1, startedAt: serverTimestamp() }))
   })
 
-  test('season reset: tallies zeroed, votes cleared, recommendations carried over as points — across many batches', async () => {
+  test('season reset: tallies zeroed, votes cleared, earned points kept, rewards added — across many batches', async () => {
     const uids = Array.from({ length: 12 }, (_, i) => `u${i}`)
     const dbs = await Promise.all(uids.map(signUp))
     // Everyone recommends u0; u1 gets some not-recommends.
@@ -420,12 +434,15 @@ describe('admin: single-use tokens ×3', () => {
     const u0 = await read(admin, 'candidates/u0'), u1 = await read(admin, 'candidates/u1')
     // Rewards (defaults): u0 is 1st (500); u2–u11 all have 1 point, ranked by who got it first
     // (u2 2nd 300, u3 3rd 150, u4–u6 90, the rest none); u1 (−4) is last; everyone took part (+50).
-    assert.deepEqual([u0.up, u0.down, u0.score, u0.bonus], [0, 0, 0, 11 + 5 + 500 + 50])
-    assert.deepEqual([u1.up, u1.down, u1.score, u1.bonus], [0, 0, 0, 50])
-    assert.equal((await read(admin, 'candidates/u2')).bonus, 1 + 300 + 50)
-    assert.equal((await read(admin, 'candidates/u3')).bonus, 1 + 150 + 50)
-    assert.equal((await read(admin, 'candidates/u6')).bonus, 1 + 90 + 50)
-    assert.equal((await read(admin, 'candidates/u7')).bonus, 1 + 50)
+    // Points from votes (10 each, 추천 or 비추천) stay as they were; only the rewards are added.
+    assert.deepEqual([u0.up, u0.down, u0.score, u0.earned, u0.bonus], [0, 0, 0, 110, 5 + 500 + 50])
+    assert.deepEqual([u1.up, u1.down, u1.score, u1.earned, u1.bonus], [0, 0, 0, 40, 50])
+    assert.equal(pointsOf(u0), 110 + 555)
+    assert.equal((await read(admin, 'candidates/u2')).bonus, 300 + 50)
+    assert.equal((await read(admin, 'candidates/u3')).bonus, 150 + 50)
+    assert.equal((await read(admin, 'candidates/u6')).bonus, 90 + 50)
+    assert.equal((await read(admin, 'candidates/u7')).bonus, 50)
+    assert.equal((await read(admin, 'candidates/u7')).earned, 10)
     const results = (await getDoc(doc(admin, 'seasonResults', '1'))).data()!
     assert.equal(results.name, 'BETA'); assert.equal(results.paid.length, 12)
     // Vote docs stay: the 7-day timer and the one-time 비추천 carry over into the new season.
@@ -547,7 +564,7 @@ describe('messages (Realtime Database)', () => {
     await denied(rtSet(rtRef(R(a), 'msgOff/b'), true))
   })
 
-  test('group: 3–10 people, members talk, leaving works, deleted accounts can’t be added', async () => {
+  test('group: 3 or more people, members talk, leaving works, deleted accounts can’t be added', async () => {
     const a = await signUp('a'); const b = await signUp('b'); await signUp('c')
     const id = await createGroup(a, 'a', ['b', 'c'], '우리반')
     assert.equal((await rt(a, `chats/${id}/info`)).name, '우리반')
@@ -561,8 +578,7 @@ describe('messages (Realtime Database)', () => {
     await assert.rejects(createGroup(a, 'a', ['b'], '둘뿐'))
     const many = Array.from({ length: 10 }, (_, i) => `m${i}`)
     for (const m of many) await signUp(m)
-    await assert.rejects(createGroup(a, 'a', many, '11명'))
-    await createGroup(a, 'a', many.slice(0, 9), '10명')
+    await createGroup(a, 'a', many, '11명') // no limit any more
     await denied(rtUpdate(rtRef(R(userDb('m0'))), { [`chats/${id}/members/m0`]: true })) // can't add yourself to a group
   })
 
@@ -581,7 +597,7 @@ describe('messages (Realtime Database)', () => {
 describe('chat extras', () => {
   const IMG = 'data:image/jpeg;base64,' + 'A'.repeat(1000)
   const R = (db: Firestore) => rtdbOf.get(db)!
-  test('invite: members add people who accept messages, up to 10; outsiders can’t', async () => {
+  test('invite: members add people who accept messages (no limit); outsiders can’t', async () => {
     const a = await signUp('a'); await signUp('b'); await signUp('c'); const d = await signUp('d'); await signUp('e')
     const id = await createGroup(a, 'a', ['b', 'c'], '모임')
     await inviteMembers(a, 'a', id, ['d'], '이름a님이 이름d님을 초대했어요')
@@ -595,8 +611,7 @@ describe('chat extras', () => {
     await denied(rtSet(rtRef(R(a), `chats/${id}/members/b`), null)) // can't remove others
     const many = Array.from({ length: 7 }, (_, i) => `m${i}`)
     for (const m of many) await signUp(m)
-    await assert.rejects(inviteMembers(a, 'a', id, many, 'x')) // 11 people
-    await inviteMembers(a, 'a', id, many.slice(0, 6), 'x') // 10
+    await inviteMembers(a, 'a', id, many, 'x') // 11 people: no limit any more
     const dm = await openDm(a, 'a', 'b')
     await assert.rejects(inviteMembers(a, 'a', dm, ['c'], 'x')) // not in 1:1 chats
   })
@@ -761,14 +776,14 @@ describe('season end date and rewards', () => {
     await run()
     const s2 = (await getDoc(doc(a, 'meta', 'season'))).data()!
     assert.deepEqual([s2.number, s2.name, s2.endsAt, s2.last.name, s2.last.top[0].id], [2, '2', undefined, 'BETA', 'a'])
-    // a: 1st (+1 carried 추천) ; c: 2nd with 0 (tied with nobody below) ; b: −1 → 3rd. a and b took part.
+    // a: 1st ; c: 2nd with 0 (tied with nobody below) ; b: −1 → 3rd. a and b took part. Earned points stay.
     const [ca, cb, cc] = await Promise.all(['a', 'b', 'c'].map(u => read(a, `candidates/${u}`)))
-    assert.deepEqual([ca.score, ca.bonus], [0, 1 + 500 + 50])
+    assert.deepEqual([ca.score, ca.earned, ca.bonus], [0, 10, 500 + 50])
     assert.deepEqual([cc.bonus], [300])
-    assert.deepEqual([cb.score, cb.bonus], [0, 150 + 50])
+    assert.deepEqual([cb.score, cb.earned, cb.bonus], [0, 10, 150 + 50])
     assert.equal((await getDoc(doc(a, 'seasonResults', '1'))).data()!.auto, true)
     await run() // not due any more: nothing changes
-    assert.equal((await read(a, 'candidates/a')).bonus, 551)
+    assert.equal((await read(a, 'candidates/a')).bonus, 550)
   })
 })
 

@@ -30,7 +30,7 @@ export const itemName = (kind: string, key: string) => (kind === 'skin' ? SKINS 
 /** One line of 거래 내역 in words, and an emoji for it. */
 export function describe(r: LedgerRow, nameOf: (uid: string) => string): { icon: string; text: string } {
   switch (r.k) {
-    case 'vote': return r.d > 0 ? { icon: '👍', text: r.n && r.n > 1 ? `추천 ${r.d}개 받음` : '추천 받음' } : { icon: '↩️', text: '추천 취소됨' }
+    case 'vote': return r.d > 0 ? { icon: '🗳️', text: r.n && r.n > 1 ? `투표 ${r.n}개 받음` : '투표 받음' } : { icon: '↩️', text: '투표 취소됨' }
     case 'giftSent': return { icon: '🎁', text: r.x && !r.x.includes('_') && nameOf(r.x) ? `${nameOf(r.x)}님에게 선물` : '포인트 선물 보냄' }
     case 'giftClaim': return { icon: '🎁', text: r.x ? `${nameOf(r.x) || '누군가'}님이 준 선물 받음` : '선물 받음' }
     case 'giftItemSent': case 'giftItemClaim': {

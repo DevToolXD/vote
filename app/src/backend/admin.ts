@@ -216,7 +216,7 @@ export async function resetSeason(db: Firestore, adminUid: string, newName: stri
     const d = c.data() as CandidateDoc
     const reward = pointsFor.get(c.id) ?? 0
     if (!d.up && !d.down && !d.score && !reward) continue
-    groups.push(b => { b.update(c.ref, { up: 0, down: 0, score: 0, bonus: (d.bonus ?? 0) + d.up + reward }); return 1 })
+    groups.push(b => { b.update(c.ref, { up: 0, down: 0, score: 0, bonus: (d.bonus ?? 0) + reward, earned: d.earned ?? d.up }); return 1 })
   }
   const endedNumber = cur.exists ? cur.number : 1
   groups.push(b => { b.set(doc(db, 'seasonResults', String(endedNumber)), { name: cur.name, endedAt: serverTimestamp(), rewards, paid: paid.filter(p => p.points > 0) }); return 1 })

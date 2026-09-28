@@ -85,11 +85,15 @@ function planVote(o: Partial<VoteDoc>, cur: number, kind: WeekKind, count: numbe
   if (kind === oKind && count === oN) return null
   const dUp = (kind === 'up' ? count : 0) - (oKind === 'up' ? oN : 0)
   const dDown = (kind === 'down' ? count : 0) - (oKind === 'down' ? oN : 0)
+  // 10P to the candidate per vote, once: only votes above what this week already paid count.
+  const oPaid = inWeek ? o.paid ?? oN : 0
+  const paid = inWeek ? Math.max(oPaid, count) : 1
+  const given = (o.given ?? 0) + (paid - oPaid)
   return {
-    dUp, dDown,
+    dUp, dDown, dEarned: VOTE_POINTS * (paid - oPaid),
     vote: {
       season: cur, ups: (thisSeason ? o.ups ?? 0 : 0) + dUp, downs: (thisSeason ? o.downs ?? 0 : 0) + dDown,
-      weekAt: inWeek ? o.weekAt : serverTimestamp(), weekKind: kind, weekN: count,
+      weekAt: inWeek ? o.weekAt : serverTimestamp(), weekKind: kind, weekN: count, paid, given,
     },
   }
 }
@@ -118,7 +122,7 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
       if (!p) return
       const b = writeBatch(db)
       b.set(voteRef, { ...base, ...p.vote })
-      b.update(candidateRef, { up: increment(p.dUp), down: increment(p.dDown), score: increment(p.dUp - p.dDown), scoreAt: serverTimestamp() })
+      b.update(candidateRef, { up: increment(p.dUp), down: increment(p.dDown), score: increment(p.dUp - p.dDown), scoreAt: serverTimestamp(), ...(p.dEarned ? { earned: increment(p.dEarned) } : {}) })
       await b.commit()
       return
     } catch { /* out of date: read and retry below */ }
@@ -132,7 +136,7 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
     if (!p) return
     const c = candSnap.data() as CandidateDoc
     tx.set(voteRef, { ...base, ...p.vote })
-    tx.update(candidateRef, { up: c.up + p.dUp, down: c.down + p.dDown, score: c.up + p.dUp - (c.down + p.dDown), scoreAt: serverTimestamp() })
+    tx.update(candidateRef, { up: c.up + p.dUp, down: c.down + p.dDown, score: c.up + p.dUp - (c.down + p.dDown), scoreAt: serverTimestamp(), earned: (c.earned ?? c.up) + p.dEarned })
   })
 }
 
@@ -143,8 +147,10 @@ export async function buyPass(db: Firestore, myUid: string, kind: PassKind = 'pa
 export const hasFakePass = (c?: { passFake?: boolean }) => !!c?.passFake
 export const hasPass = (c?: { pass2x?: boolean | number }) => !!c?.pass2x
 
-/** Points available to spend: this season's recommendations + carried-over/admin bonus − spent. */
-export const pointsOf = (c: Pick<CandidateDoc, 'up' | 'spent'> & { bonus?: number }) => c.up + (c.bonus ?? 0) - c.spent
+/** Points available to spend: 10P per vote ever received (earned; older docs: their 추천) + admin/season bonus − spent. */
+export const pointsOf = (c: Pick<CandidateDoc, 'up' | 'spent'> & { bonus?: number; earned?: number }) => (c.earned ?? c.up) + (c.bonus ?? 0) - c.spent
+/** Points a candidate gets for each vote received — 추천 or 비추천. */
+export const VOTE_POINTS = 10
 
 /** Equips an already-owned item. */
 export async function equipItem(db: Firestore, myUid: string, kind: ItemKind, key: string) {

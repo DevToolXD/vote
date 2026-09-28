@@ -1076,7 +1076,7 @@ function PeopleSheet({ title, all, exclude, max, cta, withName, onClose, onDone 
       <div style={css('padding:20px 24px 16px;display:flex;flex-direction:column;gap:4px')}>
         <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{title}</span>
         <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>
-          {picked.length === 0 ? (withName ? '한 명을 고르면 1:1, 여러 명이면 단톡방이 돼요' : `최대 ${max}명까지 초대할 수 있어요`) : `${picked.length}명 골랐어요${full ? ` · 최대 ${max}명` : ''}`}
+          {picked.length === 0 ? (withName ? '한 명을 고르면 1:1, 여러 명이면 단톡방이 돼요' : (Number.isFinite(max) ? `최대 ${max}명까지 초대할 수 있어요` : '초대할 사람을 골라주세요')) : `${picked.length}명 골랐어요${full ? ` · 최대 ${max}명` : ''}`}
         </span>
       </div>
       <div style={css('padding:0 24px 8px;display:flex;flex-direction:column;gap:8px')}>

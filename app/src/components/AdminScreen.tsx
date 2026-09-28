@@ -200,7 +200,7 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
         <button data-g="secondary" className="pr-96" disabled={!nameOk}
           onClick={() => setConfirm({
             title: '시즌을 초기화할까요?',
-            desc: `모든 점수와 투표가 0이 되고 '${nameDraft.trim()}' 시즌이 시작돼요. 이번 시즌 받은 추천 수는 각자 포인트로 옮겨져요. 되돌릴 수 없어요.`,
+            desc: `모든 점수와 투표가 0이 되고 '${nameDraft.trim()}' 시즌이 시작돼요. 모은 포인트는 그대로 남고, 순위 보상이 더해져요. 되돌릴 수 없어요.`,
             cta: '초기화하기', danger: true,
             go: async () => { if (await run('시즌 초기화', p => resetSeason(nameDraft.trim(), p))) setNameDraft('') },
           })}

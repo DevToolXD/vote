@@ -66,7 +66,7 @@ export function AdminLedger({ all }: { all: Person[] }) {
           수상한 포인트 증가
           {alerts.length > 0 && <span style={css('height:22px;padding:0 8px;border-radius:9999px;background:#f04452;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center')}>{alerts.length}</span>}
         </span>
-        <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>1시간 안에 1,000P 넘게 늘었거나 추천을 20개 넘게 받은 사람이에요. 관리자 지급·시즌 보상은 빼고 세요</span>
+        <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>1시간 안에 1,000P 넘게 늘었거나 투표를 20개 넘게 받은 사람이에요. 관리자 지급·시즌 보상은 빼고 세요</span>
         {alerts.length === 0 && <span style={css('padding:14px 16px;border-radius:16px;background:#f9fafb;font-size:15px;color:#6b7684')}>지금은 없어요 👍</span>}
         {alerts.map(a => (
           <div key={a.uid} data-g="l1" style={css('padding:14px 16px;border-radius:16px;background:#fff5f6;box-shadow:inset 0 0 0 1px #ffd9dd;display:flex;flex-direction:column;gap:8px')}>
@@ -76,7 +76,7 @@ export function AdminLedger({ all }: { all: Person[] }) {
             </span>
             <span style={css('font-size:13px;line-height:19px;color:#6b7684')}>{mins(a.at - a.since)}분 동안 · 지금 {a.points.toLocaleString()}P · {when(a.at)}</span>
             <span style={css('display:flex;gap:6px;flex-wrap:wrap')}>
-              {([['추천', a.votes], ['선물 받음', a.gifts], ['기타', a.other]] as [string, number][]).filter(([, n]) => n > 0).map(([k, n]) => (
+              {([['투표(개)', a.votes], ['선물 받음', a.gifts], ['기타', a.other]] as [string, number][]).filter(([, n]) => n > 0).map(([k, n]) => (
                 <span key={k} style={css('height:24px;padding:0 9px;border-radius:9999px;background:#ffffff;color:#4e5968;font-size:12px;font-weight:600;display:flex;align-items:center')}>{k} +{n.toLocaleString()}</span>
               ))}
             </span>

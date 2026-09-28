@@ -83,15 +83,15 @@ try {
   // B recommends A: same two writes the app's castVote() transaction makes.
   const seasonDoc = await call(`${fsApi}/${dbRoot}/meta/season?key=${apiKey}`)
   const season = seasonDoc.ok ? Number(seasonDoc.json.fields?.number?.integerValue ?? 1) : 1
-  const upVote = (voter, cand, ups) => withServerTime(update(`votes/${voter}_${cand}`, { uid: voter, candidateId: cand, season, ups, downs: 0, weekKind: 'up', weekN: 1 }), 'weekAt', 'updatedAt')
+  const upVote = (voter, cand, ups) => withServerTime(update(`votes/${voter}_${cand}`, { uid: voter, candidateId: cand, season, ups, downs: 0, weekKind: 'up', weekN: 1, paid: ups, given: ups }), 'weekAt', 'updatedAt')
   docs.push(`votes/${b.uid}_${a.uid}`)
   const vote = await commit(b.token, [
-    update(`candidates/${a.uid}`, { up: 1, down: 0, score: 1 }, ['up', 'down', 'score']),
+    update(`candidates/${a.uid}`, { up: 1, down: 0, score: 1, earned: 10 }, ['up', 'down', 'score', 'earned']), // 10P per vote received
     upVote(b.uid, a.uid, 1),
   ])
   if (!check(vote.ok, 'Voting for someone else works', `Voting was refused (${vote.status})`, vote.json)) throw 0
   const again = await commit(b.token, [
-    update(`candidates/${a.uid}`, { up: 2, down: 0, score: 2 }, ['up', 'down', 'score']),
+    update(`candidates/${a.uid}`, { up: 2, down: 0, score: 2, earned: 20 }, ['up', 'down', 'score', 'earned']),
     upVote(b.uid, a.uid, 2),
   ])
   check(again.status === 403, 'A second vote in the same week is refused', `A second vote in the same week was NOT refused (${again.status})`)

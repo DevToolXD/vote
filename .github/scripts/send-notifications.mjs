@@ -150,8 +150,8 @@ const ledgerQueue = []
 const LEDGER_KEEP = 100, FEED_KEEP = 300
 const ALERT_WINDOW_MS = Number(process.env.ALERT_WINDOW_MS ?? 60 * 60_000)
 const ALERT_POINTS = Number(process.env.ALERT_POINTS ?? 1000), ALERT_VOTES = Number(process.env.ALERT_VOTES ?? 20)
-const pts = c => (c?.up ?? 0) + (c?.bonus ?? 0) - (c?.spent ?? 0)
-const stateOf = c => ({ up: c.up ?? 0, down: c.down ?? 0, bonus: c.bonus ?? 0, spent: c.spent ?? 0, lastGift: c.lastGift ?? '', appBonus: !!c.appBonus, pass2x: !!c.pass2x, passFake: !!c.passFake, owned: JSON.stringify(c.owned ?? {}) })
+const pts = c => (c?.earned ?? c?.up ?? 0) + (c?.bonus ?? 0) - (c?.spent ?? 0)
+const stateOf = c => ({ earned: c.earned ?? c.up ?? 0, up: c.up ?? 0, down: c.down ?? 0, bonus: c.bonus ?? 0, spent: c.spent ?? 0, lastGift: c.lastGift ?? '', appBonus: !!c.appBonus, pass2x: !!c.pass2x, passFake: !!c.passFake, owned: JSON.stringify(c.owned ?? {}) })
 const lastVote = new Map() // uid → { key, at, d, n }: 추천 within 30 minutes go into one line
 const gains = new Map()    // uid → [{ at, d, k }] within ALERT_WINDOW_MS
 const ledgerWrites = new Map()
@@ -168,8 +168,8 @@ function newItems(o, d) {
 /** What happened between two states, as ledger lines { d: point change, k: kind, x?: detail }. */
 async function classify(o, d) {
   const out = []
-  let dUp = d.up - o.up, dBonus = d.bonus - o.bonus, dSpent = d.spent - o.spent
-  if (d.up === 0 && d.down === 0 && (o.up !== 0 || o.down !== 0) && dBonus >= o.up) { out.push({ d: dBonus - o.up, k: 'season' }); dUp = 0; dBonus = 0 }
+  let dEarned = (d.earned ?? d.up) - (o.earned ?? o.up), dBonus = d.bonus - o.bonus, dSpent = d.spent - o.spent
+  if (d.up === 0 && d.down === 0 && (o.up !== 0 || o.down !== 0) && dEarned === 0 && dBonus >= 0) { if (dBonus) out.push({ d: dBonus, k: 'season' }); dBonus = 0 }
   if (d.appBonus && !o.appBonus) { out.push({ d: 300, k: 'app' }); dBonus -= 300 }
   if (d.lastGift && d.lastGift !== o.lastGift) {
     const g = await giftOf(d.lastGift)
@@ -183,7 +183,7 @@ async function classify(o, d) {
   if (items.length && dSpent > 0) { out.push({ d: -dSpent, k: 'buy', x: items.join(',') }); dSpent = 0 }
   const gone = (d.lastGift !== o.lastGift ? [] : newItems(d, o)).concat(['pass2x', 'passFake'].filter(k => o[k] && !d[k]))
   if (gone.length && dSpent === 0) out.push({ d: 0, k: 'revoke', x: gone.join(',') })
-  if (dUp) out.push({ d: dUp, k: 'vote' })
+  if (dEarned) out.push({ d: dEarned, k: 'vote' })
   if (dBonus) out.push({ d: dBonus, k: 'grant' })
   if (dSpent) out.push({ d: -dSpent, k: 'other' })
   return out.filter(e => e.d !== 0 || e.k === 'revoke' || e.k === 'giftItemClaim')
@@ -193,22 +193,22 @@ async function record(uid, lines, at = Date.now()) {
   for (const e of lines) {
     const lv = lastVote.get(uid)
     if (e.k === 'vote' && lv && at - lv.at < 30 * 60_000) {
-      lv.d += e.d; lv.n++; lv.at = at
+      lv.d += e.d; lv.n += Math.max(1, Math.round(e.d / 10)); lv.at = at
       up[`ledger/${uid}/${lv.key}/d`] = lv.d; up[`ledger/${uid}/${lv.key}/n`] = lv.n; up[`ledger/${uid}/${lv.key}/at`] = at
       if (lv.feed) { up[`ledgerFeed/${lv.feed}/d`] = lv.d; up[`ledgerFeed/${lv.feed}/n`] = lv.n; up[`ledgerFeed/${lv.feed}/at`] = at }
     } else {
       const key = rdb.ref(`ledger/${uid}`).push().key, feed = rdb.ref('ledgerFeed').push().key
-      const row = { at, d: e.d, k: e.k, ...(e.x ? { x: e.x } : {}), ...(e.k === 'vote' ? { n: 1 } : {}) }
+      const row = { at, d: e.d, k: e.k, ...(e.x ? { x: e.x } : {}), ...(e.k === 'vote' ? { n: Math.max(1, Math.round(e.d / 10)) } : {}) }
       up[`ledger/${uid}/${key}`] = row
       up[`ledgerFeed/${feed}`] = { ...row, u: uid }
-      if (e.k === 'vote') lastVote.set(uid, { key, feed, at, d: e.d, n: 1 })
+      if (e.k === 'vote') lastVote.set(uid, { key, feed, at, d: e.d, n: Math.max(1, Math.round(e.d / 10)) })
       ledgerWrites.set(uid, (ledgerWrites.get(uid) ?? 0) + 1); feedWrites++
     }
     // 수상한 포인트 증가: gains that aren't the admin's or the season's, within the window.
     if (e.d > 0 && !['grant', 'season', 'app', 'giftCancel'].includes(e.k)) {
       const list = (gains.get(uid) ?? []).filter(g => at - g.at < ALERT_WINDOW_MS)
       list.push({ at, d: e.d, k: e.k }); gains.set(uid, list)
-      const total = list.reduce((n, g) => n + g.d, 0), votes = list.filter(g => g.k === 'vote').reduce((n, g) => n + g.d, 0)
+      const total = list.reduce((n, g) => n + g.d, 0), votes = list.filter(g => g.k === 'vote').reduce((n, g) => n + Math.round(g.d / 10), 0)
       if (total >= ALERT_POINTS || votes >= ALERT_VOTES) {
         up[`alerts/${uid}`] = { at, since: list[0].at, gain: total, votes, gifts: list.filter(g => g.k === 'giftClaim').reduce((n, g) => n + g.d, 0), other: list.filter(g => g.k === 'other').reduce((n, g) => n + g.d, 0), points: pts(candidates.get(uid)) }
       }
@@ -397,8 +397,8 @@ async function endSeasonIfDue() {
     const reward = pointsFor.get(c.id) ?? 0
     if (!c.up && !c.down && !c.score && !reward) continue
     writes.push({
-      update: { name: c.path, fields: fsValue({ up: 0, down: 0, score: 0, bonus: (c.bonus ?? 0) + (c.up ?? 0) + reward }).mapValue.fields },
-      updateMask: { fieldPaths: ['up', 'down', 'score', 'bonus'] },
+      update: { name: c.path, fields: fsValue({ up: 0, down: 0, score: 0, bonus: (c.bonus ?? 0) + reward, earned: c.earned ?? c.up ?? 0 }).mapValue.fields },
+      updateMask: { fieldPaths: ['up', 'down', 'score', 'bonus', 'earned'] },
     })
   }
   if (writes.length > 500) { warn(`Season end needs ${writes.length} writes (> 500); end it from the 관리 tab instead.`); return }
@@ -525,6 +525,15 @@ const firstDone = new Promise(resolve => {
   )
 })
 await firstDone
+// Points moved from "this season's 추천" to earned (10 per vote received, never taken back):
+// docs from before get earned = up once, so nobody's balance changes.
+for (const [id, c] of candidates) {
+  if (c.earned !== undefined) continue
+  await fdb.runTransaction(async tx => {
+    const s = await tx.get(fdb.doc(`candidates/${id}`))
+    if (s.exists && s.get('earned') === undefined) tx.update(s.ref, { earned: s.get('up') ?? 0 })
+  }).catch(e => warn(`Setting earned for ${id} failed: ${e.message}`))
+}
 await ledgerInit().catch(e => warn('Ledger start failed: ' + e.message))
 try { for (const [id, v] of Object.entries((await rdb.ref('perks').once('value')).val() ?? {})) if (v?.fake) perksDone.add(id) } catch (e) { warn('Reading perks failed: ' + e.message) }
 

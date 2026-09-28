@@ -87,7 +87,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
         <div style={{ height: 60 }}>
           <Nameplate kind={equipped.plate} person={name} sub={bio || '내 이름표예요'} frame={equipped.frame} photo={photoCss} style={{ width: '100%', height: 60 }} />
         </div>
-        <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>{inv ? '내가 가진 아이템이에요. 누르면 바로 바꿔 껴요' : loggedIn ? '받은 추천 1개가 1P예요. 산 아이템은 보관함에서도 바꿔 낄 수 있어요' : '로그인하면 포인트로 아이템을 살 수 있어요'}</span>
+        <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>{inv ? '내가 가진 아이템이에요. 누르면 바로 바꿔 껴요' : loggedIn ? '추천이든 비추천이든 투표를 1개 받을 때마다 10P예요. 산 아이템은 보관함에서도 바꿔 낄 수 있어요' : '로그인하면 포인트로 아이템을 살 수 있어요'}</span>
       </div>
       {!inv && (
         <div style={css('position:sticky;top:56px;z-index:19;padding:8px 24px 16px;background:#ffffff')}>
