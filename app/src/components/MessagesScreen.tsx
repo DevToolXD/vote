@@ -583,7 +583,7 @@ export function ChatRoom(p: RoomProps) {
                   )}
                   {!mine && (
                     <span style={css('width:32px;flex:none;align-self:flex-start')}>
-                      {firstOfRun && <button className="pr-94" onClick={() => sender && onOpenProfile(sender.id)} aria-label={`${sender?.name ?? ''} 프로필`} style={css('display:block;border-radius:9999px')}><Avatar frame={sender?.frame} photo={sender?.photoCss} size={32} /></button>}
+                      {firstOfRun && <button className="pr-94" onClick={() => sender && onOpenProfile(sender.id)} aria-label={`${sender?.name ?? ''} 프로필`} style={css('display:block;border-radius:9999px')}><Avatar frame={sender?.frame} photo={sender?.photoCss} size={32} full /></button>}
                     </span>
                   )}
                   <span style={sx('display:flex;flex-direction:column;gap:4px;max-width:74%', { alignItems: mine ? 'flex-end' : 'flex-start' })}>
@@ -929,7 +929,7 @@ function ItemGiftSheet({ points, group, to, onClose, onSend }: { points: number;
 
 /** A small picture of a gift for the composer card. */
 function GiftThumb({ kind, k }: { kind: GiftKind; k: string }) {
-  if (kind === 'frame') return <Avatar frame={k} size={36} />
+  if (kind === 'frame') return <Avatar frame={k} size={36} full />
   if (kind === 'skin') { const g = skinGeom(k, 40, false); return <span style={css('position:relative;width:16px;height:40px')}>{g && <TowerSkin g={g} />}</span> }
   if (kind === 'pass') { const x = PASSES.find(p => p.key === k); return <span style={sx('width:36px;height:36px;border-radius:10px;color:#fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center', { background: x?.bg ?? '#3182f6' })}>{x?.icon}</span> }
   return <span style={css('width:44px;height:26px;border-radius:8px;overflow:hidden')}><Nameplate kind={k} person=" " showAvatar={false} style={{ width: 44, height: 26 }} /></span>
@@ -1078,7 +1078,7 @@ function ChatMenu({ chat, me, all, byId, bg, onBg, onClose, onMute, onLeave, onI
             const p = byId.get(id)
             return (
               <button key={id} className="pr-dim" disabled={!p} onClick={() => p && onOpenProfile(id)} style={css('width:calc(100% - 8px);margin:0 4px;display:flex;align-items:center;gap:12px;padding:10px 20px;border-radius:12px;text-align:left')}>
-                <Avatar frame={p?.frame} photo={p?.photoCss} size={40} style={{ flex: 'none' }} />
+                <Avatar frame={p?.frame} photo={p?.photoCss} size={40} style={{ flex: 'none' }} full />
                 <span style={css('flex:1;min-width:0;display:flex;align-items:center;gap:6px')}>
                   <span style={css(title17 + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{nameIn(byId, id)}</span>
                   <RankChip rank={p?.rank} />

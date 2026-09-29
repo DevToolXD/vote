@@ -11,6 +11,8 @@ type Props = {
   photo?: string
   size: number
   style?: CSSProperties
+  /** Always the full 레전드 art, even small (the chat room: profile pictures next to messages). */
+  full?: boolean
 }
 
 // Small avatars (rank chart, lists, chat rows) show the 레전드 frames as one light ring: the
@@ -25,9 +27,9 @@ const LITE_ART: Record<string, { before?: string; after?: string }> = {
 const LITE_BELOW = 48
 
 /** Profile photo with a Discord-style decoration frame that can overflow the circle. */
-export const Avatar = memo(function Avatar({ frame = 'none', photo = 'none', size, style }: Props) {
+export const Avatar = memo(function Avatar({ frame = 'none', photo = 'none', size, style, full: alwaysFull }: Props) {
   const full = frame === 'aura' ? AURA_AVATAR : frame === 'matrix' ? MATRIX_AVATAR : frame === 'korea' ? KOREA_AVATAR : AVATAR_ART[frame]
-  const art = size < LITE_BELOW && LITE_ART[frame] ? LITE_ART[frame] : full
+  const art = !alwaysFull && size < LITE_BELOW && LITE_ART[frame] ? LITE_ART[frame] : full
   const hasPhoto = !!photo && photo !== 'none'
   const innerRing = frame === 'none' || frame === 'cat' || frame === 'bunny' || frame === 'matrix' || frame === 'korea' ? 'none' : '0 0 0 1px rgba(255,255,255,0.9)'
   return (
