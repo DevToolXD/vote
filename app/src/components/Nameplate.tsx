@@ -10,7 +10,7 @@ import { pauseOffscreen } from '../offscreen'
 
 const PLATES: Record<string, { bg: string; fg: string; sub: string; dark: boolean; glow?: string }> = {
   none: { bg: '#f2f4f6', fg: '#191f28', sub: '#6b7684', dark: false },
-  korea: { bg: '#050b1f', fg: '#ffffff', sub: '#ffd98a', dark: true, glow: '0 0 8px rgba(242,199,92,0.55),0 1px 2px rgba(0,0,0,0.7)' },
+  korea: { bg: '#fbf8f1', fg: '#1a1a1a', sub: '#a8323b', dark: false },
   matrix: { bg: '#000000', fg: '#eafff0', sub: '#39ff6a', dark: true, glow: '0 0 6px rgba(0,255,65,0.9),0 0 1px #00ff41' },
   aura: { bg: 'linear-gradient(90deg,#0a0220 0%,#1c0645 45%,#10204f 100%)', fg: '#ffffff', sub: '#e2d4ff', dark: true },
   neon: { bg: 'linear-gradient(90deg,#07081a 0%,#0d0f2b 45%,#1c0b3d 100%)', fg: '#ffffff', sub: '#9fe9ff', dark: true },

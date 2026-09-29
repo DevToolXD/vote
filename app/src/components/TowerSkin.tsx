@@ -2,7 +2,7 @@ import { css } from '../css'
 import type { SkinGeom } from '../data'
 import { GEM } from './auraArt'
 import { MX_FONT, MX_STRIPS, cubeOrbit } from './matrixArt'
-import { BLUE, FIREWORK_SVG, GOLD, PETAL_SVG, RED, TAEGEUK_SVG, barGwaeOrbit } from './koreaArt'
+import { BAR_TIP_SVG, BLUE, INK, IVORY, SEAM_TILE } from './koreaArt'
 import { pauseOffscreen } from '../offscreen'
 
 const segment = 'display:block;width:100%;flex:none;background-repeat:no-repeat;background-size:100% 100%'
@@ -119,39 +119,28 @@ function MatrixBar({ flip, h }: { flip: boolean; h: number }) {
   )
 }
 
-const KR_BAND = 'repeating-linear-gradient(90deg,#1f8a70 0 3px,#f6c90e 3px 4px,#0047a0 4px 7px,#c8102e 7px 9px,#ffffff 9px 10px)'
-const KR_ORBIT_BACK = [barGwaeOrbit(false, 3.6, 0), barGwaeOrbit(false, 4.4, 1)]
-const KR_ORBIT_FRONT = [barGwaeOrbit(true, 3.6, 0), barGwaeOrbit(true, 4.4, 1)]
-const krOrbits = (list: string[]) => list.map((html, i) => (
-  <span key={i} className="kr-rise" style={{ position: 'absolute', left: '50%', width: 64, height: 64, marginLeft: -32, marginTop: -32, top: 0, animation: `mxRise ${7 + i * 2}s ease-in-out ${-i * 3}s infinite ${i ? 'alternate-reverse' : 'alternate'}` }} dangerouslySetInnerHTML={{ __html: html }} />
-))
-
 /**
- * 대한민국 막대: a red-lacquer palace pillar with gold edges and 단청 bands, red and blue
- * ribbons spiralling up it, the four 괘 circling it on tiles, a turning 태극 on its tip,
- * fireworks bursting over it and 무궁화 petals drifting down.
+ * 대한민국 막대: the 태극's two colours flowing up the bar, red and blue meeting in its S,
+ * ivory 한지 caps with ink lines at both ends, and a small 태극기 (the 태극 upright with light rippling out, the
+ * four 괘 catching the light in turn) on its tip.
  */
 function KoreaBar({ flip, h }: { flip: boolean; h: number }) {
-  const tip = flip ? 'bottom' : 'top'
+  const tip = flip ? 'bottom' : 'top', end = flip ? 'top' : 'bottom'
+  const cap = `position:absolute;left:-1px;right:-1px;background:${IVORY};box-shadow:inset 0 0 0 0.8px ${INK},0 1px 2px rgba(0,0,0,0.25);border-radius:2px`
   return (
     <span ref={pauseOffscreen} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', ['--bh' as string]: `${h}px` }}>
-      <span className="kr-glow" style={css(`position:absolute;left:-75%;right:-75%;top:-14px;bottom:-6px;border-radius:40%;background:linear-gradient(180deg,rgba(205,46,58,0.45),rgba(0,71,160,0.45));filter:blur(8px);animation:auraPulse 2.2s ease-in-out infinite`)} />
-      {krOrbits(KR_ORBIT_BACK)}
-      <span style={css(`position:absolute;inset:0;border-radius:4px;overflow:hidden;background:linear-gradient(90deg,#5c0a13 0%,#b3202e 22%,#e2394a 48%,#b3202e 74%,#5c0a13 100%);box-shadow:inset 0 0 0 1px ${GOLD},0 0 10px rgba(205,46,58,0.6),0 0 18px rgba(0,71,160,0.35)`)}>
-        {/* ribbons spiralling up */}
-        <span className="kr-spiral" style={css(`position:absolute;left:0;right:0;top:0;bottom:-48px;will-change:transform;background:repeating-linear-gradient(150deg,transparent 0 14px,rgba(0,71,160,0.95) 14px 19px,rgba(255,255,255,0.9) 19px 20px,transparent 20px 34px,rgba(242,199,92,0.9) 34px 35px,transparent 35px 48px);background-size:100% 48px;animation:krSpiral 1.6s linear infinite`)} />
-        <span style={css('position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,0.35),transparent 30%,rgba(255,255,255,0.25) 50%,transparent 70%,rgba(0,0,0,0.35))')} />
-        {/* 단청 bands at both ends */}
-        <span className="kr-band" style={{ ...css(`position:absolute;left:0;right:0;height:9px;background-size:10px 100%;animation:krBand 2s linear infinite;box-shadow:0 0 0 1px ${GOLD}`), backgroundImage: KR_BAND, [tip]: 0 }} />
-        <span className="kr-band" style={{ ...css(`position:absolute;left:0;right:0;height:5px;background-size:10px 100%;animation:krBand 2s linear infinite reverse;box-shadow:0 0 0 1px ${GOLD}`), backgroundImage: KR_BAND, [flip ? 'top' : 'bottom']: 0 }} />
-        <span className="kr-sweep" style={css('position:absolute;top:0;left:0;right:0;height:30px;background:linear-gradient(0deg,transparent,rgba(255,236,170,0.45),transparent);animation:mxScanUp 2.6s ease-in-out infinite')} />
+      <span className="kr-glow" style={css(`position:absolute;left:-70%;right:-70%;top:-10px;bottom:-4px;border-radius:40%;background:linear-gradient(${flip ? 0 : 180}deg,rgba(205,46,58,0.4),rgba(0,71,160,0.4));filter:blur(8px);animation:auraPulse 3s ease-in-out infinite`)} />
+      <span style={css(`position:absolute;inset:0;border-radius:3px;overflow:hidden;background:${BLUE};box-shadow:0 0 0 1px ${INK},0 2px 8px rgba(0,0,0,0.25)`)}>
+        {/* the S seam, flowing up */}
+        <span className="kr-spiral" style={{ ...css('position:absolute;left:0;right:0;top:0;bottom:-48px;will-change:transform;background-size:100% 48px;animation:krSpiral 2.4s linear infinite'), backgroundImage: SEAM_TILE }} />
+        {/* roundness */}
+        <span style={css('position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,0.3),transparent 28%,rgba(255,255,255,0.22) 46%,transparent 64%,rgba(0,0,0,0.32))')} />
+        <span className="kr-sweep" style={css('position:absolute;top:0;left:0;right:0;height:34px;background:linear-gradient(0deg,transparent,rgba(255,255,255,0.28),transparent);animation:mxScanUp 3.2s ease-in-out infinite')} />
       </span>
-      {krOrbits(KR_ORBIT_FRONT)}
-      <span style={{ ...css('position:absolute;left:50%;margin-left:-10px;width:20px;height:20px'), [tip]: -19 }} dangerouslySetInnerHTML={{ __html: TAEGEUK_SVG }} />
-      <span style={{ ...css('position:absolute;left:50%;margin-left:-20px;width:40px;height:40px'), [tip]: -46 }} dangerouslySetInnerHTML={{ __html: FIREWORK_SVG([RED, '#ffffff', BLUE, GOLD]) }} />
-      {[['-9px', 3.4, 0], ['calc(100% + 3px)', 3.9, 1.6], ['40%', 4.2, 2.8]].map(([left, dur, delay]) => (
-        <span key={left as string} className="kr-petal" style={{ ...css('position:absolute;top:0;width:6px;height:8px;opacity:0'), left: left as string, animation: `krFall ${dur}s ease-in ${delay}s infinite` }} dangerouslySetInnerHTML={{ __html: PETAL_SVG }} />
-      ))}
+      {/* 한지 caps */}
+      <span style={{ ...css(cap + ';height:7px'), [tip]: -1 }}><span style={{ ...css(`position:absolute;left:2px;right:2px;height:0.8px;background:${INK};opacity:0.6`), [flip ? 'top' : 'bottom']: 2 }} /></span>
+      <span style={{ ...css(cap + ';height:5px'), [end]: -1 }} />
+      <span style={{ ...css('position:absolute;left:50%;margin-left:-24px;width:48px;height:48px'), [tip]: -40 }} dangerouslySetInnerHTML={{ __html: BAR_TIP_SVG }} />
     </span>
   )
 }

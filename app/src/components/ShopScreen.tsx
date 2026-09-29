@@ -59,11 +59,11 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
   const tileFg = (on: boolean) => (on ? '#1b64da' : '#4e5968')
   // The 레전드 set gets a night-sky tile, a spinning spectrum edge and a tag.
   const legendTile = (on: boolean, k: string) => k === 'korea'
-    ? { background: 'radial-gradient(120% 90% at 50% 100%,#13296a 0%,#0b1d4a 50%,#050b1f 100%)', boxShadow: on ? 'inset 0 0 0 2px #fff,0 6px 18px -6px rgba(205,46,58,0.8)' : 'inset 0 0 0 1.5px rgba(242,199,92,0.8),0 6px 18px -8px rgba(0,71,160,0.8)' }
+    ? { background: 'linear-gradient(180deg,#fbf8f1 0%,#f3ede1 100%)', boxShadow: on ? 'inset 0 0 0 2px #1a1a1a,0 6px 16px -8px rgba(0,0,0,0.35)' : 'inset 0 0 0 1px rgba(26,26,26,0.16),0 6px 16px -10px rgba(0,0,0,0.3)' }
     : k === 'matrix'
     ? { background: 'radial-gradient(120% 90% at 50% 100%,#04351a 0%,#01140a 55%,#000 100%)', boxShadow: on ? 'inset 0 0 0 2px #eafff0,0 6px 18px -6px rgba(0,255,65,0.8)' : 'inset 0 0 0 1.5px rgba(0,255,65,0.6),0 6px 18px -8px rgba(0,255,65,0.7)' }
     : { background: 'radial-gradient(120% 90% at 50% 100%,#3a1380 0%,#160538 55%,#0a0220 100%)', boxShadow: on ? 'inset 0 0 0 2px #ffe27a,0 6px 18px -6px rgba(123,60,255,0.8)' : 'inset 0 0 0 1.5px rgba(181,140,255,0.55),0 6px 18px -8px rgba(123,60,255,0.7)' }
-  const legendTag = (pos: string, k: string) => <span className={k === 'matrix' ? 'legend-tag mx-tag' : k === 'korea' ? 'legend-tag kr-tag' : 'legend-tag'} style={css('position:absolute;z-index:4;height:18px;padding:0 7px;border-radius:9999px;font-size:10px;font-weight:800;letter-spacing:0.3px;color:#1a0633;display:flex;align-items:center;white-space:nowrap;' + pos)}>{k === 'korea' ? '레전드 · 3000' : k === 'matrix' ? '레전드 · 2000' : '레전드'}</span>
+  const legendTag = (pos: string, k: string) => <span className={k === 'matrix' ? 'legend-tag mx-tag' : k === 'korea' ? 'legend-tag kr-tag' : 'legend-tag'} style={css('position:absolute;z-index:4;height:18px;padding:0 7px;border-radius:9999px;font-size:10px;font-weight:800;letter-spacing:0.3px;display:flex;align-items:center;white-space:nowrap;' + (k === 'korea' ? 'color:#fbf8f1;' : 'color:#1a0633;') + pos)}>{k === 'korea' ? '레전드 · 3000' : k === 'matrix' ? '레전드 · 2000' : '레전드'}</span>
   // 보관함: only what I own, to wear with a tap.
   const inv = tab === 'inv'
   const mineOr = (list: [string, string][], kind: ItemKind) => (inv ? list.filter(([k]) => owned[kind].includes(k)) : list)
@@ -105,7 +105,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
                 <button key={k} className="pr-96" onClick={() => onPick('frame', k, l)} style={sx(tile + ';padding:22px 0 12px;gap:12px;transition:transform 150ms,background 200ms,box-shadow 200ms', LEGENDARY.has(k) ? legendTile(it.on, k) : tileColors(it.on))}>
                   {LEGENDARY.has(k) && legendTag('top:-7px;left:50%;margin-left:-' + (k === 'matrix' || k === 'korea' ? 36 : 22) + 'px', k)}
                   <span style={css('width:52px;height:52px')}><Avatar frame={k} photo={photoCss} size={52} /></span>
-                  <span style={{ fontSize: 13, fontWeight: LEGENDARY.has(k) ? 800 : 600, color: k === 'matrix' ? '#7dffa0' : k === 'korea' ? '#ffd98a' : LEGENDARY.has(k) ? '#ffffff' : tileFg(it.on) }}>{l}</span>
+                  <span style={{ fontSize: 13, fontWeight: LEGENDARY.has(k) ? 800 : 600, color: k === 'matrix' ? '#7dffa0' : k === 'korea' ? '#1a1a1a' : LEGENDARY.has(k) ? '#ffffff' : tileFg(it.on) }}>{l}</span>
                   {it.locked && priceTag(it.price)}
                   {it.on && check(20, 'top:8px;right:8px')}
                 </button>

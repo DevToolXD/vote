@@ -202,18 +202,16 @@ html,body{overscroll-behavior:none}
 
 /* 대한민국 (3000P 레전드 set) */
 @keyframes krTurn{to{transform:rotate(360deg)}}
-@keyframes krHalo{0%,100%{transform:scale(0.85);opacity:0.5}50%{transform:scale(1.15);opacity:1}}
-@keyframes krFw{0%{transform:translateX(0) scale(1);opacity:0}8%{opacity:1}70%{opacity:1}100%{transform:translateX(var(--kr-r,12px)) scale(0.35);opacity:0}}
-@keyframes krFlash{0%{transform:scale(0.3);opacity:0}6%{transform:scale(1.2);opacity:1}25%{transform:scale(0.6);opacity:0}100%{opacity:0}}
-@keyframes krPetal{0%{transform:translate(0,0) rotate(0deg);opacity:0}12%{opacity:1}100%{transform:translate(-14px,60px) rotate(260deg);opacity:0}}
-@keyframes krBand{from{background-position:0 0}to{background-position:26px 0}}
+/* the four 괘 catch the light one after another */
+@keyframes krGlint{0%,62%,100%{fill:#1a1a1a}74%{fill:#b8913e}}
+@keyframes krFlow{to{stroke-dashoffset:-60}}
+@keyframes krRipple{0%{transform:scale(1);opacity:0.8}100%{transform:scale(1.7);opacity:0}}
 @keyframes krSpiral{from{transform:translateY(0)}to{transform:translateY(-48px)}}
 @keyframes auraFlowT{from{transform:translateY(-50%)}to{transform:translateY(0)}}
-@keyframes krFall{0%{transform:translateY(0) rotate(0deg);opacity:0}15%{opacity:1}100%{transform:translateY(70px) rotate(220deg) translateX(-8px);opacity:0}}
 @media (prefers-reduced-motion:reduce){[class^="kr-"],[class*=" kr-"]{animation:none !important}}
 /* Off screen (see offscreen.ts): stop decorations animating — no work for things nobody sees. */
 .anim-off, .anim-off *{animation-play-state:paused !important}
-.legend-tag.kr-tag{background:linear-gradient(90deg,#cd2e3a,#ffffff 45%,#ffffff 55%,#0047a0);background-size:200% 100%;color:#0b1d4a;animation:auraFlowX 3s linear infinite;box-shadow:0 0 8px rgba(242,199,92,0.9)}
+.legend-tag.kr-tag{background:#1a1a1a;color:#fbf8f1;animation:none;box-shadow:inset 0 -2px 0 #cd2e3a,inset 0 -1px 0 #0047a0,0 2px 6px rgba(0,0,0,0.25)}
 
 /* 몰래 도박장 */
 @keyframes csNeon{0%,100%{opacity:1}45%{opacity:0.85}50%{opacity:0.55}55%{opacity:1}}
