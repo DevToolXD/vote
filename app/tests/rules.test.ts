@@ -749,6 +749,22 @@ describe('공지', () => {
     await denied(setDoc(doc(b, 'notices', 'x'.repeat(20)), { title: 't', body: 'b', by: 'b', createdAt: serverTimestamp() }))
     await denied(setDoc(doc(b, 'meta', 'noticeIndex'), { ids: [] }))
   })
+  test('an account made after a notice was posted never gets it (it is marked seen quietly)', async () => {
+    const a = await signUp('a'); const admin = dbAs(ADMIN)
+    await postNotice(admin, ADMIN.uid, '예전 공지', '가입 전에 올라온 공지')
+    await new Promise(r => setTimeout(r, 30))
+    const late = await signUp('late')
+    const since = ((await read(late, 'candidates/late')).createdAt as { toMillis(): number }).toMillis()
+    const ids = (await getDoc(doc(a, 'meta', 'noticeIndex'))).data()!.ids as string[]
+    assert.equal(await nextUnseenNotice(late, 'late', ids, since), null)
+    await denied(getDoc(doc(late, 'notices', ids[0]))) // now marked seen
+    const aSince = ((await read(a, 'candidates/a')).createdAt as { toMillis(): number }).toMillis()
+    assert.equal((await nextUnseenNotice(a, 'a', ids, aSince))?.title, '예전 공지') // older account still sees it
+    // a notice posted after the late account was made does show
+    await postNotice(admin, ADMIN.uid, '새 공지', '가입 후 공지')
+    const ids2 = (await getDoc(doc(a, 'meta', 'noticeIndex'))).data()!.ids as string[]
+    assert.equal((await nextUnseenNotice(late, 'late', ids2, since))?.title, '새 공지')
+  })
 })
 
 describe('season end date and rewards', () => {

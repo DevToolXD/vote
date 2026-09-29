@@ -30,8 +30,11 @@ export function subscribeNoticeIndex(db: Firestore, cb: (ids: string[]) => void)
   return onSnapshot(doc(db, 'meta', 'noticeIndex'), s => cb((s.data()?.ids as string[] | undefined) ?? []), () => cb([]))
 }
 
-/** The oldest notice I haven't seen yet among `ids`, or null. */
-export async function nextUnseenNotice(db: Firestore, uid: string, ids: string[]): Promise<Notice | null> {
+/**
+ * The oldest notice I haven't seen yet among `ids`, or null. Notices posted before my account
+ * was made (`since`, ms) aren't for me: they're marked seen so they're never fetched again.
+ */
+export async function nextUnseenNotice(db: Firestore, uid: string, ids: string[], since = 0): Promise<Notice | null> {
   // Seen ids are also kept on the device: when all of them are, launching costs no read.
   const local = seenHere(uid)
   if (ids.every(id => local.has(id))) return null
@@ -45,7 +48,7 @@ export async function nextUnseenNotice(db: Firestore, uid: string, ids: string[]
       if (!s.exists()) continue
       const n = { id, ...(s.data() as Omit<Notice, 'id'>) }
       // The person who posted it doesn't need to read it back.
-      if (n.by === uid) { await markNoticeSeen(db, uid, id).catch(() => {}); continue }
+      if (n.by === uid || (n.createdAt && n.createdAt.toMillis() < since)) { await markNoticeSeen(db, uid, id).catch(() => {}); continue }
       return n
     } catch { /* already seen (refused) or gone */ }
   }

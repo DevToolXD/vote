@@ -192,17 +192,20 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     if (boardNotices) { setNoticeIds(ids => ids.join() === boardNotices.join() ? ids : boardNotices); return }
     return subscribeNoticeIndex(db, setNoticeIds)
   }, [authUser, boardNotices?.join()]) // eslint-disable-line react-hooks/exhaustive-deps
+  // When my account was made (ms): notices from before that aren't shown. Undefined while my
+  // entry is still loading (or its creation time is still pending) — wait for it.
+  const myCreated = ownRow ? (ownRow.createdAt === undefined ? 0 : (ownRow.createdAt as { toMillis?: () => number } | null)?.toMillis?.()) : undefined
   useEffect(() => {
-    if (!authUser || !db || !noticeIds.length || notice) return
+    if (!authUser || !db || !noticeIds.length || notice || myCreated === undefined) return
     let live = true
-    nextUnseenNotice(db, authUser.uid, noticeIds).then(n => { if (live && n) setNotice(n) })
+    nextUnseenNotice(db, authUser.uid, noticeIds, myCreated).then(n => { if (live && n) setNotice(n) })
     return () => { live = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser, noticeIds])
+  }, [authUser, noticeIds, myCreated])
   const closeNotice = async () => {
     if (!notice || !authUser || !db) return
     await markNoticeSeen(db, authUser.uid, notice.id).catch(e => failToast('저장하지 못했어요', e))
-    const next = await nextUnseenNotice(db, authUser.uid, noticeIds.filter(id => id !== notice.id))
+    const next = await nextUnseenNotice(db, authUser.uid, noticeIds.filter(id => id !== notice.id), myCreated ?? 0)
     setNotice(next)
   }
 
