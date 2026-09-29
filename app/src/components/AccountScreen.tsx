@@ -4,7 +4,7 @@ import { ID_PATTERN } from '../backend/auth'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
 import { BackIcon } from './icons'
-import { PointsChip, shortPoints } from './PointsChip'
+import { PointsChip } from './PointsChip'
 import { Badges } from './Badges'
 import { Nameplate } from './Nameplate'
 
@@ -37,6 +37,7 @@ type Props = {
   mine: Person[]
   onOpenVote: (p: Person) => void
   openEdit: () => void
+  openEarn: () => void
   /** 거래 내역 (my point history). */
   openLedger?: () => void
   openTheme: () => void
@@ -56,7 +57,7 @@ export function AccountScreen(p: Props) {
   return (
     <div data-g="clear" style={css('flex:1;background:#ffffff')}>
       <div style={css('height:56px;padding:6px 8px 0 16px;display:flex;justify-content:flex-end;align-items:center;gap:4px')}>
-        {p.loggedIn && <span style={css('margin-right:auto')}><PointsChip points={p.points} onClick={p.openEdit} /></span>}
+        {p.loggedIn && <span style={css('margin-right:auto')}><PointsChip points={p.points} onClick={p.openEarn} /></span>}
         {p.loggedIn && (
           <button data-g="secondary" className="pr-96" onClick={p.openEdit} style={css('height:36px;padding:0 12px;border-radius:10px;display:flex;align-items:center;gap:6px;background:#f2f4f6;color:#333d4b;font-size:14px;font-weight:600')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" /><path d="m13.5 6.5 4 4" /></svg>프로필 편집
@@ -187,7 +188,7 @@ function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot, o
       {sep}
       <div style={{ height: 24 }} />
       <div style={css('padding:0 24px 24px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px')}>
-        {[['투표', mine.length + '명'], ['순위', me.rank + '위'], ['포인트', shortPoints(points) + 'P']].map(([k, v]) => (
+        {[['투표', mine.length + '명'], ['순위', me.rank + '위'], ['포인트', points.toLocaleString() + 'P']].map(([k, v]) => (
           <div key={k} data-g="l1" style={css('background:#f9fafb;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:2px')}>
             <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>{k}</span>
             <span style={css('font-size:22px;line-height:31px;font-weight:700;color:#191f28')}>{v}</span>

@@ -30,6 +30,8 @@ import { BLUE, fmt, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab
 import { db as maybeDb, firebaseConfigured, rtdb } from './firebase'
 import { isInstalledApp } from './install'
 import { LedgerSheet } from './components/LedgerViews'
+import { EarnSheet, INVITE_ADMIN, WelcomeGuide, guideSeen, markGuideSeen } from './components/PointsGuide'
+import { DEFAULT_REWARDS } from './backend/rewards'
 import { leftLabel } from './components/Duration'
 import { buildPeople } from './model'
 import { byRank } from './backend/rank'
@@ -92,6 +94,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [shopTab, setShopTab] = useState<ShopTab>('frame')
   const [passAsk, setPassAsk] = useState<PassKind | null>(null)
   const [ledgerOpen, setLedgerOpen] = useState(false)
+  const [earnOpen, setEarnOpen] = useState(false)
+  const [guideDone, setGuideDone] = useState<string | null>(null)
   const [buy, setBuy] = useState<Buy | null>(null)
 
   const [acctView, setAcctView] = useState<'login' | 'signup'>('login')
@@ -584,7 +588,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             <ShopScreen
               loggedIn={loggedIn} name={me?.name ?? '내 이름'} bio={me ? bioDraft : ''} photoCss={me?.photoCss ?? 'none'}
               equipped={me ? { frame: me.frame, plate: me.plate, skin: me.skin } : { frame: 'none', plate: 'none', skin: 'none' }}
-              owned={me?.owned ?? DEFAULT_OWNED} points={points} tab={shopTab} onTab={setShopTab}
+              owned={me?.owned ?? DEFAULT_OWNED} points={points} onPoints={() => setEarnOpen(true)} tab={shopTab} onTab={setShopTab}
               onPick={(k, key, l) => (me ? pickItem(k, key, l) : go('acct'))}
               passes={{ pass2x: passActive, passFake: hasFakePass(me) }} onBuyPass={setPassAsk} onLogin={() => go('acct')}
             />
@@ -594,7 +598,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               all={all} query={query} onQuery={q => { setQuery(q); setPage(0) }}
               page={page} onPage={setPage} onOpenProfile={setProfile}
               seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()} points={me ? points : undefined}
-              onPoints={() => go('shop')} onInstall={() => setInstallOpen(true)}
+              onPoints={() => setEarnOpen(true)} onInstall={() => setInstallOpen(true)}
             />
           )}
           {tab === 'acct' && (
@@ -625,6 +629,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               mine={mine}
               onOpenVote={d => setSheet(d.id)}
               openEdit={() => setEditOpen(true)}
+              openEarn={() => setEarnOpen(true)}
               openTheme={() => setThemeOpen(true)}
               goHome={() => go('rank')}
               onForgot={() => setSupportOpen('new')}
@@ -716,6 +721,16 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             onConfirm={confirmBuy}
           />
         )}
+        {me && (() => {
+          const admin = all.find(x => x.name === INVITE_ADMIN && x.id !== me.id)
+          const earn = {
+            rewards: season.rewards ?? DEFAULT_REWARDS, appBonus: !!me.appBonus,
+            onInstall: () => { setEarnOpen(false); setGuideDone(me.id); markGuideSeen(me.id); setInstallOpen(true) },
+            onMessageAdmin: admin ? () => { setEarnOpen(false); setGuideDone(me.id); markGuideSeen(me.id); startDm(admin.id) } : undefined,
+          }
+          if (guideDone !== me.id && !guideSeen(me.id)) return <WelcomeGuide name={me.name} {...earn} onClose={() => { markGuideSeen(me.id); setGuideDone(me.id) }} />
+          return earnOpen ? <EarnSheet points={points} {...earn} onClose={() => setEarnOpen(false)} /> : null
+        })()}
         {ledgerOpen && me && <LedgerSheet uid={me.id} title="거래 내역" byId={byId} onClose={() => setLedgerOpen(false)} />}
         {passAsk && me && (() => {
           const fake = passAsk === 'passFake'

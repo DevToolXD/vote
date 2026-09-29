@@ -18,6 +18,7 @@ type Props = {
   equipped: Record<ItemKind, string>
   owned: Record<ItemKind, string[]>
   points: number
+  onPoints: () => void
   tab: ShopTab
   onTab: (t: ShopTab) => void
   /** Equips an owned item or opens the purchase dialog for a locked one. */
@@ -49,7 +50,7 @@ export const PASSES: { key: PassKind; title: string; desc: string; icon: string;
   { key: 'passFake', title: '페이크 선물 패스', desc: '채팅에서 페이크 선물을 보낼 수 있어요', icon: '🤡', bg: 'linear-gradient(135deg,#8b5cf6,#c026d3)', price: FAKE_PASS_PRICE },
 ]
 
-export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, tab, onTab, onPick, passes, onBuyPass, onLogin }: Props) {
+export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, onPoints, tab, onTab, onPick, passes, onBuyPass, onLogin }: Props) {
   const item = (kind: ItemKind, k: string) => ({ on: equipped[kind] === k, locked: !owned[kind].includes(k), price: priceOf(kind, k) + 'P' })
   const priceTag = (price: string) => (
     <span style={css('position:absolute;top:8px;left:8px;z-index:3;height:20px;padding:0 7px;border-radius:9999px;background:#191f28;color:#ffffff;font-size:11px;font-weight:700;display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums')}><LockIcon size={9} />{price}</span>
@@ -80,7 +81,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h16l-1.2 11.2a2 2 0 0 1-2 1.8H7.2a2 2 0 0 1-2-1.8z" /><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8" /></svg>보관함
             </button>
           )}
-          {loggedIn && <PointsChip points={points} />}
+          {loggedIn && <PointsChip points={points} onClick={onPoints} />}
         </span>
       </header>
       <div className="anim-list" style={css('padding:8px 24px 8px;display:flex;flex-direction:column;gap:12px')}>
