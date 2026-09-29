@@ -80,7 +80,7 @@ function photoVersion(s) {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
   return s.length.toString(36) + '-' + h.toString(36)
 }
-const BOARD_SKIP = new Set(['photoURL', 'createdAt', 'lastGift', 'lastBet', 'payBet', 'ownerUid'])
+const BOARD_SKIP = new Set(['photoURL', 'createdAt', 'lastGift', 'lastBet', 'payBet', 'lastMarket', 'lastSale', 'lastCancel', 'ownerUid'])
 function boardRows() {
   return [...candidates.entries()].map(([id, c]) => {
     const row = { id, pv: photoVersion(c.photoURL ?? ''), sa: c.scoreAt?.toMillis?.() ?? 0 }
@@ -151,12 +151,15 @@ const LEDGER_KEEP = 100, FEED_KEEP = 300
 const ALERT_WINDOW_MS = Number(process.env.ALERT_WINDOW_MS ?? 60 * 60_000)
 const ALERT_POINTS = Number(process.env.ALERT_POINTS ?? 1000), ALERT_VOTES = Number(process.env.ALERT_VOTES ?? 20)
 const pts = c => (c?.earned ?? c?.up ?? 0) + (c?.bonus ?? 0) - (c?.spent ?? 0)
-const stateOf = c => ({ earned: c.earned ?? c.up ?? 0, up: c.up ?? 0, down: c.down ?? 0, bonus: c.bonus ?? 0, spent: c.spent ?? 0, lastGift: c.lastGift ?? '', lastBet: c.lastBet ?? '', payBet: c.payBet ?? '', appBonus: !!c.appBonus, pass2x: !!c.pass2x, passFake: !!c.passFake, owned: JSON.stringify(c.owned ?? {}) })
+const stateOf = c => ({ earned: c.earned ?? c.up ?? 0, up: c.up ?? 0, down: c.down ?? 0, bonus: c.bonus ?? 0, spent: c.spent ?? 0, lastGift: c.lastGift ?? '', lastBet: c.lastBet ?? '', payBet: c.payBet ?? '', lastMarket: c.lastMarket ?? '', lastSale: c.lastSale ?? '', lastCancel: c.lastCancel ?? '', appBonus: !!c.appBonus, pass2x: !!c.pass2x, passFake: !!c.passFake, owned: JSON.stringify(c.owned ?? {}) })
 const lastVote = new Map() // uid → { key, at, d, n }: 추천 within 30 minutes go into one line
 const gains = new Map()    // uid → [{ at, d, k }] within ALERT_WINDOW_MS
 const ledgerWrites = new Map()
 let feedWrites = 0
 
+async function marketOf(id) {
+  try { return (await fdb.doc(`market/${id}`).get()).data() ?? null } catch { return null }
+}
 async function giftOf(id) {
   try { return (await fdb.doc(`gifts/${id}`).get()).data() ?? null } catch { return null }
 }
@@ -174,6 +177,21 @@ async function classify(o, d) {
   // 몰래 도박장: a bet (points out) and a win (twice the bet back)
   if (d.lastBet && d.lastBet !== o.lastBet && dSpent > 0) { out.push({ d: -dSpent, k: 'bet' }); dSpent = 0 }
   if (d.payBet && d.payBet !== o.payBet && dBonus > 0) { out.push({ d: dBonus, k: 'betWin' }); dBonus = 0 }
+  // 당근마켓: a sale (paid by the buyer), a purchase, a listing (item into escrow), a take-down
+  const marketMoved = (d.lastMarket && d.lastMarket !== o.lastMarket) || (d.lastCancel && d.lastCancel !== o.lastCancel)
+  if (d.lastSale && d.lastSale !== o.lastSale && dBonus > 0) {
+    const m = await marketOf(d.lastSale)
+    out.push({ d: dBonus, k: 'marketSell', x: m ? `${m.kind}:${m.key}|${m.buyer ?? ''}` : '' }); dBonus = 0
+  }
+  if (d.lastMarket && d.lastMarket !== o.lastMarket) {
+    const m = await marketOf(d.lastMarket)
+    if (dSpent > 0) { out.push({ d: -dSpent, k: 'marketBuy', x: m ? `${m.kind}:${m.key}|${m.seller}` : '' }); dSpent = 0 }
+    else out.push({ d: 0, k: 'marketList', x: m ? `${m.kind}:${m.key}|${m.price}` : '' })
+  }
+  if (d.lastCancel && d.lastCancel !== o.lastCancel) {
+    const m = await marketOf(d.lastCancel)
+    out.push({ d: 0, k: 'marketCancel', x: m ? `${m.kind}:${m.key}` : '' })
+  }
   if (d.lastGift && d.lastGift !== o.lastGift) {
     const g = await giftOf(d.lastGift)
     if (dSpent > 0) { out.push(g?.itemKind ? { d: -dSpent, k: 'giftItemSent', x: `${g.itemKind}:${g.itemKey}|${g.to ?? ''}` } : { d: -dSpent, k: 'giftSent', x: g?.to ?? g?.chatId ?? '' }); dSpent = 0 }
@@ -182,14 +200,14 @@ async function classify(o, d) {
     if (dBonus > 0) { out.push({ d: dBonus, k: 'giftClaim', x: g?.from ?? '' }); dBonus = 0 }
   }
   for (const pass of ['pass2x', 'passFake']) if (d[pass] && !o[pass] && dSpent > 0) { const cost = pass === 'passFake' ? Math.min(dSpent, 299) : Math.min(dSpent, 5000); out.push({ d: -cost, k: 'pass', x: pass }); dSpent -= cost }
-  const items = newItems(o, d)
+  const items = marketMoved ? [] : newItems(o, d)
   if (items.length && dSpent > 0) { out.push({ d: -dSpent, k: 'buy', x: items.join(',') }); dSpent = 0 }
-  const gone = (d.lastGift !== o.lastGift ? [] : newItems(d, o)).concat(['pass2x', 'passFake'].filter(k => o[k] && !d[k]))
+  const gone = (d.lastGift !== o.lastGift || marketMoved ? [] : newItems(d, o)).concat(marketMoved ? [] : ['pass2x', 'passFake'].filter(k => o[k] && !d[k]))
   if (gone.length && dSpent === 0) out.push({ d: 0, k: 'revoke', x: gone.join(',') })
   if (dEarned) out.push({ d: dEarned, k: 'vote' })
   if (dBonus) out.push({ d: dBonus, k: 'grant' })
   if (dSpent) out.push({ d: -dSpent, k: 'other' })
-  return out.filter(e => e.d !== 0 || e.k === 'revoke' || e.k === 'giftItemClaim')
+  return out.filter(e => e.d !== 0 || ['revoke', 'giftItemClaim', 'marketList', 'marketCancel'].includes(e.k))
 }
 async function record(uid, lines, at = Date.now()) {
   const up = {}

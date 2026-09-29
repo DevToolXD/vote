@@ -29,6 +29,10 @@ export type CandidateDoc = {
   /** 몰래 도박장: my latest bet, and the last one paid out (backend/gamble.ts). */
   lastBet?: string
   payBet?: string
+  /** 당근마켓: my latest listing / purchase, sale, take-down (backend/market.ts). */
+  lastMarket?: string
+  lastSale?: string
+  lastCancel?: string
   /** Got the one-time 300P for opening the installed app. */
   appBonus?: boolean
   /** 메시지 끄기: nobody can message them or add them to a chat. */

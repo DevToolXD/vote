@@ -9,11 +9,11 @@ import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app'
 import { connectDatabaseEmulator, get as rtGet, getDatabase, ref as rtRef, set as rtSet, update as rtUpdate, type Database } from 'firebase/database'
 import {
   collection, connectFirestoreEmulator, deleteDoc, deleteField, doc, getDoc, getDocs, getFirestore,
-  increment, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Firestore,
+  arrayUnion, increment, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Firestore,
 } from 'firebase/firestore'
 import { revokeItem, setTradeBan, TRADE_BAN_FOREVER, deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
-import { buyItem, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, updateMyProfile } from '../src/backend/candidates'
+import { buyItem, buyKoreaBundle, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, updateMyProfile } from '../src/backend/candidates'
 import { loadOlderMessages, subscribeMessages, setChatDatabase, setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markGone, markHere, markRead, openDm, sendFakeGift, scheduleMessage, cancelScheduled, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
@@ -24,6 +24,7 @@ import { buildPeople } from '../src/model'
 import type { CandidateDoc } from '../src/backend/types'
 import { priceOf } from '../src/data'
 import { placeBet, settleLastBet } from '../src/backend/gamble'
+import { buyListing, cancelListing, listItem, subscribeMarket, type Listing } from '../src/backend/market'
 
 const PROJECT = 'demo-vote'
 const RTDB_NS = `${PROJECT}-default-rtdb`
@@ -260,14 +261,28 @@ describe('profile and shop', () => {
     await denied(updateMyProfile(a, 'a', { gender: '외계인' }))
     await denied(updateDoc(doc(a, 'candidates', 'a'), { name: '다른이름' }))
   })
-  test('대한민국 (레전드 set): frame, 이름표 and 막대 스킨 at 3000P each', async () => {
+  test('대한민국 세트: frame + 이름표 only together for 3000P; the 막대 스킨 is 리미티드 (관리자샵 only)', async () => {
     const a = await signUp('a')
     await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 9000)
-    for (const k of ['frame', 'plate', 'skin'] as const) assert.equal(priceOf(k, 'korea'), 3000)
-    await denied(buyItem(a, 'a', 'plate', 'korea', 2000))
-    for (const k of ['frame', 'plate', 'skin'] as const) await buyItem(a, 'a', k, 'korea', 3000)
+    // one by one: refused, at any price
+    await denied(buyItem(a, 'a', 'frame', 'korea', 3000))
+    await denied(buyItem(a, 'a', 'plate', 'korea', 3000))
+    await denied(buyItem(a, 'a', 'skin', 'korea', 3000))
+    // the bundle: exactly 3000P for both, both put on
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { 'owned.frame': arrayUnion('korea'), 'owned.plate': arrayUnion('korea'), spent: increment(2999) }))
+    await buyKoreaBundle(a, 'a')
     const c = await read(a, 'candidates/a')
-    assert.equal(pointsOf(c), 0); assert.deepEqual([c.frame, c.plate, c.skin], ['korea', 'korea', 'korea'])
+    assert.equal(pointsOf(c), 6000); assert.deepEqual([c.frame, c.plate], ['korea', 'korea'])
+    // the bundle can't smuggle in anything else
+    const b = await signUp('b'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'b', 9000)
+    await denied(updateDoc(doc(b, 'candidates', 'b'), { 'owned.frame': arrayUnion('korea'), 'owned.plate': arrayUnion('korea'), 'owned.skin': arrayUnion('korea'), spent: increment(3000) }))
+    // the admin's 관리자샵: everything, one by one, at its price
+    const admin = dbAs(ADMIN)
+    await setDoc(doc(admin, 'candidates', ADMIN.uid), newCandidateDoc(ADMIN.uid, '관리자'))
+    await grantPoints(admin, ADMIN.uid, ADMIN.uid, 9000)
+    await denied(buyItem(admin, ADMIN.uid, 'skin', 'korea', 100))
+    for (const k of ['frame', 'plate', 'skin'] as const) await buyItem(admin, ADMIN.uid, k, 'korea', 3000)
+    assert.equal(pointsOf(await read(admin, `candidates/${ADMIN.uid}`)), 0)
   })
   test('매트릭스 (레전드 set): frame, 이름표 and 막대 스킨 at 2000P each', async () => {
     const a = await signUp('a')
@@ -1216,5 +1231,54 @@ describe('몰래 도박장', () => {
     assert.equal(await settleLastBet(a, 'a', win!), null) // once only
     await setTradeBan(admin, ADMIN.uid, 'a', Date.now() + 60_000)
     await assert.rejects(placeBet(a, 'a', 100))
+  })
+})
+
+describe('당근마켓', () => {
+  const pts = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
+  const me = async (db: Firestore, u: string) => ({ id: u, ...(await read(db, `candidates/${u}`)) }) as { id: string; frame: string; plate: string; skin: string }
+  const open = (db: Firestore) => new Promise<Listing[]>(res => { const off = subscribeMarket(db, r => { off(); res(r) }) })
+  test('list (escrow, taken off if worn) → someone buys: item moves, points move; can\'t buy twice', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c'); const admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 1000); await grantPoints(admin, ADMIN.uid, 'b', 1000); await grantPoints(admin, ADMIN.uid, 'c', 1000)
+    await buyItem(a, 'a', 'frame', 'crown', priceOf('frame', 'crown'))
+    await listItem(a, await me(a, 'a'), 'frame', 'crown', 500)
+    let ca = await read(a, 'candidates/a')
+    assert.ok(!ca.owned.frame.includes('crown')); assert.equal(ca.frame, 'none')
+    const [l] = await open(b)
+    assert.equal(l.price, 500)
+    const before = await pts(a, 'a')
+    await buyListing(b, 'b', l)
+    assert.ok((await read(b, 'candidates/b')).owned.frame.includes('crown'))
+    assert.equal(await pts(b, 'b'), 500)
+    assert.equal(await pts(a, 'a'), before + 500)
+    await assert.rejects(buyListing(c, 'c', l)) // sold already
+    assert.equal((await open(c)).length, 0)
+  })
+  test('passes too; take-down gives it back; refused: selling what you don\'t have, buying your own, overspending, a free item, a fake payout', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 6000); await grantPoints(admin, ADMIN.uid, 'b', 100)
+    await denied(listItem(a, await me(a, 'a'), 'frame', 'crown', 10)) // doesn't own it
+    await denied(listItem(a, await me(a, 'a'), 'pass', 'pass2x', 10))
+    await buyPass(a, 'a', 'pass2x')
+    await listItem(a, await me(a, 'a'), 'pass', 'pass2x', 5000)
+    assert.equal((await read(a, 'candidates/a')).pass2x, false)
+    let [l] = await open(a)
+    await assert.rejects(buyListing(a, 'a', l)) // own listing
+    await assert.rejects(buyListing(b, 'b', l)) // b has 100P
+    // item without paying / paying the seller without a sale
+    const bt = writeBatch(b)
+    bt.update(doc(b, 'market', l.id), { status: 'sold', buyer: 'b', doneAt: serverTimestamp() })
+    bt.update(doc(b, 'candidates', 'b'), { pass2x: true, lastMarket: l.id })
+    await denied(bt.commit())
+    await denied(updateDoc(doc(b, 'candidates', 'a'), { bonus: increment(99999), lastSale: l.id }))
+    // take-down: it comes back
+    await cancelListing(a, 'a', l)
+    assert.equal((await read(a, 'candidates/a')).pass2x, true)
+    await assert.rejects(buyListing(b, 'b', l))
+    await denied(cancelListing(b, 'b', l))
+    // 거래 정지: no listing
+    await setTradeBan(admin, ADMIN.uid, 'a', Date.now() + 60_000)
+    await denied(listItem(a, await me(a, 'a'), 'pass', 'pass2x', 10))
   })
 })

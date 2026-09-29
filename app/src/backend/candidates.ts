@@ -14,7 +14,7 @@ import {
   type Firestore,
   type Unsubscribe,
 } from 'firebase/firestore'
-import type { ItemKind } from '../data'
+import { BUNDLE_PRICE, type ItemKind } from '../data'
 import { FAKE_PASS_PRICE, PASS_PRICE, VOTE_EVERY_MS, type CandidateDoc, type MyVote, type PassKind, type VoteDoc, type WeekKind } from './types'
 
 // Every function takes the Firestore instance so the rules tests (app/tests) run
@@ -163,6 +163,15 @@ export async function buyItem(db: Firestore, myUid: string, kind: ItemKind, key:
     [`owned.${kind}`]: arrayUnion(key),
     [kind]: key,
     spent: increment(price),
+  })
+}
+
+/** 대한민국 세트: frame + 이름표 for 3000P in one go, both put on (firestore.rules: koreaBundle). */
+export async function buyKoreaBundle(db: Firestore, myUid: string) {
+  await updateDoc(doc(db, 'candidates', myUid), {
+    'owned.frame': arrayUnion('korea'), 'owned.plate': arrayUnion('korea'),
+    frame: 'korea', plate: 'korea',
+    spent: increment(BUNDLE_PRICE),
   })
 }
 

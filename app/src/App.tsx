@@ -3,7 +3,7 @@ import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, revokeItem, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
-import { buyItem, buyPass, castVote, hasFakePass, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { buyItem, buyKoreaBundle, buyPass, castVote, hasFakePass, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, inviteMembers, isUnread, leaveGroup, onMyReads, setReadsUser, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, scheduleMessage, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
 import { DEFAULT_OWNED, DEFAULT_SEASON, FAKE_PASS_PRICE, PASS_PRICE, type PassKind, type MyVote, type Season, type WeekKind } from './backend/types'
@@ -21,12 +21,12 @@ import { SupportFlow, SupportRoom } from './components/SupportScreen'
 import { closeTicket, linkTicket, sendSupport, subscribeLinkedTickets, subscribeTicket, subscribeTickets, type Ticket } from './backend/support'
 import { markNoticeSeen, nextUnseenNotice, pollResults, postNotice, subscribeNoticeIndex, voteNotice, type Notice } from './backend/notices'
 import { NoticeScreen } from './components/NoticeScreen'
-import { cancelGift, claimGift, holdItemGift, itemLabel, sendGift, sendItemGift } from './backend/gifts'
+import { cancelGift, claimGift, holdItemGift, itemLabel, sendGift, sendItemGift, type GiftKind } from './backend/gifts'
 import { BuyDialog, Dialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
 import { css, sx } from './css'
-import { BLUE, fmt, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab } from './data'
+import { BLUE, BUNDLE_PRICE, fmt, isBundled, isLimited, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab } from './data'
 import { db as maybeDb, firebaseConfigured, rtdb } from './firebase'
 import { isInstalledApp } from './install'
 import { LedgerSheet } from './components/LedgerViews'
@@ -34,6 +34,9 @@ import { EarnSheet, INVITE_ADMIN, WelcomeGuide, guideSeen, markGuideSeen } from 
 import { DEFAULT_REWARDS } from './backend/rewards'
 import { placeBet, settleLastBet } from './backend/gamble'
 import { Casino } from './components/Casino'
+import { AdminShop } from './components/AdminShop'
+import { MarketView } from './components/Market'
+import { buyListing, cancelListing, listItem, subscribeMarket, type Listing } from './backend/market'
 import { shortPoints } from './components/PointsChip'
 import { leftLabel } from './components/Duration'
 import { buildPeople } from './model'
@@ -55,7 +58,7 @@ const db = maybeDb
 const tradeBanned = (p?: { tradeBan?: number }) => (p?.tradeBan ?? 0) > Date.now()
 const banText = (p?: { tradeBan?: number }) => (p?.tradeBan ?? 0) >= TRADE_BAN_FOREVER ? '거래가 정지됐어요 · 관리자에게 문의해주세요' : `거래가 정지됐어요 · ${leftLabel((p?.tradeBan ?? 0) - Date.now())} 뒤에 풀려요`
 
-type Buy = { kind: ItemKind; key: string; label: string; price: number }
+type Buy = { kind: ItemKind; key: string; label: string; price: number; bundle?: boolean }
 
 const EMPTY_SIGNUP: SignupForm = { name: '', id: '', pw: '', pw2: '' }
 const freshLogin = (): LoginForm => ({ id: savedLoginId(), pw: '', keep: true })
@@ -99,6 +102,10 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [ledgerOpen, setLedgerOpen] = useState(false)
   const [earnOpen, setEarnOpen] = useState(false)
   const [casinoOpen, setCasinoOpen] = useState(false)
+  const [marketRows, setMarketRows] = useState<Listing[]>([])
+  const [adminShopOpen, setAdminShopOpen] = useState(false)
+  // chats where an admin typed /관리자샵 (then 상점 opens the 관리자샵)
+  const adminShopChats = useRef(new Set<string>())
   const [guideDone, setGuideDone] = useState<string | null>(null)
   const [buy, setBuy] = useState<Buy | null>(null)
 
@@ -434,22 +441,30 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     }
   }
 
-  const pickItem = (kind: ItemKind, key: string, label: string) => {
+  const pickItem = (kind: ItemKind, key: string, label: string, oneByOne = false) => {
     if (!me) return
     if (me.owned[kind].includes(key)) {
       equipItem(db!, me.id, kind, key).catch(e => failToast('적용하지 못했어요', e))
+    } else if (isBundled(kind, key) && !oneByOne) {
+      // 대한민국: frame + 이름표 only as the set
+      setBuy({ kind, key, label: '대한민국 세트', price: BUNDLE_PRICE, bundle: true })
+    } else if (isLimited(kind, key) && !oneByOne) {
+      showToast('리미티드라 더 이상 팔지 않아요')
     } else {
       setBuy({ kind, key, label, price: priceOf(kind, key) })
     }
   }
+  // 관리자샵: anything, one by one
+  const adminPick = (kind: ItemKind, key: string, label: string) => pickItem(kind, key, label, true)
 
-  const buyName = buy ? buy.label + (KIND_NAME[buy.kind] ? ' ' + KIND_NAME[buy.kind] : '') : ''
+  const buyName = buy ? (buy.bundle ? buy.label : buy.label + (KIND_NAME[buy.kind] ? ' ' + KIND_NAME[buy.kind] : '')) : ''
   const canBuy = !!buy && points >= buy.price
   const confirmBuy = async () => {
     if (!buy || !canBuy || !me) return
     if (tradeBanned(me)) { showToast(banText(me)); return }
     try {
-      await buyItem(db!, me.id, buy.kind, buy.key, buy.price)
+      if (buy.bundle) await buyKoreaBundle(db!, me.id)
+      else await buyItem(db!, me.id, buy.kind, buy.key, buy.price)
       setBuy(null)
       showToast(buyName + ' 적용했어요')
     } catch (e) {
@@ -553,6 +568,26 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     }
   }
 
+  // 🥕 당근마켓: listings are watched only while its tab is open
+  useEffect(() => {
+    if (!db || tab !== 'shop' || shopTab !== 'market') return
+    return subscribeMarket(db, setMarketRows)
+  }, [tab, shopTab])
+  const marketBuy = async (l: Listing) => {
+    if (!me) return
+    if (tradeBanned(me)) { showToast(banText(me)); return }
+    try { await buyListing(db!, me.id, l); showToast(`${itemLabel(l.kind, l.key)} 샀어요 · 보관함에 있어요`) } catch (e) { failToast('사지 못했어요. 이미 팔렸을 수도 있어요', e) }
+  }
+  const marketList = async (kind: GiftKind, key: string, price: number) => {
+    if (!me) return
+    if (tradeBanned(me)) { showToast(banText(me)); return }
+    try { await listItem(db!, me, kind, key, price); showToast(`${itemLabel(kind, key)} 올렸어요`) } catch (e) { failToast('올리지 못했어요', e) }
+  }
+  const marketCancel = async (l: Listing) => {
+    if (!me) return
+    try { await cancelListing(db!, me.id, l); showToast('내렸어요 · 보관함으로 돌아왔어요') } catch (e) { failToast('내리지 못했어요', e) }
+  }
+
   const startDm = async (other: string) => {
     if (!authUser) { go('acct'); return }
     try {
@@ -609,7 +644,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             <ShopScreen
               loggedIn={loggedIn} name={me?.name ?? '내 이름'} bio={me ? bioDraft : ''} photoCss={me?.photoCss ?? 'none'}
               equipped={me ? { frame: me.frame, plate: me.plate, skin: me.skin } : { frame: 'none', plate: 'none', skin: 'none' }}
-              owned={me?.owned ?? DEFAULT_OWNED} points={points} onPoints={() => setEarnOpen(true)} tab={shopTab} onTab={setShopTab}
+              owned={me?.owned ?? DEFAULT_OWNED} points={points} onPoints={() => setEarnOpen(true)} tab={shopTab}
+              market={<MarketView loggedIn={loggedIn} rows={marketRows} me={me} byId={byId} points={points} onLogin={() => go('acct')} onBuy={marketBuy} onList={marketList} onCancel={marketCancel} />} onTab={setShopTab}
               onPick={(k, key, l) => (me ? pickItem(k, key, l) : go('acct'))}
               passes={{ pass2x: passActive, passFake: hasFakePass(me) }} onBuyPass={setPassAsk} onLogin={() => go('acct')}
             />
@@ -733,7 +769,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           <BuyDialog
             b={{
               title: buyName + '을 살까요?',
-              desc: canBuy ? '사면 바로 내 프로필에 적용돼요' : '받은 추천이 더 쌓이면 살 수 있어요',
+              desc: !canBuy ? '받은 추천이 더 쌓이면 살 수 있어요' : buy.bundle ? '대한민국 프레임 + 이름표를 한 번에 받고 바로 적용돼요' : '사면 바로 내 프로필에 적용돼요',
               price: buy.price.toLocaleString() + 'P',
               remain: (points - buy.price).toLocaleString() + 'P',
               can: canBuy,
@@ -753,6 +789,10 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           if (guideDone !== me.id && !guideSeen(me.id)) return <WelcomeGuide name={me.name} {...earn} onClose={() => { markGuideSeen(me.id); setGuideDone(me.id) }} />
           return earnOpen ? <EarnSheet points={points} {...earn} onClose={() => setEarnOpen(false)} /> : null
         })()}
+        {adminShopOpen && me && isAdmin && (
+          <AdminShop name={me.name} photoCss={me.photoCss ?? 'none'} equipped={{ frame: me.frame, plate: me.plate, skin: me.skin }} owned={me.owned ?? DEFAULT_OWNED}
+            passes={{ pass2x: passActive, passFake: hasFakePass(me) }} points={points} onPick={adminPick} onBuyPass={setPassAsk} onClose={() => setAdminShopOpen(false)} />
+        )}
         {casinoOpen && me && <Casino points={points} onBet={bet} onClose={() => setCasinoOpen(false)} />}
         {ledgerOpen && me && <LedgerSheet uid={me.id} title="거래 내역" byId={byId} onClose={() => setLedgerOpen(false)} />}
         {passAsk && me && (() => {
@@ -845,6 +885,10 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             onBack={() => setChatId(null)}
             onError={failToast}
             onSend={async (text, replyTo) => {
+              // 관리자샵: an admin types /관리자샵 in a chat (or is in a chat named /관리자샵), then 상점
+              const t = text.trim()
+              if (isAdmin && t === '/관리자샵') { adminShopChats.current.add(openChat.id); showToast('관리자샵이 열렸어요 · "상점"이라고 치면 들어가요'); return true }
+              if (isAdmin && t === '상점' && (adminShopChats.current.has(openChat.id) || openChat.name.trim() === '/관리자샵')) { setAdminShopOpen(true); return true }
               try { await sendMessage(db!, authUser.uid, openChat.id, text, replyTo); return true } catch (e) { failToast('보내지 못했어요', e); return false }
             }}
             onMute={muted => {

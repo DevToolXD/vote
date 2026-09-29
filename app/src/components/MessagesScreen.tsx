@@ -5,7 +5,7 @@ import { MEDALS } from '../data'
 import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, postFooled, sendFakeGift, cancelScheduled, subscribeScheduled, type Scheduled, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, giftPrice, hasGift, itemLabel, subscribeGift, type Gift, type GiftKind } from '../backend/gifts'
 import { PASSES } from './ShopScreen'
-import { FRAMES, SKINS, LEGENDARY, skinGeom } from '../data'
+import { FRAMES, SKINS, LEGENDARY, isBundled, isLimited, skinGeom } from '../data'
 import { Nameplate } from './Nameplate'
 import { TowerSkin } from './TowerSkin'
 import { saveImage } from '../saveImage'
@@ -887,7 +887,7 @@ function ItemGiftSheet({ points, group, to, onClose, onSend }: { points: number;
   const [kind, setKind] = useState<GiftKind>('frame')
   const [pick, setPick] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const list: [string, string][] = kind === 'pass' ? PASSES.map(p => [p.key, p.title]) : (kind === 'skin' ? SKINS : FRAMES).filter(([k]) => k !== 'none')
+  const list: [string, string][] = kind === 'pass' ? PASSES.map(p => [p.key, p.title]) : (kind === 'skin' ? SKINS : FRAMES).filter(([k]) => k !== 'none' && !isBundled(kind, k) && !isLimited(kind, k)) // 대한민국 is set-only, 리미티드 isn't sold
   const has = (k: string) => hasGift(to, kind, k)
   const price = pick ? giftPrice(kind, pick) : 0
   const ok = !!pick && price <= points && !has(pick)
@@ -928,7 +928,7 @@ function ItemGiftSheet({ points, group, to, onClose, onSend }: { points: number;
 }
 
 /** A small picture of a gift for the composer card. */
-function GiftThumb({ kind, k }: { kind: GiftKind; k: string }) {
+export function GiftThumb({ kind, k }: { kind: GiftKind; k: string }) {
   if (kind === 'frame') return <Avatar frame={k} size={36} full />
   if (kind === 'skin') { const g = skinGeom(k, 40, false); return <span style={css('position:relative;width:16px;height:40px')}>{g && <TowerSkin g={g} />}</span> }
   if (kind === 'pass') { const x = PASSES.find(p => p.key === k); return <span style={sx('width:36px;height:36px;border-radius:10px;color:#fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center', { background: x?.bg ?? '#3182f6' })}>{x?.icon}</span> }

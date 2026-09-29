@@ -186,10 +186,19 @@ service cloud.firestore {
       let skin = {'korea': 3000, 'matrix': 2000, 'aura': 1000, 'namsan': 100, 'eiffel': 125, 'bigben': 125, 'victory': 110};
       return kind == 'frame' ? frame.get(k, 0) : kind == 'plate' ? {'aura': 1000, 'matrix': 2000, 'korea': 3000}.get(k, frame.get(k, 0) + 15) : skin.get(k, 0);
     }
+    // One by one in the shop. 대한민국 frame + 이름표 only come as the 3000P bundle (koreaBundle),
+    // and the 대한민국 막대 스킨 is 리미티드 (no longer sold) — except in the admin's 관리자샵,
+    // where everything that ever existed can be bought one by one at its price.
     function buyable(kind, added) {
-      let frameKeys = ['korea', 'matrix', 'aura', 'neon', 'crown', 'sakura', 'cat', 'stars', 'flame', 'ocean', 'bunny', 'halo', 'devil', 'butterfly'];
-      let skinKeys = ['korea', 'matrix', 'aura', 'namsan', 'eiffel', 'bigben', 'victory'];
-      return added.size() == 0 || (added.size() == 1 && added[0] in (kind == 'skin' ? skinKeys : frameKeys));
+      let frameKeys = ['matrix', 'aura', 'neon', 'crown', 'sakura', 'cat', 'stars', 'flame', 'ocean', 'bunny', 'halo', 'devil', 'butterfly'];
+      let skinKeys = ['matrix', 'aura', 'namsan', 'eiffel', 'bigben', 'victory'];
+      return added.size() == 0 || (added.size() == 1 && (added[0] in (kind == 'skin' ? skinKeys : frameKeys) || (added[0] == 'korea' && isAdmin())));
+    }
+    // 대한민국 세트: frame + 이름표 together for 3000P (just the missing one, if one is already owned).
+    function koreaBundle(d, addF, addP, addS) {
+      return addS.size() == 0 && addF.size() + addP.size() >= 1
+        && (addF.size() == 0 || addF == ['korea']) && (addP.size() == 0 || addP == ['korea'])
+        && 'korea' in d.owned.frame && 'korea' in d.owned.plate;
     }
     function costOf(kind, added) { return added.size() == 1 ? price(kind, added[0]) : 0; }
 
@@ -200,13 +209,14 @@ service cloud.firestore {
       let addF = d.owned.frame.removeAll(o.owned.frame);
       let addP = d.owned.plate.removeAll(o.owned.plate);
       let addS = d.owned.skin.removeAll(o.owned.skin);
-      let cost = costOf('frame', addF) + costOf('plate', addP) + costOf('skin', addS);
+      let bundle = koreaBundle(d, addF, addP, addS);
+      let cost = bundle ? 3000 : costOf('frame', addF) + costOf('plate', addP) + costOf('skin', addS);
       return request.auth.uid == o.ownerUid
         && d.diff(o).affectedKeys().hasOnly(['gender', 'bio', 'photoURL', 'frame', 'plate', 'skin', 'spent', 'owned', 'msgOff'])
         && d.owned.keys().hasOnly(['frame', 'plate', 'skin'])
         && d.owned.frame.hasAll(o.owned.frame) && d.owned.plate.hasAll(o.owned.plate) && d.owned.skin.hasAll(o.owned.skin)
-        && addF.size() + addP.size() + addS.size() <= 1
-        && buyable('frame', addF) && buyable('plate', addP) && buyable('skin', addS)
+        && (bundle || (addF.size() + addP.size() + addS.size() <= 1
+          && buyable('frame', addF) && buyable('plate', addP) && buyable('skin', addS)))
         && d.spent == o.spent + cost
         && (cost == 0 || (d.spent <= d.get('earned', d.up) + d.get('bonus', 0) && canTrade(o)))
         && d.frame in d.owned.frame && d.plate in d.owned.plate && d.skin in d.owned.skin
@@ -367,6 +377,86 @@ service cloud.firestore {
         && d.bonus == o.get('bonus', 0) + b0.amount * 2;
     }
 
+    // ---- 당근마켓: sell something you own to someone else for a price you set ----
+    // Listing puts the item in escrow (it leaves `owned`, or the pass is switched off) in the same
+    // write that creates the listing (named in lastMarket). Buying: the buyer pays (spent), gets
+    // the item (lastMarket), and the seller is paid (bonus, lastSale), all in one batch with the
+    // listing turning 'sold'. Taking it down gives the item back (lastCancel).
+    function marketPath(id) { return /databases/$(database)/documents/market/$(id); }
+    function marketList() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['owned', 'frame', 'plate', 'skin', 'pass2x', 'passFake', 'lastMarket'])
+        && 'lastMarket' in request.resource.data.diff(resource.data).affectedKeys()
+        && !exists(marketPath(request.resource.data.lastMarket))
+        && marketListFull();
+    }
+    function marketListFull() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let m = getAfter(marketPath(d.lastMarket)).data;
+      return request.auth.uid == o.ownerUid && canTrade(o)
+        && m.seller == request.auth.uid && m.status == 'open'
+        && (m.kind == 'pass'
+          ? d.diff(o).affectedKeys().hasOnly([m.key, 'lastMarket']) && o.get(m.key, false) == true && d[m.key] == false
+          : d.diff(o).affectedKeys().hasOnly(['owned', m.kind, 'lastMarket'])
+            && d.owned.diff(o.owned).affectedKeys().hasOnly([m.kind])
+            && m.key in o.owned[m.kind] && d.owned[m.kind] == o.owned[m.kind].removeAll([m.key])
+            && d[m.kind] != m.key && d[m.kind] in d.owned[m.kind]);
+    }
+    function marketBuy() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['owned', 'spent', 'pass2x', 'passFake', 'lastMarket'])
+        && 'lastMarket' in request.resource.data.diff(resource.data).affectedKeys()
+        && 'spent' in request.resource.data.diff(resource.data).affectedKeys()
+        && marketBuyFull();
+    }
+    function marketBuyFull() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let m0 = get(marketPath(d.lastMarket)).data;
+      let m1 = getAfter(marketPath(d.lastMarket)).data;
+      return request.auth.uid == o.ownerUid && canTrade(o)
+        && m0.status == 'open' && m1.status == 'sold' && m1.buyer == request.auth.uid && m0.seller != request.auth.uid
+        && d.spent == o.spent + m0.price
+        && d.spent <= d.get('earned', d.up) + d.get('bonus', 0)
+        && (m0.kind == 'pass'
+          ? d.diff(o).affectedKeys().hasOnly([m0.key, 'spent', 'lastMarket']) && o.get(m0.key, false) == false && d[m0.key] == true
+          : d.diff(o).affectedKeys().hasOnly(['owned', 'spent', 'lastMarket'])
+            && d.owned.diff(o.owned).affectedKeys().hasOnly([m0.kind])
+            && !(m0.key in o.owned[m0.kind]) && d.owned[m0.kind] == o.owned[m0.kind].concat([m0.key]));
+    }
+    function marketCancel() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['owned', 'pass2x', 'passFake', 'lastCancel'])
+        && 'lastCancel' in request.resource.data.diff(resource.data).affectedKeys()
+        && exists(marketPath(request.resource.data.lastCancel))
+        && marketCancelFull();
+    }
+    function marketCancelFull() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let m0 = get(marketPath(d.lastCancel)).data;
+      let m1 = getAfter(marketPath(d.lastCancel)).data;
+      return request.auth.uid == o.ownerUid
+        && m0.seller == request.auth.uid && m0.status == 'open' && m1.status == 'cancelled'
+        && (m0.kind == 'pass'
+          ? d.diff(o).affectedKeys().hasOnly([m0.key, 'lastCancel']) && d.get(m0.key, false) == true
+          : d.diff(o).affectedKeys().hasOnly(['owned', 'lastCancel'])
+            && d.owned.diff(o.owned).affectedKeys().hasOnly([m0.kind])
+            && d.owned[m0.kind] == (m0.key in o.owned[m0.kind] ? o.owned[m0.kind] : o.owned[m0.kind].concat([m0.key])));
+    }
+    // The seller's side of a sale (written by the buyer): the price arrives as bonus, once.
+    function marketPayout(candidateId) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bonus', 'lastSale'])
+        && 'lastSale' in request.resource.data.diff(resource.data).affectedKeys()
+        && marketPayoutFull(candidateId);
+    }
+    function marketPayoutFull(candidateId) {
+      let d = request.resource.data;
+      let o = resource.data;
+      let m0 = get(marketPath(d.lastSale)).data;
+      let m1 = getAfter(marketPath(d.lastSale)).data;
+      return m0.seller == candidateId && m0.status == 'open' && m1.status == 'sold' && m1.buyer == request.auth.uid
+        && d.bonus == o.get('bonus', 0) + m0.price;
+    }
+
     // 300P once per account for opening the installed app.
     function appBonusClaim() {
       let d = request.resource.data;
@@ -496,7 +586,11 @@ service cloud.firestore {
       allow update: if signedIn() && (
         (isAdmin() && existsAfter(lockPath()) && lock().at == request.time)
           ? (adminGrant(candidateId) || adminTradeBan(candidateId) || adminRevoke(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId))
-          : (ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || loginIdBackfill() || giftSend() || giftClaim() || giftClaimItem() || giftClaimPass() || giftCancel() || gambleBet() || gamblePay())
+          // 당근마켓 writes (they name a listing in lastMarket / lastSale / lastCancel) are only tried against the
+          // market branches, everything else against the rest: keeps each write under the limit.
+          : (request.resource.data.get('lastMarket', '') != resource.data.get('lastMarket', '') || request.resource.data.get('lastSale', '') != resource.data.get('lastSale', '') || request.resource.data.get('lastCancel', '') != resource.data.get('lastCancel', ''))
+            ? (marketList() || marketBuy() || marketCancel() || marketPayout(candidateId))
+            : (ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || loginIdBackfill() || giftSend() || giftClaim() || giftClaimItem() || giftClaimPass() || giftCancel() || gambleBet() || gamblePay())
       );
 
       allow delete: if adminOp('deleteAccount') && lock().payload.target == candidateId;
@@ -995,6 +1089,45 @@ service cloud.firestore {
         && betWon(resource.data)
         && getAfter(me()).data.get('payBet', '') == id
         && getAfter(me()).data.get('bonus', 0) == get(me()).data.get('bonus', 0) + resource.data.amount * 2;
+      allow delete: if false;
+    }
+
+    // ---- 당근마켓 listings (see marketList / marketBuy / marketCancel / marketPayout) ---------
+    match /market/{id} {
+      function me() { return /databases/$(database)/documents/candidates/$(request.auth.uid); }
+      function seller() { return /databases/$(database)/documents/candidates/$(resource.data.seller); }
+      function hasIt(c, kind, key) { return kind == 'pass' ? c.get(key, false) == true : key in c.owned[kind]; }
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['seller', 'kind', 'key', 'price', 'status', 'createdAt'])
+        && request.resource.data.seller == request.auth.uid
+        && ((request.resource.data.kind in ['frame', 'plate', 'skin'] && request.resource.data.key is string && request.resource.data.key != 'none' && request.resource.data.key.size() <= 20)
+          || (request.resource.data.kind == 'pass' && request.resource.data.key in ['pass2x', 'passFake']))
+        && request.resource.data.price is int && request.resource.data.price >= 1 && request.resource.data.price <= 1000000000000
+        && request.resource.data.status == 'open'
+        && request.resource.data.createdAt == request.time
+        // the item goes into escrow in the same write
+        && getAfter(me()).data.get('lastMarket', '') == id
+        && hasIt(get(me()).data, request.resource.data.kind, request.resource.data.key)
+        && !hasIt(getAfter(me()).data, request.resource.data.kind, request.resource.data.key);
+      allow update: if signedIn() && resource.data.status == 'open' && (
+        // 사기: anyone but the seller; pays, gets the item, the seller is paid
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'buyer', 'doneAt'])
+          && request.resource.data.status == 'sold' && request.resource.data.buyer == request.auth.uid
+          && request.resource.data.doneAt == request.time
+          && request.auth.uid != resource.data.seller
+          && getAfter(me()).data.get('lastMarket', '') == id
+          && getAfter(me()).data.spent == get(me()).data.spent + resource.data.price
+          && hasIt(getAfter(me()).data, resource.data.kind, resource.data.key)
+          && getAfter(seller()).data.get('lastSale', '') == id
+          && getAfter(seller()).data.get('bonus', 0) == get(seller()).data.get('bonus', 0) + resource.data.price) ||
+        // 내리기: the seller takes it back
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'doneAt'])
+          && request.resource.data.status == 'cancelled' && request.resource.data.doneAt == request.time
+          && request.auth.uid == resource.data.seller
+          && getAfter(me()).data.get('lastCancel', '') == id
+          && hasIt(getAfter(me()).data, resource.data.kind, resource.data.key))
+      );
       allow delete: if false;
     }
   }
