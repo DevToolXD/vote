@@ -14,7 +14,7 @@ import {
 import { revokeItem, setTradeBan, TRADE_BAN_FOREVER, deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
 import { buyItem, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, updateMyProfile } from '../src/backend/candidates'
-import { loadOlderMessages, subscribeMessages, setChatDatabase, setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markGone, markHere, markRead, openDm, sendFakeGift, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
+import { loadOlderMessages, subscribeMessages, setChatDatabase, setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markGone, markHere, markRead, openDm, sendFakeGift, scheduleMessage, cancelScheduled, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
 import { cancelGift, claimGift, sendGift, sendItemGift, subscribeGift } from '../src/backend/gifts'
@@ -784,6 +784,25 @@ describe('season end date and rewards', () => {
     assert.equal((await getDoc(doc(a, 'seasonResults', '1'))).data()!.auto, true)
     await run() // not due any more: nothing changes
     assert.equal((await read(a, 'candidates/a')).bonus, 550)
+  })
+})
+
+describe('예약 메시지 (Realtime Database)', () => {
+  test('only chat members schedule into a chat, only for later; only I see and cancel mine', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
+    const id = await openDm(a, 'a', 'b')
+    await scheduleMessage(a, 'a', id, '내일 보자', Date.now() + 3600_000)
+    const mine = await rt(a, 'scheduled/a')
+    const [key] = Object.keys(mine)
+    assert.equal(mine[key].text, '내일 보자'); assert.equal(mine[key].chatId, id)
+    await denied(rt(b, 'scheduled/a')) // not b's
+    await assert.rejects(scheduleMessage(c, 'c', id, '끼어들기', Date.now() + 3600_000)) // not in the chat
+    await denied(rtSet(rtRef(rtdbOf.get(a)!, 'scheduled/a/past'), { chatId: id, text: 'x', at: Date.now() - 1000, createdAt: { '.sv': 'timestamp' } }))
+    await denied(rtSet(rtRef(rtdbOf.get(a)!, 'scheduled/a/extra'), { chatId: id, text: 'x', at: Date.now() + 60_000, createdAt: { '.sv': 'timestamp' }, uid: 'b' }))
+    await denied(rtSet(rtRef(rtdbOf.get(b)!, 'scheduled/a/forged'), { chatId: id, text: 'x', at: Date.now() + 60_000, createdAt: { '.sv': 'timestamp' } })) // as someone else
+    await denied(rtSet(rtRef(rtdbOf.get(a)!, `scheduled/a/${key}/text`), '바꿈')) // no edits: cancel and schedule again
+    await cancelScheduled(a, 'a', key)
+    assert.equal(await rt(a, 'scheduled/a'), null)
   })
 })
 

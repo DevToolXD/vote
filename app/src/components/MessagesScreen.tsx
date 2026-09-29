@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type R
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { MEDALS } from '../data'
-import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, postFooled, sendFakeGift, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
+import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, postFooled, sendFakeGift, cancelScheduled, subscribeScheduled, type Scheduled, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, giftPrice, hasGift, itemLabel, subscribeGift, type Gift, type GiftKind } from '../backend/gifts'
 import { PASSES } from './ShopScreen'
 import { FRAMES, SKINS, LEGENDARY, skinGeom } from '../data'
@@ -269,6 +269,8 @@ type RoomProps = {
   onSendGift: (amount: number) => Promise<boolean>
   /** 아이템 선물: sends an item (its price is held until someone takes it). */
   onSendItemGift: (kind: GiftKind, key: string) => Promise<boolean>
+  /** 예약: send `text` (and/or an item gift, whose points are held now) at `at`. */
+  onSchedule: (text: string, at: number, gift?: { kind: GiftKind; key: string }) => Promise<boolean>
   /** Owns the 페이크 선물 패스 (else the 페이크 선물 tile offers to buy it). */
   fakePass: boolean
   onBuyFakePass: () => void
@@ -295,6 +297,14 @@ export function ChatRoom(p: RoomProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [attach, setAttach] = useState<'menu' | 'gift' | 'item' | 'fake' | null>(null)
+  // 아이템 선물 waits in the composer until 보내기 (or 예약).
+  const [pendingGift, setPendingGift] = useState<{ kind: GiftKind; key: string } | null>(null)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [scheduledOpen, setScheduledOpen] = useState(false)
+  const [scheduled, setScheduled] = useState<Scheduled[]>([])
+  useEffect(() => subscribeScheduled(db, me.id, list => setScheduled(list.filter(x => x.chatId === chat.id))), [db, me.id, chat.id])
+  const hold = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const held = useRef(false)
   const [fooled, setFooled] = useState(false)
   // 답장: long-press (or right-click) a message for 답장/복사, or swipe it to the right.
   const [reply, setReply] = useState<ReplyRef | null>(null)
@@ -470,12 +480,28 @@ export function ChatRoom(p: RoomProps) {
 
   // Text sends never block each other (typing fast and hitting 보내기 again must not drop a message).
   const send = async () => {
+    if (held.current) { held.current = false; return } // that press opened 예약
     const t = draft.trim()
-    if (!t || !v.canSend) return
+    const g = pendingGift
+    if ((!t && !g) || !v.canSend) return
+    if (g) {
+      setPendingGift(null)
+      if (!(await p.onSendItemGift(g.kind, g.key))) { setPendingGift(g); return }
+    }
+    if (!t) return
     setDraft('')
     const r = reply
     setReply(null)
     if (!(await onSend(t, r ?? undefined))) { setDraft(d => (d ? d : t)); setReply(r) }
+  }
+  const canSendNow = !!draft.trim() || !!pendingGift
+  // 보내기 꾹 누르기 → 예약
+  const pressStart = () => { held.current = false; clearTimeout(hold.current); if (canSendNow) hold.current = setTimeout(() => { held.current = true; setScheduleOpen(true) }, 500) }
+  const pressEnd = () => clearTimeout(hold.current)
+  const schedule = async (at: number) => {
+    const t = draft.trim(), g = pendingGift
+    if (!(await p.onSchedule(t, at, g ?? undefined))) return
+    setDraft(''); setPendingGift(null); setReply(null); setScheduleOpen(false)
   }
   const [photoSending, setPhotoSending] = useState(false)
   const pickPhoto = async (f: File) => {
@@ -604,6 +630,21 @@ export function ChatRoom(p: RoomProps) {
               <button onClick={() => setReply(null)} aria-label="답장 취소" style={css('width:36px;height:36px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center')}><CloseIcon size={16} stroke="#8b95a1" width={2.6} /></button>
             </div>
           )}
+          {scheduled.length > 0 && (
+            <button className="pr-98" onClick={() => setScheduledOpen(true)} style={css('width:100%;display:flex;align-items:center;gap:8px;padding:8px 12px;margin-bottom:6px;border-radius:12px;background:#f2f7ff;font-size:13px;font-weight:600;color:#1b64da;text-align:left')}>
+              <span style={css('font-size:15px')}>⏰</span>예약된 메시지 {scheduled.length}개 · 다음 {whenLabel(scheduled[0].at)}<span style={css('margin-left:auto;color:#8bb4f7')}>›</span>
+            </button>
+          )}
+          {pendingGift && v.canSend && (
+            <div style={css('display:flex;align-items:center;gap:10px;padding:8px 6px 8px 10px;margin-bottom:6px;border-radius:14px;background:linear-gradient(135deg,#e9fff3,#d2f7e3);box-shadow:inset 0 0 0 1px #b9f5d3;animation:toastDown 220ms cubic-bezier(0.16,1,0.3,1) both')}>
+              <span style={css('width:44px;flex:none;display:flex;justify-content:center')}><GiftThumb kind={pendingGift.kind} k={pendingGift.key} /></span>
+              <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+                <span style={css('font-size:12px;font-weight:700;color:#0a6b3a')}>{pendingGift.kind === 'pass' ? '🎟️ 패스 선물' : '🛍️ 아이템 선물'} · 보내기를 누르면 전송돼요</span>
+                <span style={css('font-size:14px;font-weight:700;color:#063d22;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{itemLabel(pendingGift.kind, pendingGift.key)} · {giftPrice(pendingGift.kind, pendingGift.key).toLocaleString()}P</span>
+              </span>
+              <button onClick={() => setPendingGift(null)} aria-label="선물 빼기" style={css('width:36px;height:36px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center')}><CloseIcon size={16} stroke="#2f7a52" width={2.6} /></button>
+            </div>
+          )}
           {v.canSend ? (
             <div style={css('display:flex;align-items:flex-end;gap:6px')}>
               <button className="pr-94" onClick={() => setAttach(a => (a ? null : 'menu'))} disabled={sending} aria-label="사진·포인트 선물" aria-expanded={!!attach} style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#4e5968;background:#f2f4f6;transition:transform 260ms ${EASE}`, { transform: attach ? 'rotate(45deg)' : 'none' })}><PlusIcon /></button>
@@ -615,7 +656,10 @@ export function ChatRoom(p: RoomProps) {
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }}
                 style={css(`flex:1;min-width:0;min-height:44px;max-height:120px;resize:none;border:0;outline:none;border-radius:22px;background-color:#f2f4f6;padding:11px 16px;font-size:17px;line-height:22px;color:#191f28;font-family:inherit;transition:background-color 200ms ${EASE}`)}
               />
-              <button className="pr-94" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} onClick={send} disabled={!draft.trim()} aria-label="보내기" style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;background:#3182f6;display:flex;align-items:center;justify-content:center;transition:opacity 200ms ${EASE},transform 200ms ${EASE}`, { opacity: draft.trim() ? 1 : 0.3, transform: draft.trim() ? 'scale(1)' : 'scale(0.92)' })}>
+              <button className="pr-94" title="꾹 누르면 예약 전송"
+                onPointerDown={e => { e.preventDefault(); pressStart() }} onPointerUp={pressEnd} onPointerLeave={pressEnd} onPointerCancel={pressEnd}
+                onMouseDown={e => e.preventDefault()} onContextMenu={e => e.preventDefault()} onClick={send} disabled={!canSendNow} aria-label="보내기 (꾹 누르면 예약)"
+                style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;background:#3182f6;display:flex;align-items:center;justify-content:center;transition:opacity 200ms ${EASE},transform 200ms ${EASE};-webkit-touch-callout:none;user-select:none`, { opacity: canSendNow ? 1 : 0.3, transform: canSendNow ? 'scale(1)' : 'scale(0.92)' })}>
                 <PlaneIcon size={20} stroke="#ffffff" width={2.2} />
               </button>
             </div>
@@ -679,10 +723,19 @@ export function ChatRoom(p: RoomProps) {
             onSend={async n => { if (await p.onSendGift(n)) setAttach(null) }}
           />
         )}
+        {scheduleOpen && <ScheduleSheet what={[pendingGift && itemLabel(pendingGift.kind, pendingGift.key) + ' 선물', draft.trim()].filter(Boolean).join(' + ')} onClose={() => setScheduleOpen(false)} onPick={schedule} />}
+        {scheduledOpen && (
+          <ScheduledSheet list={scheduled} onClose={() => setScheduledOpen(false)}
+            onCancel={async it => {
+              await cancelScheduled(db, me.id, it.id)
+              if (it.giftId) await p.onCancelGift(it.giftId)
+              p.onToast(it.giftId ? '예약을 취소했어요. 포인트가 돌아왔어요' : '예약을 취소했어요')
+            }} />
+        )}
         {attach === 'item' && (
           <ItemGiftSheet points={p.myPoints} group={chat.type === 'group'} to={chat.type === 'dm' ? v.people[0] : undefined}
             onClose={() => setAttach(null)}
-            onSend={async (k, key) => { if (await p.onSendItemGift(k, key)) setAttach(null) }} />
+            onSend={async (k, key) => { setPendingGift({ kind: k, key }); setAttach(null); setTimeout(() => inputRef.current?.focus(), 50) }} />
         )}
         {attach === 'fake' && (
           <GiftSheet fake
@@ -868,7 +921,86 @@ function ItemGiftSheet({ points, group, to, onClose, onSend }: { points: number;
       <div style={css('padding:14px 20px 0')}>
         <div style={sx('padding:0 4px 8px;font-size:13px', { color: pick && price > points ? '#f04452' : '#8b95a1' })}>{pick && price > points ? `포인트가 모자라요 · 내 포인트 ${points.toLocaleString()}P` : `내 포인트 ${points.toLocaleString()}P`}</div>
         <button data-g="primary" className="pr-96" disabled={!ok || busy} onClick={async () => { if (!pick) return; setBusy(true); try { await onSend(kind, pick) } finally { setBusy(false) } }}
-          style={sx(`width:100%;height:56px;border-radius:16px;background:#3182f6;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms ${EASE}`, { opacity: ok && !busy ? 1 : 0.3 })}>{pick ? `${itemLabel(kind, pick)} 선물하기 · ${price.toLocaleString()}P` : '아이템을 골라주세요'}</button>
+          style={sx(`width:100%;height:56px;border-radius:16px;background:#3182f6;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms ${EASE}`, { opacity: ok && !busy ? 1 : 0.3 })}>{pick ? `${itemLabel(kind, pick)} 입력창에 올리기 · ${price.toLocaleString()}P` : '아이템을 골라주세요'}</button>
+      </div>
+    </BottomSheet>
+  )
+}
+
+/** A small picture of a gift for the composer card. */
+function GiftThumb({ kind, k }: { kind: GiftKind; k: string }) {
+  if (kind === 'frame') return <Avatar frame={k} size={36} />
+  if (kind === 'skin') { const g = skinGeom(k, 40, false); return <span style={css('position:relative;width:16px;height:40px')}>{g && <TowerSkin g={g} />}</span> }
+  if (kind === 'pass') { const x = PASSES.find(p => p.key === k); return <span style={sx('width:36px;height:36px;border-radius:10px;color:#fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center', { background: x?.bg ?? '#3182f6' })}>{x?.icon}</span> }
+  return <span style={css('width:44px;height:26px;border-radius:8px;overflow:hidden')}><Nameplate kind={k} person=" " showAvatar={false} style={{ width: 44, height: 26 }} /></span>
+}
+
+/** "9월 29일 오후 3:05" (today / tomorrow shown as such). */
+export function whenLabel(ms: number) {
+  const d = new Date(ms), now = new Date(), tmr = new Date(Date.now() + 86400_000)
+  const t = `${d.getHours() < 12 ? '오전' : '오후'} ${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`
+  return d.toDateString() === now.toDateString() ? `오늘 ${t}` : d.toDateString() === tmr.toDateString() ? `내일 ${t}` : `${d.getMonth() + 1}월 ${d.getDate()}일 ${t}`
+}
+const toLocalInput = (ms: number) => { const d = new Date(ms); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16) }
+
+/** 예약 전송: when should it go out? */
+function ScheduleSheet({ what, onClose, onPick }: { what: string; onClose: () => void; onPick: (at: number) => Promise<void> }) {
+  const at = (h: number, m = 0, addDay = 0) => { const d = new Date(); d.setDate(d.getDate() + addDay); d.setHours(h, m, 0, 0); return d.getTime() }
+  const presets: [string, number][] = [
+    ['10분 후', Date.now() + 10 * 60_000], ['1시간 후', Date.now() + 60 * 60_000],
+    ...(at(21) > Date.now() + 60_000 ? [['오늘 밤 9시', at(21)] as [string, number]] : []),
+    ['내일 아침 8시', at(8, 0, 1)],
+  ]
+  const [value, setValue] = useState(() => toLocalInput(Date.now() + 60 * 60_000))
+  const [busy, setBusy] = useState(false)
+  const picked = value ? new Date(value).getTime() : 0
+  const ok = picked > Date.now() + 30_000 && picked < Date.now() + 365 * 86400_000
+  const go = async (ms: number) => { setBusy(true); try { await onPick(ms) } finally { setBusy(false) } }
+  return (
+    <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(16px + env(safe-area-inset-bottom));animation:sheetUp 380ms ${EASE} both`}>
+      <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
+      <div style={css('padding:20px 24px 8px;display:flex;flex-direction:column;gap:4px')}>
+        <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>⏰ 언제 보낼까요?</span>
+        <span style={css('font-size:14px;line-height:21px;color:#6b7684;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{what || '메시지'} · 앱을 꺼 둬도 그 시간에 보내져요</span>
+      </div>
+      <div className="anim-list" style={css('padding:8px 20px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
+        {presets.map(([l, ms]) => (
+          <button key={l} className="pr-96" disabled={busy} onClick={() => go(ms)} style={css('height:56px;border-radius:14px;background:#f2f7ff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px')}>
+            <span style={css('font-size:15px;font-weight:700;color:#1b64da')}>{l}</span>
+            <span style={css('font-size:12px;color:#6b7684')}>{whenLabel(ms)}</span>
+          </button>
+        ))}
+      </div>
+      <div style={css('padding:14px 20px 0;display:flex;flex-direction:column;gap:8px')}>
+        <span style={css('font-size:13px;font-weight:600;color:#4e5968;padding:0 4px')}>직접 고르기</span>
+        <input type="datetime-local" value={value} min={toLocalInput(Date.now() + 60_000)} onChange={e => setValue(e.target.value)} className="box-focus"
+          style={css('height:50px;border:0;outline:none;border-radius:14px;background:#f2f4f6;padding:0 14px;font:inherit;font-size:16px;color:#191f28')} />
+        <button data-g="primary" className="pr-96" disabled={!ok || busy} onClick={() => go(picked)}
+          style={sx(`height:54px;border-radius:16px;background:#3182f6;color:#fff;font-size:16px;font-weight:700;transition:opacity 200ms ${EASE}`, { opacity: ok && !busy ? 1 : 0.35 })}>{ok ? `${whenLabel(picked)}에 보내기` : '지금보다 뒤의 시간을 골라주세요'}</button>
+      </div>
+    </BottomSheet>
+  )
+}
+
+/** 예약된 메시지 in this chat: see and cancel. */
+function ScheduledSheet({ list, onClose, onCancel }: { list: Scheduled[]; onClose: () => void; onCancel: (it: Scheduled) => Promise<void> }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  return (
+    <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(16px + env(safe-area-inset-bottom));animation:sheetUp 380ms ${EASE} both`}>
+      <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
+      <div style={css('padding:20px 24px 8px;font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>예약된 메시지</div>
+      <div className="anim-list" style={css('padding:0 16px;max-height:50vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px')}>
+        {list.length === 0 && <span style={css('padding:24px 8px;text-align:center;font-size:15px;color:#8b95a1')}>예약된 메시지가 없어요</span>}
+        {list.map(it => (
+          <div key={it.id} style={css('padding:12px 12px 12px 14px;border-radius:14px;background:#f9fafb;display:flex;align-items:center;gap:10px')}>
+            <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
+              <span style={css('font-size:13px;font-weight:700;color:#1b64da')}>⏰ {whenLabel(it.at)}</span>
+              <span style={css('font-size:15px;color:#191f28;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{it.text}</span>
+            </span>
+            <button className="pr-96" disabled={busy === it.id} onClick={async () => { setBusy(it.id); try { await onCancel(it) } finally { setBusy(null) } }}
+              style={css('flex:none;height:34px;padding:0 12px;border-radius:10px;background:#fff0f1;color:#e42939;font-size:14px;font-weight:700')}>취소</button>
+          </div>
+        ))}
       </div>
     </BottomSheet>
   )

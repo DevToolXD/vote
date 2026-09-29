@@ -6,6 +6,7 @@ import { PLATE_ART } from './plateArt'
 import { AURA_PLATE } from './auraArt'
 import { MATRIX_PLATE } from './matrixArt'
 import { KOREA_PLATE } from './koreaArt'
+import { pauseOffscreen } from '../offscreen'
 
 const PLATES: Record<string, { bg: string; fg: string; sub: string; dark: boolean; glow?: string }> = {
   none: { bg: '#f2f4f6', fg: '#191f28', sub: '#6b7684', dark: false },
@@ -45,7 +46,7 @@ export const Nameplate = memo(function Nameplate({ kind = 'none', person, sub, f
     : 'inset 0 0 0 1px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.8)'
   const art = k === 'aura' ? AURA_PLATE : k === 'matrix' ? MATRIX_PLATE : k === 'korea' ? KOREA_PLATE : PLATE_ART[k]?.before
   return (
-    <div style={{ display: 'block', ...style }}>
+    <div ref={k !== 'none' ? pauseOffscreen : undefined} style={{ display: 'block', ...style }}>
       <div style={{ ...css('position:relative;width:100%;height:100%;border-radius:14px;overflow:hidden;isolation:isolate'), background: p.bg }}>
         {art && <div className="av-art" dangerouslySetInnerHTML={{ __html: art }} />}
         {k !== 'none' && (
@@ -83,7 +84,7 @@ export function PlateBanner({ kind = 'none', fallback, name, sub, height, childr
   const dark = k !== 'none' ? p.dark : false
   const shadow = (k !== 'none' && p.glow) || (dark ? '0 1px 3px rgba(0,0,0,0.45)' : '0 1px 2px rgba(255,255,255,0.6)')
   return (
-    <div style={{ position: 'relative', height }}>
+    <div ref={k !== 'none' ? pauseOffscreen : undefined} style={{ position: 'relative', height }}>
       <div aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'hidden', isolation: 'isolate', background: k !== 'none' ? p.bg : fallback, WebkitMaskImage: fade, maskImage: fade }}>
         {art && <div className="av-art" dangerouslySetInnerHTML={{ __html: art }} />}
         {k !== 'none' && <div style={css('position:absolute;top:0;bottom:0;left:0;width:30%;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,0.22),rgba(255,255,255,0));animation:npShine 5s ease-in-out infinite;pointer-events:none')} />}

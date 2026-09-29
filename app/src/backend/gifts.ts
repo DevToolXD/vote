@@ -55,7 +55,8 @@ export async function sendGift(db: Firestore, me: string, chat: ChatRow, amount:
 }
 
 /** 아이템 선물: holds the item's price like a 포인트 선물; whoever takes it gets the item, 취소 refunds the points. */
-export async function sendItemGift(db: Firestore, me: string, chat: ChatRow, kind: GiftKind, key: string) {
+/** Holds the item's price and creates the gift, without its card in the chat yet (a scheduled send posts it later). */
+export async function holdItemGift(db: Firestore, me: string, chat: ChatRow, kind: GiftKind, key: string) {
   const amount = giftPrice(kind, key)
   if (key === 'none' || amount < 1) throw new Error('invalid-item')
   const giftRef = doc(collection(db, 'gifts'))
@@ -64,9 +65,12 @@ export async function sendItemGift(db: Firestore, me: string, chat: ChatRow, kin
   b.set(giftRef, { chatId: chat.id, from: me, to, amount, status: 'open', createdAt: serverTimestamp(), itemKind: kind, itemKey: key })
   b.update(doc(db, 'candidates', me), { spent: increment(amount), lastGift: giftRef.id })
   await b.commit()
-  const text = `🎁 ${itemLabel(kind, key)} 선물`
+  return { giftId: giftRef.id, text: `🎁 ${itemLabel(kind, key)} 선물` }
+}
+export async function sendItemGift(db: Firestore, me: string, chat: ChatRow, kind: GiftKind, key: string) {
+  const { giftId, text } = await holdItemGift(db, me, chat, kind, key)
   for (let i = 0; ; i++) {
-    try { await postGift(db, me, chat.id, giftRef.id, text); break } catch (e) { if (i >= 2) throw e; await new Promise(r => setTimeout(r, 800 * (i + 1))) }
+    try { await postGift(db, me, chat.id, giftId, text); break } catch (e) { if (i >= 2) throw e; await new Promise(r => setTimeout(r, 800 * (i + 1))) }
   }
 }
 /** What taking a gift changes on my candidate doc: points, or the item. */

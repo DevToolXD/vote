@@ -23,7 +23,9 @@ import {
   push,
   query as rtQuery,
   ref,
+  remove,
   serverTimestamp,
+  set,
   update,
   type Database,
 } from 'firebase/database'
@@ -354,4 +356,22 @@ export async function leaveGroup(db: Firestore, me: string, chatId: string) {
 export async function setMessagesOff(db: Firestore, me: string, off: boolean) {
   await updateDoc(doc(db, 'candidates', me), { msgOff: off })
   await update(ref(R(db)), { [`msgOff/${me}`]: off || null })
+}
+
+// ---- 예약 메시지 -------------------------------------------------------------------------------
+// Kept at scheduled/{me}/{key} (only I can read them); the background worker posts each one as me
+// at its time — even if my app is closed then. A scheduled 선물 already holds its points (giftId).
+export type Scheduled = { id: string; chatId: string; text: string; at: number; giftId?: string }
+
+export async function scheduleMessage(db: Firestore, me: string, chatId: string, text: string, at: number, giftId?: string) {
+  const t = text.trim()
+  if (!t || t.length > MAX_TEXT) throw new Error('invalid-message')
+  if (!(at > Date.now())) throw new Error('schedule-in-past')
+  await set(push(ref(R(db), `scheduled/${me}`)), { chatId, text: t, at, createdAt: serverTimestamp(), ...(giftId ? { giftId } : {}) })
+}
+export function subscribeScheduled(db: Firestore, me: string, cb: (list: Scheduled[]) => void) {
+  return onValue(ref(R(db), `scheduled/${me}`), s => cb(Object.entries((s.val() ?? {}) as Record<string, Omit<Scheduled, 'id'>>).map(([id, v]) => ({ ...v, id })).sort((a, b) => a.at - b.at)), () => cb([]))
+}
+export async function cancelScheduled(db: Firestore, me: string, id: string) {
+  await remove(ref(R(db), `scheduled/${me}/${id}`))
 }

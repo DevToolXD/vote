@@ -554,6 +554,51 @@ hereRef.on('value', s => { here = s.val() ?? {} }, e => warn('Presence listener 
 readsRef.on('value', s => { reads = s.val() ?? {} }, () => {})
 await Promise.all([chatsRef.once('value'), hereRef.once('value'), readsRef.once('value')]).catch(e => warn('Realtime Database unavailable: ' + e.message))
 
+// ---- 예약 메시지: scheduled/{uid}/{key}, posted as that person when due ----
+// Checked like a normal send: still in the chat, not in 타임아웃, messages not turned off (either
+// side of a 1:1). If it can't go out, it's dropped — and a scheduled 선물 is cancelled, its points refunded.
+let scheduled = {}
+const scheduledRef = rdb.ref('scheduled')
+scheduledRef.on('value', s => { scheduled = s.val() ?? {} }, e => warn('Scheduled listener failed: ' + e.message))
+await scheduledRef.once('value').catch(() => {})
+const rtVal = async path => (await rdb.ref(path).once('value')).val()
+async function refundGift(uid, giftId) {
+  await fdb.runTransaction(async tx => {
+    const g = await tx.get(fdb.doc(`gifts/${giftId}`))
+    if (!g.exists || g.get('status') !== 'open' || g.get('from') !== uid) return
+    tx.update(g.ref, { status: 'cancelled', doneAt: FieldValue.serverTimestamp() })
+    tx.update(fdb.doc(`candidates/${uid}`), { spent: FieldValue.increment(-g.get('amount')), lastGift: giftId })
+  })
+}
+let scheduledSent = 0
+async function deliverScheduled() {
+  const now = Date.now()
+  for (const [uid, items] of Object.entries(scheduled)) {
+    for (const [key, it] of Object.entries(items ?? {})) {
+      if (!it || !(it.at <= now)) continue
+      delete items[key] // don't pick it up twice before the listener catches up
+      const chatId = it.chatId
+      const other = chatId.includes('_') ? chatId.split('_').find(x => x !== uid) : null
+      const ok = (await rtVal(`chats/${chatId}/members/${uid}`)) === true
+        && !((await rtVal(`chats/${chatId}/timeouts/${uid}`)) > now)
+        && (await rtVal(`msgOff/${uid}`)) !== true
+        && (!other || (await rtVal(`msgOff/${other}`)) !== true)
+      if (ok) {
+        const k = rdb.ref(`msgs/${chatId}`).push().key
+        await rdb.ref().update({
+          [`msgs/${chatId}/${k}`]: { text: it.text, uid, at: ServerValue.TIMESTAMP, ...(it.giftId ? { kind: 'gift', giftId: it.giftId } : {}) },
+          [`chats/${chatId}/last`]: { text: String(it.text).slice(0, 100), uid, at: ServerValue.TIMESTAMP },
+          [`scheduled/${uid}/${key}`]: null,
+        })
+        scheduledSent++
+      } else {
+        await rdb.ref(`scheduled/${uid}/${key}`).remove()
+        if (it.giftId) await refundGift(uid, it.giftId).catch(e => warn('Refunding a scheduled gift failed: ' + e.message))
+      }
+    }
+  }
+}
+
 // A newer commit on main (new worker code or rules): stop, and the workflow starts a fresh run.
 async function newerCodeOnMain() {
   if (LOCAL || !process.env.GITHUB_TOKEN || !process.env.GITHUB_SHA) return false
@@ -599,6 +644,7 @@ while (true) {
   }
   await processLedger().catch(e => warn('Ledger failed: ' + e.message))
   await pruneLedger().catch(e => warn('Ledger prune failed: ' + e.message))
+  await deliverScheduled().catch(e => warn('Scheduled messages failed: ' + e.message))
   await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
   if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })
   if ((boardDirty && Date.now() - boardWrittenAt >= BOARD_MIN_MS) || Date.now() - boardWrittenAt > BOARD_HEARTBEAT_MS) await writeBoard().catch(e => warn('Writing the board failed: ' + e.message))

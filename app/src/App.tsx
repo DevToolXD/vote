@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, revokeItem, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, buyPass, castVote, hasFakePass, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
-import { createGroup, inviteMembers, isUnread, leaveGroup, onMyReads, setReadsUser, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, subscribeMyChats, type ChatRow } from './backend/messages'
+import { createGroup, inviteMembers, isUnread, leaveGroup, onMyReads, setReadsUser, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, scheduleMessage, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
 import { DEFAULT_OWNED, DEFAULT_SEASON, FAKE_PASS_PRICE, PASS_PRICE, type PassKind, type MyVote, type Season, type WeekKind } from './backend/types'
 import { deviceRegistered, disablePush, enablePush, pushErrorMessage, pushSupport, refreshPush } from './push'
@@ -21,7 +21,7 @@ import { SupportFlow, SupportRoom } from './components/SupportScreen'
 import { closeTicket, linkTicket, sendSupport, subscribeLinkedTickets, subscribeTicket, subscribeTickets, type Ticket } from './backend/support'
 import { markNoticeSeen, nextUnseenNotice, pollResults, postNotice, subscribeNoticeIndex, voteNotice, type Notice } from './backend/notices'
 import { NoticeScreen } from './components/NoticeScreen'
-import { cancelGift, claimGift, itemLabel, sendGift, sendItemGift } from './backend/gifts'
+import { cancelGift, claimGift, holdItemGift, itemLabel, sendGift, sendItemGift } from './backend/gifts'
 import { BuyDialog, Dialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
@@ -764,6 +764,23 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               if (tradeBanned(me)) { showToast(banText(me)); return false }
               if (other && tradeBanned(other)) { showToast(`${other.name}님은 거래 정지 중이라 선물을 받을 수 없어요`); return false }
               try { await sendItemGift(db!, authUser.uid, openChat, kind, key); showToast(`${itemLabel(kind, key)}을(를) 선물했어요`); return true } catch (e) { failToast('선물하지 못했어요', e); return false }
+            }}
+            onSchedule={async (text, at, gift) => {
+              if (gift) {
+                const other = openChat.type === 'dm' ? byId.get(openChat.members.find(m => m !== authUser.uid) ?? '') : undefined
+                if (tradeBanned(me)) { showToast(banText(me)); return false }
+                if (other && tradeBanned(other)) { showToast(`${other.name}님은 거래 정지 중이라 선물을 받을 수 없어요`); return false }
+              }
+              try {
+                if (gift) {
+                  // The points are held now, so the gift can't fail for lack of them later.
+                  const h = await holdItemGift(db!, authUser.uid, openChat, gift.kind, gift.key)
+                  await scheduleMessage(db!, authUser.uid, openChat.id, h.text, at, h.giftId)
+                }
+                if (text) await scheduleMessage(db!, authUser.uid, openChat.id, text, at)
+                showToast('예약했어요 · 그 시간에 보내드릴게요')
+                return true
+              } catch (e) { failToast('예약하지 못했어요', e); return false }
             }}
             onSendGift={async amount => {
               const other = openChat.type === 'dm' ? byId.get(openChat.members.find(m => m !== authUser.uid) ?? '') : undefined
