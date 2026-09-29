@@ -139,34 +139,101 @@ export const KOREA_AVATAR: { before: string; after: string } = {
 }
 
 // ---- 이름표 ------------------------------------------------------------------------------------
-// viewBox 320×56, the art on the right (the name sits on the left).
+// viewBox 320×56, the art on the right (the name sits on the left). The 이름표 plays a short
+// scene when it appears (opening a profile): the four 괘 start circling the 태극 and speed up
+// to full speed at 1.4s; at that instant the 태극 shakes like a fusion core, the plate flashes and
+// a red and blue aura bursts out, with shockwaves — and then stays trapped inside the plate,
+// crackling along every edge, while the 괘 keep whirling and the 태극 keeps trembling.
+const BURST = 1.4
 const SEAM = (y: number, c: string, dur: number, rev: boolean) =>
   `<path d="M172 ${y} C192 ${y - 12} 212 ${y + 12} 232 ${y} S 256 ${y - 8} 264 ${y - 2}" fill="none" stroke="${c}" stroke-opacity="0.6" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="40 20" class="kr-ribbon" style="animation:krFlow ${dur}s linear infinite${rev ? ' reverse' : ''}"></path>`
-const PLATE_ORBIT = { cx: 284, cy: 28, r: 33, squash: 0.36, tilt: -14, dur: 4.6, n: 3, s: 5.4 }
+/** Shown from the burst on (hidden before it). */
+const afterBurst = (delay = 0, dur = 0.3) => `animation:krAppear ${dur}s ease-out ${(BURST + delay).toFixed(2)}s both`
+
+/** A jagged line round the plate's edge (in the stretched 320×56 box): one frame of the crackle. */
+function bolt(seed: number) {
+  let x = seed * 9301 + 49297
+  const rnd = () => ((x = (x * 9301 + 49297) % 233280) / 233280)
+  const pts: string[] = []
+  const e = 1.6, j = () => (rnd() * 2.6).toFixed(2)
+  for (let px = 6; px <= 314; px += 7 + rnd() * 6) pts.push(`${px.toFixed(1)} ${(e + +j()).toFixed(2)}`)
+  for (let py = 5; py <= 51; py += 4 + rnd() * 3) pts.push(`${(320 - e - +j()).toFixed(2)} ${py.toFixed(1)}`)
+  for (let px = 314; px >= 6; px -= 7 + rnd() * 6) pts.push(`${px.toFixed(1)} ${(56 - e - +j()).toFixed(2)}`)
+  for (let py = 51; py >= 5; py -= 4 + rnd() * 3) pts.push(`${(e + +j()).toFixed(2)} ${py.toFixed(1)}`)
+  return 'M' + pts.join('L') + 'Z'
+}
+const BOLTS = [
+  [bolt(1), '#ff5a6e'], [bolt(2), '#5c9dff'], [bolt(3), '#ffffff'],
+  [bolt(4), '#5c9dff'], [bolt(5), '#ff5a6e'], [bolt(6), '#fff3c4'],
+].map(([d, c], i) => `<path d="${d}" fill="none" stroke="${c}" stroke-width="1.3" stroke-linejoin="round" vector-effect="non-scaling-stroke" class="kr-bolt" style="animation:krBolt 0.3s steps(1) ${(i * 0.05).toFixed(2)}s infinite;opacity:0"></path>`).join('')
+
+// The aura is HTML (soft blurred gradients) centred on the emblem. The emblem sits at viewBox x=284
+// of a right-aligned, cover-scaled 320×56 box, so its centre is 36 units in from the right edge,
+// one unit being max(width/320, height/56) — worked out with container units.
+const U = 'var(--u)'
+const at = (w: number, h: number) => `position:absolute;left:calc(${-w / 2} * ${U});top:calc(${-h / 2} * ${U});width:calc(${w} * ${U});height:calc(${h} * ${U})`
+const AURA =
+  `<div style="position:absolute;inset:0;container-type:size;pointer-events:none">` +
+  `<div style="--u:max(calc(100cqw / 320),calc(100cqh / 56));position:absolute;left:calc(100cqw - 36 * var(--u));top:50%;width:0;height:0">` +
+  // the burst: red and blue clouds swirling round each other, breathing
+  `<div class="kr-burst" style="${at(0, 0)};animation:krBurst 0.8s cubic-bezier(.2,.9,.3,1.15) ${BURST}s both">` +
+  `<div class="kr-glow" style="${at(0, 0)};animation:krTurn 6s linear infinite">` +
+  `<div class="kr-breath" style="${at(0, 0)};animation:krBreath 1.8s ease-in-out ${BURST + 0.8}s infinite">` +
+  `<div style="${at(330, 190)};border-radius:50%;background:radial-gradient(closest-side at 36% 40%,rgba(255,86,104,0.95) 0%,rgba(205,46,58,0.62) 28%,rgba(205,46,58,0.16) 55%,transparent 72%);filter:blur(6px)"></div>` +
+  `<div style="${at(330, 190)};border-radius:50%;background:radial-gradient(closest-side at 64% 60%,rgba(80,146,255,0.9) 0%,rgba(0,71,160,0.5) 28%,rgba(0,71,160,0.12) 55%,transparent 72%);filter:blur(6px);mix-blend-mode:normal;opacity:0.85"></div>` +
+  `</div></div>` +
+  // white-gold heat at the core
+  `<div style="${at(90, 90)};border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,0.95),rgba(255,226,150,0.6) 45%,transparent 75%);animation:krBreath 0.9s ease-in-out infinite"></div>` +
+  `</div>` +
+  // shockwaves at the burst, then a smaller one now and then
+  [0, 0.14, 0.3].map(d => `<div class="kr-shock" style="${at(340, 340)};border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,0.95),0 0 12px 3px rgba(205,46,58,0.8),inset 0 0 12px 3px rgba(0,71,160,0.8);animation:krShock 0.9s cubic-bezier(.15,.7,.3,1) ${(BURST + d).toFixed(2)}s both"></div>`).join('') +
+  `<div class="kr-shock" style="${at(150, 150)};border-radius:50%;box-shadow:0 0 0 1.5px rgba(255,240,200,0.9),0 0 8px 2px rgba(205,46,58,0.6),inset 0 0 8px 2px rgba(0,71,160,0.6);animation:krShock 2.2s ease-out ${BURST + 1.2}s infinite;opacity:0"></div>` +
+  `</div></div>`
+
+/** The four 괘 as they whirl: the set itself plus two fading ghosts trailing behind (motion blur). */
+const WHIRL =
+  `<g class="kr-whirl" style="transform-box:view-box;transform-origin:284px 28px;animation:krSpinUp ${BURST}s cubic-bezier(.5,0,.9,.7) both,krSpinFast 0.31s linear ${BURST}s infinite">` +
+  `<circle cx="284" cy="28" r="23.5" fill="none" stroke="${INK}" stroke-width="7" class="kr-ghost" style="animation:krGhost ${BURST}s ease-in both;opacity:0" stroke-opacity="0.07"></circle>` +
+  `<g transform="rotate(-24 284 28)"><g class="kr-ghost" style="animation:krGhost ${BURST}s ease-in both" opacity="0.18">${fourGwae(284, 28, 23.5, 9)}</g></g>` +
+  `<g transform="rotate(-12 284 28)"><g class="kr-ghost" style="animation:krGhost ${BURST}s ease-in both" opacity="0.4">${fourGwae(284, 28, 23.5, 9)}</g></g>` +
+  fourGwae(284, 28, 23.5, 9) +
+  `</g>`
+
 export const KOREA_PLATE =
   `<div style="position:absolute;inset:0;overflow:hidden;border-radius:14px;background:linear-gradient(90deg,${IVORY} 0%,#f7f2e8 55%,${HANJI} 100%)">` +
   // 한지 fibres
   `<div style="position:absolute;inset:0;background:repeating-linear-gradient(112deg,rgba(120,96,52,0.035) 0 1px,transparent 1px 6px),repeating-linear-gradient(28deg,rgba(120,96,52,0.025) 0 1px,transparent 1px 9px)"></div>` +
-  // the flag's colours as a wash behind the emblem
+  // the flag's colours as a wash behind the emblem (before the burst)
   `<div class="kr-glow" style="position:absolute;right:-6%;top:-70%;width:40%;height:240%;border-radius:50%;background:conic-gradient(from -56deg,rgba(205,46,58,0.4) 0 50%,rgba(0,71,160,0.4) 50% 100%);filter:blur(12px);animation:krTurn 10s linear infinite"></div>` +
+  AURA +
   // the 태극's S drawn out long, red over blue, flowing toward the emblem (faded out on the left, clear of the name)
   `<svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%;-webkit-mask-image:linear-gradient(90deg,transparent 52%,#000 76%);mask-image:linear-gradient(90deg,transparent 52%,#000 76%)">` +
   SEAM(24, RED, 5, false) + SEAM(32, BLUE, 6, true) + `</svg>` +
   `<svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">` +
-  rays(284, 28, 60, 18, 12, 0.3) +
-  coinOrbit({ ...PLATE_ORBIT, layer: 'back' }) +
-  // a small 태극기: the 태극 (upright) and the four 괘 at its corners
-  `<g transform="translate(284 28)">${ripple(18, 0)}${ripple(18, 1.2)}${ripple(18, 2.4)}<circle r="18.8" fill="#e6b54a"></circle><circle r="17.6" fill="${IVORY}" stroke="${INK}" stroke-width="0.6"></circle>${taegeuk(16.4)}</g>` +
+  `<g style="${afterBurst(0, 0.5)}">${rays(284, 28, 56, 18, 7, 0.22)}</g>` +
+  // the 태극: charging up, then the fusion shake, then trembling for good
+  `<g transform="translate(284 28)">${ripple(18, 0)}${ripple(18, 1.2)}${ripple(18, 2.4)}` +
+  `<g class="kr-core" style="transform-box:fill-box;transform-origin:center;animation:krCharge ${BURST}s ease-in both,krFusion 0.8s linear ${BURST}s,krTremble 0.12s linear ${BURST + 0.8}s infinite">` +
+  `<circle r="18.8" fill="#e6b54a"></circle><circle r="17.6" fill="${IVORY}" stroke="${INK}" stroke-width="0.6"></circle>${taegeuk(16.4)}` +
+  `<circle r="17.6" fill="#ffffff" class="kr-core" style="transform-box:fill-box;transform-origin:center;animation:krCoreFlash 0.7s ease-out ${BURST}s both;opacity:0"></circle>` +
+  `</g></g>` +
   `<circle class="kr-ring" cx="284" cy="28" r="18.8" fill="none" stroke="#fff6d8" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="12 106" style="transform-box:fill-box;transform-origin:center;animation:krTurn 1.6s linear infinite"></circle>` +
-  fourGwae(284, 28, 23.5, 9) +
-  spark(250, 10, 3.4, 0) + spark(312, 50, 3, 0.8, '#fff') + spark(236, 44, 2.6, 1.5) + spark(306, 8, 2.8, 1.1) + spark(200, 18, 2.4, 0.4, '#fff') +
-  coinOrbit({ ...PLATE_ORBIT, layer: 'front' }) +
+  WHIRL +
+  `<g style="${afterBurst(0.2, 0.6)}">` +
+  spark(250, 10, 3.4, 0) + spark(312, 50, 3, 0.8, '#fff') + spark(236, 44, 2.6, 1.5) + spark(306, 8, 2.8, 1.1) + spark(200, 18, 2.4, 0.4, '#fff') + spark(180, 40, 2.2, 1.9) + spark(222, 6, 2.6, 0.2, '#fff') +
+  `</g>` +
   `</svg>` +
+  // the flash
+  `<div class="kr-flash" style="position:absolute;inset:0;background:radial-gradient(120% 140% at 88% 50%,#ffffff 0%,rgba(255,250,235,0.9) 40%,rgba(255,255,255,0.5) 100%);animation:krFlashBang 0.6s ease-out ${BURST}s both;opacity:0"></div>` +
+  // the aura trapped inside: glowing against every edge, crackling
+  `<div style="position:absolute;inset:0;border-radius:14px;pointer-events:none;${afterBurst(0.15)}">` +
+  `<div class="kr-sizzle" style="position:absolute;inset:0;border-radius:14px;box-shadow:inset 0 0 10px 2px rgba(255,70,90,0.8),inset 0 0 22px 5px rgba(0,71,160,0.55),inset 0 0 3px 1px rgba(255,255,255,0.9);animation:krFlicker 0.22s steps(1) infinite"></div>` +
+  `<svg viewBox="0 0 320 56" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible;filter:drop-shadow(0 0 2px rgba(255,90,110,0.9)) drop-shadow(0 0 2px rgba(80,146,255,0.9))">${BOLTS}</svg>` +
   `</div>` +
-  // 표구-style inner border: a thin gold line just inside the edge, with a light running round it
+  `</div>` +
+  // 표구-style inner border: a thin gold line just inside the edge
   `<div style="position:absolute;inset:3px;border-radius:11px;box-shadow:inset 0 0 0 0.8px rgba(160,128,72,0.6);pointer-events:none"></div>` +
-  `<div style="position:absolute;inset:0;border-radius:14px;padding:1.5px;overflow:hidden;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);z-index:3;pointer-events:none;background:rgba(26,26,26,0.16)">` +
-  `<div class="kr-ring" style="position:absolute;left:-25%;top:50%;width:150%;padding-top:150%;margin-top:-75%;background:conic-gradient(from 0deg,transparent 0 30%,${RED} 42%,#ffd66b 50%,${BLUE} 58%,transparent 70%);animation:krTurn 3s linear infinite"></div></div>`
+  `<div style="position:absolute;inset:0;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(26,26,26,0.16);pointer-events:none"></div>`
 
 // ---- 막대 스킨 --------------------------------------------------------------------------------
 /** A repeating 48px tile: red on the left, blue on the right, the seam the 태극's S (flows up the bar). */
