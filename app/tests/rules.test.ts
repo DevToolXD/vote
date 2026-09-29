@@ -287,6 +287,14 @@ describe('profile and shop', () => {
     await buySeries(b, 'b', 'aura', (await read(b, 'candidates/b')).owned)
     assert.equal(pointsOf(await read(b, 'candidates/b')), 1000 - priceOf('plate', 'aura') - priceOf('skin', 'aura'))
   })
+  test('삼겹살 먹고싶다: frame + 이름표 + 막대 스킨 as one 1500P set', async () => {
+    const a = await signUp('a'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 1600)
+    assert.equal(seriesPrice('silver'), 1500)
+    await denied(buyItem(a, 'a', 'frame', 'silver', priceOf('frame', 'silver')))
+    await buySeries(a, 'a', 'silver', (await read(a, 'candidates/a')).owned)
+    const c = await read(a, 'candidates/a')
+    assert.equal(pointsOf(c), 100); assert.deepEqual([c.frame, c.plate, c.skin], ['silver', 'silver', 'silver'])
+  })
   test('리미티드: the landmark 막대 스킨 are no longer sold; the 관리자샵 sells anything one by one', async () => {
     const a = await signUp('a'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 5000)
     for (const k of ['namsan', 'eiffel', 'bigben', 'victory']) await denied(buyItem(a, 'a', 'skin', k, priceOf('skin', k)))
