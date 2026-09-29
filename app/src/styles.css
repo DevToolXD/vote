@@ -163,9 +163,9 @@ html,body{overscroll-behavior:none}
 @keyframes auraDrift{0%{transform:translateX(-18%) scale(1)}100%{transform:translateX(18%) scale(1.15)}}
 @keyframes auraStreak{0%{transform:translateX(-30%);opacity:0}8%{opacity:1}55%{opacity:1}70%,100%{transform:translateX(130%);opacity:0}}
 @keyframes auraSpark{0%{transform:translateY(0) scale(1);opacity:0}15%{opacity:1}100%{transform:translateY(-46px) scale(.3);opacity:0}}
-@keyframes auraGem{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-2px) scale(1.08)}}
+@keyframes auraGem{0%,100%{transform:translateY(0) scale(1);filter:drop-shadow(0 0 3px #ff4fd8) drop-shadow(0 0 6px #7b3cff)}50%{transform:translateY(-2px) scale(1.08);filter:drop-shadow(0 0 5px #22e1ff) drop-shadow(0 0 10px #ffe27a)}}
 @media (prefers-reduced-motion:reduce){[class^="aura-"],[class*=" aura-"]{animation:none !important}}
-@keyframes auraRing{0%{transform:scale(1);opacity:0.9}100%{transform:scale(1.5,1.06);opacity:0}}
+@keyframes auraRing{0%{box-shadow:0 0 0 0 rgba(168,85,247,0.85),0 0 0 0 rgba(34,225,255,0.6)}100%{box-shadow:0 0 0 9px rgba(168,85,247,0),0 0 0 16px rgba(34,225,255,0)}}
 .legend-tag{background:linear-gradient(90deg,#ffe27a,#ff9cf0,#9ff3ff,#ffe27a);background-size:300% 100%;animation:auraFlowX 3s linear infinite;box-shadow:0 0 8px rgba(255,156,240,0.7)}
 @keyframes auraFlowX{from{background-position:0% 50%}to{background-position:300% 50%}}
 @keyframes auraBreath{0%,100%{transform:scale(0.92);opacity:0.7}50%{transform:scale(1.08);opacity:1}}
@@ -197,7 +197,7 @@ html,body{overscroll-behavior:none}
 .mx-name{animation:mxName 3.4s steps(1) infinite}
 @keyframes mxName{0%,88%,100%{transform:none}89%{transform:translateX(-1.5px);text-shadow:-2px 0 #ff2b6a,2px 0 #35f0ff,0 0 6px #00ff41}91%{transform:translateX(1.5px);text-shadow:2px 0 #ff2b6a,-2px 0 #35f0ff,0 0 6px #00ff41}93%{transform:none}}
 @keyframes mxCube{from{transform:rotateX(0deg) rotateY(0deg)}to{transform:rotateX(360deg) rotateY(720deg)}}
-@keyframes mxDepth{0%,100%{transform:translate(-50%,-50%) scale(0.62);opacity:0.55}50%{transform:translate(-50%,-50%) scale(1.18);opacity:1}}
+@keyframes mxDepth{0%,100%{transform:translate(-50%,-50%) scale(0.62);opacity:0.55;filter:brightness(0.7)}50%{transform:translate(-50%,-50%) scale(1.18);opacity:1;filter:brightness(1.25)}}
 @keyframes mxRise{from{transform:translateY(calc(var(--bh,150px) * 0.1))}to{transform:translateY(calc(var(--bh,150px) * 0.88))}}
 
 /* 대한민국 (3000P 레전드 set) */

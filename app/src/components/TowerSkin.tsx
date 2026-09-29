@@ -38,7 +38,7 @@ function AuraBar({ flip }: { flip: boolean }) {
     <span ref={pauseOffscreen} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', transform: flip ? 'scaleY(-1)' : 'none' }}>
       {/* aura around the bar */}
       <span className="aura-glow" style={css('position:absolute;left:-70%;right:-70%;top:-10px;bottom:-4px;border-radius:40%;background:radial-gradient(closest-side,rgba(123,60,255,0.5),rgba(34,225,255,0.22) 60%,transparent);filter:blur(4px);animation:auraPulse 1.8s ease-in-out infinite')} />
-      <span className="aura-ringbar" style={css('position:absolute;inset:0;border-radius:6px;border:2px solid rgba(168,85,247,0.85);box-shadow:0 0 6px rgba(34,225,255,0.6);animation:auraRing 1.8s ease-out infinite')} />
+      <span className="aura-ringbar" style={css('position:absolute;inset:0;border-radius:6px;animation:auraRing 1.8s ease-out infinite')} />
       {/* afterimages (잔상) */}
       <span className="aura-ghost" style={css('position:absolute;inset:0;border-radius:6px;background:linear-gradient(180deg,rgba(34,225,255,0.95),rgba(34,225,255,0.35));animation:auraGhostL 1.1s ease-in-out infinite')} />
       <span className="aura-ghost" style={css('position:absolute;inset:0;border-radius:6px;background:linear-gradient(180deg,rgba(255,79,216,0.95),rgba(255,79,216,0.35));animation:auraGhostR 1.1s ease-in-out 0.15s infinite')} />
@@ -73,7 +73,7 @@ const orbitLayer = (list: typeof ORBIT_BACK) => list.map(o => (
 
 const RAIN: [string, number, number][] = [['14%', 1.35, 0], ['40%', 2.05, 0.7], ['66%', 1.6, 1.3], ['88%', 2.4, 0.4]]
 /** Far layer: smaller, dimmer, slower columns behind the near ones (depth). */
-const RAIN_FAR: [string, number, number][] = [['28%', 3.1, 0.3], ['74%', 3.4, 1.1]]
+const RAIN_FAR: [string, number, number][] = [['26%', 3.1, 0.3], ['54%', 2.7, 1.9], ['78%', 3.4, 1.1]]
 
 /**
  * 매트릭스 막대: a black glass pillar with digital rain falling inside (always downward, even
@@ -98,7 +98,7 @@ function MatrixBar({ flip, h }: { flip: boolean; h: number }) {
           <span key={left} className="mx-drop" style={{ ...css('position:absolute;top:0;width:1em;margin-left:-0.5em;display:flex;flex-direction:column;align-items:center;font-size:8px;line-height:9px;will-change:transform'), left, fontFamily: MX_FONT, animation: `mxDrop ${dur}s linear ${-delay}s infinite` }}>
             {MX_STRIPS[i].map((c, j, all) => {
               const head = j === all.length - 1
-              return <span key={j} style={{ color: head ? '#eafff0' : '#00ff41', opacity: head ? 1 : 0.1 + 0.75 * (j / (all.length - 1)) ** 1.6, textShadow: head ? '0 0 4px #00ff41' : undefined }}>{c}</span>
+              return <span key={j} style={{ color: head ? '#eafff0' : '#00ff41', opacity: head ? 1 : 0.1 + 0.75 * (j / (all.length - 1)) ** 1.6, textShadow: head ? '0 0 4px #00ff41,0 0 8px #00ff41' : '0 0 3px rgba(0,255,65,0.8)' }}>{c}</span>
             })}
           </span>
         ))}
@@ -113,7 +113,7 @@ function MatrixBar({ flip, h }: { flip: boolean; h: number }) {
         <span key={delay as number} className="mx-burst" style={{ ...css('position:absolute;left:50%;font-size:7px;line-height:7px;color:#eafff0;text-shadow:0 0 4px #00ff41,0 0 8px #00ff41;opacity:0'), marginLeft: dx as string, [tip]: -12, fontFamily: MX_FONT, animation: `${flip ? 'mxBurstDown' : 'mxBurst'} 1.8s ease-out ${delay}s infinite` }}>{MX_STRIPS[1][(delay as number) * 5]}</span>
       ))}
       {[['-7px', 2.6, 0.2], ['calc(100% + 1px)', 3.1, 1.4]].map(([left, dur, delay]) => (
-        <span key={left as string} className="mx-drop" style={{ ...css('position:absolute;top:0;font-size:7px;line-height:8px;color:#00ff41;opacity:0.7'), left: left as string, fontFamily: MX_FONT, animation: `mxDrop ${dur}s linear ${-(delay as number)}s infinite` }}>{MX_STRIPS[3][Math.floor((delay as number) * 5)]}</span>
+        <span key={left as string} className="mx-drop" style={{ ...css('position:absolute;top:0;font-size:7px;line-height:8px;color:#00ff41;opacity:0.7;text-shadow:0 0 3px #00ff41'), left: left as string, fontFamily: MX_FONT, animation: `mxDrop ${dur}s linear ${-(delay as number)}s infinite` }}>{MX_STRIPS[3][Math.floor((delay as number) * 5)]}</span>
       ))}
     </span>
   )
