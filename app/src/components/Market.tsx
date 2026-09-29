@@ -38,18 +38,22 @@ export function MarketView({ loggedIn, rows, me, byId, points, onLogin, onBuy, o
   const [sell, setSell] = useState(false)
   const [mineOnly, setMineOnly] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
+  // the intro can be closed for good (✕)
+  const [intro, setIntro] = useState(() => { try { return localStorage.getItem('market-intro-off') !== '1' } catch { return true } })
+  const closeIntro = () => { setIntro(false); try { localStorage.setItem('market-intro-off', '1') } catch { /* private mode */ } }
   // a seller who deleted their account can't be paid: hide those
   const live = rows.filter(l => byId.has(l.seller) && (!mineOnly || l.seller === me?.id))
   const act = async (id: string, f: () => Promise<void>) => { setBusy(id); try { await f() } finally { setBusy(null) } }
 
   return (
     <div style={css('padding:0 24px 32px;display:flex;flex-direction:column;gap:12px')}>
-      <div style={css('border-radius:18px;padding:16px;background:linear-gradient(135deg,#fff4ea,#ffe3cc);display:flex;align-items:center;gap:12px')}>
+      <div style={css('position:relative;border-radius:18px;padding:16px;background:linear-gradient(135deg,#fff4ea,#ffe3cc);display:flex;align-items:center;gap:12px')}>
         <span aria-hidden="true" style={css('font-size:34px')}>🥕</span>
         <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
           <span style={css('font-size:17px;font-weight:800;color:#7a3300')}>당근마켓</span>
-          <span style={css('font-size:13px;line-height:18px;color:#9a5a2a')}>내가 가진 아이템을 원하는 가격에 팔아요. 올려둔 동안엔 보관함에서 빠져요</span>
+          {intro && <span style={css('font-size:13px;line-height:18px;color:#9a5a2a;padding-right:8px')}>내가 가진 아이템을 원하는 가격에 팔아요. 세트 아이템도 하나씩 따로 팔 수 있어요. 올려둔 동안엔 보관함에서 빠져요</span>}
         </span>
+        {intro && <button className="pr-dim" onClick={closeIntro} aria-label="안내 닫기" style={css('position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:9999px;color:#b07a52;font-size:13px;display:flex;align-items:center;justify-content:center')}>✕</button>}
         <button data-g="primary" className="pr-96" onClick={loggedIn ? () => setSell(true) : onLogin} style={sx('flex:none;height:40px;padding:0 16px;border-radius:12px;color:#fff;font-size:15px;font-weight:800', { background: CARROT })}>{loggedIn ? '팔기' : '로그인'}</button>
       </div>
 

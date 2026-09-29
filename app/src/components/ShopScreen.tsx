@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { css, sx } from '../css'
 import { FRAMES, LEGENDARY, SKINS, isLimited, seriesItems, seriesMissing, seriesPrice, skinGeom, type ItemKind } from '../data'
 import { FAKE_PASS_PRICE, PASS_PRICE, type PassKind } from '../backend/types'
@@ -57,10 +57,9 @@ export const PASSES: { key: PassKind; title: string; desc: string; icon: string;
 
 export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, onPoints, tab, onTab, onPick, passes, onBuyPass, onLogin, market, onPickSet }: Props) {
   const item = (kind: ItemKind, k: string) => ({ on: equipped[kind] === k, locked: !owned[kind].includes(k), price: `세트 ${seriesMissing(k, owned).price.toLocaleString()}P` })
-  // 악세사리 remembers which of its three it was on
-  const lastAcc = useRef<ItemKind | 'set'>('set')
-  if (tab === 'set' || tab === 'frame' || tab === 'plate' || tab === 'skin') lastAcc.current = tab
+  // 악세사리 sells 세트 only: pieces are never sold one by one (보관함 lists them to wear; 당근마켓 trades them)
   const top = tab === 'pass' ? 'pass' : tab === 'market' ? 'market' : 'acc'
+  const view: ShopTab = top === 'acc' && tab !== 'inv' ? 'set' : tab
   const priceTag = (price: string) => (
     <span style={css('position:absolute;top:8px;left:8px;z-index:3;height:20px;padding:0 7px;border-radius:9999px;background:#191f28;color:#ffffff;font-size:11px;font-weight:700;display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums')}><LockIcon size={9} />{price}</span>
   )
@@ -102,16 +101,11 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
       </div>
       {!inv && (
         <div style={css('position:sticky;top:56px;z-index:19;padding:8px 24px 16px;background:#ffffff')}>
-          <Segmented<'acc' | 'pass' | 'market'> options={['acc', 'pass', 'market']} labels={['악세사리', '패스', '🥕 당근마켓']} value={top} onPick={v => onTab(v === 'acc' ? lastAcc.current : v)} />
-          {top === 'acc' && (
-            <div style={css('margin-top:8px')}>
-              <Segmented<ItemKind | 'set'> options={['set', 'frame', 'plate', 'skin']} labels={['세트', '프레임', '이름표', '막대 스킨']} value={lastAcc.current} onPick={onTab} />
-            </div>
-          )}
+          <Segmented<'acc' | 'pass' | 'market'> options={['acc', 'pass', 'market']} labels={['악세사리', '패스', '🥕 당근마켓']} value={top} onPick={v => onTab(v === 'acc' ? 'set' : v)} />
         </div>
       )}
 
-        {tab === 'set' && (
+        {view === 'set' && (
           <div className="anim-list" style={css('display:flex;flex-direction:column;gap:10px;padding:0 24px 32px')}>
             <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>사면 그 시리즈가 전부 들어와요 · 프레임 + 이름표 (레전드는 막대 스킨까지)</span>
             {FRAMES.filter(([k]) => k !== 'none').map(([k, l]) => {
@@ -140,7 +134,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
         )}
 
         {inv && <InvTitle>프레임</InvTitle>}
-        {(tab === 'frame' || inv) && (
+        {inv && (
           <div style={css('display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;padding:0 24px 32px')}>
             {mineOr(FRAMES, 'frame').map(([k, l]) => {
               const it = item('frame', k)
@@ -158,7 +152,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
         )}
 
         {inv && <InvTitle>이름표</InvTitle>}
-        {(tab === 'plate' || inv) && (
+        {inv && (
           <div style={css('display:flex;flex-direction:column;gap:8px;padding:0 24px 32px')}>
             {mineOr(FRAMES, 'plate').map(([k, l]) => {
               const it = item('plate', k)
@@ -177,7 +171,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
         )}
 
         {inv && <InvTitle>막대 스킨</InvTitle>}
-        {(tab === 'skin' || inv) && (
+        {inv && (
           <>
             {!inv && <div style={css('padding:0 24px 8px;font-size:13px;line-height:19.5px;color:#6b7684')}>랭킹 그래프에서 내 막대가 이 모양으로 보여요. 마이너스면 거꾸로 뒤집혀요</div>}
             <div style={css('display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;padding:0 24px 32px')}>

@@ -79,7 +79,7 @@ export function EarnSheet({ points, onClose, ...p }: EarnProps & { points: numbe
 const STEPS: { icon: string; title: string; body: string }[] = [
   { icon: '📊', title: '랭킹', body: '추천에서 비추천을 뺀 점수로 순위가 매겨져요.\n이름을 누르면 그 사람에게 투표할 수 있어요' },
   { icon: '🗳️', title: '투표', body: '한 사람에게 일주일에 한 번 추천이나 비추천을 할 수 있어요.\n7일 안에는 바꾸거나 취소할 수 있어요' },
-  { icon: '🛍️', title: '상점', body: '포인트로 프레임, 이름표, 막대 스킨을 사서 나를 꾸며요' },
+  { icon: '🛍️', title: '상점', body: '포인트로 세트(프레임 + 이름표, 레전드는 막대 스킨까지)를 사서 나를 꾸며요. 당근마켓에선 하나씩 사고팔 수 있어요' },
   { icon: '💬', title: '메시지', body: '친구와 1:1, 단톡으로 이야기하고 포인트나 아이템을 선물해요' },
 ]
 
