@@ -182,9 +182,9 @@ service cloud.firestore {
     function photoOk(d) { return d.photoURL is string && d.photoURL.size() < 300000; }
 
     function price(kind, k) {
-      let frame = {'silver': 600, 'korea': 500, 'matrix': 800, 'aura': 400, 'neon': 60, 'crown': 90, 'sakura': 50, 'cat': 50, 'stars': 70, 'flame': 80, 'ocean': 60, 'bunny': 50, 'halo': 75, 'devil': 75, 'butterfly': 60};
-      let skin = {'silver': 450, 'korea': 400, 'matrix': 600, 'aura': 300, 'namsan': 100, 'eiffel': 125, 'bigben': 125, 'victory': 110};
-      return kind == 'frame' ? frame.get(k, 0) : kind == 'plate' ? {'aura': 300, 'matrix': 600, 'korea': 400, 'silver': 450}.get(k, frame.get(k, 0) + 15) : skin.get(k, 0);
+      let frame = {'silver': 1000, 'korea': 500, 'matrix': 800, 'aura': 400, 'neon': 60, 'crown': 90, 'sakura': 50, 'cat': 50, 'stars': 70, 'flame': 80, 'ocean': 60, 'bunny': 50, 'halo': 75, 'devil': 75, 'butterfly': 60};
+      let skin = {'silver': 750, 'korea': 400, 'matrix': 600, 'aura': 300, 'namsan': 100, 'eiffel': 125, 'bigben': 125, 'victory': 110};
+      return kind == 'frame' ? frame.get(k, 0) : kind == 'plate' ? {'aura': 300, 'matrix': 600, 'korea': 400, 'silver': 750}.get(k, frame.get(k, 0) + 15) : skin.get(k, 0);
     }
     // Pieces that are still sold (gifts check this too). The landmark 막대 스킨 are 리미티드:
     // only the admin's 관리자샵 sells them (there, anything goes one by one at its price).

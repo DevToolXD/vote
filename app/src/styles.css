@@ -240,7 +240,7 @@ html,body{overscroll-behavior:none}
 @keyframes csShake{0%,100%{transform:rotate(0) translateY(-8px)}25%{transform:rotate(-4deg) translateY(-8px)}75%{transform:rotate(4deg) translateY(-8px)}}
 
 /* 삼겹살 먹고싶다 (silverArt.ts): silver particle waves, twinkling dust, the sparkle */
-@keyframes slFlow{from{transform:translateX(0)}to{transform:translateX(320px)}}
+@keyframes slFlowT{from{transform:translateX(0)}to{transform:translateX(var(--tw,320px))}}
 @keyframes slTwinkle{0%,100%{transform:scale(.4);opacity:.15}50%{transform:scale(1.2);opacity:1}}
 @keyframes slStar{0%,100%{transform:rotate(0deg) scale(.9)}50%{transform:rotate(45deg) scale(1.15)}}
 @media (prefers-reduced-motion:reduce){[class^="sl-"],[class*=" sl-"]{animation:none !important}}

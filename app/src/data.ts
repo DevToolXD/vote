@@ -32,9 +32,9 @@ export function skinGeom(s: string, h: number, neg: boolean): SkinGeom | null {
   }
 }
 
-const PRICE: { frame: Record<string, number>; skin: Record<string, number> } = {frame:{silver:600,korea:500,matrix:800,aura:400,neon:60,crown:90,sakura:50,cat:50,stars:70,flame:80,ocean:60,bunny:50,halo:75,devil:75,butterfly:60},skin:{silver:450,korea:400,matrix:600,aura:300,namsan:100,eiffel:125,bigben:125,victory:110}}
+const PRICE: { frame: Record<string, number>; skin: Record<string, number> } = {frame:{silver:1000,korea:500,matrix:800,aura:400,neon:60,crown:90,sakura:50,cat:50,stars:70,flame:80,ocean:60,bunny:50,halo:75,devil:75,butterfly:60},skin:{silver:750,korea:400,matrix:600,aura:300,namsan:100,eiffel:125,bigben:125,victory:110}}
 /** 이름표 that don't cost frame + 15 (the 레전드 sets). */
-const PLATE_PRICE: Record<string, number> = { silver: 450, aura: 300, matrix: 600, korea: 400 }
+const PLATE_PRICE: Record<string, number> = { silver: 750, aura: 300, matrix: 600, korea: 400 }
 export const priceOf = (kind: ItemKind, k: string) =>
   k === 'none' ? 0 : kind === 'plate' ? (PLATE_PRICE[k] ?? (PRICE.frame[k] || 60) + 15) : (PRICE[kind][k] || 75)
 /** The 1000P 레전드 set (frame + 이름표 + 막대 스킨 that match). */

@@ -4,7 +4,7 @@ import { GEM } from './auraArt'
 import { MX_FONT, MX_STRIPS, cubeOrbit } from './matrixArt'
 import { BAR_TIP_SVG, BLUE, INK, IVORY, SEAM_TILE, barCoinOrbit } from './koreaArt'
 import { pauseOffscreen } from '../offscreen'
-import { BAR_SPARKLE_SVG, PARTICLE_TILE } from './silverArt'
+import { BAR_SPARKLE_SVG, RISE_BIG, RISE_FINE } from './silverArt'
 
 const segment = 'display:block;width:100%;flex:none;background-repeat:no-repeat;background-size:100% 100%'
 
@@ -165,7 +165,7 @@ function KoreaBar({ flip, h }: { flip: boolean; h: number }) {
   )
 }
 
-const SL_MOTES: [string, number, number, string][] = [['4%', 2.4, 0, '#ffffff'], ['90%', 2.9, 0.7, '#dcdcdc'], ['34%', 2.6, 1.4, '#ffffff'], ['68%', 3.1, 0.3, '#bdbdbd'], ['-20%', 3.4, 1.9, '#ffffff'], ['116%', 2.8, 1.1, '#e8e8e8'], ['-8%', 3.6, 2.5, '#cfcfcf'], ['106%', 3.3, 2.9, '#ffffff']]
+const SL_MOTES: [string, number, number, string][] = [['4%', 2.4, 0, '#ffffff'], ['90%', 2.9, 0.7, '#dcdcdc'], ['34%', 2.6, 1.4, '#ffffff'], ['68%', 3.1, 0.3, '#bdbdbd'], ['-20%', 3.4, 1.9, '#ffffff'], ['116%', 2.8, 1.1, '#e8e8e8'], ['-8%', 3.6, 2.5, '#cfcfcf'], ['106%', 3.3, 2.9, '#ffffff'], ['18%', 2.2, 0.9, '#f2f2f2'], ['52%', 3.8, 2.1, '#ffffff'], ['-32%', 4.1, 1.6, '#d8d8d8'], ['128%', 3.9, 0.5, '#ffffff']]
 /**
  * 삼겹살 먹고싶다 막대: a black liquid-metal pillar with a silver edge, silver particles rising
  * inside it (two layers at different speeds), light sweeping up it, silver motes floating up
@@ -176,13 +176,13 @@ function SilverBar({ flip, h }: { flip: boolean; h: number }) {
     <span ref={pauseOffscreen} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', transform: flip ? 'scaleY(-1)' : 'none', ['--bh' as string]: `${h}px` }}>
       <span className="sl-glow" style={css('position:absolute;left:-60%;right:-60%;top:-12px;bottom:-4px;border-radius:40%;background:radial-gradient(closest-side,rgba(220,228,245,0.45),rgba(160,170,190,0.18) 60%,transparent);filter:blur(5px);animation:auraPulse 2.6s ease-in-out infinite')} />
       <span style={css('position:absolute;inset:0;border-radius:5px;overflow:hidden;background:linear-gradient(90deg,#030303 0%,#1e1e1e 30%,#4a4a4a 50%,#1e1e1e 70%,#030303 100%);box-shadow:inset 0 0 0 1px rgba(198,198,198,0.6),0 0 10px rgba(200,210,230,0.3),0 2px 8px rgba(0,0,0,0.35)')}>
-        <span className="sl-rise" style={{ ...css('position:absolute;left:0;right:0;top:0;bottom:-48px;will-change:transform;background-size:100% 48px;animation:krSpiral 2.6s linear infinite reverse'), backgroundImage: PARTICLE_TILE }} />
-        <span className="sl-rise" style={{ ...css('position:absolute;left:0;right:0;top:0;bottom:-48px;will-change:transform;background-size:70% 48px;background-position:30% 0;opacity:0.6;animation:krSpiral 4.4s linear infinite reverse'), backgroundImage: PARTICLE_TILE }} />
+        <span className="sl-rise" style={{ ...css('position:absolute;left:0;right:0;top:0;bottom:-48px;will-change:transform;background-size:32px 48px;background-position:center 0;animation:krSpiral 2.4s linear infinite reverse'), backgroundImage: RISE_FINE }} />
+        <span className="sl-rise" style={{ ...css('position:absolute;left:0;right:0;top:0;bottom:-48px;will-change:transform;background-size:32px 48px;background-position:40% 0;opacity:0.85;animation:krSpiral 4.2s linear infinite reverse'), backgroundImage: RISE_BIG }} />
         <span className="sl-sweep" style={css('position:absolute;top:0;left:0;right:0;height:36px;background:linear-gradient(0deg,transparent,rgba(255,255,255,0.35),transparent);animation:mxScanUp 2.4s ease-in-out infinite')} />
         <span style={css('position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,0.12) 50%,transparent 70%)')} />
       </span>
       {SL_MOTES.map(([left, dur, delay, c]) => (
-        <span key={left} className="aura-spark" style={{ ...css('position:absolute;bottom:8%;width:2.5px;height:2.5px;margin-left:-1.25px;border-radius:50%;opacity:0'), left, background: c, boxShadow: `0 0 4px ${c},0 0 8px rgba(220,228,245,0.8)`, animation: `auraSpark ${dur}s ease-out ${delay}s infinite` }} />
+        <span key={left} className="aura-spark" style={{ ...css('position:absolute;bottom:8%;width:2px;height:2px;margin-left:-1px;border-radius:50%;opacity:0'), left, background: c, boxShadow: `0 0 4px ${c},0 0 8px rgba(220,228,245,0.8)`, animation: `auraSpark ${dur}s ease-out ${delay}s infinite` }} />
       ))}
       <span style={css('position:absolute;left:50%;top:-24px;margin-left:-16px;width:32px;height:32px')} dangerouslySetInnerHTML={{ __html: BAR_SPARKLE_SVG }} />
     </span>
