@@ -2,7 +2,7 @@ import { css } from '../css'
 import type { SkinGeom } from '../data'
 import { GEM } from './auraArt'
 import { MX_FONT, MX_STRIPS, cubeOrbit } from './matrixArt'
-import { BAR_TIP_SVG, BLUE, INK, IVORY, SEAM_TILE } from './koreaArt'
+import { BAR_TIP_SVG, BLUE, INK, IVORY, SEAM_TILE, barCoinOrbit } from './koreaArt'
 import { pauseOffscreen } from '../offscreen'
 
 const segment = 'display:block;width:100%;flex:none;background-repeat:no-repeat;background-size:100% 100%'
@@ -119,9 +119,22 @@ function MatrixBar({ flip, h }: { flip: boolean; h: number }) {
   )
 }
 
+// 태극 coins circling the bar (like the 매트릭스 cubes), each drifting up and down it.
+const KR_COINS = [
+  { dur: 3.4, drift: 'mxRise 6.5s ease-in-out infinite alternate' },
+  { dur: 2.8, drift: 'mxRise 7.5s ease-in-out -3s infinite alternate-reverse' },
+  { dur: 4, drift: 'mxRise 9s ease-in-out -5s infinite alternate' },
+]
+const KR_COIN_BACK = KR_COINS.map(c => barCoinOrbit('back', c.dur)), KR_COIN_FRONT = KR_COINS.map(c => barCoinOrbit('front', c.dur))
+const krCoins = (list: string[]) => list.map((html, i) => (
+  <span key={i} className="kr-rise" style={{ position: 'absolute', left: '50%', width: 64, height: 40, marginLeft: -32, marginTop: -20, top: 0, animation: KR_COINS[i].drift }} dangerouslySetInnerHTML={{ __html: html }} />
+))
+const KR_SPARKS: [string, number, number, string][] = [['8%', 2.2, 0, '#ffd66b'], ['86%', 2.6, 0.8, '#ffffff'], ['30%', 2.4, 1.5, '#ffd66b'], ['66%', 2.9, 0.4, '#ffe9a8'], ['-18%', 3.1, 1.9, '#ffffff'], ['112%', 2.7, 1.1, '#ffd66b']]
+
 /**
  * 대한민국 막대: the 태극's two colours flowing up the bar, red and blue meeting in its S,
- * ivory 한지 caps with ink lines at both ends, and a small 태극기 (the 태극 upright with light rippling out, the
+ * ivory 한지 caps with ink lines at both ends, gold-rimmed 태극 coins orbiting it, gold sparks
+ * rising, and a small 태극기 (the 태극 upright with light rippling out, the
  * four 괘 catching the light in turn) on its tip.
  */
 function KoreaBar({ flip, h }: { flip: boolean; h: number }) {
@@ -129,7 +142,8 @@ function KoreaBar({ flip, h }: { flip: boolean; h: number }) {
   const cap = `position:absolute;left:-1px;right:-1px;background:${IVORY};box-shadow:inset 0 0 0 0.8px ${INK},0 1px 2px rgba(0,0,0,0.25);border-radius:2px`
   return (
     <span ref={pauseOffscreen} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', ['--bh' as string]: `${h}px` }}>
-      <span className="kr-glow" style={css(`position:absolute;left:-70%;right:-70%;top:-10px;bottom:-4px;border-radius:40%;background:linear-gradient(${flip ? 0 : 180}deg,rgba(205,46,58,0.4),rgba(0,71,160,0.4));filter:blur(8px);animation:auraPulse 3s ease-in-out infinite`)} />
+      <span className="kr-glow" style={css(`position:absolute;left:-70%;right:-70%;top:-10px;bottom:-4px;border-radius:40%;background:linear-gradient(${flip ? 0 : 180}deg,rgba(205,46,58,0.6),rgba(255,214,107,0.35),rgba(0,71,160,0.6));filter:blur(8px);animation:auraPulse 2.2s ease-in-out infinite`)} />
+      {krCoins(KR_COIN_BACK)}
       <span style={css(`position:absolute;inset:0;border-radius:3px;overflow:hidden;background:${BLUE};box-shadow:0 0 0 1px ${INK},0 2px 8px rgba(0,0,0,0.25)`)}>
         {/* the S seam, flowing up */}
         <span className="kr-spiral" style={{ ...css('position:absolute;left:0;right:0;top:0;bottom:-48px;will-change:transform;background-size:100% 48px;animation:krSpiral 2.4s linear infinite'), backgroundImage: SEAM_TILE }} />
@@ -140,7 +154,11 @@ function KoreaBar({ flip, h }: { flip: boolean; h: number }) {
       {/* 한지 caps */}
       <span style={{ ...css(cap + ';height:7px'), [tip]: -1 }}><span style={{ ...css(`position:absolute;left:2px;right:2px;height:0.8px;background:${INK};opacity:0.6`), [flip ? 'top' : 'bottom']: 2 }} /></span>
       <span style={{ ...css(cap + ';height:5px'), [end]: -1 }} />
-      <span style={{ ...css('position:absolute;left:50%;margin-left:-24px;width:48px;height:48px'), [tip]: -40 }} dangerouslySetInnerHTML={{ __html: BAR_TIP_SVG }} />
+      {krCoins(KR_COIN_FRONT)}
+      {KR_SPARKS.map(([left, dur, delay, c]) => (
+        <span key={left} className="aura-spark" style={{ ...css('position:absolute;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;opacity:0'), left, [flip ? 'top' : 'bottom']: '10%', background: c, boxShadow: `0 0 4px ${c},0 0 8px ${c}`, animation: `${flip ? 'krSparkDown' : 'auraSpark'} ${dur}s ease-out ${delay}s infinite` }} />
+      ))}
+      <span style={{ ...css('position:absolute;left:50%;margin-left:-32px;width:64px;height:64px'), [tip]: -52 }} dangerouslySetInnerHTML={{ __html: BAR_TIP_SVG }} />
     </span>
   )
 }

@@ -205,6 +205,8 @@ html,body{overscroll-behavior:none}
 /* the four 괘 catch the light one after another */
 @keyframes krGlint{0%,62%,100%{fill:#1a1a1a}74%{fill:#b8913e}}
 @keyframes krFlow{to{stroke-dashoffset:-60}}
+@keyframes krTwinkle{0%,100%{transform:scale(0) rotate(0deg);opacity:0}40%{transform:scale(1.15) rotate(45deg);opacity:1}70%{transform:scale(0.6) rotate(80deg);opacity:0.6}}
+@keyframes krSparkDown{0%{transform:translateY(0) scale(1);opacity:0}15%{opacity:1}100%{transform:translateY(46px) scale(.3);opacity:0}}
 @keyframes krRipple{0%{transform:scale(1);opacity:0.8}100%{transform:scale(1.7);opacity:0}}
 @keyframes krSpiral{from{transform:translateY(0)}to{transform:translateY(-48px)}}
 @keyframes auraFlowT{from{transform:translateY(-50%)}to{transform:translateY(0)}}
