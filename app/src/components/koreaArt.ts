@@ -182,6 +182,9 @@ const AURA =
   `<div style="${at(330, 190)};border-radius:50%;background:radial-gradient(closest-side at 36% 40%,rgba(255,86,104,0.95) 0%,rgba(205,46,58,0.62) 28%,rgba(205,46,58,0.16) 55%,transparent 72%);filter:blur(6px)"></div>` +
   `<div style="${at(330, 190)};border-radius:50%;background:radial-gradient(closest-side at 64% 60%,rgba(80,146,255,0.9) 0%,rgba(0,71,160,0.5) 28%,rgba(0,71,160,0.12) 55%,transparent 72%);filter:blur(6px);mix-blend-mode:normal;opacity:0.85"></div>` +
   `</div></div>` +
+  // an energy vortex round the emblem: red and blue streams turning fast
+  `<div class="kr-glow" style="${at(96, 96)};border-radius:50%;background:conic-gradient(from 0deg,rgba(255,70,90,0) 0deg,rgba(255,70,90,0.9) 60deg,rgba(255,255,255,0.7) 90deg,rgba(255,70,90,0) 150deg,rgba(60,130,255,0) 180deg,rgba(60,130,255,0.9) 240deg,rgba(255,255,255,0.7) 270deg,rgba(60,130,255,0) 330deg);-webkit-mask:radial-gradient(closest-side,transparent 44%,#000 58%,#000 66%,transparent 84%);mask:radial-gradient(closest-side,transparent 44%,#000 58%,#000 66%,transparent 84%);filter:blur(2.5px);animation:krTurn 1.1s linear infinite"></div>` +
+  `<div class="kr-glow" style="${at(130, 130)};border-radius:50%;background:conic-gradient(from 90deg,rgba(60,130,255,0) 0deg,rgba(60,130,255,0.55) 70deg,rgba(60,130,255,0) 160deg,rgba(255,70,90,0) 180deg,rgba(255,70,90,0.55) 250deg,rgba(255,70,90,0) 340deg);-webkit-mask:radial-gradient(closest-side,transparent 50%,#000 62%,transparent 86%);mask:radial-gradient(closest-side,transparent 50%,#000 62%,transparent 86%);filter:blur(4px);animation:krTurn 1.9s linear infinite reverse"></div>` +
   // white-gold heat at the core
   `<div style="${at(90, 90)};border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,0.95),rgba(255,226,150,0.6) 45%,transparent 75%);animation:krBreath 0.9s ease-in-out infinite"></div>` +
   `</div>` +
@@ -189,6 +192,77 @@ const AURA =
   [0, 0.14, 0.3].map(d => `<div class="kr-shock" style="${at(340, 340)};border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,0.95),0 0 12px 3px rgba(205,46,58,0.8),inset 0 0 12px 3px rgba(0,71,160,0.8);animation:krShock 0.9s cubic-bezier(.15,.7,.3,1) ${(BURST + d).toFixed(2)}s both"></div>`).join('') +
   `<div class="kr-shock" style="${at(150, 150)};border-radius:50%;box-shadow:0 0 0 1.5px rgba(255,240,200,0.9),0 0 8px 2px rgba(205,46,58,0.6),inset 0 0 8px 2px rgba(0,71,160,0.6);animation:krShock 2.2s ease-out ${BURST + 1.2}s infinite;opacity:0"></div>` +
   `</div></div>`
+
+// ---- particles (all from the emblem at 284,28, in viewBox units) ----
+const EX = 284, EY = 28
+function seeded(seed: number) {
+  let x = seed
+  return () => ((x = (x * 9301 + 49297) % 233280) / 233280)
+}
+const PCOL = [RED, '#ff7a8a', BLUE, '#5c9dff', '#ffd66b', '#ffffff']
+/**
+ * A spark flying along +x: a round white-hot head in a coloured glow, trailing a tapered tail
+ * (fading in two steps). `back` points it the other way (for sparks flying inward).
+ */
+const streak = (len: number, w0: number, c: string, back = false) => {
+  const w = w0 * 1.3, L = len * 2.8
+  const tail = (l: number, ww: number, op: number) => `<path d="M${(-l).toFixed(2)} 0L0 ${(-ww).toFixed(2)}A${ww.toFixed(2)} ${ww.toFixed(2)} 0 0 1 0 ${ww.toFixed(2)}Z" fill="${c}" opacity="${op}"></path>`
+  const body = tail(L, w * 1.1, 0.35) + tail(L * 0.55, w * 0.95, 0.6) +
+    `<circle r="${(w * 2.6).toFixed(2)}" fill="${c}" opacity="0.22"></circle><circle r="${(w * 1.5).toFixed(2)}" fill="${c}" opacity="0.55"></circle><circle r="${(w * 0.85).toFixed(2)}" fill="#fff"></circle>`
+  return back ? `<g transform="scale(-1 1)">${body}</g>` : body
+}
+/** How far from the emblem, along angle a, the plate's edge is (the left side is capped: it's far). */
+function wall(a: number) {
+  const c = Math.cos(a), si = Math.sin(a), ds: number[] = []
+  if (c > 0.001) ds.push((318 - EX) / c)
+  if (c < -0.001) ds.push(Math.min(115, (EX - 2) / -c))
+  if (si > 0.001) ds.push((54 - EY) / si)
+  if (si < -0.001) ds.push((EY - 2) / -si)
+  return Math.min(...ds, 115)
+}
+const pGroup = (deg: number, inner: string, anim: string, vars: string) =>
+  `<g transform="translate(${EX} ${EY}) rotate(${deg.toFixed(1)})"><g class="kr-p" style="animation:${anim};${vars};opacity:0">${inner}</g></g>`
+
+// Gathering: sparks sucked into the 태극 while the 괘 spin up.
+const IMPLODE = (() => {
+  const r = seeded(11); let out = ''
+  for (let i = 0; i < 18; i++) {
+    const deg = (i / 18) * 360 + r() * 14, delay = 0.15 + r() * 0.55, dur = BURST - delay
+    out += pGroup(deg, streak(2.2 + r() * 1.6, 0.55 + r() * 0.3, PCOL[i % PCOL.length], true), `krImplode ${dur.toFixed(2)}s cubic-bezier(.55,0,.9,.55) ${delay.toFixed(2)}s both`, `--d:${(50 + r() * 60).toFixed(1)}px`)
+  }
+  return out
+})()
+// The burst: sparks fly out, hit the edge, bounce back a little; a flare where each one hits.
+const BURST_P = (() => {
+  const r = seeded(29); let out = '', flares = ''
+  for (let i = 0; i < 40; i++) {
+    const deg = (i / 40) * 360 + r() * 8, a = deg * Math.PI / 180, d = wall(a), dur = 0.9 + r() * 0.5
+    out += pGroup(deg, streak(3 + r() * 3, 0.6 + r() * 0.5, PCOL[i % PCOL.length]), `krShoot ${dur.toFixed(2)}s cubic-bezier(.1,.8,.3,1) ${BURST}s both`, `--d:${(d - 2).toFixed(1)}px;--b:${(d * (0.72 + r() * 0.12)).toFixed(1)}px`)
+    if (d < 114) {
+      const hx = EX + Math.cos(a) * (d - 1.5), hy = EY + Math.sin(a) * (d - 1.5)
+      flares += `<g transform="translate(${hx.toFixed(1)} ${hy.toFixed(1)})"><g class="kr-p" style="transform-box:fill-box;transform-origin:center;animation:krFlare 0.5s ease-out ${(BURST + dur * 0.22).toFixed(2)}s both;opacity:0"><circle r="4" fill="${PCOL[i % PCOL.length]}" opacity="0.35"></circle><circle r="1.6" fill="#fff"></circle></g></g>`
+    }
+  }
+  return out + flares
+})()
+// Afterwards: a steady stream out of the core, and motes circling it.
+const STREAM = (() => {
+  const r = seeded(47); let out = ''
+  const n = 22, period = 1.6
+  for (let i = 0; i < n; i++) {
+    const deg = r() * 360, a = deg * Math.PI / 180
+    out += pGroup(deg, streak(1.6 + r() * 1.8, 0.45 + r() * 0.3, PCOL[i % PCOL.length]), `krStream ${period.toFixed(2)}s ease-out ${(BURST + 0.5 + (i / n) * period).toFixed(2)}s infinite backwards`, `--d:${(wall(a) - 3).toFixed(1)}px`)
+  }
+  return out
+})()
+const MOTES = (() => {
+  const r = seeded(73); let out = ''
+  for (let i = 0; i < 12; i++) {
+    const rad = 21 + r() * 14, start = r() * 360, t = 2.2 + r() * 2.6, c = PCOL[(i * 5) % PCOL.length], sz = 0.6 + r() * 0.7
+    out += `<g transform="rotate(${start.toFixed(0)} ${EX} ${EY})"><g class="kr-ring" style="transform-box:view-box;transform-origin:${EX}px ${EY}px;animation:krTurn ${t.toFixed(2)}s linear infinite${i % 2 ? ' reverse' : ''}"><circle cx="${(EX + rad).toFixed(1)}" cy="${EY}" r="${(sz * 3).toFixed(2)}" fill="${c}" opacity="0.3"></circle><circle cx="${(EX + rad).toFixed(1)}" cy="${EY}" r="${sz.toFixed(2)}" fill="#fff"></circle></g></g>`
+  }
+  return out
+})()
 
 /** The four 괘 as they whirl: the set itself plus two fading ghosts trailing behind (motion blur). */
 const WHIRL =
@@ -214,10 +288,20 @@ export const KOREA_PLATE =
   // the 태극: charging up, then the fusion shake, then trembling for good
   `<g transform="translate(284 28)">${ripple(18, 0)}${ripple(18, 1.2)}${ripple(18, 2.4)}` +
   `<g class="kr-core" style="transform-box:fill-box;transform-origin:center;animation:krCharge ${BURST}s ease-in both,krFusion 0.8s linear ${BURST}s,krTremble 0.12s linear ${BURST + 0.8}s infinite">` +
-  `<circle r="18.8" fill="#e6b54a"></circle><circle r="17.6" fill="${IVORY}" stroke="${INK}" stroke-width="0.6"></circle>${taegeuk(16.4)}` +
+  `<circle r="23" fill="#ffd66b" opacity="0.14"></circle><circle r="20.6" fill="#ffd66b" opacity="0.22"></circle>` +
+  `<circle r="18.8" fill="#e6b54a" stroke="#8a5d10" stroke-width="0.4"></circle><circle r="17.6" fill="${IVORY}" stroke="${INK}" stroke-width="0.6"></circle>${taegeuk(16.4)}` +
+  // gloss: a soft highlight across the top left, a rim of light along the bottom right
+  `<ellipse cx="-5.5" cy="-8" rx="9" ry="4.2" fill="#fff" opacity="0.32" transform="rotate(-28 -5.5 -8)"></ellipse>` +
+  `<path d="M12.4 6.6A14 14 0 0 1 3 13.8" fill="none" stroke="#fff" stroke-width="1" stroke-linecap="round" opacity="0.45"></path>` +
   `<circle r="17.6" fill="#ffffff" class="kr-core" style="transform-box:fill-box;transform-origin:center;animation:krCoreFlash 0.7s ease-out ${BURST}s both;opacity:0"></circle>` +
   `</g></g>` +
   `<circle class="kr-ring" cx="284" cy="28" r="18.8" fill="none" stroke="#fff6d8" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="12 106" style="transform-box:fill-box;transform-origin:center;animation:krTurn 1.6s linear infinite"></circle>` +
+  `<g style="${afterBurst(0, 0.4)}">` +
+  // energy rings round the 태극, turning against each other
+  `<circle class="kr-ring" cx="${EX}" cy="${EY}" r="20.8" fill="none" stroke="#ff5a6e" stroke-width="1.1" stroke-linecap="round" stroke-dasharray="18 8 3 8" style="transform-box:view-box;transform-origin:${EX}px ${EY}px;animation:krTurn 0.9s linear infinite"></circle>` +
+  `<circle class="kr-ring" cx="${EX}" cy="${EY}" r="21.9" fill="none" stroke="#5c9dff" stroke-width="1.1" stroke-linecap="round" stroke-dasharray="14 10 4 10" style="transform-box:view-box;transform-origin:${EX}px ${EY}px;animation:krTurn 1.2s linear infinite reverse"></circle>` +
+  MOTES + `</g>` +
+  IMPLODE + BURST_P + STREAM +
   WHIRL +
   `<g style="${afterBurst(0.2, 0.6)}">` +
   spark(250, 10, 3.4, 0) + spark(312, 50, 3, 0.8, '#fff') + spark(236, 44, 2.6, 1.5) + spark(306, 8, 2.8, 1.1) + spark(200, 18, 2.4, 0.4, '#fff') + spark(180, 40, 2.2, 1.9) + spark(222, 6, 2.6, 0.2, '#fff') +

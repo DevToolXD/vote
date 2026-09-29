@@ -219,6 +219,10 @@ html,body{overscroll-behavior:none}
 @keyframes krBreath{0%,100%{transform:scale(.92);opacity:.82}50%{transform:scale(1.07);opacity:1}}
 @keyframes krShock{0%{transform:scale(0);opacity:1}100%{transform:scale(1);opacity:0}}
 @keyframes krFlashBang{0%{opacity:0}12%{opacity:.92}100%{opacity:0}}
+@keyframes krImplode{0%{transform:translateX(var(--d));opacity:0}25%{opacity:1}88%{opacity:1}100%{transform:translateX(0) scale(.5);opacity:0}}
+@keyframes krShoot{0%{transform:translateX(2px) scale(1.4);opacity:0}5%{opacity:1}42%{transform:translateX(var(--d)) scale(1.1);opacity:1}60%{transform:translateX(var(--b)) scale(.9);opacity:.9}100%{transform:translateX(var(--b)) scale(.4);opacity:0}}
+@keyframes krStream{0%{transform:translateX(3px) scale(.4);opacity:0}12%{opacity:1}78%{opacity:.9}100%{transform:translateX(var(--d)) scale(1.2);opacity:0}}
+@keyframes krFlare{0%{transform:scale(0);opacity:0}18%{transform:scale(1.5);opacity:1}100%{transform:scale(.3);opacity:0}}
 @keyframes krAppear{from{opacity:0}to{opacity:1}}
 @keyframes krFlicker{0%{opacity:.6}17%{opacity:1}34%{opacity:.75}51%{opacity:.95}68%{opacity:.55}85%{opacity:.9}}
 @keyframes krBolt{0%{opacity:1}34%,100%{opacity:0}}
