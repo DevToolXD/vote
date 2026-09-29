@@ -182,23 +182,27 @@ service cloud.firestore {
     function photoOk(d) { return d.photoURL is string && d.photoURL.size() < 300000; }
 
     function price(kind, k) {
-      let frame = {'korea': 3000, 'matrix': 2000, 'aura': 1000, 'neon': 60, 'crown': 90, 'sakura': 50, 'cat': 50, 'stars': 70, 'flame': 80, 'ocean': 60, 'bunny': 50, 'halo': 75, 'devil': 75, 'butterfly': 60};
-      let skin = {'korea': 3000, 'matrix': 2000, 'aura': 1000, 'namsan': 100, 'eiffel': 125, 'bigben': 125, 'victory': 110};
-      return kind == 'frame' ? frame.get(k, 0) : kind == 'plate' ? {'aura': 1000, 'matrix': 2000, 'korea': 3000}.get(k, frame.get(k, 0) + 15) : skin.get(k, 0);
+      let frame = {'korea': 500, 'matrix': 800, 'aura': 400, 'neon': 60, 'crown': 90, 'sakura': 50, 'cat': 50, 'stars': 70, 'flame': 80, 'ocean': 60, 'bunny': 50, 'halo': 75, 'devil': 75, 'butterfly': 60};
+      let skin = {'korea': 400, 'matrix': 600, 'aura': 300, 'namsan': 100, 'eiffel': 125, 'bigben': 125, 'victory': 110};
+      return kind == 'frame' ? frame.get(k, 0) : kind == 'plate' ? {'aura': 300, 'matrix': 600, 'korea': 400}.get(k, frame.get(k, 0) + 15) : skin.get(k, 0);
     }
-    // One by one in the shop. 대한민국 frame + 이름표 only come as the 3000P bundle (koreaBundle),
-    // and the 대한민국 막대 스킨 is 리미티드 (no longer sold) — except in the admin's 관리자샵,
-    // where everything that ever existed can be bought one by one at its price.
+    // Pieces that are still sold (gifts check this too). The landmark 막대 스킨 are 리미티드:
+    // only the admin's 관리자샵 sells them (there, anything goes one by one at its price).
     function buyable(kind, added) {
-      let frameKeys = ['matrix', 'aura', 'neon', 'crown', 'sakura', 'cat', 'stars', 'flame', 'ocean', 'bunny', 'halo', 'devil', 'butterfly'];
-      let skinKeys = ['matrix', 'aura', 'namsan', 'eiffel', 'bigben', 'victory'];
-      return added.size() == 0 || (added.size() == 1 && (added[0] in (kind == 'skin' ? skinKeys : frameKeys) || (added[0] == 'korea' && isAdmin())));
+      let frameKeys = ['korea', 'matrix', 'aura', 'neon', 'crown', 'sakura', 'cat', 'stars', 'flame', 'ocean', 'bunny', 'halo', 'devil', 'butterfly'];
+      let skinKeys = ['korea', 'matrix', 'aura'];
+      let limited = ['namsan', 'eiffel', 'bigben', 'victory'];
+      return added.size() == 0 || (added.size() == 1 && (added[0] in (kind == 'skin' ? skinKeys : frameKeys) || (kind == 'skin' && added[0] in limited && isAdmin())));
     }
-    // 대한민국 세트: frame + 이름표 together for 3000P (just the missing one, if one is already owned).
-    function koreaBundle(d, addF, addP, addS) {
-      return addS.size() == 0 && addF.size() + addP.size() >= 1
-        && (addF.size() == 0 || addF == ['korea']) && (addP.size() == 0 || addP == ['korea'])
-        && 'korea' in d.owned.frame && 'korea' in d.owned.plate;
+    // Everything is sold as a 세트: a purchase adds pieces of one series only, and afterwards the
+    // whole series is owned (frame + 이름표, and the 막대 스킨 for 아우라 / 매트릭스 / 대한민국).
+    // Pieces are priced to add up to the set price, so the missing ones cost what they cost.
+    function seriesBuy(d, addF, addP, addS) {
+      let k = addF.size() > 0 ? addF[0] : (addP.size() > 0 ? addP[0] : addS[0]);
+      return addF.size() <= 1 && addP.size() <= 1 && addS.size() <= 1
+        && (addF.size() == 0 || addF[0] == k) && (addP.size() == 0 || addP[0] == k) && (addS.size() == 0 || addS[0] == k)
+        && buyable('frame', [k])
+        && k in d.owned.frame && k in d.owned.plate && (!(k in ['aura', 'matrix', 'korea']) || k in d.owned.skin);
     }
     function costOf(kind, added) { return added.size() == 1 ? price(kind, added[0]) : 0; }
 
@@ -209,14 +213,15 @@ service cloud.firestore {
       let addF = d.owned.frame.removeAll(o.owned.frame);
       let addP = d.owned.plate.removeAll(o.owned.plate);
       let addS = d.owned.skin.removeAll(o.owned.skin);
-      let bundle = koreaBundle(d, addF, addP, addS);
-      let cost = bundle ? 3000 : costOf('frame', addF) + costOf('plate', addP) + costOf('skin', addS);
+      let n = addF.size() + addP.size() + addS.size();
+      let cost = costOf('frame', addF) + costOf('plate', addP) + costOf('skin', addS);
       return request.auth.uid == o.ownerUid
         && d.diff(o).affectedKeys().hasOnly(['gender', 'bio', 'photoURL', 'frame', 'plate', 'skin', 'spent', 'owned', 'msgOff'])
         && d.owned.keys().hasOnly(['frame', 'plate', 'skin'])
         && d.owned.frame.hasAll(o.owned.frame) && d.owned.plate.hasAll(o.owned.plate) && d.owned.skin.hasAll(o.owned.skin)
-        && (bundle || (addF.size() + addP.size() + addS.size() <= 1
-          && buyable('frame', addF) && buyable('plate', addP) && buyable('skin', addS)))
+        && (n == 0 || seriesBuy(d, addF, addP, addS)
+          // 관리자샵: the admin buys any piece on its own (리미티드 too)
+          || (isAdmin() && n == 1 && buyable('frame', addF) && buyable('plate', addP) && buyable('skin', addS)))
         && d.spent == o.spent + cost
         && (cost == 0 || (d.spent <= d.get('earned', d.up) + d.get('bonus', 0) && canTrade(o)))
         && d.frame in d.owned.frame && d.plate in d.owned.plate && d.skin in d.owned.skin

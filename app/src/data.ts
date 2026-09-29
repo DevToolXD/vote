@@ -32,18 +32,30 @@ export function skinGeom(s: string, h: number, neg: boolean): SkinGeom | null {
   }
 }
 
-const PRICE: { frame: Record<string, number>; skin: Record<string, number> } = {frame:{korea:3000,matrix:2000,aura:1000,neon:60,crown:90,sakura:50,cat:50,stars:70,flame:80,ocean:60,bunny:50,halo:75,devil:75,butterfly:60},skin:{korea:3000,matrix:2000,aura:1000,namsan:100,eiffel:125,bigben:125,victory:110}}
+const PRICE: { frame: Record<string, number>; skin: Record<string, number> } = {frame:{korea:500,matrix:800,aura:400,neon:60,crown:90,sakura:50,cat:50,stars:70,flame:80,ocean:60,bunny:50,halo:75,devil:75,butterfly:60},skin:{korea:400,matrix:600,aura:300,namsan:100,eiffel:125,bigben:125,victory:110}}
 /** 이름표 that don't cost frame + 15 (the 레전드 sets). */
-const PLATE_PRICE: Record<string, number> = { aura: 1000, matrix: 2000, korea: 3000 }
+const PLATE_PRICE: Record<string, number> = { aura: 300, matrix: 600, korea: 400 }
 export const priceOf = (kind: ItemKind, k: string) =>
   k === 'none' ? 0 : kind === 'plate' ? (PLATE_PRICE[k] ?? (PRICE.frame[k] || 60) + 15) : (PRICE[kind][k] || 75)
 /** The 1000P 레전드 set (frame + 이름표 + 막대 스킨 that match). */
 export const LEGENDARY = new Set(['korea', 'matrix', 'aura'])
-/** 대한민국 세트: the frame and 이름표 are sold only together, as one 3000P bundle. */
-export const BUNDLE_PRICE = 3000
-export const isBundled = (kind: ItemKind, key: string) => key === 'korea' && (kind === 'frame' || kind === 'plate')
-/** 리미티드: no longer sold (only in the admin's 관리자샵); whoever has one keeps it. */
-export const isLimited = (kind: ItemKind, key: string) => kind === 'skin' && key === 'korea'
+/**
+ * Everything is sold as a 세트 (series): buying any piece brings the whole series — frame +
+ * 이름표, plus the 막대 스킨 for the 레전드 sets. Pieces are priced so they add up to the set
+ * price (아우라 1000, 매트릭스 2000, 대한민국 1300; the others frame + 이름표), so an owner of
+ * some pieces pays only for the rest. firestore.rules (seriesBuy) checks the same.
+ */
+export const SKIN_SERIES = new Set(['aura', 'matrix', 'korea'])
+export const seriesItems = (key: string): [ItemKind, string][] => [['frame', key], ['plate', key], ...(SKIN_SERIES.has(key) ? [['skin', key] as [ItemKind, string]] : [])]
+export const seriesPrice = (key: string) => seriesItems(key).reduce((n, [k, x]) => n + priceOf(k, x), 0)
+/** The pieces of a series someone doesn't have yet, and what they cost. */
+export const seriesMissing = (key: string, owned: Record<ItemKind, string[]>) => {
+  const items = seriesItems(key).filter(([k, x]) => !owned[k].includes(x))
+  return { items, price: items.reduce((n, [k, x]) => n + priceOf(k, x), 0) }
+}
+/** 리미티드: no longer sold (only in the admin's 관리자샵); whoever has one keeps it. The landmark 막대 스킨. */
+export const LIMITED_SKINS = new Set(['namsan', 'eiffel', 'bigben', 'victory'])
+export const isLimited = (kind: ItemKind, key: string) => kind === 'skin' && LIMITED_SKINS.has(key)
 export const KIND_NAME: Record<ItemKind, string> = { frame: '프레임', plate: '', skin: '막대 스킨' }
 export const THEMES: [string, string][] = [['default','기본'],['glass','글라스']]
 export const fmt = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toLocaleString()

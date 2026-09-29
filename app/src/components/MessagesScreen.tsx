@@ -5,7 +5,7 @@ import { MEDALS } from '../data'
 import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, postFooled, sendFakeGift, cancelScheduled, subscribeScheduled, type Scheduled, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, giftPrice, hasGift, itemLabel, subscribeGift, type Gift, type GiftKind } from '../backend/gifts'
 import { PASSES } from './ShopScreen'
-import { FRAMES, SKINS, LEGENDARY, isBundled, isLimited, skinGeom } from '../data'
+import { FRAMES, SKINS, LEGENDARY, isLimited, skinGeom } from '../data'
 import { Nameplate } from './Nameplate'
 import { TowerSkin } from './TowerSkin'
 import { saveImage } from '../saveImage'
@@ -887,7 +887,7 @@ function ItemGiftSheet({ points, group, to, onClose, onSend }: { points: number;
   const [kind, setKind] = useState<GiftKind>('frame')
   const [pick, setPick] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const list: [string, string][] = kind === 'pass' ? PASSES.map(p => [p.key, p.title]) : (kind === 'skin' ? SKINS : FRAMES).filter(([k]) => k !== 'none' && !isBundled(kind, k) && !isLimited(kind, k)) // 대한민국 is set-only, 리미티드 isn't sold
+  const list: [string, string][] = kind === 'pass' ? PASSES.map(p => [p.key, p.title]) : (kind === 'skin' ? SKINS : FRAMES).filter(([k]) => k !== 'none' && !isLimited(kind, k)) // 리미티드 isn't sold
   const has = (k: string) => hasGift(to, kind, k)
   const price = pick ? giftPrice(kind, pick) : 0
   const ok = !!pick && price <= points && !has(pick)

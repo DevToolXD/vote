@@ -14,7 +14,7 @@ import {
   type Firestore,
   type Unsubscribe,
 } from 'firebase/firestore'
-import { BUNDLE_PRICE, type ItemKind } from '../data'
+import { seriesItems, seriesMissing, type ItemKind } from '../data'
 import { FAKE_PASS_PRICE, PASS_PRICE, VOTE_EVERY_MS, type CandidateDoc, type MyVote, type PassKind, type VoteDoc, type WeekKind } from './types'
 
 // Every function takes the Firestore instance so the rules tests (app/tests) run
@@ -166,13 +166,14 @@ export async function buyItem(db: Firestore, myUid: string, kind: ItemKind, key:
   })
 }
 
-/** 대한민국 세트: frame + 이름표 for 3000P in one go, both put on (firestore.rules: koreaBundle). */
-export async function buyKoreaBundle(db: Firestore, myUid: string) {
-  await updateDoc(doc(db, 'candidates', myUid), {
-    'owned.frame': arrayUnion('korea'), 'owned.plate': arrayUnion('korea'),
-    frame: 'korea', plate: 'korea',
-    spent: increment(BUNDLE_PRICE),
-  })
+/** Buys a whole 세트: every piece of the series I don't have yet, all put on (firestore.rules: seriesBuy). */
+export async function buySeries(db: Firestore, myUid: string, key: string, owned: Record<ItemKind, string[]>) {
+  const { items, price } = seriesMissing(key, owned)
+  if (!items.length) return
+  const patch: Record<string, unknown> = { spent: increment(price) }
+  for (const [k] of seriesItems(key)) patch[k] = key
+  for (const [k, x] of items) patch[`owned.${k}`] = arrayUnion(x)
+  await updateDoc(doc(db, 'candidates', myUid), patch)
 }
 
 export async function updateMyProfile(db: Firestore, myUid: string, patch: { bio?: string; gender?: string; photoURL?: string }) {

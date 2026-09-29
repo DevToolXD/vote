@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { css, sx } from '../css'
-import { FRAMES, SKINS, isBundled, isLimited, priceOf, skinGeom, type ItemKind } from '../data'
+import { FRAMES, SKINS, isLimited, priceOf, skinGeom, type ItemKind } from '../data'
 import type { PassKind } from '../backend/types'
 import { Segmented } from './AccountScreen'
 import { Avatar } from './Avatar'
@@ -30,7 +30,7 @@ const GOLD = '#e6b54a'
  */
 export function AdminShop({ name, photoCss, equipped, owned, passes, points, onPick, onBuyPass, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('frame')
-  const tag = (kind: ItemKind, k: string) => isLimited(kind, k) ? 'LIMITED' : isBundled(kind, k) ? '세트 구성품' : null
+  const tag = (kind: ItemKind, k: string) => isLimited(kind, k) ? 'LIMITED' : null
   const badge = (t: string | null) => t && <span style={css(`position:absolute;top:-7px;left:50%;transform:translateX(-50%);z-index:3;height:18px;padding:0 8px;border-radius:9999px;background:#1a1a1a;color:${GOLD};font-size:10px;font-weight:800;letter-spacing:0.4px;display:flex;align-items:center;white-space:nowrap`)}>{t}</span>
   const state = (kind: ItemKind, k: string) => equipped[kind] === k
     ? <span style={css('font-size:12px;font-weight:800;color:#3182f6')}>착용중</span>
@@ -47,7 +47,7 @@ export function AdminShop({ name, photoCss, equipped, owned, passes, points, onP
           <span style={css(`flex:1;font-size:18px;font-weight:800;color:${GOLD}`)}>👑 관리자샵</span>
           <span style={css(`padding:0 12px;font-size:16px;font-weight:800;color:${GOLD};font-variant-numeric:tabular-nums`)}>{points.toLocaleString()}P</span>
         </div>
-        <div style={css('padding:4px 24px 12px;font-size:13px;line-height:19px;color:rgba(255,255,255,0.55)')}>관리자만 들어올 수 있어요. 역대 모든 아이템을 하나씩 살 수 있어요 · 리미티드, 세트 구성품 포함</div>
+        <div style={css('padding:4px 24px 12px;font-size:13px;line-height:19px;color:rgba(255,255,255,0.55)')}>관리자만 들어올 수 있어요. 역대 모든 아이템을 세트가 아니라 하나씩 살 수 있어요 · 리미티드 포함</div>
         <div style={css('position:sticky;top:56px;z-index:4;padding:0 24px 14px;background:#14110b')}>
           <Segmented<Tab> options={['frame', 'plate', 'skin', 'pass']} labels={['프레임', '이름표', '막대 스킨', '패스']} value={tab} onPick={setTab} />
         </div>

@@ -3,7 +3,7 @@ import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, revokeItem, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
-import { buyItem, buyKoreaBundle, buyPass, castVote, hasFakePass, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { buyItem, buySeries, buyPass, castVote, hasFakePass, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, inviteMembers, isUnread, leaveGroup, onMyReads, setReadsUser, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, scheduleMessage, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
 import { DEFAULT_OWNED, DEFAULT_SEASON, FAKE_PASS_PRICE, PASS_PRICE, type PassKind, type MyVote, type Season, type WeekKind } from './backend/types'
@@ -26,7 +26,7 @@ import { BuyDialog, Dialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, 
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
 import { css, sx } from './css'
-import { BLUE, BUNDLE_PRICE, fmt, isBundled, isLimited, KIND_NAME, RED, SKIN_FILES, priceOf, type ItemKind, type Tab } from './data'
+import { BLUE, FRAMES, fmt, isLimited, KIND_NAME, seriesItems, seriesMissing, RED, SKIN_FILES, priceOf, type ItemKind, type Tab } from './data'
 import { db as maybeDb, firebaseConfigured, rtdb } from './firebase'
 import { isInstalledApp } from './install'
 import { LedgerSheet } from './components/LedgerViews'
@@ -58,7 +58,9 @@ const db = maybeDb
 const tradeBanned = (p?: { tradeBan?: number }) => (p?.tradeBan ?? 0) > Date.now()
 const banText = (p?: { tradeBan?: number }) => (p?.tradeBan ?? 0) >= TRADE_BAN_FOREVER ? '거래가 정지됐어요 · 관리자에게 문의해주세요' : `거래가 정지됐어요 · ${leftLabel((p?.tradeBan ?? 0) - Date.now())} 뒤에 풀려요`
 
-type Buy = { kind: ItemKind; key: string; label: string; price: number; bundle?: boolean }
+/** Does the last syllable end in a consonant (을 vs 를)? */
+const hasBatchim = (w: string) => { const c = w.charCodeAt(w.length - 1) - 0xac00; return c >= 0 && c <= 11171 && c % 28 !== 0 }
+type Buy = { kind: ItemKind; key: string; label: string; price: number; series?: string; pieces?: string }
 
 const EMPTY_SIGNUP: SignupForm = { name: '', id: '', pw: '', pw2: '' }
 const freshLogin = (): LoginForm => ({ id: savedLoginId(), pw: '', keep: true })
@@ -97,7 +99,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [, setPhotoBusy] = useState(false)
   const [bioDraft, setBioDraft] = useState('')
   const [editOpen, setEditOpen] = useState(false)
-  const [shopTab, setShopTab] = useState<ShopTab>('frame')
+  const [shopTab, setShopTab] = useState<ShopTab>('set')
   const [passAsk, setPassAsk] = useState<PassKind | null>(null)
   const [ledgerOpen, setLedgerOpen] = useState(false)
   const [earnOpen, setEarnOpen] = useState(false)
@@ -445,25 +447,37 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     if (!me) return
     if (me.owned[kind].includes(key)) {
       equipItem(db!, me.id, kind, key).catch(e => failToast('적용하지 못했어요', e))
-    } else if (isBundled(kind, key) && !oneByOne) {
-      // 대한민국: frame + 이름표 only as the set
-      setBuy({ kind, key, label: '대한민국 세트', price: BUNDLE_PRICE, bundle: true })
     } else if (isLimited(kind, key) && !oneByOne) {
       showToast('리미티드라 더 이상 팔지 않아요')
+    } else if (!oneByOne) {
+      askSeries(key)
     } else {
       setBuy({ kind, key, label, price: priceOf(kind, key) })
     }
   }
+  // 세트: buying any piece brings the whole series (what's missing of it)
+  const PIECE: Record<ItemKind, string> = { frame: '프레임', plate: '이름표', skin: '막대 스킨' }
+  const askSeries = (key: string) => {
+    if (!me) return
+    const m = seriesMissing(key, me.owned)
+    const name = FRAMES.find(([k]) => k === key)?.[1] ?? key
+    setBuy({ kind: 'frame', key, label: `${name} 세트`, price: m.price, series: key, pieces: m.items.map(([k]) => PIECE[k]).join(' + ') })
+  }
+  const pickSet = (key: string) => {
+    if (!me) { go('acct'); return }
+    if (seriesMissing(key, me.owned).items.length) { askSeries(key); return }
+    Promise.all(seriesItems(key).map(([k, x]) => equipItem(db!, me.id, k, x))).catch(e => failToast('적용하지 못했어요', e))
+  }
   // 관리자샵: anything, one by one
   const adminPick = (kind: ItemKind, key: string, label: string) => pickItem(kind, key, label, true)
 
-  const buyName = buy ? (buy.bundle ? buy.label : buy.label + (KIND_NAME[buy.kind] ? ' ' + KIND_NAME[buy.kind] : '')) : ''
+  const buyName = buy ? (buy.series ? buy.label : buy.label + (KIND_NAME[buy.kind] ? ' ' + KIND_NAME[buy.kind] : '')) : ''
   const canBuy = !!buy && points >= buy.price
   const confirmBuy = async () => {
     if (!buy || !canBuy || !me) return
     if (tradeBanned(me)) { showToast(banText(me)); return }
     try {
-      if (buy.bundle) await buyKoreaBundle(db!, me.id)
+      if (buy.series) await buySeries(db!, me.id, buy.series, me.owned)
       else await buyItem(db!, me.id, buy.kind, buy.key, buy.price)
       setBuy(null)
       showToast(buyName + ' 적용했어요')
@@ -644,7 +658,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             <ShopScreen
               loggedIn={loggedIn} name={me?.name ?? '내 이름'} bio={me ? bioDraft : ''} photoCss={me?.photoCss ?? 'none'}
               equipped={me ? { frame: me.frame, plate: me.plate, skin: me.skin } : { frame: 'none', plate: 'none', skin: 'none' }}
-              owned={me?.owned ?? DEFAULT_OWNED} points={points} onPoints={() => setEarnOpen(true)} tab={shopTab}
+              owned={me?.owned ?? DEFAULT_OWNED} points={points} onPoints={() => setEarnOpen(true)} tab={shopTab} onPickSet={pickSet}
               market={<MarketView loggedIn={loggedIn} rows={marketRows} me={me} byId={byId} points={points} onLogin={() => go('acct')} onBuy={marketBuy} onList={marketList} onCancel={marketCancel} />} onTab={setShopTab}
               onPick={(k, key, l) => (me ? pickItem(k, key, l) : go('acct'))}
               passes={{ pass2x: passActive, passFake: hasFakePass(me) }} onBuyPass={setPassAsk} onLogin={() => go('acct')}
@@ -768,8 +782,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
         {buy && (
           <BuyDialog
             b={{
-              title: buyName + '을 살까요?',
-              desc: !canBuy ? '받은 추천이 더 쌓이면 살 수 있어요' : buy.bundle ? '대한민국 프레임 + 이름표를 한 번에 받고 바로 적용돼요' : '사면 바로 내 프로필에 적용돼요',
+              title: buyName + (hasBatchim(buyName) ? '을' : '를') + ' 살까요?',
+              desc: !canBuy ? '받은 추천이 더 쌓이면 살 수 있어요' : buy.series ? `${buy.pieces}를 한 번에 받고 바로 적용돼요` : '사면 바로 내 프로필에 적용돼요',
               price: buy.price.toLocaleString() + 'P',
               remain: (points - buy.price).toLocaleString() + 'P',
               can: canBuy,

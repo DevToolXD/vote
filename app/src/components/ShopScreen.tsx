@@ -1,6 +1,6 @@
 import { useRef, type ReactNode } from 'react'
 import { css, sx } from '../css'
-import { BUNDLE_PRICE, FRAMES, LEGENDARY, SKINS, isBundled, isLimited, priceOf, skinGeom, type ItemKind } from '../data'
+import { FRAMES, LEGENDARY, SKINS, isLimited, seriesItems, seriesMissing, seriesPrice, skinGeom, type ItemKind } from '../data'
 import { FAKE_PASS_PRICE, PASS_PRICE, type PassKind } from '../backend/types'
 import { Segmented } from './AccountScreen'
 import { Avatar } from './Avatar'
@@ -9,7 +9,7 @@ import { Nameplate } from './Nameplate'
 import { PointsChip } from './PointsChip'
 import { TowerSkin } from './TowerSkin'
 
-export type ShopTab = ItemKind | 'pass' | 'inv' | 'market'
+export type ShopTab = ItemKind | 'set' | 'pass' | 'inv' | 'market'
 
 type Props = {
   loggedIn: boolean
@@ -24,6 +24,8 @@ type Props = {
   onTab: (t: ShopTab) => void
   /** Equips an owned item or opens the purchase dialog for a locked one. */
   onPick: (kind: ItemKind, key: string, label: string) => void
+  /** A whole 세트: buy what's missing, or put the whole series on if I have it. */
+  onPickSet: (key: string) => void
   /** 투표 2배권: active for the current season? */
   passes: Record<PassKind, boolean>
   onBuyPass: (kind: PassKind) => void
@@ -53,11 +55,11 @@ export const PASSES: { key: PassKind; title: string; desc: string; icon: string;
   { key: 'passFake', title: '페이크 선물 패스', desc: '채팅에서 페이크 선물을 보낼 수 있어요', icon: '🤡', bg: 'linear-gradient(135deg,#8b5cf6,#c026d3)', price: FAKE_PASS_PRICE },
 ]
 
-export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, onPoints, tab, onTab, onPick, passes, onBuyPass, onLogin, market }: Props) {
-  const item = (kind: ItemKind, k: string) => ({ on: equipped[kind] === k, locked: !owned[kind].includes(k), price: isBundled(kind, k) ? `세트 ${BUNDLE_PRICE.toLocaleString()}P` : priceOf(kind, k).toLocaleString() + 'P' })
+export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, onPoints, tab, onTab, onPick, passes, onBuyPass, onLogin, market, onPickSet }: Props) {
+  const item = (kind: ItemKind, k: string) => ({ on: equipped[kind] === k, locked: !owned[kind].includes(k), price: `세트 ${seriesMissing(k, owned).price.toLocaleString()}P` })
   // 악세사리 remembers which of its three it was on
-  const lastAcc = useRef<ItemKind>('frame')
-  if (tab === 'frame' || tab === 'plate' || tab === 'skin') lastAcc.current = tab
+  const lastAcc = useRef<ItemKind | 'set'>('set')
+  if (tab === 'set' || tab === 'frame' || tab === 'plate' || tab === 'skin') lastAcc.current = tab
   const top = tab === 'pass' ? 'pass' : tab === 'market' ? 'market' : 'acc'
   const priceTag = (price: string) => (
     <span style={css('position:absolute;top:8px;left:8px;z-index:3;height:20px;padding:0 7px;border-radius:9999px;background:#191f28;color:#ffffff;font-size:11px;font-weight:700;display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums')}><LockIcon size={9} />{price}</span>
@@ -70,7 +72,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
     : k === 'matrix'
     ? { background: 'radial-gradient(120% 90% at 50% 100%,#04351a 0%,#01140a 55%,#000 100%)', boxShadow: on ? 'inset 0 0 0 2px #eafff0,0 6px 18px -6px rgba(0,255,65,0.8)' : 'inset 0 0 0 1.5px rgba(0,255,65,0.6),0 6px 18px -8px rgba(0,255,65,0.7)' }
     : { background: 'radial-gradient(120% 90% at 50% 100%,#3a1380 0%,#160538 55%,#0a0220 100%)', boxShadow: on ? 'inset 0 0 0 2px #ffe27a,0 6px 18px -6px rgba(123,60,255,0.8)' : 'inset 0 0 0 1.5px rgba(181,140,255,0.55),0 6px 18px -8px rgba(123,60,255,0.7)' }
-  const legendTag = (pos: string, k: string) => <span className={k === 'matrix' ? 'legend-tag mx-tag' : k === 'korea' ? 'legend-tag kr-tag' : 'legend-tag'} style={css('position:absolute;z-index:4;height:18px;padding:0 7px;border-radius:9999px;font-size:10px;font-weight:800;letter-spacing:0.3px;display:flex;align-items:center;white-space:nowrap;' + (k === 'korea' ? 'color:#fbf8f1;' : 'color:#1a0633;') + pos)}>{k === 'korea' ? '레전드 · 3000' : k === 'matrix' ? '레전드 · 2000' : '레전드'}</span>
+  const legendTag = (pos: string, k: string) => <span className={k === 'matrix' ? 'legend-tag mx-tag' : k === 'korea' ? 'legend-tag kr-tag' : 'legend-tag'} style={css('position:absolute;z-index:4;height:18px;padding:0 7px;border-radius:9999px;font-size:10px;font-weight:800;letter-spacing:0.3px;display:flex;align-items:center;white-space:nowrap;' + (k === 'korea' ? 'color:#fbf8f1;' : 'color:#1a0633;') + pos)}>{k === 'korea' ? '레전드 · 1300' : k === 'matrix' ? '레전드 · 2000' : '레전드 · 1000'}</span>
   const limitedTag = <span className="legend-tag kr-tag" style={css('position:absolute;z-index:4;top:-7px;left:50%;margin-left:-26px;height:18px;padding:0 8px;border-radius:9999px;font-size:10px;font-weight:800;letter-spacing:0.5px;color:#fbf8f1;display:flex;align-items:center;white-space:nowrap')}>LIMITED</span>
   // 보관함: only what I own, to wear with a tap.
   const inv = tab === 'inv'
@@ -103,11 +105,39 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
           <Segmented<'acc' | 'pass' | 'market'> options={['acc', 'pass', 'market']} labels={['악세사리', '패스', '🥕 당근마켓']} value={top} onPick={v => onTab(v === 'acc' ? lastAcc.current : v)} />
           {top === 'acc' && (
             <div style={css('margin-top:8px')}>
-              <Segmented<ItemKind> options={['frame', 'plate', 'skin']} labels={['프레임', '이름표', '막대 스킨']} value={lastAcc.current} onPick={onTab} />
+              <Segmented<ItemKind | 'set'> options={['set', 'frame', 'plate', 'skin']} labels={['세트', '프레임', '이름표', '막대 스킨']} value={lastAcc.current} onPick={onTab} />
             </div>
           )}
         </div>
       )}
+
+        {tab === 'set' && (
+          <div className="anim-list" style={css('display:flex;flex-direction:column;gap:10px;padding:0 24px 32px')}>
+            <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>사면 그 시리즈가 전부 들어와요 · 프레임 + 이름표 (레전드는 막대 스킨까지)</span>
+            {FRAMES.filter(([k]) => k !== 'none').map(([k, l]) => {
+              const miss = seriesMissing(k, owned), all = miss.items.length === 0
+              const wearing = seriesItems(k).every(([kind, x]) => equipped[kind] === x)
+              const g = seriesItems(k).some(([kind]) => kind === 'skin') ? skinGeom(k, 56, false) : null
+              return (
+                <button key={k} className="pr-98" onClick={() => onPickSet(k)} style={sx('position:relative;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 10px;border-radius:18px;text-align:left;transition:transform 200ms,box-shadow 200ms', LEGENDARY.has(k) ? legendTile(wearing, k) : tileColors(wearing))}>
+                  {LEGENDARY.has(k) && legendTag('top:-7px;left:14px', k)}
+                  <span style={css('flex:1;min-width:0;height:52px')}><Nameplate kind={k} person={l} sub={seriesItems(k).map(([kind]) => ({ frame: '프레임', plate: '이름표', skin: '막대 스킨' })[kind]).join(' + ')} frame={k} photo={photoCss} style={{ width: '100%', height: 52 }} /></span>
+                  {g && <span style={css('position:relative;width:18px;height:56px;flex:none;margin:0 4px')}><TowerSkin g={g} /></span>}
+                  <span style={css('flex:none;min-width:70px;display:flex;flex-direction:column;align-items:flex-end;gap:2px')}>
+                    {all ? (
+                      <span style={sx('font-size:13px;font-weight:800', { color: wearing ? '#3182f6' : LEGENDARY.has(k) && k !== 'korea' ? '#ffffff' : '#4e5968' })}>{wearing ? '착용중' : '보유 · 끼기'}</span>
+                    ) : (
+                      <>
+                        <span style={css('height:26px;padding:0 10px;border-radius:9999px;background:#191f28;color:#ffffff;font-size:13px;font-weight:800;display:flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums')}><LockIcon size={10} />{miss.price.toLocaleString()}P</span>
+                        {miss.price !== seriesPrice(k) && <span style={css('font-size:11px;color:#8b95a1')}>남은 것만</span>}
+                      </>
+                    )}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         {inv && <InvTitle>프레임</InvTitle>}
         {(tab === 'frame' || inv) && (
@@ -116,7 +146,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
               const it = item('frame', k)
               return (
                 <button key={k} className="pr-96" onClick={() => onPick('frame', k, l)} style={sx(tile + ';padding:22px 0 12px;gap:12px;transition:transform 150ms,background 200ms,box-shadow 200ms', LEGENDARY.has(k) ? legendTile(it.on, k) : tileColors(it.on))}>
-                  {LEGENDARY.has(k) && legendTag('top:-7px;left:50%;margin-left:-' + (k === 'matrix' || k === 'korea' ? 36 : 22) + 'px', k)}
+                  {LEGENDARY.has(k) && legendTag('top:-7px;left:50%;margin-left:-' + 36 + 'px', k)}
                   <span style={css('width:52px;height:52px')}><Avatar frame={k} photo={photoCss} size={52} /></span>
                   <span style={{ fontSize: 13, fontWeight: LEGENDARY.has(k) ? 800 : 600, color: k === 'matrix' ? '#7dffa0' : k === 'korea' ? '#1a1a1a' : LEGENDARY.has(k) ? '#ffffff' : tileFg(it.on) }}>{l}</span>
                   {it.locked && priceTag(it.price)}
@@ -155,7 +185,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
                 const it = item('skin', k), g = skinGeom(k, 132, false)
                 return (
                   <button key={k} className="pr-97" onClick={() => onPick('skin', k, l)} aria-pressed={it.on} aria-label={`${l} 스킨`} style={sx(tile + ';height:200px;padding:12px 0 12px;justify-content:flex-end;gap:10px;transition:transform 300ms cubic-bezier(0.34,1.4,0.64,1),background 200ms,box-shadow 200ms', (LEGENDARY.has(k) ? legendTile(it.on, k) : tileColors(it.on)))}>
-                    {isLimited('skin', k) ? limitedTag : LEGENDARY.has(k) && legendTag('top:-7px;left:50%;margin-left:-' + (k === 'matrix' || k === 'korea' ? 36 : 22) + 'px', k)}
+                    {isLimited('skin', k) ? limitedTag : LEGENDARY.has(k) && legendTag('top:-7px;left:50%;margin-left:-' + 36 + 'px', k)}
                     <span style={css('position:relative;width:32px;height:132px;flex:none')}>
                       {g ? <TowerSkin g={g} /> : <span style={css('position:absolute;left:2px;right:2px;bottom:0;height:86px;border:1.5px solid #191f28;border-radius:6px;background:#ffffff;box-sizing:border-box')} />}
                     </span>

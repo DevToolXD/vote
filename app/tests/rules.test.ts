@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore'
 import { revokeItem, setTradeBan, TRADE_BAN_FOREVER, deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
-import { buyItem, buyKoreaBundle, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, updateMyProfile } from '../src/backend/candidates'
+import { buyItem, buySeries, buyPass, castVote, equipItem, pointsOf, subscribeMyVotes, updateMyProfile } from '../src/backend/candidates'
 import { loadOlderMessages, subscribeMessages, setChatDatabase, setChatTimeout, createGroup, dmId, inviteMembers, leaveGroup, loadImage, markGone, markHere, markRead, openDm, sendFakeGift, scheduleMessage, cancelScheduled, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff } from '../src/backend/messages'
 import { removePushToken, saveNotifySettings, savePushToken } from '../src/backend/push'
 import { closeTicket, linkTicket, markSupportRead, sendSupport } from '../src/backend/support'
@@ -22,7 +22,7 @@ import { markNoticeSeen, nextUnseenNotice, pollResults, postNotice, voteNotice }
 import { DEFAULT_REWARDS, computeRewards } from '../src/backend/rewards'
 import { buildPeople } from '../src/model'
 import type { CandidateDoc } from '../src/backend/types'
-import { priceOf } from '../src/data'
+import { priceOf, seriesPrice } from '../src/data'
 import { placeBet, settleLastBet } from '../src/backend/gamble'
 import { buyListing, cancelListing, listItem, subscribeMarket, type Listing } from '../src/backend/market'
 
@@ -261,72 +261,59 @@ describe('profile and shop', () => {
     await denied(updateMyProfile(a, 'a', { gender: '외계인' }))
     await denied(updateDoc(doc(a, 'candidates', 'a'), { name: '다른이름' }))
   })
-  test('대한민국 세트: frame + 이름표 only together for 3000P; the 막대 스킨 is 리미티드 (관리자샵 only)', async () => {
-    const a = await signUp('a')
-    await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 9000)
-    // one by one: refused, at any price
-    await denied(buyItem(a, 'a', 'frame', 'korea', 3000))
-    await denied(buyItem(a, 'a', 'plate', 'korea', 3000))
-    await denied(buyItem(a, 'a', 'skin', 'korea', 3000))
-    // the bundle: exactly 3000P for both, both put on
-    await denied(updateDoc(doc(a, 'candidates', 'a'), { 'owned.frame': arrayUnion('korea'), 'owned.plate': arrayUnion('korea'), spent: increment(2999) }))
-    await buyKoreaBundle(a, 'a')
-    const c = await read(a, 'candidates/a')
-    assert.equal(pointsOf(c), 6000); assert.deepEqual([c.frame, c.plate], ['korea', 'korea'])
-    // the bundle can't smuggle in anything else
-    const b = await signUp('b'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'b', 9000)
-    await denied(updateDoc(doc(b, 'candidates', 'b'), { 'owned.frame': arrayUnion('korea'), 'owned.plate': arrayUnion('korea'), 'owned.skin': arrayUnion('korea'), spent: increment(3000) }))
-    // the admin's 관리자샵: everything, one by one, at its price
+  test('세트: buying brings the whole series (frame + 이름표, + 막대 스킨 for 레전드); single pieces refused', async () => {
+    const a = await signUp('a'); const own = () => read(a, 'candidates/a')
+    await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 5000)
+    assert.equal(seriesPrice('korea'), 1300); assert.equal(seriesPrice('aura'), 1000); assert.equal(seriesPrice('matrix'), 2000)
+    assert.equal(seriesPrice('neon'), priceOf('frame', 'neon') + priceOf('plate', 'neon'))
+    // one piece on its own: no
+    await denied(buyItem(a, 'a', 'frame', 'neon', priceOf('frame', 'neon')))
+    await denied(buyItem(a, 'a', 'skin', 'korea', priceOf('skin', 'korea')))
+    // the set: all pieces at their prices, all put on
+    await buySeries(a, 'a', 'korea', (await own()).owned)
+    let c = await own()
+    assert.equal(pointsOf(c), 5000 - 1300); assert.deepEqual([c.frame, c.plate, c.skin], ['korea', 'korea', 'korea'])
+    await buySeries(a, 'a', 'neon', c.owned)
+    c = await own()
+    assert.deepEqual([c.frame, c.plate, c.skin], ['neon', 'neon', 'korea'])
+    assert.equal(pointsOf(c), 3700 - seriesPrice('neon'))
+    // a set at a discount, or mixing two series, or leaving a piece out: no
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { 'owned.frame': arrayUnion('aura'), 'owned.plate': arrayUnion('aura'), 'owned.skin': arrayUnion('aura'), spent: increment(999) }))
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { 'owned.frame': arrayUnion('crown'), 'owned.plate': arrayUnion('stars'), spent: increment(priceOf('frame', 'crown') + priceOf('plate', 'stars')) }))
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { 'owned.frame': arrayUnion('aura'), 'owned.plate': arrayUnion('aura'), spent: increment(700) }))
+    // someone who already has a piece pays just for the rest
+    const b = await signUp('b'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'b', 1000)
+    await seed('candidates/b', { 'owned': { mapValue: { fields: { frame: { arrayValue: { values: [{ stringValue: 'none' }, { stringValue: 'aura' }] } }, plate: { arrayValue: { values: [{ stringValue: 'none' }] } }, skin: { arrayValue: { values: [{ stringValue: 'none' }] } } } } } })
+    await buySeries(b, 'b', 'aura', (await read(b, 'candidates/b')).owned)
+    assert.equal(pointsOf(await read(b, 'candidates/b')), 1000 - priceOf('plate', 'aura') - priceOf('skin', 'aura'))
+  })
+  test('리미티드: the landmark 막대 스킨 are no longer sold; the 관리자샵 sells anything one by one', async () => {
+    const a = await signUp('a'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 5000)
+    for (const k of ['namsan', 'eiffel', 'bigben', 'victory']) await denied(buyItem(a, 'a', 'skin', k, priceOf('skin', k)))
     const admin = dbAs(ADMIN)
     await setDoc(doc(admin, 'candidates', ADMIN.uid), newCandidateDoc(ADMIN.uid, '관리자'))
-    await grantPoints(admin, ADMIN.uid, ADMIN.uid, 9000)
-    await denied(buyItem(admin, ADMIN.uid, 'skin', 'korea', 100))
-    for (const k of ['frame', 'plate', 'skin'] as const) await buyItem(admin, ADMIN.uid, k, 'korea', 3000)
-    assert.equal(pointsOf(await read(admin, `candidates/${ADMIN.uid}`)), 0)
-  })
-  test('매트릭스 (레전드 set): frame, 이름표 and 막대 스킨 at 2000P each', async () => {
-    const a = await signUp('a')
-    await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 6050)
-    assert.equal(priceOf('frame', 'matrix'), 2000); assert.equal(priceOf('plate', 'matrix'), 2000); assert.equal(priceOf('skin', 'matrix'), 2000)
-    await denied(buyItem(a, 'a', 'plate', 'matrix', 1000))
-    await denied(buyItem(a, 'a', 'skin', 'matrix', 1000))
-    for (const k of ['frame', 'plate', 'skin'] as const) await buyItem(a, 'a', k, 'matrix', 2000)
-    const c = await read(a, 'candidates/a')
-    assert.equal(pointsOf(c), 50); assert.deepEqual([c.frame, c.plate, c.skin], ['matrix', 'matrix', 'matrix'])
-  })
-  test('아우라 (레전드 set): frame, 이름표 and 막대 스킨 at 1000P each', async () => {
-    const a = await signUp('a')
-    await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 3100)
-    assert.equal(priceOf('frame', 'aura'), 1000); assert.equal(priceOf('plate', 'aura'), 1000); assert.equal(priceOf('skin', 'aura'), 1000)
-    await denied(buyItem(a, 'a', 'plate', 'aura', 1015)) // not frame + 15 like the others
-    await denied(buyItem(a, 'a', 'skin', 'aura', 125))
-    await buyItem(a, 'a', 'frame', 'aura', 1000)
-    await buyItem(a, 'a', 'plate', 'aura', 1000)
-    await buyItem(a, 'a', 'skin', 'aura', 1000)
-    const c = await read(a, 'candidates/a')
-    assert.equal(pointsOf(c), 100); assert.deepEqual([c.frame, c.plate, c.skin], ['aura', 'aura', 'aura'])
+    await grantPoints(admin, ADMIN.uid, ADMIN.uid, 5000)
+    await denied(buyItem(admin, ADMIN.uid, 'skin', 'eiffel', 1))
+    await buyItem(admin, ADMIN.uid, 'skin', 'eiffel', priceOf('skin', 'eiffel'))
+    await buyItem(admin, ADMIN.uid, 'frame', 'korea', priceOf('frame', 'korea'))
+    assert.equal(pointsOf(await read(admin, `candidates/${ADMIN.uid}`)), 5000 - priceOf('skin', 'eiffel') - priceOf('frame', 'korea'))
   })
   test('buying needs enough points and the real price; no free items, no refunds', async () => {
-    const a = await signUp('a')
-    await denied(buyItem(a, 'a', 'frame', 'neon', priceOf('frame', 'neon')))
+    const a = await signUp('a'); const own = async () => (await read(a, 'candidates/a')).owned
+    await assert.rejects(buySeries(a, 'a', 'neon', await own()))
     await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 250)
-    await denied(buyItem(a, 'a', 'frame', 'crown', 1))
-    await buyItem(a, 'a', 'frame', 'neon', priceOf('frame', 'neon'))
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { 'owned.frame': arrayUnion('crown'), 'owned.plate': arrayUnion('crown'), spent: increment(1) }))
+    await buySeries(a, 'a', 'neon', await own())
     const c = await read(a, 'candidates/a')
-    assert.equal(pointsOf(c), 250 - 60); assert.equal(c.frame, 'neon')
-    await buyItem(a, 'a', 'plate', 'crown', priceOf('plate', 'crown'))
-    assert.equal(pointsOf(await read(a, 'candidates/a')), 250 - 60 - 105)
-    // 85 points left: a 125P skin is out of reach, and an owned item can't be charged again.
-    await denied(buyItem(a, 'a', 'skin', 'eiffel', priceOf('skin', 'eiffel')))
-    await denied(buyItem(a, 'a', 'frame', 'neon', priceOf('frame', 'neon')))
+    assert.equal(pointsOf(c), 250 - seriesPrice('neon')); assert.equal(c.frame, 'neon')
+    // 115 left: the crown set (195) is out of reach, and an owned item can't be charged again.
+    await assert.rejects(buySeries(a, 'a', 'crown', await own()))
     await denied(updateDoc(doc(a, 'candidates', 'a'), { 'owned.frame': ['none', 'neon', 'crown'] }))
     await denied(updateDoc(doc(a, 'candidates', 'a'), { spent: 0 }))
     await denied(updateDoc(doc(a, 'candidates', 'a'), { bonus: 99999 }))
     await denied(updateDoc(doc(a, 'candidates', 'a'), { 'owned.plate': ['none'], plate: 'none' }))
-    await denied(equipItem(a, 'a', 'frame', 'crown'))
-    await equipItem(a, 'a', 'frame', 'none')
-    await equipItem(a, 'a', 'frame', 'neon')
   })
+
 })
 
 describe('admin: single-use tokens ×3', () => {
@@ -903,9 +890,9 @@ describe('포인트 선물', () => {
   test('거래 정지 also blocks buying items and passes (equipping still works); the admin can 수거 items and passes', async () => {
     const a = await signUp('a'); const admin = dbAs(ADMIN)
     await grantPoints(admin, ADMIN.uid, 'a', 20000)
-    await buyItem(a, 'a', 'frame', 'neon', priceOf('frame', 'neon'))
+    await buySeries(a, 'a', 'neon', (await read(a, 'candidates/a')).owned)
     await setTradeBan(admin, ADMIN.uid, 'a', Date.now() + 60_000)
-    await denied(buyItem(a, 'a', 'frame', 'crown', priceOf('frame', 'crown')))
+    await assert.rejects(buySeries(a, 'a', 'crown', (await read(a, 'candidates/a')).owned))
     await denied(buyPass(a, 'a', 'passFake'))
     await denied(buyPass(a, 'a'))
     await equipItem(a, 'a', 'frame', 'neon') // using what you have is fine
@@ -924,7 +911,7 @@ describe('포인트 선물', () => {
     await grantPoints(admin, ADMIN.uid, 'a', 5000)
     const id = await openDm(a, 'a', 'b')
     await sendItemGift(a, 'a', await chatOf(a, id), 'frame', 'matrix')
-    assert.equal(await points(a, 'a'), 3000)
+    assert.equal(await points(a, 'a'), 5000 - priceOf('frame', 'matrix'))
     const gids = () => rt(a, `msgs/${id}`).then(m => (Object.values(m) as { giftId?: string }[]).map(x => x.giftId).filter(Boolean) as string[])
     const [g1] = await gids()
     await claimGift(b, 'b', g1)
@@ -936,7 +923,7 @@ describe('포인트 선물', () => {
     const g2 = (await gids()).find(g => g !== g1)!
     await assert.rejects(claimGift(b, 'b', g2))
     await cancelGift(a, 'a', g2)
-    assert.equal(await points(a, 'a'), 3000)
+    assert.equal(await points(a, 'a'), 5000 - priceOf('frame', 'matrix'))
     // a price that isn't the shop price, or 기본, is refused
     const fake = doc(collection(a, 'gifts'))
     const bt = writeBatch(a)
@@ -1241,7 +1228,7 @@ describe('당근마켓', () => {
   test('list (escrow, taken off if worn) → someone buys: item moves, points move; can\'t buy twice', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c'); const admin = dbAs(ADMIN)
     await grantPoints(admin, ADMIN.uid, 'a', 1000); await grantPoints(admin, ADMIN.uid, 'b', 1000); await grantPoints(admin, ADMIN.uid, 'c', 1000)
-    await buyItem(a, 'a', 'frame', 'crown', priceOf('frame', 'crown'))
+    await buySeries(a, 'a', 'crown', (await read(a, 'candidates/a')).owned)
     await listItem(a, await me(a, 'a'), 'frame', 'crown', 500)
     let ca = await read(a, 'candidates/a')
     assert.ok(!ca.owned.frame.includes('crown')); assert.equal(ca.frame, 'none')
