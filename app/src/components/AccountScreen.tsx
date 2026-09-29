@@ -4,7 +4,7 @@ import { ID_PATTERN } from '../backend/auth'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
 import { BackIcon } from './icons'
-import { PointsChip } from './PointsChip'
+import { PointsChip, shortPoints } from './PointsChip'
 import { Badges } from './Badges'
 import { Nameplate } from './Nameplate'
 
@@ -188,7 +188,7 @@ function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot, o
       {sep}
       <div style={{ height: 24 }} />
       <div style={css('padding:0 24px 24px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px')}>
-        {[['투표', mine.length + '명'], ['순위', me.rank + '위'], ['포인트', points.toLocaleString() + 'P']].map(([k, v]) => (
+        {[['투표', mine.length + '명'], ['순위', me.rank + '위'], ['포인트', shortPoints(points) + 'P']].map(([k, v]) => (
           <div key={k} data-g="l1" style={css('background:#f9fafb;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:2px')}>
             <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>{k}</span>
             <span style={css('font-size:22px;line-height:31px;font-weight:700;color:#191f28')}>{v}</span>

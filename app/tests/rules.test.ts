@@ -23,6 +23,7 @@ import { DEFAULT_REWARDS, computeRewards } from '../src/backend/rewards'
 import { buildPeople } from '../src/model'
 import type { CandidateDoc } from '../src/backend/types'
 import { priceOf } from '../src/data'
+import { placeBet, settleLastBet } from '../src/backend/gamble'
 
 const PROJECT = 'demo-vote'
 const RTDB_NS = `${PROJECT}-default-rtdb`
@@ -1146,5 +1147,74 @@ describe('notifications', () => {
     }, err => err ? reject(err) : resolve()))
     fcm2.close()
     assert.equal(got.length, 0)
+  })
+})
+
+describe('몰래 도박장', () => {
+  const pts = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
+  // A bet written by hand (no payout step), like an app that closed right after betting.
+  async function rawBet(db: Firestore, uid: string, amount: number) {
+    const ref = doc(collection(db, 'gambles')), b = writeBatch(db)
+    b.set(ref, { uid, amount, at: serverTimestamp(), paid: false })
+    b.update(doc(db, 'candidates', uid), { spent: increment(amount), lastBet: ref.id })
+    await b.commit()
+    const d = (await getDoc(ref)).data()!
+    return { id: ref.id, won: d.at.nanoseconds % 3000 < 1000 }
+  }
+  const payBy = (db: Firestore, uid: string, id: string, amount: number) => {
+    const b = writeBatch(db)
+    b.update(doc(db, 'gambles', id), { paid: true })
+    b.update(doc(db, 'candidates', uid), { bonus: increment(amount * 2), payBet: id })
+    return b.commit()
+  }
+
+  test('bets settle by the server: about 1 in 3 doubles, points add up exactly', async () => {
+    const a = await signUp('a'); const admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 1_000_000)
+    const start = await pts(a, 'a')
+    let expect = start, wins = 0
+    for (let i = 0; i < 30; i++) {
+      const bet = await placeBet(a, 'a', 1000)
+      expect += bet.won ? 1000 : -1000
+      if (bet.won) { wins++; assert.equal(bet.paid, true) }
+    }
+    assert.equal(await pts(a, 'a'), expect)
+    assert.ok(wins > 0 && wins < 30, `wins ${wins}`)
+  })
+  test('refused: betting more than you have, collecting a lost bet, collecting twice, a win without a bet', async () => {
+    const a = await signUp('a'); const admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 100_000)
+    await assert.rejects(placeBet(a, 'a', (await pts(a, 'a')) + 1))
+    let lost: string | null = null, won: string | null = null
+    for (let i = 0; i < 40 && (!lost || !won); i++) {
+      const r = await rawBet(a, 'a', 100)
+      if (r.won && !won) { won = r.id; await payBy(a, 'a', r.id, 100) } else if (!r.won) lost = r.id
+    }
+    assert.ok(lost && won)
+    await denied(payBy(a, 'a', lost!, 100)) // lost is lost
+    await denied(payBy(a, 'a', won!, 100)) // already paid
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { bonus: increment(1000), payBet: 'nope' }))
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { spent: increment(-100), lastBet: 'x' })) // no refunds
+    await denied(updateDoc(doc(a, 'gambles', lost!), { paid: true }))
+    await denied(deleteDoc(doc(a, 'gambles', lost!)))
+    // a back-dated bet (to pick a winning time) or someone else's name
+    await denied(setDoc(doc(a, 'gambles', 'old'), { uid: 'a', amount: 100, at: new Date(Date.now() - 5000), paid: false }))
+    await denied(setDoc(doc(a, 'gambles', 'mine'), { uid: 'a', amount: 100, at: serverTimestamp(), paid: false })) // points not taken
+  })
+  test('an unpaid win is paid on the next visit; nobody else can see or take it; 거래 정지 blocks betting', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 100_000)
+    let win: string | null = null
+    for (let i = 0; i < 40 && !win; i++) { const r = await rawBet(a, 'a', 500); if (r.won) win = r.id }
+    assert.ok(win)
+    await denied(getDoc(doc(b, 'gambles', win!)))
+    await denied(payBy(b, 'b', win!, 500))
+    const before = await pts(a, 'a')
+    const paid = await settleLastBet(a, 'a', (await read(a, 'candidates/a')).lastBet as string)
+    assert.equal(paid?.amount, 500)
+    assert.equal(await pts(a, 'a'), before + 1000)
+    assert.equal(await settleLastBet(a, 'a', win!), null) // once only
+    await setTradeBan(admin, ADMIN.uid, 'a', Date.now() + 60_000)
+    await assert.rejects(placeBet(a, 'a', 100))
   })
 })

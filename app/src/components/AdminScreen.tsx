@@ -16,6 +16,7 @@ import type { Person } from '../model'
 import { Avatar } from './Avatar'
 import { SearchIcon } from './icons'
 import { Dialog } from './Overlays'
+import { shortPoints } from './PointsChip'
 
 type Props = {
   all: Person[]
@@ -262,7 +263,7 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
               <Avatar frame={p.frame} photo={p.photoCss} size={36} />
               <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
                 <span style={sx('font-size:16px;line-height:23px;font-weight:600', { color: on ? '#1b64da' : '#333d4b' })}>{p.name}</span>
-                <span style={css('font-size:13px;color:#6b7684;font-variant-numeric:tabular-nums')}>{p.rank}위 · {p.scoreLabel}점 · {pointsOf(p).toLocaleString()}P</span>
+                <span style={css('font-size:13px;color:#6b7684;font-variant-numeric:tabular-nums')}>{p.rank}위 · {p.scoreLabel}점 · {shortPoints(pointsOf(p))}P</span>
               </span>
               {on && <span style={css('width:22px;height:22px;border-radius:9999px;background:#3182f6;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center')}>✓</span>}
             </button>

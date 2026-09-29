@@ -4,6 +4,7 @@ import { rtdb } from '../firebase'
 import { describe, dismissAlert, subscribeAlerts, subscribeFeed, subscribeLedger, type Alert, type LedgerRow } from '../backend/ledger'
 import type { Person } from '../model'
 import { BottomSheet } from './Overlays'
+import { shortPoints } from './PointsChip'
 
 const EASE = 'cubic-bezier(0.22,1,0.36,1)'
 const when = (ms: number) => {
@@ -11,7 +12,7 @@ const when = (ms: number) => {
   const t = `${d.getHours() < 12 ? '오전' : '오후'} ${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`
   return d.toDateString() === now.toDateString() ? t : `${d.getMonth() + 1}월 ${d.getDate()}일 ${t}`
 }
-const signed = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toLocaleString() + 'P'
+const signed = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '') + shortPoints(Math.abs(n)) + 'P'
 
 function Row({ r, nameOf, who }: { r: LedgerRow; nameOf: (id: string) => string; who?: string }) {
   const { icon, text } = describe(r, nameOf)
@@ -72,12 +73,12 @@ export function AdminLedger({ all }: { all: Person[] }) {
           <div key={a.uid} data-g="l1" style={css('padding:14px 16px;border-radius:16px;background:#fff5f6;box-shadow:inset 0 0 0 1px #ffd9dd;display:flex;flex-direction:column;gap:8px')}>
             <span style={css('display:flex;align-items:baseline;gap:8px')}>
               <span style={css('font-size:16px;font-weight:700;color:#191f28')}>{nameOf(a.uid) || '(탈퇴한 사람)'}</span>
-              <span style={css('margin-left:auto;font-size:20px;font-weight:800;color:#e42939;font-variant-numeric:tabular-nums')}>+{a.gain.toLocaleString()}P</span>
+              <span style={css('margin-left:auto;font-size:20px;font-weight:800;color:#e42939;font-variant-numeric:tabular-nums')}>+{shortPoints(a.gain)}P</span>
             </span>
-            <span style={css('font-size:13px;line-height:19px;color:#6b7684')}>{mins(a.at - a.since)}분 동안 · 지금 {a.points.toLocaleString()}P · {when(a.at)}</span>
+            <span style={css('font-size:13px;line-height:19px;color:#6b7684')}>{mins(a.at - a.since)}분 동안 · 지금 {shortPoints(a.points)}P · {when(a.at)}</span>
             <span style={css('display:flex;gap:6px;flex-wrap:wrap')}>
               {([['투표(개)', a.votes], ['선물 받음', a.gifts], ['기타', a.other]] as [string, number][]).filter(([, n]) => n > 0).map(([k, n]) => (
-                <span key={k} style={css('height:24px;padding:0 9px;border-radius:9999px;background:#ffffff;color:#4e5968;font-size:12px;font-weight:600;display:flex;align-items:center')}>{k} +{n.toLocaleString()}</span>
+                <span key={k} style={css('height:24px;padding:0 9px;border-radius:9999px;background:#ffffff;color:#4e5968;font-size:12px;font-weight:600;display:flex;align-items:center')}>{k} +{shortPoints(n)}</span>
               ))}
             </span>
             <span style={css('display:flex;gap:8px')}>

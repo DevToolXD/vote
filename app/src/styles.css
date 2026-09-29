@@ -214,3 +214,8 @@ html,body{overscroll-behavior:none}
 /* Off screen (see offscreen.ts): stop decorations animating — no work for things nobody sees. */
 .anim-off, .anim-off *{animation-play-state:paused !important}
 .legend-tag.kr-tag{background:linear-gradient(90deg,#cd2e3a,#ffffff 45%,#ffffff 55%,#0047a0);background-size:200% 100%;color:#0b1d4a;animation:auraFlowX 3s linear infinite;box-shadow:0 0 8px rgba(242,199,92,0.9)}
+
+/* 몰래 도박장 */
+@keyframes csNeon{0%,100%{opacity:1}45%{opacity:0.85}50%{opacity:0.55}55%{opacity:1}}
+@keyframes csBulbs{from{background-position:0 0}to{background-position:12px 0}}
+@keyframes csShake{0%,100%{transform:rotate(0) translateY(-8px)}25%{transform:rotate(-4deg) translateY(-8px)}75%{transform:rotate(4deg) translateY(-8px)}}

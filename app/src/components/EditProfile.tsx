@@ -3,6 +3,7 @@ import type { ItemKind } from '../data'
 import { Segmented } from './AccountScreen'
 import { Avatar } from './Avatar'
 import { BackIcon } from './icons'
+import { shortPoints } from './PointsChip'
 
 type Props = {
   bio: string
@@ -26,7 +27,7 @@ export function EditProfile({ bio, photoCss, equipped, points, onShop, onClose, 
         <div data-g="head" style={css('position:sticky;top:0;z-index:5;height:56px;padding:0 16px 0 8px;display:flex;align-items:center;gap:4px;background:#ffffff')}>
           <button className="pr-dim" onClick={onClose} aria-label="닫기" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28')}><BackIcon /></button>
           <span style={css('flex:1;font-size:17px;font-weight:700;color:#191f28')}>프로필 편집</span>
-          <span style={css('padding:0 4px;color:#191f28;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap')}>{points.toLocaleString()}P</span>
+          <span style={css('padding:0 4px;color:#191f28;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap')}>{shortPoints(points)}P</span>
         </div>
         <div style={css('padding:8px 24px 20px;display:flex;flex-direction:column;gap:20px')}>
           <label style={css('align-self:center;position:relative;width:96px;height:96px;cursor:pointer;margin:8px')}>

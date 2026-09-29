@@ -32,6 +32,9 @@ import { isInstalledApp } from './install'
 import { LedgerSheet } from './components/LedgerViews'
 import { EarnSheet, INVITE_ADMIN, WelcomeGuide, guideSeen, markGuideSeen } from './components/PointsGuide'
 import { DEFAULT_REWARDS } from './backend/rewards'
+import { placeBet, settleLastBet } from './backend/gamble'
+import { Casino } from './components/Casino'
+import { shortPoints } from './components/PointsChip'
 import { leftLabel } from './components/Duration'
 import { buildPeople } from './model'
 import { byRank } from './backend/rank'
@@ -95,6 +98,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [passAsk, setPassAsk] = useState<PassKind | null>(null)
   const [ledgerOpen, setLedgerOpen] = useState(false)
   const [earnOpen, setEarnOpen] = useState(false)
+  const [casinoOpen, setCasinoOpen] = useState(false)
   const [guideDone, setGuideDone] = useState<string | null>(null)
   const [buy, setBuy] = useState<Buy | null>(null)
 
@@ -532,6 +536,23 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     }
   }
 
+  // 몰래 도박장 (long-press 정후교 on the ranking). A win left unpaid last time is paid first.
+  const openCasino = () => {
+    if (!me) { go('acct'); return }
+    if (tradeBanned(me)) { showToast(banText(me)); return }
+    setCasinoOpen(true)
+    settleLastBet(db!, me.id, me.lastBet).then(b => b && showToast(`지난번에 딴 ${shortPoints(b.amount * 2)}P를 받았어요`)).catch(() => {})
+  }
+  const bet = async (amount: number) => {
+    if (!me) return null
+    try {
+      return await placeBet(db!, me.id, amount)
+    } catch (e) {
+      failToast('배팅하지 못했어요', e)
+      return null
+    }
+  }
+
   const startDm = async (other: string) => {
     if (!authUser) { go('acct'); return }
     try {
@@ -599,6 +620,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               page={page} onPage={setPage} onOpenProfile={setProfile}
               seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()} points={me ? points : undefined}
               onPoints={() => setEarnOpen(true)} onInstall={() => setInstallOpen(true)}
+              secretName={INVITE_ADMIN} onSecret={openCasino}
             />
           )}
           {tab === 'acct' && (
@@ -731,6 +753,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           if (guideDone !== me.id && !guideSeen(me.id)) return <WelcomeGuide name={me.name} {...earn} onClose={() => { markGuideSeen(me.id); setGuideDone(me.id) }} />
           return earnOpen ? <EarnSheet points={points} {...earn} onClose={() => setEarnOpen(false)} /> : null
         })()}
+        {casinoOpen && me && <Casino points={points} onBet={bet} onClose={() => setCasinoOpen(false)} />}
         {ledgerOpen && me && <LedgerSheet uid={me.id} title="거래 내역" byId={byId} onClose={() => setLedgerOpen(false)} />}
         {passAsk && me && (() => {
           const fake = passAsk === 'passFake'

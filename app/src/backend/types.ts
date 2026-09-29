@@ -26,6 +26,9 @@ export type CandidateDoc = {
   loginId?: string
   /** The gift involved in this person's last 포인트 선물 step (firestore.rules checks it). */
   lastGift?: string
+  /** 몰래 도박장: my latest bet, and the last one paid out (backend/gamble.ts). */
+  lastBet?: string
+  payBet?: string
   /** Got the one-time 300P for opening the installed app. */
   appBonus?: boolean
   /** 메시지 끄기: nobody can message them or add them to a chat. */

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { css } from '../css'
 import type { Rewards } from '../backend/rewards'
 import { BottomSheet } from './Overlays'
+import { shortPoints } from './PointsChip'
 
 const handle = <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
 const bigBtn = 'height:56px;border-radius:16px;font-size:17px;font-weight:600;transition:transform 150ms'
@@ -61,7 +62,8 @@ export function EarnSheet({ points, onClose, ...p }: EarnProps & { points: numbe
       {handle}
       <div style={css('padding:20px 24px 4px;display:flex;flex-direction:column;gap:4px')}>
         <span style={css('font-size:15px;line-height:22px;color:#6b7684')}>내 포인트</span>
-        <span style={css('font-size:28px;line-height:36px;font-weight:800;color:#191f28;font-variant-numeric:tabular-nums')}>{points.toLocaleString()}P</span>
+        <span style={css('font-size:28px;line-height:36px;font-weight:800;color:#191f28;font-variant-numeric:tabular-nums')}>{shortPoints(points)}P</span>
+        {points >= 10_000 && <span style={css('font-size:13px;line-height:19px;color:#8b95a1;font-variant-numeric:tabular-nums;word-break:break-all')}>{points.toLocaleString()}P</span>}
       </div>
       <div style={css('padding:12px 24px 0')}>
         <span style={css('font-size:18px;line-height:27px;font-weight:700;color:#191f28')}>포인트 얻는 법</span>

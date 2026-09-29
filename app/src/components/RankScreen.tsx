@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useRef, type CSSProperties } from 'react'
 import { css, sx } from '../css'
 import { CHART_H, MEDALS, PER, skinGeom } from '../data'
 import type { Person } from '../model'
@@ -27,13 +27,25 @@ type Props = {
   points?: number
   onPoints: () => void
   onInstall: () => void
+  /** Long-pressing this person's bar opens something only insiders know about. */
+  secretName?: string
+  onSecret?: () => void
 }
 
 /**
  * Vertical net-score chart, 10 per page. Bar length is each entry's rank-based share of the page (see pageShares).
  * Rows are keyed by slot index so paging animates heights instead of remounting.
  */
-export function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile, seasonName, seasonEndsAt, points, onPoints, onInstall }: Props) {
+export function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile, seasonName, seasonEndsAt, points, onPoints, onInstall, secretName, onSecret }: Props) {
+  // 꾹 누르기 (0.6s) on the secret person's bar; the click that ends the press is swallowed.
+  const press = useRef<{ t: ReturnType<typeof setTimeout> | null; fired: boolean }>({ t: null, fired: false })
+  const pressEnd = () => { if (press.current.t) clearTimeout(press.current.t); press.current.t = null }
+  const pressStart = (name: string) => {
+    press.current.fired = false
+    if (!onSecret || name !== secretName) return
+    pressEnd()
+    press.current.t = setTimeout(() => { press.current.fired = true; press.current.t = null; navigator.vibrate?.(30); onSecret() }, 600)
+  }
   const q = query.trim()
   const filtered = q ? all.filter(d => d.name.includes(q)) : all
   const nPages = Math.max(1, Math.ceil(filtered.length / PER))
@@ -116,7 +128,13 @@ export function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile, s
           <div style={{ position: 'relative', display: 'flex', alignItems: 'stretch', gap: 0, transition: `height ${EASE}`, height: chartH }}>
             <div style={{ position: 'absolute', left: 0, right: 0, height: 1, background: '#d1d6db', transition: `top ${EASE}`, top: zeroTop }} />
             {rows.map((r, i) => (
-              <button key={i} className="pr-bar" onClick={() => onOpenProfile(r.d.id)} aria-label={`${r.d.name} 프로필`} style={css('flex:0 0 10%;min-width:0;position:relative;height:100%;padding:0;border-radius:10px;transition:background 150ms')}>
+              <button
+                key={i} className="pr-bar" aria-label={`${r.d.name} 프로필`}
+                onClick={() => { if (press.current.fired) { press.current.fired = false; return } onOpenProfile(r.d.id) }}
+                onPointerDown={() => pressStart(r.d.name)} onPointerUp={pressEnd} onPointerLeave={pressEnd} onPointerCancel={pressEnd}
+                onContextMenu={e => { if (r.d.name === secretName) e.preventDefault() }}
+                style={css('flex:0 0 10%;min-width:0;position:relative;height:100%;padding:0;border-radius:10px;transition:background 150ms;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none')}
+              >
                 <span
                   data-g={r.skin ? 'skin' : 'bar'}
                   style={{

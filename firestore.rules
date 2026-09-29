@@ -330,6 +330,43 @@ service cloud.firestore {
         && d.spent <= d.get('earned', d.up) + d.get('bonus', 0);
     }
 
+    // ---- 몰래 도박장: bet any amount of points; 1 bet in 3 pays back double ----
+    // The points leave in the same write that creates the bet doc (named in lastBet). Whether it
+    // won comes from the server time the bet landed (at == request.time), which nobody knows
+    // before the points are gone, so a lost bet can't be retried or undone.
+    function betPath(id) { return /databases/$(database)/documents/gambles/$(id); }
+    function betWon(b) { return b.at.nanos() % 3000 < 1000; }
+    function gambleBet() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['spent', 'lastBet'])
+        && 'lastBet' in request.resource.data.diff(resource.data).affectedKeys()
+        && gambleBetFull();
+    }
+    function gambleBetFull() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let b = getAfter(betPath(d.lastBet)).data;
+      return request.auth.uid == o.ownerUid && canTrade(o)
+        && !exists(betPath(d.lastBet))
+        && b.uid == request.auth.uid
+        && d.spent == o.spent + b.amount
+        && d.spent <= d.get('earned', d.up) + d.get('bonus', 0);
+    }
+    // Collecting a win: twice the bet arrives as bonus, once per bet.
+    function gamblePay() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bonus', 'payBet'])
+        && 'payBet' in request.resource.data.diff(resource.data).affectedKeys()
+        && gamblePayFull();
+    }
+    function gamblePayFull() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let b0 = get(betPath(d.payBet)).data;
+      let b1 = getAfter(betPath(d.payBet)).data;
+      return request.auth.uid == o.ownerUid
+        && b0.uid == request.auth.uid && b0.paid == false && b1.paid == true && betWon(b0)
+        && d.bonus == o.get('bonus', 0) + b0.amount * 2;
+    }
+
     // 300P once per account for opening the installed app.
     function appBonusClaim() {
       let d = request.resource.data;
@@ -459,7 +496,7 @@ service cloud.firestore {
       allow update: if signedIn() && (
         (isAdmin() && existsAfter(lockPath()) && lock().at == request.time)
           ? (adminGrant(candidateId) || adminTradeBan(candidateId) || adminRevoke(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId))
-          : (ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || loginIdBackfill() || giftSend() || giftClaim() || giftClaimItem() || giftClaimPass() || giftCancel())
+          : (ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || loginIdBackfill() || giftSend() || giftClaim() || giftClaimItem() || giftClaimPass() || giftCancel() || gambleBet() || gamblePay())
       );
 
       allow delete: if adminOp('deleteAccount') && lock().payload.target == candidateId;
@@ -934,6 +971,30 @@ service cloud.firestore {
           && getAfter(me()).data.get('lastGift', '') == id
           && getAfter(me()).data.spent == get(me()).data.spent - resource.data.amount)
       );
+      allow delete: if false;
+    }
+
+    // ---- 몰래 도박장 bets (see gambleBet / gamblePay) ------------------------------------
+    match /gambles/{id} {
+      function me() { return /databases/$(database)/documents/candidates/$(request.auth.uid); }
+      // Any whole number of points, however big (past 2^53 they are stored as floats).
+      function amountOk(a) { return (a is int && a >= 1) || (a is float && a >= 9007199254740992.0); }
+      allow read: if signedIn() && (resource == null || resource.data.uid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'amount', 'at', 'paid'])
+        && request.resource.data.uid == request.auth.uid
+        && amountOk(request.resource.data.amount)
+        && request.resource.data.at == request.time
+        && request.resource.data.paid == false
+        && getAfter(me()).data.get('lastBet', '') == id
+        && getAfter(me()).data.spent == get(me()).data.spent + request.resource.data.amount;
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid && resource.data.paid == false
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paid'])
+        && request.resource.data.paid == true
+        && betWon(resource.data)
+        && getAfter(me()).data.get('payBet', '') == id
+        && getAfter(me()).data.get('bonus', 0) == get(me()).data.get('bonus', 0) + resource.data.amount * 2;
       allow delete: if false;
     }
   }

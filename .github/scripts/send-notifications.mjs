@@ -80,7 +80,7 @@ function photoVersion(s) {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
   return s.length.toString(36) + '-' + h.toString(36)
 }
-const BOARD_SKIP = new Set(['photoURL', 'createdAt', 'lastGift', 'ownerUid'])
+const BOARD_SKIP = new Set(['photoURL', 'createdAt', 'lastGift', 'lastBet', 'payBet', 'ownerUid'])
 function boardRows() {
   return [...candidates.entries()].map(([id, c]) => {
     const row = { id, pv: photoVersion(c.photoURL ?? ''), sa: c.scoreAt?.toMillis?.() ?? 0 }
@@ -151,7 +151,7 @@ const LEDGER_KEEP = 100, FEED_KEEP = 300
 const ALERT_WINDOW_MS = Number(process.env.ALERT_WINDOW_MS ?? 60 * 60_000)
 const ALERT_POINTS = Number(process.env.ALERT_POINTS ?? 1000), ALERT_VOTES = Number(process.env.ALERT_VOTES ?? 20)
 const pts = c => (c?.earned ?? c?.up ?? 0) + (c?.bonus ?? 0) - (c?.spent ?? 0)
-const stateOf = c => ({ earned: c.earned ?? c.up ?? 0, up: c.up ?? 0, down: c.down ?? 0, bonus: c.bonus ?? 0, spent: c.spent ?? 0, lastGift: c.lastGift ?? '', appBonus: !!c.appBonus, pass2x: !!c.pass2x, passFake: !!c.passFake, owned: JSON.stringify(c.owned ?? {}) })
+const stateOf = c => ({ earned: c.earned ?? c.up ?? 0, up: c.up ?? 0, down: c.down ?? 0, bonus: c.bonus ?? 0, spent: c.spent ?? 0, lastGift: c.lastGift ?? '', lastBet: c.lastBet ?? '', payBet: c.payBet ?? '', appBonus: !!c.appBonus, pass2x: !!c.pass2x, passFake: !!c.passFake, owned: JSON.stringify(c.owned ?? {}) })
 const lastVote = new Map() // uid → { key, at, d, n }: 추천 within 30 minutes go into one line
 const gains = new Map()    // uid → [{ at, d, k }] within ALERT_WINDOW_MS
 const ledgerWrites = new Map()
@@ -171,6 +171,9 @@ async function classify(o, d) {
   let dEarned = (d.earned ?? d.up) - (o.earned ?? o.up), dBonus = d.bonus - o.bonus, dSpent = d.spent - o.spent
   if (d.up === 0 && d.down === 0 && (o.up !== 0 || o.down !== 0) && dEarned === 0 && dBonus >= 0) { if (dBonus) out.push({ d: dBonus, k: 'season' }); dBonus = 0 }
   if (d.appBonus && !o.appBonus) { out.push({ d: 300, k: 'app' }); dBonus -= 300 }
+  // 몰래 도박장: a bet (points out) and a win (twice the bet back)
+  if (d.lastBet && d.lastBet !== o.lastBet && dSpent > 0) { out.push({ d: -dSpent, k: 'bet' }); dSpent = 0 }
+  if (d.payBet && d.payBet !== o.payBet && dBonus > 0) { out.push({ d: dBonus, k: 'betWin' }); dBonus = 0 }
   if (d.lastGift && d.lastGift !== o.lastGift) {
     const g = await giftOf(d.lastGift)
     if (dSpent > 0) { out.push(g?.itemKind ? { d: -dSpent, k: 'giftItemSent', x: `${g.itemKind}:${g.itemKey}|${g.to ?? ''}` } : { d: -dSpent, k: 'giftSent', x: g?.to ?? g?.chatId ?? '' }); dSpent = 0 }
@@ -205,7 +208,7 @@ async function record(uid, lines, at = Date.now()) {
       ledgerWrites.set(uid, (ledgerWrites.get(uid) ?? 0) + 1); feedWrites++
     }
     // 수상한 포인트 증가: gains that aren't the admin's or the season's, within the window.
-    if (e.d > 0 && !['grant', 'season', 'app', 'giftCancel'].includes(e.k)) {
+    if (e.d > 0 && !['grant', 'season', 'app', 'giftCancel', 'betWin'].includes(e.k)) {
       const list = (gains.get(uid) ?? []).filter(g => at - g.at < ALERT_WINDOW_MS)
       list.push({ at, d: e.d, k: e.k }); gains.set(uid, list)
       const total = list.reduce((n, g) => n + g.d, 0), votes = list.filter(g => g.k === 'vote').reduce((n, g) => n + Math.round(g.d / 10), 0)
