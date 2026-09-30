@@ -261,7 +261,7 @@ html,body{overscroll-behavior:none}
 
 /* 삼겹살 먹고싶다 (silverArt.ts): silver particle waves, twinkling dust, the sparkle */
 @keyframes slFlowT{from{transform:translateX(0)}to{transform:translateX(var(--tw,320px))}}
-@keyframes slSwayA{0%{transform:translate(0,0) scale(1,1) skewX(0deg)}100%{transform:translate(-2.5%,5%) scale(1.04,0.9) skewX(-4deg)}}
+@keyframes slSwayA{0%{transform:translate(0,0) scale(1,1) skewX(0deg)}100%{transform:translate(-4%,8%) scale(1.07,0.84) skewX(-7deg)}}
 @keyframes slSwayB{0%{transform:translate(0,0) scale(1,1)}100%{transform:translate(2%,-4%) scale(1.03,1.07)}}
 @keyframes slTw{0%{opacity:.2}100%{opacity:1}}
 @keyframes slGrain{0%{transform:translate(0,0)}25%{transform:translate(-7%,4%)}50%{transform:translate(5%,-6%)}75%{transform:translate(-3%,-8%)}100%{transform:translate(0,0)}}
@@ -279,6 +279,11 @@ html,body{overscroll-behavior:none}
 @keyframes slFlare{0%,100%{transform:rotate(0deg) scale(.9);opacity:.85}50%{transform:rotate(18deg) scale(1.12);opacity:1}}
 @keyframes slFlare2{0%,100%{transform:rotate(45deg) scale(.8);opacity:.35}50%{transform:rotate(70deg) scale(1.05);opacity:.75}}
 /* the name in chrome (the plate's glow comes from a drop-shadow: a text-shadow would sit on top of it) */
+.sl-name{position:relative;z-index:0;animation:slNameFloat 3.4s ease-in-out infinite alternate}
+/* a glow breathing round the chrome name (a copy of it, faded in and out) */
+.sl-name::after{content:attr(data-text);position:absolute;inset:0;z-index:-1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:transparent;-webkit-text-fill-color:transparent;text-shadow:0 0 6px rgba(255,255,255,0.95),0 0 14px rgba(210,222,255,0.8);opacity:0;pointer-events:none;animation:slNameGlow 2.4s ease-in-out infinite alternate}
+@keyframes slNameGlow{0%{opacity:0}100%{opacity:1}}
+@keyframes slNameFloat{0%{transform:translateY(0)}100%{transform:translateY(-1.5px)}}
 .sl-name{background:linear-gradient(180deg,#ffffff 0%,#f4f6f9 36%,#a4aab3 50%,#e2e6eb 66%,#ffffff 100%);-webkit-background-clip:text;background-clip:text;color:transparent !important;text-shadow:none !important;filter:drop-shadow(0 0 5px rgba(220,228,245,0.45)) drop-shadow(0 1px 1px rgba(0,0,0,0.9))}
 @media (prefers-reduced-motion:reduce){[class^="sl-"],[class*=" sl-"]{animation:none !important}}
 /* tiny avatars (the ranking's): the stardust rings, the second dust layer and the pulses are too small to see there, so they aren't drawn */

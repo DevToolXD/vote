@@ -559,19 +559,21 @@ export const SILVER_PLATE =
   // everything dims toward the name on the left
   `<div style="position:absolute;inset:0;-webkit-mask-image:linear-gradient(90deg,rgba(0,0,0,0.4) 0%,#000 44%);mask-image:linear-gradient(90deg,rgba(0,0,0,0.4) 0%,#000 44%)">` +
   // the bright sheet, swaying, grains flowing along it and a sheen of light running down it
-  `<div class="sl-sway" style="${LAYER};animation:slSwayA 9s ease-in-out infinite alternate">` +
+  `<div class="sl-sway" style="${LAYER};animation:slSwayA 5.5s ease-in-out infinite alternate">` +
   `<div class="sl-iA" style="position:absolute;inset:0;${FIT}"></div>` +
   `<div class="sl-iAm" style="position:absolute;inset:0;${FIT_MASK};container-type:size">` +
-  `<div class="sl-flow sl-iF" style="--tw:calc(100cqh * ${(FLOW_W / PH).toFixed(4)});position:absolute;top:0;bottom:0;left:calc(-1 * var(--tw));width:calc(100% + var(--tw));background-repeat:repeat-x;background-size:auto 100%;will-change:transform;animation:slFlowT 6s linear infinite"></div>` +
-  `<div class="sl-sheen" style="position:absolute;top:0;bottom:0;left:0;width:30%;transform:translateX(-110%);background:linear-gradient(100deg,rgba(255,255,255,0) 0%,rgba(255,255,255,0.1) 30%,rgba(255,255,255,0.8) 50%,rgba(255,255,255,0.1) 70%,rgba(255,255,255,0) 100%);animation:slSheen 5.2s cubic-bezier(.45,0,.3,1) infinite"></div>` +
+  `<div class="sl-flow sl-iF" style="--tw:calc(100cqh * ${(FLOW_W / PH).toFixed(4)});position:absolute;top:0;bottom:0;left:calc(-1 * var(--tw));width:calc(100% + var(--tw));background-repeat:repeat-x;background-size:auto 100%;will-change:transform;animation:slFlowT 3.6s linear infinite"></div>` +
+  `<div class="sl-sheen" style="position:absolute;top:0;bottom:0;left:0;width:30%;transform:translateX(-110%);background:linear-gradient(100deg,rgba(255,255,255,0) 0%,rgba(255,255,255,0.1) 30%,rgba(255,255,255,0.8) 50%,rgba(255,255,255,0.1) 70%,rgba(255,255,255,0) 100%);animation:slSheen 3.2s cubic-bezier(.45,0,.3,1) infinite"></div>` +
   `</div>` +
   `</div>` +
   // the dark dune in front, swaying against it
-  `<div class="sl-sway" style="${LAYER};animation:slSwayB 12s ease-in-out infinite alternate"><div class="sl-iB" style="position:absolute;inset:0;${FIT}"></div></div>` +
+  `<div class="sl-sway" style="${LAYER};animation:slSwayB 7s ease-in-out infinite alternate"><div class="sl-iB" style="position:absolute;inset:0;${FIT}"></div></div>` +
   // loose specks taking turns to twinkle
   `<div class="sl-tw sl-iS1" style="${LAYER};${FIT};animation:slTw 2.6s ease-in-out infinite alternate"></div>` +
   `<div class="sl-tw sl-iS2" style="${LAYER};${FIT};animation:slTw 2.6s ease-in-out -1.3s infinite alternate"></div>` +
   `</div>` +
+  // loose dust streaming across the whole plate, faster in front (parallax)
+  `<div style="position:absolute;inset:0;container-type:size;pointer-events:none"><div class="sl-flow sl-iF" style="--tw:calc(100cqh * ${(FLOW_W / PH).toFixed(4)});position:absolute;top:-10%;bottom:-10%;left:calc(-1 * var(--tw));width:calc(100% + var(--tw));background-repeat:repeat-x;background-size:auto 100%;opacity:0.55;will-change:transform;animation:slFlowT 2.2s linear infinite"></div></div>` +
   // film grain
   `<div class="sl-grain sl-iN" style="position:absolute;inset:-50%;background-repeat:repeat;background-size:128px 128px;opacity:0.3;animation:slGrain 0.9s steps(1) infinite"></div>` +
   // glints flashing on the crest
