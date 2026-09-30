@@ -1195,7 +1195,7 @@ describe('몰래 도박장', () => {
     b.update(doc(db, 'candidates', uid), { spent: increment(amount), lastBet: ref.id })
     await b.commit()
     const d = (await getDoc(ref)).data()!
-    return { id: ref.id, won: d.at.nanoseconds % 3000 < 1000 }
+    return { id: ref.id, won: d.at.toMillis() % 2 === 1 }
   }
   const payBy = (db: Firestore, uid: string, id: string, amount: number) => {
     const b = writeBatch(db)
@@ -1204,7 +1204,7 @@ describe('몰래 도박장', () => {
     return b.commit()
   }
 
-  test('bets settle by the server: about 1 in 3 doubles, points add up exactly', async () => {
+  test('bets settle by the server: about 1 in 2 doubles, points add up exactly', async () => {
     const a = await signUp('a'); const admin = dbAs(ADMIN)
     await grantPoints(admin, ADMIN.uid, 'a', 1_000_000)
     const start = await pts(a, 'a')

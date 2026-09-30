@@ -1,6 +1,6 @@
 import { collection, doc, getDoc, increment, serverTimestamp, writeBatch, type Firestore, type Timestamp } from 'firebase/firestore'
 
-// 몰래 도박장: bet any amount; 1 bet in 3 pays back double. The points leave together with
+// 몰래 도박장: bet any amount; 1 bet in 2 pays back double. The points leave together with
 // the bet doc; the result comes from the server time the bet landed (firestore.rules:
 // gambleBet / gamblePay / match /gambles — betWon), so it's settled before anyone can see it.
 
@@ -8,7 +8,7 @@ export type Bet = { id: string; amount: number; won: boolean; paid: boolean }
 type BetDoc = { uid: string; amount: number; at: Timestamp | null; paid: boolean }
 
 /** Same test as betWon() in firestore.rules. */
-const won = (at: Timestamp) => at.nanoseconds % 3000 < 1000
+const won = (at: Timestamp) => at.toMillis() % 2 === 1
 
 async function readBet(db: Firestore, id: string): Promise<Bet | null> {
   const s = await getDoc(doc(db, 'gambles', id))
