@@ -72,7 +72,7 @@ export async function signUp(name: string, id: string, pw: string) {
     if (!user.displayName) await updateProfile(user, { displayName: name })
   }
   await ensureCandidateDoc(user, user.displayName || name)
-  await recordIp(db, user.uid, ip, onIp, true).catch(() => {})
+  await recordIp(db, user.uid, ip, onIp, [], true).catch(() => {})
   return user
 }
 

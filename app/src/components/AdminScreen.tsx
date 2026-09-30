@@ -9,7 +9,7 @@ import { hasFakePass, hasPass } from '../backend/candidates'
 type RevokeKind = 'frame' | 'plate' | 'skin' | 'pass2x' | 'passFake'
 import { pointsOf } from '../backend/candidates'
 import type { Ticket } from '../backend/support'
-import type { IpDoc, IpOp } from '../backend/ip'
+import type { Access, IpOp } from '../backend/ip'
 import { DEFAULT_REWARDS, rewardNotice, type Rewards } from '../backend/rewards'
 import type { PollResult } from '../backend/notices'
 import type { Season } from '../backend/types'
@@ -41,17 +41,15 @@ type Props = {
   deleteAccount: (target: string, onProgress: (p: AdminProgress) => void) => Promise<void>
   /** Issues a one-time password (resolves with it); the worker applies it within a minute. */
   resetPassword: (target: string, onProgress: (p: AdminProgress) => void) => Promise<string>
-  ipTools: IpTools
+  access: AccessTools
   onLogout: () => void
 }
 
-type IpTools = {
-  /** This device's address (never blocked from here, so the admin can't lock themselves out). */
-  mine: string | null
-  lastOf: (uid: string) => Promise<string | null>
-  read: (ip: string) => Promise<IpDoc | null>
-  blocked: () => Promise<{ ip: string; uid?: string }[]>
-  set: (ip: string, op: IpOp, onProgress: (p: AdminProgress) => void) => Promise<void>
+/** 접속 차단: the account plus every address it was used from. */
+type AccessTools = {
+  of: (uid: string) => Promise<Access>
+  blocked: () => Promise<string[]>
+  set: (uid: string, op: IpOp, onProgress: (p: AdminProgress) => void) => Promise<void>
 }
 
 const sectionTitle = 'font-size:17px;line-height:25.5px;font-weight:700;color:#191f28'
@@ -61,7 +59,7 @@ const gap = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
 
 type Confirm = { title: string; desc: string; cta: string; danger?: boolean; go: () => void }
 
-export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls, setSeasonConfig, season, run, grantPoints, setTradeBan, revokeItem, setSeasonName, resetSeason, renameUser, deleteAccount, resetPassword, ipTools, onLogout }: Props) {
+export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls, setSeasonConfig, season, run, grantPoints, setTradeBan, revokeItem, setSeasonName, resetSeason, renameUser, deleteAccount, resetPassword, access, onLogout }: Props) {
   const [issued, setIssued] = useState<{ name: string; loginId?: string; code: string } | null>(null)
   const [nameDraft, setNameDraft] = useState('')
   const [notice, setNotice] = useState({ title: '', body: '' })
@@ -121,8 +119,7 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
         </>
       )}
 
-      {gap}
-      <IpSection tools={ipTools} all={all} run={run} setConfirm={setConfirm} />
+      <BlockedList tools={access} all={all} run={run} setConfirm={setConfirm} />
 
       {gap}
       <section style={css('padding:24px 24px;display:flex;flex-direction:column;gap:12px')}>
@@ -317,7 +314,7 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
               })}
               style={sx('height:48px;padding:0 18px;border-radius:14px;background:#3182f6;color:#fff;font-size:15px;font-weight:600;flex:none;transition:opacity 200ms', { opacity: renameOk ? 1 : 0.4 })}>변경</button>
           </div>
-          {!person.isMe && <PersonIp key={person.id} uid={person.id} name={person.name} tools={ipTools} all={all} run={run} setConfirm={setConfirm} />}
+          {!person.isMe && <PersonAccess key={person.id} uid={person.id} name={person.name} tools={access} all={all} run={run} setConfirm={setConfirm} />}
           {!person.isMe && (
             <div data-g="l1" style={css('padding:16px;border-radius:16px;background:#f9fafb;display:flex;flex-direction:column;gap:10px')}>
               <span style={css('display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:#191f28')}>거래 정지
@@ -434,81 +431,62 @@ export function AdminProgressOverlay({ label, p }: { label: string; p: AdminProg
   )
 }
 
-type IpProps = { tools: IpTools; all: Person[]; run: Props['run']; setConfirm: (c: Confirm) => void }
+type AccessProps = { tools: AccessTools; all: Person[]; run: Props['run']; setConfirm: (c: Confirm) => void }
 
-/** One address: who made an account on it, whether it's blocked, and the buttons. */
-function IpControl({ ip, tools, all, run, setConfirm, onChange }: IpProps & { ip: string; onChange?: () => void }) {
-  const [d, setD] = useState<IpDoc | null | undefined>(undefined)
+const accessChanged = new EventTarget()
+
+/** 접속 차단된 사람 (only shown when there are some). */
+function BlockedList(p: AccessProps) {
+  const [ids, setIds] = useState<string[]>([])
   const [tick, setTick] = useState(0)
-  useEffect(() => { let on = true; setD(undefined); tools.read(ip).then(x => on && setD(x), () => on && setD(null)); return () => { on = false } }, [ip, tick]) // eslint-disable-line react-hooks/exhaustive-deps
-  const owner = d?.uid ? all.find(p => p.id === d.uid)?.name ?? '탈퇴한 계정' : null
-  const mine = ip === tools.mine
-  const go = (label: string, op: IpOp) => run(label, p => tools.set(ip, op, p)).then(ok => { if (ok) { setTick(t => t + 1); onChange?.() } })
-  const chip = 'height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:700;display:flex;align-items:center'
-  const btn = 'flex:1;height:40px;border-radius:12px;font-size:14px;font-weight:700'
+  useEffect(() => { p.tools.blocked().then(setIds, () => setIds([])) }, [tick]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const f = () => setTick(t => t + 1); accessChanged.addEventListener('change', f); return () => accessChanged.removeEventListener('change', f) }, [])
+  if (!ids.length) return null
   return (
-    <div style={css('display:flex;flex-direction:column;gap:8px')}>
-      <span style={css('display:flex;align-items:center;gap:6px;flex-wrap:wrap')}>
-        <span style={css('font-size:15px;font-weight:700;color:#191f28;font-variant-numeric:tabular-nums;word-break:break-all')}>{ip}</span>
-        {mine && <span style={css(chip + ';background:#e8f3ff;color:#1b64da')}>지금 내 IP</span>}
-        {d?.blocked && <span style={css(chip + ';background:#fff0f1;color:#e42939')}>차단 중</span>}
-      </span>
-      <span style={css(hint)}>{d === undefined ? '확인하는 중…' : owner ? `이 IP에서 만든 계정: ${owner} · 새 계정을 못 만들어요` : '이 IP로 만든 계정이 없어요 · 계정을 하나 만들 수 있어요'}</span>
-      {d !== undefined && (
-        <span style={css('display:flex;gap:6px')}>
-          {d?.blocked
-            ? <button className="pr-96" onClick={() => setConfirm({ title: `${ip} 차단을 풀까요?`, desc: '이 IP로 접속하는 사람이 다시 앱을 쓸 수 있어요.', cta: '차단 풀기', go: () => { go('IP 차단 풀기', 'unblock') } })} style={css(btn + ';background:#e8f3ff;color:#1b64da')}>차단 풀기</button>
-            : <button className="pr-96" disabled={mine} onClick={() => setConfirm({ title: `${ip}를 차단할까요?`, desc: '이 IP로 접속하는 사람은 앱이 계속 로딩만 돼요. 언제든 풀 수 있어요.', cta: '차단', danger: true, go: () => { go('IP 차단', 'block') } })} style={sx(btn + ';background:#f04452;color:#fff', { opacity: mine ? 0.4 : 1 })}>IP 차단</button>}
-          {owner && <button className="pr-96" onClick={() => setConfirm({ title: '가입 제한을 풀까요?', desc: `${ip}에서 계정을 하나 더 만들 수 있게 돼요 (학교·집 와이파이를 같이 쓰는 친구 등).`, cta: '풀기', go: () => { go('가입 제한 풀기', 'release') } })} style={css(btn + ';background:#f2f4f6;color:#333d4b')}>가입 제한 풀기</button>}
-        </span>
-      )}
-    </div>
+    <>
+      {gap}
+      <section style={css('padding:24px 24px;display:flex;flex-direction:column;gap:10px')}>
+        <span style={css(sectionTitle)}>접속 차단된 사람</span>
+        {ids.map(id => {
+          const name = p.all.find(x => x.id === id)?.name ?? '탈퇴한 계정'
+          return (
+            <div key={id} data-g="l1" style={css('padding:12px 14px;border-radius:14px;background:#f9fafb;display:flex;align-items:center;gap:10px')}>
+              <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+                <span style={css('font-size:15px;font-weight:700;color:#191f28')}>{name}</span>
+                <span style={css('font-size:13px;color:#e42939')}>앱이 계속 로딩만 돼요</span>
+              </span>
+              <button className="pr-96" onClick={() => p.setConfirm({ title: `${name}님 접속 차단을 풀까요?`, desc: '바로 다시 앱을 쓸 수 있어요.', cta: '풀기', go: () => { p.run('접속 차단 풀기', pr => p.tools.set(id, 'unblock', pr)).then(ok => { if (ok) accessChanged.dispatchEvent(new Event('change')) }) } })}
+                style={css('flex:none;height:36px;padding:0 14px;border-radius:10px;background:#e8f3ff;color:#1b64da;font-size:14px;font-weight:700')}>풀기</button>
+            </div>
+          )
+        })}
+      </section>
+    </>
   )
 }
 
-/** 관리자 → IP 관리: blocked addresses, and looking one up. */
-function IpSection(p: IpProps) {
-  const [list, setList] = useState<{ ip: string; uid?: string }[] | null>(null)
+/** In someone's admin panel: one-tap 접속 차단 (their account and every network they used). */
+function PersonAccess({ uid, name, tools, run, setConfirm }: AccessProps & { uid: string; name: string }) {
+  const [a, setA] = useState<Access | undefined>(undefined)
   const [tick, setTick] = useState(0)
-  const [q, setQ] = useState('')
-  const [shown, setShown] = useState<string | null>(null)
-  useEffect(() => { p.tools.blocked().then(setList, () => setList([])) }, [tick]) // eslint-disable-line react-hooks/exhaustive-deps
-  const addr = q.trim()
-  const ok = /^[0-9a-fA-F.:]{3,45}$/.test(addr)
-  const refresh = () => setTick(t => t + 1)
-  return (
-    <section style={css('padding:24px 24px;display:flex;flex-direction:column;gap:12px')}>
-      <span style={css(sectionTitle)}>IP 관리</span>
-      <span style={css(hint)}>한 IP에서는 계정을 하나만 만들 수 있어요. 차단한 IP로 접속하면 앱이 계속 로딩만 돼요. VPN이나 다른 인터넷으로는 피할 수 있어요</span>
-      <div style={css('display:flex;gap:8px')}>
-        <input data-g="l1" className="ring-focus" inputMode="decimal" value={q} onChange={e => setQ(e.target.value)} placeholder="IP 주소 (예: 1.2.3.4)" style={sx(field, { flex: 1 })} />
-        <button data-g="primary" className="pr-96" disabled={!ok} onClick={() => setShown(addr)} style={sx('height:48px;padding:0 18px;border-radius:14px;background:#3182f6;color:#fff;font-size:15px;font-weight:600;flex:none', { opacity: ok ? 1 : 0.4 })}>조회</button>
-      </div>
-      {shown && <div data-g="l1" style={css('padding:14px;border-radius:14px;background:#f9fafb')}><IpControl key={shown} ip={shown} {...p} onChange={refresh} /></div>}
-      <span style={css('font-size:15px;font-weight:700;color:#191f28;margin-top:4px')}>차단한 IP{list ? ` ${list.length}개` : ''}</span>
-      {list === null ? <span style={css(hint)}>불러오는 중…</span> : list.length === 0 ? <span style={css(hint)}>차단한 IP가 없어요</span> : list.map(b => (
-        <div key={b.ip} data-g="l1" style={css('padding:12px 14px;border-radius:14px;background:#f9fafb;display:flex;align-items:center;gap:10px')}>
-          <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
-            <span style={css('font-size:15px;font-weight:700;color:#191f28;word-break:break-all')}>{b.ip}</span>
-            <span style={css('font-size:13px;color:#6b7684')}>{b.uid ? ownerOf(p.all, b.uid) : '만든 계정 없음'}</span>
-          </span>
-          <button className="pr-96" onClick={() => p.setConfirm({ title: `${b.ip} 차단을 풀까요?`, desc: '이 IP로 접속하는 사람이 다시 앱을 쓸 수 있어요.', cta: '차단 풀기', go: () => { p.run('IP 차단 풀기', pr => p.tools.set(b.ip, 'unblock', pr)).then(ok => { if (ok) refresh() }) } })}
-            style={css('flex:none;height:36px;padding:0 14px;border-radius:10px;background:#e8f3ff;color:#1b64da;font-size:14px;font-weight:700')}>풀기</button>
-        </div>
-      ))}
-    </section>
-  )
-}
-const ownerOf = (people: Person[], uid: string) => `${people.find(x => x.id === uid)?.name ?? '탈퇴한 계정'}의 IP`
-
-/** In someone's admin panel: the address they last used the app from. */
-function PersonIp({ uid, name, ...p }: IpProps & { uid: string; name: string }) {
-  const [ip, setIp] = useState<string | null | undefined>(undefined)
-  useEffect(() => { let on = true; p.tools.lastOf(uid).then(x => on && setIp(x), () => on && setIp(null)); return () => { on = false } }, [uid]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { let on = true; tools.of(uid).then(x => on && setA(x), () => on && setA({ ips: [], blocked: false })); return () => { on = false } }, [uid, tick]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const f = () => setTick(t => t + 1); accessChanged.addEventListener('change', f); return () => accessChanged.removeEventListener('change', f) }, [])
+  const go = (label: string, op: IpOp) => run(label, p => tools.set(uid, op, p)).then(ok => { if (ok) accessChanged.dispatchEvent(new Event('change')) })
+  const btn = 'flex:1;height:44px;border-radius:12px;font-size:15px;font-weight:700'
   return (
     <div data-g="l1" style={css('padding:16px;border-radius:16px;background:#f9fafb;display:flex;flex-direction:column;gap:10px')}>
-      <span style={css('font-size:15px;font-weight:700;color:#191f28')}>접속 IP</span>
-      {ip === undefined ? <span style={css(hint)}>확인하는 중…</span> : ip === null ? <span style={css(hint)}>{name}님이 이 기능이 생긴 뒤로 아직 접속하지 않았어요</span> : <IpControl ip={ip} {...p} />}
+      <span style={css('display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:#191f28')}>접속 차단
+        {a?.blocked && <span style={css('height:22px;padding:0 8px;border-radius:9999px;background:#fff0f1;color:#e42939;font-size:12px;font-weight:700;display:flex;align-items:center')}>차단 중</span>}
+      </span>
+      <span style={css(hint)}>{a === undefined ? '확인하는 중…' : `이 계정과, 이 계정으로 접속했던 인터넷 ${a.ips.length}곳에서 앱이 계속 로딩만 돼요. 그 인터넷에선 새 계정도 못 만들어요`}</span>
+      {a !== undefined && (
+        <span style={css('display:flex;gap:8px')}>
+          {a.blocked
+            ? <button className="pr-96" onClick={() => setConfirm({ title: `${name}님 접속 차단을 풀까요?`, desc: '바로 다시 앱을 쓸 수 있어요.', cta: '풀기', go: () => { go('접속 차단 풀기', 'unblock') } })} style={css(btn + ';background:#e8f3ff;color:#1b64da')}>차단 풀기</button>
+            : <button className="pr-96" onClick={() => setConfirm({ title: `${name}님을 접속 차단할까요?`, desc: '이 계정과 접속했던 인터넷에서 앱이 계속 로딩만 돼요. 언제든 풀 수 있어요.', cta: '차단', danger: true, go: () => { go('접속 차단', 'block') } })} style={css(btn + ';background:#f04452;color:#fff')}>접속 차단</button>}
+          {a.ips.length > 0 && !a.blocked && <button className="pr-96" onClick={() => setConfirm({ title: '가입 제한을 풀까요?', desc: `${name}님이 접속했던 인터넷에서 계정을 하나 더 만들 수 있게 돼요 (같은 와이파이를 쓰는 친구 등).`, cta: '풀기', go: () => { go('가입 제한 풀기', 'release') } })} style={css(btn + ';flex:none;padding:0 14px;background:#f2f4f6;color:#333d4b')}>가입 제한 풀기</button>}
+        </span>
+      )}
     </div>
   )
 }

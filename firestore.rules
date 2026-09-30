@@ -89,8 +89,9 @@ service cloud.firestore {
                 && p.target is string && p.target != request.auth.uid && p.until is int && p.until >= 0)
           || (action == 'revokeItem' && p.keys().hasOnly(['target', 'kind', 'key']) && p.keys().hasAll(['target', 'kind', 'key'])
                 && p.target is string && p.kind in ['frame', 'plate', 'skin', 'pass2x', 'passFake'] && p.key is string)
-          || (action == 'ipSet' && p.keys().hasOnly(['ip', 'op']) && p.keys().hasAll(['ip', 'op'])
-                && validIp(p.ip) && p.op in ['block', 'unblock', 'release'])
+          || (action == 'ipSet' && p.keys().hasOnly(['target', 'ips', 'op']) && p.keys().hasAll(['target', 'ips', 'op'])
+                && p.target is string && p.target != request.auth.uid
+                && p.ips is list && p.ips.size() <= 20 && p.op in ['block', 'unblock', 'release'])
           || (action == 'deleteAccount' && p.keys().hasOnly(['target']) && p.target is string && p.target != request.auth.uid);
     }
     function validIp(ip) { return ip is string && ip.matches('[0-9a-fA-F.:]{3,45}'); }
@@ -719,7 +720,7 @@ service cloud.firestore {
     function ipAdmin(ip, o) {
       let d = request.resource.data;
       let op = lock().payload.op;
-      return adminOp('ipSet') && lock().payload.ip == ip
+      return adminOp('ipSet') && validIp(ip) && ip in lock().payload.ips
         && d.keys().hasOnly(['uid', 'at', 'blocked'])
         && (op == 'block'
           ? d.diff(o).affectedKeys().hasOnly(['blocked']) && d.blocked == true
@@ -728,12 +729,28 @@ service cloud.firestore {
             : d.diff(o).affectedKeys().hasOnly(['uid']) && !('uid' in d));
     }
 
+    // userIps/{uid}: the addresses the account was used from, and the admin's 접속 차단.
     match /userIps/{uid} {
       allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
-      allow create, update: if realUser() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['ip', 'at'])
-        && validIp(request.resource.data.ip) && request.resource.data.at == request.time;
+      allow list: if isAdmin();
+      allow create: if (realUser() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['ip', 'at', 'ips']) && ownIps())
+        || accessAdmin(uid, {});
+      allow update: if (realUser() && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ip', 'at', 'ips']) && ownIps())
+        || accessAdmin(uid, resource.data);
       allow delete: if false;
+    }
+    function ownIps() {
+      let d = request.resource.data;
+      return validIp(d.ip) && d.at == request.time && (!('ips' in d) || (d.ips is list && d.ips.size() <= 20));
+    }
+    function accessAdmin(uid, o) {
+      let d = request.resource.data;
+      let op = lock().payload.op;
+      return adminOp('ipSet') && lock().payload.target == uid && op in ['block', 'unblock']
+        && d.diff(o).affectedKeys().hasOnly(['blocked'])
+        && (op == 'block' ? d.blocked == true : !('blocked' in d));
     }
 
     // ---- deleted accounts ---------------------------------------------------------

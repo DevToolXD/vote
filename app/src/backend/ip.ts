@@ -1,11 +1,12 @@
-import { doc, getDoc, getDocs, collection, deleteField, onSnapshot, serverTimestamp, setDoc, type Firestore, type Unsubscribe } from 'firebase/firestore'
+import { arrayUnion, doc, getDoc, getDocs, collection, deleteField, onSnapshot, query, serverTimestamp, setDoc, where, type Firestore, type Unsubscribe, type WriteBatch } from 'firebase/firestore'
 import { runAdminOp, type AdminProgress } from './admin'
 
 // 중복 가입 방지 / IP 차단. Firebase can't see a visitor's address (no server code on the
 // free plan), so the app asks a public "what's my IP" service and keeps:
 //   ips/{ip}      { uid?: first account seen on it, blocked?: true }   — anyone can get one by id
-//   userIps/{uid} { ip, at }                                          — last address, admin-only
-// A claimed address can't make another account; a blocked one never gets past loading.
+//   userIps/{uid} { ip, at, ips: [..], blocked?: true }               — admin-only
+// A claimed address can't make another account. 접속 차단 (admin, from a profile) blocks the
+// account and every address it used: they never get past loading.
 // It's a deterrent, not a wall: a VPN or other network gets around it.
 
 export type IpDoc = { uid?: string; blocked?: boolean }
@@ -59,41 +60,50 @@ export function watchIp(db: Firestore, ip: string, cb: (d: IpDoc | null) => void
   return onSnapshot(doc(db, 'ips', ip), s => cb(s.exists() ? (s.data() as IpDoc) : null), () => cb(null))
 }
 
+/** userIps/{uid}: every address the account was used from (up to 20) and the admin's 접속 차단. */
+export type Access = { ips: string[]; blocked: boolean }
+const MAX_IPS = 20
+
+export function watchAccess(db: Firestore, uid: string, cb: (a: Access) => void): Unsubscribe {
+  return onSnapshot(doc(db, 'userIps', uid), s => cb({ ips: (s.data()?.ips as string[] | undefined) ?? [], blocked: s.data()?.blocked === true }), () => cb({ ips: [], blocked: false }))
+}
+
 /**
- * Records the address as this account's last one. A visit claims an address nobody has
- * used yet; `signup` claims it even after the admin freed it (가입 제한 풀기) — a visit
- * never takes a freed address back.
+ * Adds the address to the account's list. A visit claims an address nobody has used yet;
+ * `signup` claims it even after the admin freed it (가입 제한 풀기) — a visit never takes a
+ * freed address back.
  */
-export async function recordIp(db: Firestore, uid: string, ip: string, current: IpDoc | null, signup = false) {
-  const key = 'ip-seen'
+export async function recordIp(db: Firestore, uid: string, ip: string, current: IpDoc | null, known: string[], signup = false) {
   const claim = signup || current === null
-  let seen = ''
-  try { seen = localStorage.getItem(key) ?? '' } catch { /* */ }
-  if (seen === uid + '|' + ip && !claim) return
-  await setDoc(doc(db, 'userIps', uid), { ip, at: serverTimestamp() })
+  if (known.includes(ip) && !claim) return
+  await setDoc(doc(db, 'userIps', uid), { ip, at: serverTimestamp(), ...(known.length < MAX_IPS ? { ips: arrayUnion(ip) } : {}) }, { merge: true })
   if (claim) await setDoc(doc(db, 'ips', ip), { uid, at: serverTimestamp() }, { merge: true })
-  try { localStorage.setItem(key, uid + '|' + ip) } catch { /* */ }
 }
 
-/** Admin: someone's last address. */
-export async function lastIpOf(db: Firestore, uid: string): Promise<string | null> {
+/** Admin: the addresses someone used and whether they're blocked. */
+export async function accessOf(db: Firestore, uid: string): Promise<Access> {
   const s = await getDoc(doc(db, 'userIps', uid))
-  return s.exists() ? (s.data().ip as string) : null
+  return { ips: (s.data()?.ips as string[] | undefined) ?? (s.data()?.ip ? [s.data()!.ip as string] : []), blocked: s.data()?.blocked === true }
 }
 
-/** Admin: every blocked address. */
-export async function blockedIps(db: Firestore): Promise<{ ip: string; uid?: string }[]> {
-  const s = await getDocs(collection(db, 'ips'))
-  return s.docs.filter(d => d.data().blocked === true).map(d => ({ ip: d.id, uid: d.data().uid as string | undefined }))
+/** Admin: everyone under 접속 차단. */
+export async function blockedUsers(db: Firestore): Promise<string[]> {
+  const s = await getDocs(query(collection(db, 'userIps'), where('blocked', '==', true)))
+  return s.docs.map(d => d.id)
 }
 
 export type IpOp = 'block' | 'unblock' | 'release'
 
-/** Admin: 차단 / 차단 풀기 / 가입 제한 풀기 (lets one more account be made from it). */
-export async function setIp(db: Firestore, adminUid: string, ip: string, op: IpOp, onProgress?: (p: AdminProgress) => void) {
-  if (!validIp(ip)) throw new Error('invalid-ip')
+/**
+ * Admin, from someone's profile: 접속 차단 / 차단 풀기 (the account and every address it used)
+ * or 가입 제한 풀기 (its addresses can make one more account).
+ */
+export async function setAccess(db: Firestore, adminUid: string, target: string, op: IpOp, onProgress?: (p: AdminProgress) => void) {
+  const { ips } = await accessOf(db, target)
+  const list = ips.filter(validIp).slice(0, MAX_IPS)
   const patch = op === 'block' ? { blocked: true } : op === 'unblock' ? { blocked: deleteField() } : { uid: deleteField() }
-  await runAdminOp(db, adminUid, 'ipSet', { ip, op }, [
-    b => { b.set(doc(db, 'ips', ip), patch, { merge: true }); return 1 },
+  await runAdminOp(db, adminUid, 'ipSet', { target, ips: list, op }, [
+    ...(op === 'release' ? [] : [(b: WriteBatch) => { b.set(doc(db, 'userIps', target), { blocked: patch.blocked }, { merge: true }); return 1 }]),
+    ...list.map(ip => (b: WriteBatch) => { b.set(doc(db, 'ips', ip), patch, { merge: true }); return 1 }),
   ], onProgress)
 }

@@ -1,7 +1,7 @@
 import type { User } from 'firebase/auth'
 import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { blockedIps, lastIpOf, myIp, readIp, recordIp, setIp, watchIp, type IpDoc } from './backend/ip'
+import { accessOf, blockedUsers, myIp, recordIp, setAccess, watchAccess, watchIp, type Access, type IpDoc } from './backend/ip'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, revokeItem, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, buySeries, buyPass, castVote, hasFakePass, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
@@ -170,9 +170,11 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [ipDoc, setIpDoc] = useState<IpDoc | null | undefined>(undefined)
   useEffect(() => { myIp().then(setMyAddr) }, [])
   useEffect(() => (db && myAddr ? watchIp(db, myAddr, setIpDoc) : undefined), [myAddr])
+  const [access, setAccessState] = useState<Access | undefined>(undefined)
+  useEffect(() => { setAccessState(undefined); return db && authUser && !isAdminEmail(authUser.email) ? watchAccess(db, authUser.uid, setAccessState) : undefined }, [authUser])
   useEffect(() => {
-    if (db && myAddr && authUser && ipDoc !== undefined && !isAdminEmail(authUser.email)) recordIp(db, authUser.uid, myAddr, ipDoc).catch(() => {})
-  }, [myAddr, authUser, ipDoc])
+    if (db && myAddr && authUser && ipDoc !== undefined && access && !isAdminEmail(authUser.email)) recordIp(db, authUser.uid, myAddr, ipDoc, access.ips).catch(() => {})
+  }, [myAddr, authUser, ipDoc, access])
   useEffect(() => onAuthChange(u => { setAuthUser(u && !u.isAnonymous ? u : null); setAnonUid(u?.isAnonymous ? u.uid : null); setAuthReady(true) }), [])
   // The board comes from the Realtime Database (no Firestore reads). Only when that one is
   // missing or stale (or doesn't answer within 6 s) is the Firestore copy read, and only
@@ -661,8 +663,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
 
   if (!firebaseConfigured) return <SetupNotice />
   if (!authReady) return <div data-g="app" style={css('width:100%;max-width:var(--app-w);min-height:100vh;background:#ffffff')} />
-  // 차단된 IP: the app never finishes loading (the admin is never held back)
-  if (ipDoc?.blocked && !isAdmin) return <EndlessLoading />
+  // 접속 차단 (the account or an address it used): the app never finishes loading (never the admin)
+  if ((ipDoc?.blocked || access?.blocked) && !isAdmin) return <EndlessLoading />
 
   return (
     <div data-theme={theme} style={css("min-height:100vh;display:flex;justify-content:center;font-family:'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;color:#191f28;word-break:keep-all")}>
@@ -758,12 +760,10 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               renameUser={(t, n, p) => renameUser(db!, authUser.uid, t, n, p)}
               resetPassword={(t, p) => resetPassword(db!, authUser.uid, t, p)}
               deleteAccount={(t, p) => deleteAccount(db!, authUser.uid, t, p)}
-              ipTools={{
-                mine: myAddr,
-                lastOf: t => lastIpOf(db!, t),
-                read: a => readIp(db!, a),
-                blocked: () => blockedIps(db!),
-                set: (a, op, p) => setIp(db!, authUser.uid, a, op, p),
+              access={{
+                of: t => accessOf(db!, t),
+                blocked: () => blockedUsers(db!),
+                set: (t, op, p) => setAccess(db!, authUser.uid, t, op, p),
               }}
               onLogout={doLogout}
             />
