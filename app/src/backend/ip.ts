@@ -1,4 +1,4 @@
-import { arrayUnion, doc, getDoc, getDocs, collection, deleteField, onSnapshot, query, serverTimestamp, setDoc, where, type Firestore, type Unsubscribe, type WriteBatch } from 'firebase/firestore'
+import { arrayUnion, doc, getDoc, getDocs, collection, deleteField, onSnapshot, query, serverTimestamp, where, writeBatch, type Firestore, type Unsubscribe, type WriteBatch } from 'firebase/firestore'
 import { runAdminOp, type AdminProgress } from './admin'
 
 // 중복 가입 방지 / IP 차단. Firebase can't see a visitor's address (no server code on the
@@ -61,11 +61,11 @@ export function watchIp(db: Firestore, ip: string, cb: (d: IpDoc | null) => void
 }
 
 /** userIps/{uid}: every address the account was used from (up to 20) and the admin's 접속 차단. */
-export type Access = { ips: string[]; blocked: boolean }
+export type Access = { ips: string[]; blocked: boolean; last?: string }
 const MAX_IPS = 20
 
 export function watchAccess(db: Firestore, uid: string, cb: (a: Access) => void): Unsubscribe {
-  return onSnapshot(doc(db, 'userIps', uid), s => cb({ ips: (s.data()?.ips as string[] | undefined) ?? [], blocked: s.data()?.blocked === true }), () => cb({ ips: [], blocked: false }))
+  return onSnapshot(doc(db, 'userIps', uid), s => cb({ ips: (s.data()?.ips as string[] | undefined) ?? [], blocked: s.data()?.blocked === true, last: s.data()?.ip as string | undefined }), () => cb({ ips: [], blocked: false }))
 }
 
 /**
@@ -73,11 +73,16 @@ export function watchAccess(db: Firestore, uid: string, cb: (a: Access) => void)
  * `signup` claims it even after the admin freed it (가입 제한 풀기) — a visit never takes a
  * freed address back.
  */
-export async function recordIp(db: Firestore, uid: string, ip: string, current: IpDoc | null, known: string[], signup = false) {
-  const claim = signup || current === null
-  if (known.includes(ip) && !claim) return
-  await setDoc(doc(db, 'userIps', uid), { ip, at: serverTimestamp(), ...(known.length < MAX_IPS ? { ips: arrayUnion(ip) } : {}) }, { merge: true })
-  if (claim) await setDoc(doc(db, 'ips', ip), { uid, at: serverTimestamp() }, { merge: true })
+export async function recordIp(db: Firestore, uid: string, ip: string, current: IpDoc | null, known: string[], signup = false, last?: string) {
+  const room = known.includes(ip) || known.length < MAX_IPS
+  // a claim needs the address in the account's own list (firestore.rules: claimsOwnIp)
+  const claim = (signup || current === null) && room
+  // already recorded (in the list, or as the last one once the list is full): nothing to write
+  if ((known.includes(ip) || last === ip) && !claim) return
+  const b = writeBatch(db)
+  b.set(doc(db, 'userIps', uid), { ip, at: serverTimestamp(), ...(room ? { ips: arrayUnion(ip) } : {}) }, { merge: true })
+  if (claim) b.set(doc(db, 'ips', ip), { uid, at: serverTimestamp() }, { merge: true })
+  await b.commit()
 }
 
 /** Admin: the addresses someone used and whether they're blocked. */

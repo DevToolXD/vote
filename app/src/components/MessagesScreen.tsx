@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Firestore } from 'firebase/firestore'
-import { css, sx } from '../css'
+import { css, imageCss, sx } from '../css'
 import { MEDALS } from '../data'
 import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, postFooled, sendFakeGift, cancelScheduled, subscribeScheduled, type Scheduled, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, giftPrice, hasGift, itemLabel, subscribeGift, type Gift, type GiftKind } from '../backend/gifts'
@@ -94,7 +94,8 @@ export function describeChat(c: ChatRow, me: string, byId: Map<string, Person>, 
 }
 
 function ChatAvatar({ people, size, photo }: { people: Person[]; size: number; photo?: string }) {
-  if (photo) return <span style={sx('flex:none;border-radius:9999px;background-size:cover;background-position:center', { width: size, height: size, backgroundImage: `url(${photo})` })} />
+  const img = imageCss(photo)
+  if (img !== 'none') return <span style={sx('flex:none;border-radius:9999px;background-size:cover;background-position:center', { width: size, height: size, backgroundImage: img })} />
   if (people.length <= 1) return <Avatar photo={people[0]?.photoCss} size={size} style={{ flex: 'none' }} />
   const s = Math.round(size * 0.66)
   return (

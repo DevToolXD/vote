@@ -86,7 +86,9 @@ button:focus-visible{outline:none;box-shadow:0 0 0 2px #fff,0 0 0 4px #3182f6}
 @keyframes avWing{0%,100%{transform:rotate(0deg)}50%{transform:rotate(-12deg)}}
 @keyframes avFall{0%{transform:translate(0,0) rotate(0deg);opacity:0}15%{opacity:1}100%{transform:translate(-14px,34px) rotate(200deg);opacity:0}}
 /* Nameplates */
-@keyframes npDash{to{stroke-dashoffset:-48}}
+@keyframes dashFlow{from{transform:translateX(0)}to{transform:translateX(var(--p))}}
+@keyframes dashHold{from{transform:translateX(0)}to{transform:translateX(calc(-1 * var(--p)))}}
+@media (prefers-reduced-motion:reduce){.dash-flow{animation:none !important}}
 @keyframes npTw{0%,100%{opacity:.2;transform:scale(.5)}50%{opacity:1;transform:scale(1)}}
 @keyframes npFall{0%{transform:translate(0,-8px) rotate(0deg);opacity:0}15%{opacity:1}100%{transform:translate(-46px,64px) rotate(260deg);opacity:0}}
 @keyframes npRise{0%{transform:translateY(8px);opacity:0}20%{opacity:1}100%{transform:translateY(-52px);opacity:0}}
@@ -163,11 +165,18 @@ html,body{overscroll-behavior:none}
 @keyframes auraDrift{0%{transform:translateX(-18%) scale(1)}100%{transform:translateX(18%) scale(1.15)}}
 @keyframes auraStreak{0%{transform:translateX(-30%);opacity:0}8%{opacity:1}55%{opacity:1}70%,100%{transform:translateX(130%);opacity:0}}
 @keyframes auraSpark{0%{transform:translateY(0) scale(1);opacity:0}15%{opacity:1}100%{transform:translateY(-46px) scale(.3);opacity:0}}
-@keyframes auraGem{0%,100%{transform:translateY(0) scale(1);filter:drop-shadow(0 0 3px #ff4fd8) drop-shadow(0 0 6px #7b3cff)}50%{transform:translateY(-2px) scale(1.08);filter:drop-shadow(0 0 5px #22e1ff) drop-shadow(0 0 10px #ffe27a)}}
+@keyframes auraGem{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-2px) scale(1.08)}}
+@keyframes auraGemA{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes auraGemB{0%,100%{opacity:0}50%{opacity:1}}
 @media (prefers-reduced-motion:reduce){[class^="aura-"],[class*=" aura-"]{animation:none !important}}
-@keyframes auraRing{0%{box-shadow:0 0 0 0 rgba(168,85,247,0.85),0 0 0 0 rgba(34,225,255,0.6)}100%{box-shadow:0 0 0 9px rgba(168,85,247,0),0 0 0 16px rgba(34,225,255,0)}}
-.legend-tag{background:linear-gradient(90deg,#ffe27a,#ff9cf0,#9ff3ff,#ffe27a);background-size:300% 100%;animation:auraFlowX 3s linear infinite;box-shadow:0 0 8px rgba(255,156,240,0.7)}
-@keyframes auraFlowX{from{background-position:0% 50%}to{background-position:300% 50%}}
+@keyframes auraRingY{from{transform:scaleY(0);opacity:1}to{transform:scaleY(1);opacity:0}}
+@keyframes auraRingX{from{transform:scaleX(0);opacity:1}to{transform:scaleX(1);opacity:0}}
+@keyframes auraRingC{from{transform:scale(0);opacity:1}to{transform:scale(1);opacity:0}}
+.legend-tag{position:relative;overflow:hidden;isolation:isolate;background:#ffe27a;box-shadow:0 0 8px rgba(255,156,240,0.7)}
+/* the colours slide by (a wide strip moved by transform: the GPU runs it, a moving background repaints every frame) */
+.legend-tag::before{content:'';position:absolute;left:0;top:0;bottom:0;width:900%;z-index:-1;pointer-events:none;background:linear-gradient(90deg,#ffe27a,#ff9cf0,#9ff3ff,#ffe27a) 0 0/33.3333% 100% repeat-x;animation:auraFlowX 3s linear infinite}
+.legend-tag:is(.mx-tag,.kr-tag,.sl-tag)::before{display:none}
+@keyframes auraFlowX{from{transform:translateX(0)}to{transform:translateX(-66.6667%)}}
 @keyframes auraBreath{0%,100%{transform:scale(0.92);opacity:0.7}50%{transform:scale(1.08);opacity:1}}
 
 /* 매트릭스 (2000P 레전드 set) */
@@ -194,8 +203,14 @@ html,body{overscroll-behavior:none}
 @keyframes mxShake{0%,90%,100%{transform:translateX(0)}91%{transform:translateX(-2px)}93%{transform:translateX(2px)}95%{transform:translateX(-1px)}}
 @keyframes mxBurst{0%{transform:translateY(0) scale(1);opacity:0}15%{opacity:1}100%{transform:translateY(-28px) scale(0.6);opacity:0}}
 @keyframes mxBurstDown{0%{transform:translateY(0) scale(1);opacity:0}15%{opacity:1}100%{transform:translateY(28px) scale(0.6);opacity:0}}
-.mx-name{animation:mxName 3.4s steps(1) infinite}
-@keyframes mxName{0%,88%,100%{transform:none}89%{transform:translateX(-1.5px);text-shadow:-2px 0 #ff2b6a,2px 0 #35f0ff,0 0 6px #00ff41}91%{transform:translateX(1.5px);text-shadow:2px 0 #ff2b6a,-2px 0 #35f0ff,0 0 6px #00ff41}93%{transform:none}}
+.mx-name{position:relative;z-index:0;animation:mxName 3.4s steps(1) infinite}
+/* the colour-split glitch: copies of the name (data-text) carrying the split shadows, blinked by opacity (animating text-shadow repaints every frame) */
+.mx-name::before,.mx-name::after{content:attr(data-text);position:absolute;inset:0;z-index:-1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:transparent;opacity:0;pointer-events:none}
+.mx-name::before{text-shadow:-2px 0 #ff2b6a,2px 0 #35f0ff,0 0 6px #00ff41;animation:mxNameA 3.4s steps(1) infinite}
+.mx-name::after{text-shadow:2px 0 #ff2b6a,-2px 0 #35f0ff,0 0 6px #00ff41;animation:mxNameB 3.4s steps(1) infinite}
+@keyframes mxName{0%,88%,100%{transform:none}89%{transform:translateX(-1.5px)}91%{transform:translateX(1.5px)}93%{transform:none}}
+@keyframes mxNameA{0%,88%,91%,100%{opacity:0}89%{opacity:1}}
+@keyframes mxNameB{0%,90%,93%,100%{opacity:0}91%{opacity:1}}
 @keyframes mxCube{from{transform:rotateX(0deg) rotateY(0deg)}to{transform:rotateX(360deg) rotateY(720deg)}}
 @keyframes mxDepth{0%,100%{transform:translate(-50%,-50%) scale(0.62);opacity:0.55;filter:brightness(0.7)}50%{transform:translate(-50%,-50%) scale(1.18);opacity:1;filter:brightness(1.25)}}
 @keyframes mxRise{from{transform:translateY(calc(var(--bh,150px) * 0.1))}to{transform:translateY(calc(var(--bh,150px) * 0.88))}}
@@ -203,13 +218,18 @@ html,body{overscroll-behavior:none}
 /* 대한민국 (3000P 레전드 set) */
 @keyframes krTurn{to{transform:rotate(360deg)}}
 /* the four 괘 catch the light one after another */
-@keyframes krGlint{0%,62%,100%{fill:#1a1a1a}74%{fill:#b8913e}}
-@keyframes krFlow{to{stroke-dashoffset:-60}}
+@keyframes krGlint{0%,62%,100%{opacity:0}74%{opacity:1}}
 @keyframes krTwinkle{0%,100%{transform:scale(0) rotate(0deg);opacity:0}40%{transform:scale(1.15) rotate(45deg);opacity:1}70%{transform:scale(0.6) rotate(80deg);opacity:0.6}}
 @keyframes krSparkDown{0%{transform:translateY(0) scale(1);opacity:0}15%{opacity:1}100%{transform:translateY(46px) scale(.3);opacity:0}}
 /* 대한민국 이름표 scene (koreaArt.ts KOREA_PLATE): spin up, burst at 1.4s, trapped aura */
+/* 태극 coin orbits (were SVG <animate>): counter-turn, which half shows, nearer = bigger, the spin-squeeze */
+@keyframes krUnspin{to{transform:rotate(-360deg)}}
+@keyframes krFront{0%{opacity:0}25%{opacity:1}75%,100%{opacity:0}}
+@keyframes krBack{0%{opacity:1}25%{opacity:0}75%,100%{opacity:1}}
+@keyframes krNear{0%,100%{transform:scale(.62)}25%,75%{transform:scale(1)}50%{transform:scale(1.3)}}
+@keyframes krFlip{0%,100%{transform:scale(1,1)}50%{transform:scale(.12,1)}}
 @keyframes krSpinUp{from{transform:rotate(0deg)}to{transform:rotate(540deg)}}
-@keyframes krSpinFast{from{transform:rotate(540deg)}to{transform:rotate(900deg)}}
+@keyframes krSpinFast{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 @keyframes krGhost{0%,35%{opacity:0}100%{opacity:1}}
 @keyframes krCharge{0%{transform:scale(1)}70%{transform:scale(1.04)}80%{transform:translate(.4px,-.3px) scale(1.06)}88%{transform:translate(-.6px,.4px) scale(1.08)}94%{transform:translate(.7px,.3px) scale(1.1)}100%{transform:translate(-.5px,-.5px) scale(1.12)}}
 @keyframes krFusion{0%{transform:scale(1.3)}8%{transform:translate(-2px,1.2px) scale(1.16)}16%{transform:translate(2.2px,-1.4px) scale(1.22)}24%{transform:translate(-1.8px,-1.6px) scale(1.12)}32%{transform:translate(1.6px,1.8px) scale(1.18)}42%{transform:translate(-1.3px,.9px) scale(1.08)}52%{transform:translate(1.1px,-1px) scale(1.12)}64%{transform:translate(-.8px,-.7px) scale(1.05)}78%{transform:translate(.6px,.6px) scale(1.04)}100%{transform:translate(0,0) scale(1)}}

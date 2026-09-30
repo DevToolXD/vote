@@ -183,7 +183,12 @@ service cloud.firestore {
 
     // ---- candidates ---------------------------------------------------------------
 
-    function photoOk(d) { return d.photoURL is string && d.photoURL.size() < 300000; }
+    // A photo is only ever our own base64 JPEG/PNG/WebP (never a link that every viewer's browser would fetch).
+    function imageData(v) { return v is string && v.matches('data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+'); }
+    function photoOk(d, o) {
+      return d.photoURL is string && d.photoURL.size() < 300000
+        && (d.photoURL == o.get('photoURL', '') || d.photoURL == '' || imageData(d.photoURL));
+    }
 
     function price(kind, k) {
       let frame = {'silver': 1000, 'korea': 500, 'matrix': 800, 'aura': 400, 'neon': 60, 'crown': 90, 'sakura': 50, 'cat': 50, 'stars': 70, 'flame': 80, 'ocean': 60, 'bunny': 50, 'halo': 75, 'devil': 75, 'butterfly': 60};
@@ -236,7 +241,7 @@ service cloud.firestore {
         && d.bio is string && d.bio.size() <= 60
         && d.gender in ['', '남자', '여자']
         && d.get('msgOff', false) is bool
-        && photoOk(d);
+        && photoOk(d, o);
     }
 
     // ---- vote bookkeeping ----
@@ -709,13 +714,21 @@ service cloud.firestore {
       // an account claims an unclaimed address; the block (if any) stays as it was
       allow create: if realUser() && validIp(ip)
         && request.resource.data.keys().hasOnly(['uid', 'at'])
-        && request.resource.data.uid == request.auth.uid && request.resource.data.at == request.time;
+        && request.resource.data.uid == request.auth.uid && request.resource.data.at == request.time
+        && claimsOwnIp(ip);
       allow update: if (realUser() && !('uid' in resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'at'])
-          && request.resource.data.uid == request.auth.uid && request.resource.data.at == request.time)
+          && request.resource.data.uid == request.auth.uid && request.resource.data.at == request.time
+          && claimsOwnIp(ip))
         || ipAdmin(ip, resource.data);
       allow create: if ipAdmin(ip, {});
       allow delete: if false;
+    }
+    // Only an address the account records as its own in the same write (userIps/{me}: at most
+    // 20, never removed), so nobody can claim a whole range to keep others from signing up.
+    function claimsOwnIp(ip) {
+      let u = getAfter(/databases/$(database)/documents/userIps/$(request.auth.uid)).data;
+      return u.ip == ip && u.at == request.time && ip in u.get('ips', []);
     }
     function ipAdmin(ip, o) {
       let d = request.resource.data;
@@ -734,16 +747,20 @@ service cloud.firestore {
       allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow list: if isAdmin();
       allow create: if (realUser() && request.auth.uid == uid
-          && request.resource.data.keys().hasOnly(['ip', 'at', 'ips']) && ownIps())
+          && request.resource.data.keys().hasOnly(['ip', 'at', 'ips']) && ownIps({}))
         || accessAdmin(uid, {});
       allow update: if (realUser() && request.auth.uid == uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ip', 'at', 'ips']) && ownIps())
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ip', 'at', 'ips']) && ownIps(resource.data))
         || accessAdmin(uid, resource.data);
       allow delete: if false;
     }
-    function ownIps() {
+    // The list only grows, by the address being recorded, up to 20.
+    function ownIps(o) {
       let d = request.resource.data;
-      return validIp(d.ip) && d.at == request.time && (!('ips' in d) || (d.ips is list && d.ips.size() <= 20));
+      let before = o.get('ips', []);
+      return validIp(d.ip) && d.at == request.time
+        && d.get('ips', []) is list && d.get('ips', []).size() <= 20
+        && d.get('ips', []).hasAll(before) && d.get('ips', []).removeAll(before).hasOnly([d.ip]);
     }
     function accessAdmin(uid, o) {
       let d = request.resource.data;
@@ -864,6 +881,7 @@ service cloud.firestore {
         return resource.data.type == 'group'
           && d.diff(resource.data).affectedKeys().hasOnly(['photo', 'name'])
           && d.get('photo', '') is string && d.get('photo', '').size() <= 200000
+          && (d.get('photo', '') == resource.data.get('photo', '') || d.get('photo', '') == '' || imageData(d.photo))
           && d.name is string && d.name.size() <= 30;
       }
       // Only the admin account puts a group member in (or out of) 타임아웃, one person at a

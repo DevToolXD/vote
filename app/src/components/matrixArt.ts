@@ -73,8 +73,8 @@ export const MATRIX_AVATAR: { before: string; after: string } = {
     `<g class="mx-spin" style="transform-box:view-box;transform-origin:60px 60px;animation:avSpin 30s linear infinite"><path d="${ticks(60, 61.5, 64, 60, 5)}" stroke="#00ff41" stroke-width="0.8" opacity="0.75"></path></g>` +
     // targeting brackets
     `<g class="mx-lock" style="transform-box:view-box;transform-origin:60px 60px;animation:mxLock 3.6s ease-in-out infinite">${bracket(2, 2, 1, 1)}${bracket(118, 2, -1, 1)}${bracket(2, 118, 1, -1)}${bracket(118, 118, -1, -1)}</g>` +
-    // a streak of light running round the main ring
-    `<circle class="mx-dash" cx="60" cy="60" r="50.5" fill="none" stroke="#eafff0" stroke-width="3" stroke-linecap="round" stroke-dasharray="16 301.3" style="animation:mxDash 1.6s linear infinite;filter:drop-shadow(0 0 3px #00ff41) drop-shadow(0 0 6px #00ff41)"></circle>` +
+    // a streak of light running round the main ring (the circle turns: same as moving the dash, but on the GPU)
+    `<circle class="mx-dash" cx="60" cy="60" r="50.5" fill="none" stroke="#eafff0" stroke-width="3" stroke-linecap="round" stroke-dasharray="16 301.3" style="transform-box:view-box;transform-origin:60px 60px;animation:avSpin 1.6s linear infinite;filter:drop-shadow(0 0 3px #00ff41) drop-shadow(0 0 6px #00ff41)"></circle>` +
     // digital shockwaves
     `<g style="transform-box:view-box;transform-origin:60px 60px"><circle class="mx-wave" cx="60" cy="60" r="52" fill="none" stroke="#00ff41" stroke-width="1.4" stroke-dasharray="3 3" style="transform-box:view-box;transform-origin:60px 60px;animation:mxWave 2.4s ease-out infinite"></circle><circle class="mx-wave" cx="60" cy="60" r="52" fill="none" stroke="#7dffa0" stroke-width="1" stroke-dasharray="1 4" style="transform-box:view-box;transform-origin:60px 60px;animation:mxWave 2.4s ease-out 1.2s infinite"></circle></g>` +
     // a ring of code orbiting the frame

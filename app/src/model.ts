@@ -1,3 +1,4 @@
+import { imageCss } from './css'
 import type { CandidateRow } from './backend/candidates'
 import type { MyVote, WeekKind } from './backend/types'
 import { fmt } from './data'
@@ -52,7 +53,7 @@ export function buildPeople(rows: CandidateRow[], myVotes: Record<string, MyVote
       scoreLabel: fmt(d.score),
       upLabel: d.up.toLocaleString(),
       downLabel: d.down.toLocaleString(),
-      photoCss: d.photoURL ? `url(${d.photoURL})` : 'none',
+      photoCss: imageCss(d.photoURL),
       isMe: d.id === myUid,
     }
   })

@@ -43,3 +43,21 @@ export function css(src: string): CSSProperties {
 export function sx(src: string, extra?: CSSProperties): CSSProperties {
   return extra ? { ...css(src), ...extra } : css(src)
 }
+
+const IMAGE_DATA = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/
+/**
+ * A stored picture (profile photo, group icon) as a CSS image, or 'none'. Only our own
+ * base64 data URLs get through: anything else (a link to another site, which every viewer's
+ * browser would then fetch) is dropped.
+ */
+const checked = new Map<string, string>()
+export function imageCss(src: string | null | undefined): string {
+  if (!src) return 'none'
+  let out = checked.get(src)
+  if (out === undefined) {
+    out = src.length < 700_000 && IMAGE_DATA.test(src) ? `url("${src}")` : 'none'
+    if (checked.size > 300) checked.clear()
+    checked.set(src, out)
+  }
+  return out
+}

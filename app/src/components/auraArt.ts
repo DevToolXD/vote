@@ -10,6 +10,15 @@ const spark = (x: number, y: number, r: number, fill: string, delay: number) =>
   `<g transform="translate(${x} ${y})"><circle r="${r}" fill="${fill}" class="aura-spark" style="animation:auraSpark 1.9s ease-out ${delay}s infinite"></circle></g>`
 /** A cut gem (faceted, solid colours), centred on 0,0, about 20 wide. */
 export const GEM = '<polygon points="-10,-3 -5.5,-9 5.5,-9 10,-3" fill="#ffd9ff"></polygon><polygon points="-5.5,-9 -2.5,-3 -10,-3" fill="#ffe27a"></polygon><polygon points="5.5,-9 2.5,-3 10,-3" fill="#9ff3ff"></polygon><polygon points="-10,-3 -2.5,-3 0,11" fill="#7b3cff"></polygon><polygon points="-2.5,-3 2.5,-3 0,11" fill="#ff4fd8"></polygon><polygon points="2.5,-3 10,-3 0,11" fill="#22c4ff"></polygon><polygon points="-10,-3 -5.5,-9 5.5,-9 10,-3 0,11" fill="none" stroke="#ffffff" stroke-width="1.1" stroke-linejoin="round"></polygon><polygon points="-3,-7.5 -1,-4.5 -5,-4.5" fill="#ffffff" opacity="0.9"></polygon>'
+/**
+ * The gem with its breathing glow. The glow's colour and size change by fading between two
+ * copies with fixed drop-shadows (a drop-shadow can't be animated on the GPU, opacity can);
+ * the plain gem on top keeps the stone itself fully opaque throughout.
+ */
+export const GEM_GLOW =
+  `<g style="filter:drop-shadow(0 0 3px #ff4fd8) drop-shadow(0 0 6px #7b3cff);animation:auraGemA 2s ease-in-out infinite">${GEM}</g>` +
+  `<g style="filter:drop-shadow(0 0 5px #22e1ff) drop-shadow(0 0 10px #ffe27a);opacity:0;animation:auraGemB 2s ease-in-out infinite">${GEM}</g>` +
+  GEM
 
 export const AURA_AVATAR = {
   before:
@@ -25,7 +34,7 @@ export const AURA_AVATAR = {
     `<div class="aura-comet" style="position:absolute;inset:-14%;border-radius:50%;background:conic-gradient(from 0deg,transparent 0 60%,rgba(255,226,122,0.08) 64%,rgba(255,226,122,0.6) 90%,#ffffff 99%,transparent 100%);${ring(89, 96)};animation:avSpin 1.25s linear infinite"></div>` +
     `<div class="aura-comet" style="position:absolute;inset:-18%;border-radius:50%;background:conic-gradient(from 180deg,transparent 0 64%,rgba(34,225,255,0.08) 68%,rgba(34,225,255,0.6) 92%,#e8fdff 99%,transparent 100%);${ring(91, 96)};animation:avSpin 1.8s linear infinite reverse"></div>` +
     `<svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">` +
-    `<g transform="translate(60 4) scale(1.4)"><g class="aura-gem" style="transform-box:fill-box;transform-origin:center;animation:auraGem 2s ease-in-out infinite">${GEM}</g></g>` +
+    `<g transform="translate(60 4) scale(1.4)"><g class="aura-gem" style="transform-box:fill-box;transform-origin:center;animation:auraGem 2s ease-in-out infinite">${GEM_GLOW}</g></g>` +
     star(12, 30, 6, '#ffe27a', 0) + star(110, 42, 5, '#9ff3ff', 0.5) + star(104, 104, 6, '#ff9cf0', 0.9) + star(14, 96, 4.5, '#ffffff', 1.3) +
     spark(24, 108, 2.2, '#ffe27a', 0) + spark(96, 112, 1.8, '#22e1ff', 0.6) + spark(60, 116, 2, '#ff4fd8', 1.2) +
     `</svg>`,
@@ -46,7 +55,7 @@ export const AURA_PLATE =
   `<div class="aura-wave" style="position:absolute;right:6px;top:calc(50% - 22px);width:44px;height:44px;border-radius:50%;background:radial-gradient(closest-side,transparent 55%,rgba(34,225,255,0.7) 72%,rgba(255,79,216,0.3) 88%,transparent 100%);animation:auraSpread 2.2s ease-out 1.1s infinite"></div>` +
   `<svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">` +
   star(150, 12, 3.5, '#ffffff', 0) + star(212, 44, 3, '#9ff3ff', 0.6) + star(250, 10, 2.6, '#ffe27a', 1.1) + star(186, 30, 2.2, '#ff9cf0', 0.3) +
-  `<g transform="translate(286 29) scale(1.1)"><g class="aura-gem" style="transform-box:fill-box;transform-origin:center;animation:auraGem 2s ease-in-out infinite">${GEM}</g></g>` +
+  `<g transform="translate(286 29) scale(1.1)"><g class="aura-gem" style="transform-box:fill-box;transform-origin:center;animation:auraGem 2s ease-in-out infinite">${GEM_GLOW}</g></g>` +
   `</svg>` +
   `</div>` +
   // spinning spectrum border

@@ -26,7 +26,7 @@ import { cancelGift, claimGift, holdItemGift, itemLabel, sendGift, sendItemGift,
 import { BuyDialog, Dialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
-import { css, sx } from './css'
+import { imageCss, css, sx } from './css'
 import { BLUE, FRAMES, fmt, isLimited, KIND_NAME, seriesItems, seriesMissing, RED, SKIN_FILES, priceOf, type ItemKind, type Tab } from './data'
 import { db as maybeDb, firebaseConfigured, rtdb } from './firebase'
 import { isInstalledApp } from './install'
@@ -173,7 +173,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [access, setAccessState] = useState<Access | undefined>(undefined)
   useEffect(() => { setAccessState(undefined); return db && authUser && !isAdminEmail(authUser.email) ? watchAccess(db, authUser.uid, setAccessState) : undefined }, [authUser])
   useEffect(() => {
-    if (db && myAddr && authUser && ipDoc !== undefined && access && !isAdminEmail(authUser.email)) recordIp(db, authUser.uid, myAddr, ipDoc, access.ips).catch(() => {})
+    if (db && myAddr && authUser && ipDoc !== undefined && access && !isAdminEmail(authUser.email)) recordIp(db, authUser.uid, myAddr, ipDoc, access.ips, false, access.last).catch(() => {})
   }, [myAddr, authUser, ipDoc, access])
   useEffect(() => onAuthChange(u => { setAuthUser(u && !u.isAnonymous ? u : null); setAnonUid(u?.isAnonymous ? u.uid : null); setAuthReady(true) }), [])
   // The board comes from the Realtime Database (no Firestore reads). Only when that one is
@@ -407,7 +407,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     if (!top || top.length < 3) return null
     return top.map(t => {
       const photo = all.find(p => p.id === t.id)?.photoURL
-      return { name: t.name, frame: t.frame, photoCss: photo ? `url(${photo})` : 'none', scoreLabel: fmt(t.score) }
+      return { name: t.name, frame: t.frame, photoCss: imageCss(photo), scoreLabel: fmt(t.score) }
     })
   }, [season, all])
   useEffect(() => {

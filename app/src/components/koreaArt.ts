@@ -1,3 +1,4 @@
+import { dashFlow } from './dashFlow'
 // 대한민국 — the 3000P 레전드 set: frame, 이름표 and 막대 스킨 in one look.
 // Built from the 태극기 itself, drawn to its real proportions: 한지 ivory, 먹 ink, the flag's
 // red and blue, and gold. Gold-rimmed 태극 coins orbit everything in 3D (behind, then in front,
@@ -7,6 +8,7 @@
 
 export const RED = '#cd2e3a', BLUE = '#0047a0'
 export const INK = '#1a1a1a', IVORY = '#fbf8f1', HANJI = '#f3ede1'
+const GOLD_GLINT = '#b8913e'
 
 /** 태극 (radius r, centred on 0,0) as on the flag: red above, blue below, red's round head on the left, blue's on the right, the S tilted along the diagonal. */
 /** A thin ring of light that swells out and fades behind an upright 태극. */
@@ -23,13 +25,16 @@ export const taegeuk = (r: number) =>
 function gwae(rows: number[], w: number, glint?: number) {
   const h = w / 6, gap = w / 12, half = (w - gap) / 2
   const y0 = -(3 * h + 2 * gap) / 2
-  const anim = glint === undefined ? '' : ` class="kr-glint" style="animation:krGlint 6s ease-in-out ${glint}s infinite"`
   const bar = (x: number, y: number, bw: number) => `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${bw.toFixed(2)}" height="${h.toFixed(2)}"></rect>`
   const bars = rows.map((r, i) => {
     const y = y0 + i * (h + gap)
     return r ? bar(-w / 2, y, w) : bar(-w / 2, y, half) + bar(gap / 2, y, half)
   }).join('')
-  return `<g fill="${INK}" stroke="${IVORY}" stroke-width="${(w / 14).toFixed(2)}" paint-order="stroke" stroke-linejoin="round"${anim}>${bars}</g>`
+  // The shine is the same bars in gold on top, fading in and out (an opacity animation runs
+  // on the GPU; animating the fill itself would repaint every frame). Same look: gold over ink
+  // at opacity a is exactly the fill colour a of the way from ink to gold.
+  const shine = glint === undefined ? '' : `<g fill="${GOLD_GLINT}" class="kr-glint" style="opacity:0;animation:krGlint 6s ease-in-out ${glint}s infinite">${bars}</g>`
+  return `<g fill="${INK}" stroke="${IVORY}" stroke-width="${(w / 14).toFixed(2)}" paint-order="stroke" stroke-linejoin="round">${bars}</g>${shine}`
 }
 const GWAE_ROWS = { geon: [1, 1, 1], gam: [0, 1, 0], gon: [0, 0, 0], ri: [1, 0, 1] }
 /** The four 괘 where the flag has them: 건 upper left, 감 upper right, 곤 lower right, 리 lower left. */
@@ -66,7 +71,7 @@ function rays(cx: number, cy: number, r: number, n: number, dur: number, alpha =
       w += `<path d="M0 0L${(rr * Math.cos(a0)).toFixed(2)} ${(rr * Math.sin(a0)).toFixed(2)}L${(rr * Math.cos(a1)).toFixed(2)} ${(rr * Math.sin(a1)).toFixed(2)}Z" fill="${cols[i % 4]}" opacity="${op}"></path>`
     }
   }
-  return `<g transform="translate(${cx} ${cy})" opacity="${Math.min(1, alpha * 2)}"><g>${w}<animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="${dur}s" repeatCount="indefinite"></animateTransform></g></g>`
+  return `<g transform="translate(${cx} ${cy})" opacity="${Math.min(1, alpha * 2)}"><g class="kr-rays" style="animation:avSpin ${dur}s linear infinite">${w}</g></g>`
 }
 /** A 4-point twinkle (gold or white), popping in and out. */
 const spark = (x: number, y: number, s: number, delay: number, c = '#ffe9a8') =>
@@ -83,20 +88,22 @@ const coin = (s: number) =>
  * 태극 coins orbiting cx,cy on a tilted, flattened ellipse (like the 매트릭스 cubes). Draw it
  * twice: layer 'back' before the thing it circles, 'front' after — each coin only shows on its
  * own half, so it really goes behind and comes round in front. Coins spin (squeeze) as they fly
- * and grow as they come near. Pure SVG animation, local coordinates, no ids.
+ * and grow as they come near. CSS animations on SVG groups, local coordinates, no ids.
  */
 function coinOrbit(o: { cx: number; cy: number; r: number; squash: number; tilt: number; dur: number; n: number; s: number; layer: 'back' | 'front' }) {
   const { cx, cy, r, squash, tilt, dur, n, s, layer } = o
-  const vis = layer === 'front' ? '0;1;0' : '1;0;1'
+  const vis = layer === 'front' ? 'krFront' : 'krBack'
   let out = ''
   for (let i = 0; i < n; i++) {
-    const b = `${(-(dur / n) * i).toFixed(2)}s`
-    out += `<g><animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="${dur}s" begin="${b}" repeatCount="indefinite"></animateTransform>` +
-      `<g transform="translate(0 ${-r})"><g><animateTransform attributeName="transform" type="rotate" from="0" to="-360" dur="${dur}s" begin="${b}" repeatCount="indefinite"></animateTransform>` +
+    // CSS animations (the GPU runs them; SVG <animate> ticks on the main thread every frame),
+    // all with the same length and delay, so orbit, counter-turn, side and size stay in step
+    const run = (k: string, ease = 'linear') => `animation:${k} ${dur}s ${ease} ${(-(dur / n) * i).toFixed(2)}s infinite`
+    out += `<g class="kr-orbit" style="${run('avSpin')}">` +
+      `<g transform="translate(0 ${-r})"><g class="kr-orbit" style="${run('krUnspin')}">` +
       `<g transform="scale(1 ${(1 / squash).toFixed(4)}) rotate(${-tilt})">` +
-      `<g opacity="0"><animate attributeName="opacity" calcMode="discrete" values="${vis}" keyTimes="0;0.25;0.75" dur="${dur}s" begin="${b}" repeatCount="indefinite"></animate>` +
-      `<g><animateTransform attributeName="transform" type="scale" values="0.62;1;1.3;1;0.62" keyTimes="0;0.25;0.5;0.75;1" dur="${dur}s" begin="${b}" repeatCount="indefinite"></animateTransform>` +
-      `<g><animateTransform attributeName="transform" type="scale" values="1 1;0.12 1;1 1" dur="${(1.3 + i * 0.35).toFixed(2)}s" repeatCount="indefinite"></animateTransform>${coin(s)}</g>` +
+      `<g class="kr-orbit" style="opacity:0;${run(vis, 'steps(1)')}">` +
+      `<g class="kr-orbit" style="${run('krNear')}">` +
+      `<g class="kr-orbit" style="animation:krFlip ${(1.3 + i * 0.35).toFixed(2)}s linear infinite">${coin(s)}</g>` +
       `</g></g></g></g></g></g>`
   }
   return `<g transform="translate(${cx} ${cy}) rotate(${tilt})"><g transform="scale(1 ${squash})">${out}</g></g>`
@@ -145,8 +152,11 @@ export const KOREA_AVATAR: { before: string; after: string } = {
 // a red and blue aura bursts out, with shockwaves — and then stays trapped inside the plate,
 // crackling along every edge, while the 괘 keep whirling and the 태극 keeps trembling.
 const BURST = 1.4
-const SEAM = (y: number, c: string, dur: number, rev: boolean) =>
-  `<path d="M172 ${y} C192 ${y - 12} 212 ${y + 12} 232 ${y} S 256 ${y - 8} 264 ${y - 2}" fill="none" stroke="${c}" stroke-opacity="0.6" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="40 20" class="kr-ribbon" style="animation:krFlow ${dur}s linear infinite${rev ? ' reverse' : ''}"></path>`
+const SEAM = (y: number, c: string, dur: number, rev: boolean) => dashFlow({
+  path: `<path d="M172 ${y} C192 ${y - 12} 212 ${y + 12} 232 ${y} S 256 ${y - 8} 264 ${y - 2}" fill="none" stroke="${c}" stroke-opacity="0.6" stroke-width="1.5" stroke-linecap="round"></path>`,
+  dash: 40, gap: 20, dur, reverse: rev,
+  style: '-webkit-mask-image:linear-gradient(90deg,transparent 52%,#000 76%);mask-image:linear-gradient(90deg,transparent 52%,#000 76%)',
+})
 /** Shown from the burst on (hidden before it). */
 const afterBurst = (delay = 0, dur = 0.3) => `animation:krAppear ${dur}s ease-out ${(BURST + delay).toFixed(2)}s both`
 
@@ -266,12 +276,15 @@ const MOTES = (() => {
 
 /** The four 괘 as they whirl: the set itself plus two fading ghosts trailing behind (motion blur). */
 const WHIRL =
-  `<g class="kr-whirl" style="transform-box:view-box;transform-origin:284px 28px;animation:krSpinUp ${BURST}s cubic-bezier(.5,0,.9,.7) both,krSpinFast 0.31s linear ${BURST}s infinite">` +
+  // spin-up and full speed on two nested groups (two transform animations on one element can't
+  // run on the GPU): the outer stops at 540°, the inner then turns on from there
+  `<g class="kr-whirl" style="transform-box:view-box;transform-origin:284px 28px;animation:krSpinUp ${BURST}s cubic-bezier(.5,0,.9,.7) both">` +
+  `<g class="kr-whirl" style="transform-box:view-box;transform-origin:284px 28px;animation:krSpinFast 0.31s linear ${BURST}s infinite">` +
   `<circle cx="284" cy="28" r="23.5" fill="none" stroke="${INK}" stroke-width="7" class="kr-ghost" style="animation:krGhost ${BURST}s ease-in both;opacity:0" stroke-opacity="0.07"></circle>` +
   `<g transform="rotate(-24 284 28)"><g class="kr-ghost" style="animation:krGhost ${BURST}s ease-in both" opacity="0.18">${fourGwae(284, 28, 23.5, 9)}</g></g>` +
   `<g transform="rotate(-12 284 28)"><g class="kr-ghost" style="animation:krGhost ${BURST}s ease-in both" opacity="0.4">${fourGwae(284, 28, 23.5, 9)}</g></g>` +
   fourGwae(284, 28, 23.5, 9) +
-  `</g>`
+  `</g></g>`
 
 export const KOREA_PLATE =
   `<div style="position:absolute;inset:0;overflow:hidden;border-radius:14px;background:linear-gradient(90deg,${IVORY} 0%,#f7f2e8 55%,${HANJI} 100%)">` +
@@ -281,20 +294,23 @@ export const KOREA_PLATE =
   `<div class="kr-glow" style="position:absolute;right:-6%;top:-70%;width:40%;height:240%;border-radius:50%;background:conic-gradient(from -56deg,rgba(205,46,58,0.4) 0 50%,rgba(0,71,160,0.4) 50% 100%);filter:blur(12px);animation:krTurn 10s linear infinite"></div>` +
   AURA +
   // the 태극's S drawn out long, red over blue, flowing toward the emblem (faded out on the left, clear of the name)
-  `<svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%;-webkit-mask-image:linear-gradient(90deg,transparent 52%,#000 76%);mask-image:linear-gradient(90deg,transparent 52%,#000 76%)">` +
-  SEAM(24, RED, 5, false) + SEAM(32, BLUE, 6, true) + `</svg>` +
+  SEAM(24, RED, 5, false) + SEAM(32, BLUE, 6, true) +
   `<svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">` +
   `<g style="${afterBurst(0, 0.5)}">${rays(284, 28, 56, 18, 7, 0.22)}</g>` +
   // the 태극: charging up, then the fusion shake, then trembling for good
   `<g transform="translate(284 28)">${ripple(18, 0)}${ripple(18, 1.2)}${ripple(18, 2.4)}` +
-  `<g class="kr-core" style="transform-box:fill-box;transform-origin:center;animation:krCharge ${BURST}s ease-in both,krFusion 0.8s linear ${BURST}s,krTremble 0.12s linear ${BURST + 0.8}s infinite">` +
+  // charge → fusion shake → tremble, each on its own nested group and only one active at a time
+  // (so they never add up), which keeps all three on the GPU
+  `<g class="kr-core" style="transform-box:fill-box;transform-origin:center;animation:krCharge ${BURST}s ease-in backwards">` +
+  `<g class="kr-core" style="transform-box:fill-box;transform-origin:center;animation:krFusion 0.8s linear ${BURST}s">` +
+  `<g class="kr-core" style="transform-box:fill-box;transform-origin:center;animation:krTremble 0.12s linear ${BURST + 0.8}s infinite">` +
   `<circle r="23" fill="#ffd66b" opacity="0.14"></circle><circle r="20.6" fill="#ffd66b" opacity="0.22"></circle>` +
   `<circle r="18.8" fill="#e6b54a" stroke="#8a5d10" stroke-width="0.4"></circle><circle r="17.6" fill="${IVORY}" stroke="${INK}" stroke-width="0.6"></circle>${taegeuk(16.4)}` +
   // gloss: a soft highlight across the top left, a rim of light along the bottom right
   `<ellipse cx="-5.5" cy="-8" rx="9" ry="4.2" fill="#fff" opacity="0.32" transform="rotate(-28 -5.5 -8)"></ellipse>` +
   `<path d="M12.4 6.6A14 14 0 0 1 3 13.8" fill="none" stroke="#fff" stroke-width="1" stroke-linecap="round" opacity="0.45"></path>` +
   `<circle r="17.6" fill="#ffffff" class="kr-core" style="transform-box:fill-box;transform-origin:center;animation:krCoreFlash 0.7s ease-out ${BURST}s both;opacity:0"></circle>` +
-  `</g></g>` +
+  `</g></g></g></g>` +
   `<circle class="kr-ring" cx="284" cy="28" r="18.8" fill="none" stroke="#fff6d8" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="12 106" style="transform-box:fill-box;transform-origin:center;animation:krTurn 1.6s linear infinite"></circle>` +
   `<g style="${afterBurst(0, 0.4)}">` +
   // energy rings round the 태극, turning against each other

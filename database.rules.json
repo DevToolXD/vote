@@ -56,7 +56,7 @@
       "$chat": {
         ".read": "auth != null && (root.child('chats/' + $chat + '/members/' + auth.uid).val() === true || ($chat.contains('_') && ($chat.beginsWith(auth.uid + '_') || $chat.endsWith('_' + auth.uid))))",
         ".write": "auth != null && root.child('chats/' + $chat + '/members/' + auth.uid).val() === true && !$chat.contains('_')",
-        ".validate": "newData.isString() && newData.val().length <= 200000"
+        ".validate": "newData.isString() && newData.val().length <= 200000 && (newData.val().beginsWith('data:image/jpeg;base64,') || newData.val().beginsWith('data:image/png;base64,') || newData.val().beginsWith('data:image/webp;base64,')) && !newData.val().contains('\"') && !newData.val().contains(')') && !newData.val().contains(' ')"
       }
     },
     "msgs": {

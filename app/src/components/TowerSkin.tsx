@@ -1,6 +1,6 @@
 import { css } from '../css'
 import type { SkinGeom } from '../data'
-import { GEM } from './auraArt'
+import { GEM_GLOW } from './auraArt'
 import { MX_FONT, MX_STRIPS, cubeOrbit } from './matrixArt'
 import { BAR_TIP_SVG, BLUE, INK, IVORY, SEAM_TILE, barCoinOrbit } from './koreaArt'
 import { pauseOffscreen } from '../offscreen'
@@ -34,13 +34,38 @@ export function TowerSkin({ g, animateSize }: { g: SkinGeom; animateSize?: boole
 const FLOW = 'linear-gradient(180deg,#ffe27a 0%,#ff4fd8 20%,#7b3cff 42%,#22e1ff 64%,#7b3cff 82%,#ffe27a 100%)'
 const SPARKS: [string, string, string, number][] = [['22%', '8%', '#ffe27a', 0], ['70%', '30%', '#22e1ff', 0.5], ['40%', '55%', '#ff4fd8', 1.0], ['60%', '4%', '#ffffff', 1.4]]
 
+/**
+ * The ring pulsing out of the pillar (it was a growing box-shadow, which repaints every frame).
+ * Built from pieces that grow out of each edge and corner by transform, fading by opacity, so
+ * the GPU runs it: band width 0 → spread and alpha → 0 with the same ease-out, as before.
+ */
+const ringPieces = (spread: number, color: string) => {
+  const s = `${spread}px`, a = 'position:absolute;pointer-events:none;background:' + color + ';'
+  const run = (k: string) => `animation:${k} 1.8s ease-out infinite`
+  return [
+    a + `left:0;right:0;bottom:100%;height:${s};transform-origin:50% 100%;transform:scaleY(0);` + run('auraRingY'),
+    a + `left:0;right:0;top:100%;height:${s};transform-origin:50% 0;transform:scaleY(0);` + run('auraRingY'),
+    a + `top:0;bottom:0;right:100%;width:${s};transform-origin:100% 50%;transform:scaleX(0);` + run('auraRingX'),
+    a + `top:0;bottom:0;left:100%;width:${s};transform-origin:0 50%;transform:scaleX(0);` + run('auraRingX'),
+    a + `right:100%;bottom:100%;width:${s};height:${s};border-top-left-radius:100%;transform-origin:100% 100%;transform:scale(0);` + run('auraRingC'),
+    a + `left:100%;bottom:100%;width:${s};height:${s};border-top-right-radius:100%;transform-origin:0 100%;transform:scale(0);` + run('auraRingC'),
+    a + `right:100%;top:100%;width:${s};height:${s};border-bottom-left-radius:100%;transform-origin:100% 0;transform:scale(0);` + run('auraRingC'),
+    a + `left:100%;top:100%;width:${s};height:${s};border-bottom-right-radius:100%;transform-origin:0 0;transform:scale(0);` + run('auraRingC'),
+  ]
+}
+const RING_PIECES = (
+  <span className="aura-ringbar" style={css('position:absolute;inset:0;pointer-events:none')}>
+    {[...ringPieces(16, 'rgba(34,225,255,0.6)'), ...ringPieces(9, 'rgba(168,85,247,0.85)')].map((st, i) => <span key={i} className="aura-ring" style={css(st)} />)}
+  </span>
+)
+
 /** 아우라 막대: an energy pillar flowing upward, two tinted afterimages, aura spreading out, sparks rising, a gem on top. */
 function AuraBar({ flip }: { flip: boolean }) {
   return (
     <span ref={pauseOffscreen} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', transform: flip ? 'scaleY(-1)' : 'none' }}>
       {/* aura around the bar */}
       <span className="aura-glow" style={css('position:absolute;left:-70%;right:-70%;top:-10px;bottom:-4px;border-radius:40%;background:radial-gradient(closest-side,rgba(123,60,255,0.5),rgba(34,225,255,0.22) 60%,transparent);filter:blur(4px);animation:auraPulse 1.8s ease-in-out infinite')} />
-      <span className="aura-ringbar" style={css('position:absolute;inset:0;border-radius:6px;animation:auraRing 1.8s ease-out infinite')} />
+      {RING_PIECES}
       {/* afterimages (잔상) */}
       <span className="aura-ghost" style={css('position:absolute;inset:0;border-radius:6px;background:linear-gradient(180deg,rgba(34,225,255,0.95),rgba(34,225,255,0.35));animation:auraGhostL 1.1s ease-in-out infinite')} />
       <span className="aura-ghost" style={css('position:absolute;inset:0;border-radius:6px;background:linear-gradient(180deg,rgba(255,79,216,0.95),rgba(255,79,216,0.35));animation:auraGhostR 1.1s ease-in-out 0.15s infinite')} />
@@ -55,7 +80,7 @@ function AuraBar({ flip }: { flip: boolean }) {
         <span key={left + top} className="aura-spark" style={{ ...css('position:absolute;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;opacity:0'), left, top, background: c, boxShadow: `0 0 4px ${c}`, animation: `auraSpark 1.9s ease-out ${delay}s infinite` }} />
       ))}
       <svg viewBox="-12 -12 24 24" width="18" height="18" style={css('position:absolute;left:50%;top:-15px;margin-left:-9px;overflow:visible')}>
-        <g className="aura-gem" style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'auraGem 2s ease-in-out infinite' }} dangerouslySetInnerHTML={{ __html: GEM }} />
+        <g className="aura-gem" style={{ transformBox: 'fill-box', transformOrigin: 'center', animation: 'auraGem 2s ease-in-out infinite' }} dangerouslySetInnerHTML={{ __html: GEM_GLOW }} />
       </svg>
     </span>
   )

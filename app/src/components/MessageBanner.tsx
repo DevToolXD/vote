@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { css } from '../css'
+import { css, imageCss } from '../css'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
 
@@ -41,8 +41,8 @@ export function MessageBanner({ banner, onOpen, onDone }: { banner: Banner; onOp
           animation: `bannerIn 420ms ${EASE} both`,
         }}
       >
-        {banner.photo
-          ? <span style={{ ...css('width:40px;height:40px;flex:none;border-radius:9999px;background-size:cover;background-position:center'), backgroundImage: `url(${banner.photo})` }} />
+        {imageCss(banner.photo) !== 'none'
+          ? <span style={{ ...css('width:40px;height:40px;flex:none;border-radius:9999px;background-size:cover;background-position:center'), backgroundImage: imageCss(banner.photo) }} />
           : <Avatar frame={banner.sender?.frame} photo={banner.sender?.photoCss} size={40} style={{ flex: 'none' }} />}
         <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:1px')}>
           <span style={css('display:flex;align-items:center;gap:6px')}>

@@ -679,6 +679,8 @@ describe('chat extras', () => {
     assert.equal(await rt(a, `chatPhotos/${id}`), IMG)
     await denied(setGroupInfo(userDb('d'), id, { photo: IMG }))
     await denied(setGroupInfo(a, id, { photo: 'x'.repeat(200_001) }))
+    await denied(setGroupInfo(a, id, { photo: 'https://evil.example/t.png' }))
+    await denied(setGroupInfo(a, id, { photo: 'data:image/png;base64,AA") , url(https://evil.example/x' }))
     await denied(setGroupInfo(a, id, { name: 'x'.repeat(31) }))
     await denied(setGroupInfo(a, await openDm(a, 'a', 'd'), { name: 'x' }))
   })
@@ -1324,6 +1326,26 @@ describe('중복 가입 방지 / 접속 차단', () => {
     await denied(setDoc(doc(b, 'ips', 'not-an-ip!'), { uid: 'b', at: serverTimestamp() }))
     const anon = dbAs({ uid: 'anon1', firebase: { sign_in_provider: 'anonymous' } })
     await denied(setDoc(doc(anon, 'ips', '7.7.7.7'), { uid: 'anon1', at: serverTimestamp() }))
+    // a claim only with the address recorded as the account's own in the same write
+    await denied(setDoc(doc(b, 'ips', '8.8.8.8'), { uid: 'b', at: serverTimestamp() }))
+    const bt = writeBatch(b)
+    bt.set(doc(b, 'userIps', 'b'), { ip: '8.8.8.8', at: serverTimestamp(), ips: ['8.8.8.8'] })
+    bt.set(doc(b, 'ips', '9.9.9.9'), { uid: 'b', at: serverTimestamp() })
+    await denied(bt.commit())
+    // the list only grows by the address being recorded, never shrinks, at most 20
+    await recordIp(b, 'b', '8.8.8.8', null, [])
+    await denied(setDoc(doc(b, 'userIps', 'b'), { ip: '8.8.4.4', at: serverTimestamp(), ips: ['8.8.4.4'] }))
+    await denied(setDoc(doc(b, 'userIps', 'b'), { ip: '8.8.4.4', at: serverTimestamp(), ips: ['8.8.8.8', '8.8.4.4', '1.1.1.1'] }))
+    const many = Array.from({ length: 19 }, (_, i) => `2.2.2.${i}`)
+    for (const ip of many) await recordIp(b, 'b', ip, null, (await accessOf(b, 'b')).ips)
+    assert.equal((await accessOf(b, 'b')).ips.length, 20)
+    await recordIp(b, 'b', '3.3.3.3', null, (await accessOf(b, 'b')).ips) // full: recorded as last, not claimed
+    const at1 = (await getDoc(doc(b, 'userIps', 'b'))).get('at')
+    await recordIp(b, 'b', '3.3.3.3', null, (await accessOf(b, 'b')).ips, false, '3.3.3.3') // and not written again
+    assert.deepEqual((await getDoc(doc(b, 'userIps', 'b'))).get('at'), at1)
+    assert.equal((await readIp(b, '3.3.3.3')), null)
+    assert.equal((await accessOf(b, 'b')).ips.length, 20)
+    await denied(updateDoc(doc(b, 'userIps', 'b'), { ip: '3.3.3.3', at: serverTimestamp(), ips: arrayUnion('3.3.3.3') }))
   })
   test('admin blocks an account (and every address it used) in one go, unblocks it, and frees its addresses', async () => {
     const a = await signUp('a'), b = await signUp('b'), admin = dbAs(ADMIN)
@@ -1353,5 +1375,18 @@ describe('중복 가입 방지 / 접속 차단', () => {
     await denied(runAdminOp(admin, ADMIN.uid, 'ipSet', { target: 'a', ips: ['1.2.3.4'], op: 'block' }, [bt => { bt.set(doc(admin, 'ips', '8.8.8.8'), { blocked: true }, { merge: true }); return 1 }]))
     await denied(runAdminOp(admin, ADMIN.uid, 'ipSet', { target: 'a', ips: [], op: 'block' }, [bt => { bt.set(doc(admin, 'userIps', 'b'), { blocked: true }, { merge: true }); return 1 }]))
     await assert.rejects(setAccess(admin, ADMIN.uid, ADMIN.uid, 'block'))
+  })
+})
+
+describe('profile photos', () => {
+  test('only our own base64 image data, never a link to another site', async () => {
+    const a = await signUp('a')
+    const jpeg = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/'
+    await updateMyProfile(a, 'a', { photoURL: jpeg })
+    assert.equal((await read(a, 'candidates/a')).photoURL, jpeg)
+    await updateMyProfile(a, 'a', { bio: '그대로' }) // other edits keep it
+    for (const bad of ['https://evil.example/t.png', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/jpeg;base64,AAAA") , url(https://evil.example/x', 'javascript:alert(1)'])
+      await denied(updateMyProfile(a, 'a', { photoURL: bad }))
+    await updateMyProfile(a, 'a', { photoURL: '' })
   })
 })
