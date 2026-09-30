@@ -16,6 +16,7 @@ import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { isBanned } from './admin'
 import { newCandidateDoc } from './candidateDoc'
+import { myIp, readIp, recordIp } from './ip'
 
 /** Firebase Auth has no username concept, so a login id becomes `id@vote.local` under the hood. */
 const idToEmail = (id: string) => `${id.trim().toLowerCase()}@vote.local`
@@ -49,6 +50,12 @@ async function ensureCandidateDoc(user: User, name: string) {
 
 export async function signUp(name: string, id: string, pw: string) {
   if (!auth || !db) throw new Error('firebase-not-configured')
+  // 중복 가입 방지: one account per internet address (backend/ip.ts)
+  const ip = await myIp()
+  if (!ip) throw new Error('ip-unknown')
+  const onIp = await readIp(db, ip)
+  if (onIp?.blocked) throw new Error('ip-blocked')
+  if (onIp?.uid) throw new IpTakenError(ip)
   await setPersistence(auth, indexedDBLocalPersistence).catch(() => setPersistence(auth!, browserLocalPersistence))
   let user: User
   try {
@@ -65,7 +72,12 @@ export async function signUp(name: string, id: string, pw: string) {
     if (!user.displayName) await updateProfile(user, { displayName: name })
   }
   await ensureCandidateDoc(user, user.displayName || name)
+  await recordIp(db, user.uid, ip, onIp, true).catch(() => {})
   return user
+}
+
+export class IpTakenError extends Error {
+  constructor(readonly ip: string) { super('ip-taken') }
 }
 
 /** `keep` = 로그인 상태 유지: survive closing the app; otherwise only until the tab/app closes. */
@@ -108,6 +120,9 @@ export function authErrorMessage(err: unknown): string {
     case 'permission-denied': return '저장 권한이 없어요 (보안 규칙 확인 필요)'
     case 'firebase-not-configured': return '아직 서버 연결이 설정되지 않았어요'
     case 'account-deleted': return '관리자가 삭제한 계정이에요'
+    case 'ip-taken': return `이 인터넷(IP ${(err as IpTakenError).ip})에서는 이미 계정이 만들어졌어요. 계정은 한 사람당 하나예요 · 잘못된 거라면 관리자에게 문의해주세요`
+    case 'ip-unknown': return '인터넷 주소를 확인하지 못했어요. 잠시 후 다시 시도해주세요'
+    case 'ip-blocked': return '가입할 수 없어요'
     // Keep the raw code visible so the next unexpected failure can be diagnosed from a screenshot.
     default: return `문제가 생겼어요. 잠시 후 다시 시도해주세요 (${code || 'unknown'})`
   }

@@ -24,6 +24,7 @@ import { buildPeople } from '../src/model'
 import type { CandidateDoc } from '../src/backend/types'
 import { priceOf, seriesPrice } from '../src/data'
 import { placeBet, settleLastBet } from '../src/backend/gamble'
+import { blockedIps, lastIpOf, readIp, recordIp, setIp } from '../src/backend/ip'
 import { buyListing, cancelListing, listItem, subscribeMarket, type Listing } from '../src/backend/market'
 
 const PROJECT = 'demo-vote'
@@ -1301,5 +1302,50 @@ describe('당근마켓', () => {
     // 거래 정지: no listing
     await setTradeBan(admin, ADMIN.uid, 'a', Date.now() + 60_000)
     await denied(listItem(a, await me(a, 'a'), 'pass', 'pass2x', 10))
+  })
+})
+
+describe('중복 가입 방지 / IP 차단', () => {
+  test('an account claims its address once; nobody else can take it or pose as someone', async () => {
+    const a = await signUp('a'), b = await signUp('b')
+    await recordIp(a, 'a', '1.2.3.4', await readIp(a, '1.2.3.4'))
+    assert.equal((await readIp(dbAs(null), '1.2.3.4'))?.uid, 'a') // readable before logging in (the sign-up check)
+    assert.equal(await lastIpOf(a, 'a'), '1.2.3.4')
+    // b can't re-claim it, claim for someone else, block it, or read a's address
+    await denied(setDoc(doc(b, 'ips', '1.2.3.4'), { uid: 'b', at: serverTimestamp() }, { merge: true }))
+    await denied(setDoc(doc(b, 'ips', '5.6.7.8'), { uid: 'a', at: serverTimestamp() }))
+    await denied(setDoc(doc(b, 'ips', '5.6.7.8'), { uid: 'b', at: serverTimestamp(), blocked: false }))
+    await denied(setDoc(doc(b, 'ips', '1.2.3.4'), { blocked: true }, { merge: true }))
+    await denied(lastIpOf(b, 'a'))
+    await denied(getDocs(collection(b, 'ips')))
+    await denied(setDoc(doc(b, 'userIps', 'a'), { ip: '9.9.9.9', at: serverTimestamp() }))
+    await denied(setDoc(doc(b, 'ips', 'not-an-ip!'), { uid: 'b', at: serverTimestamp() }))
+    // a 상담-only anonymous login can't claim
+    const anon = dbAs({ uid: 'anon1', firebase: { sign_in_provider: 'anonymous' } })
+    await denied(setDoc(doc(anon, 'ips', '7.7.7.7'), { uid: 'anon1', at: serverTimestamp() }))
+  })
+  test('admin blocks, unblocks and lets one more account in; a released address can be claimed again', async () => {
+    const a = await signUp('a'), b = await signUp('b'), admin = dbAs(ADMIN)
+    await recordIp(a, 'a', '1.2.3.4', null)
+    assert.equal(await lastIpOf(admin, 'a'), '1.2.3.4')
+    await setIp(admin, ADMIN.uid, '1.2.3.4', 'block')
+    assert.deepEqual(await readIp(a, '1.2.3.4').then(d => [d?.uid, d?.blocked]), ['a', true])
+    assert.deepEqual(await blockedIps(admin), [{ ip: '1.2.3.4', uid: 'a' }])
+    // an address nobody used can be blocked ahead of time
+    await setIp(admin, ADMIN.uid, '8.8.4.4', 'block')
+    assert.equal((await readIp(a, '8.8.4.4'))?.blocked, true)
+    await setIp(admin, ADMIN.uid, '1.2.3.4', 'unblock')
+    assert.equal((await readIp(a, '1.2.3.4'))?.blocked, undefined)
+    assert.equal((await readIp(a, '1.2.3.4'))?.uid, 'a')
+    await setIp(admin, ADMIN.uid, '1.2.3.4', 'release')
+    assert.equal((await readIp(a, '1.2.3.4'))?.uid, undefined)
+    // a's next visit doesn't take it back; the next sign-up does
+    await recordIp(a, 'a', '1.2.3.4', await readIp(a, '1.2.3.4'))
+    assert.equal((await readIp(a, '1.2.3.4'))?.uid, undefined)
+    await recordIp(b, 'b', '1.2.3.4', await readIp(b, '1.2.3.4'), true)
+    assert.equal((await readIp(b, '1.2.3.4'))?.uid, 'b')
+    // the block op can't also touch who owns it
+    await denied(runAdminOp(admin, ADMIN.uid, 'ipSet', { ip: '1.2.3.4', op: 'block' }, [bt => { bt.set(doc(admin, 'ips', '1.2.3.4'), { blocked: true, uid: 'a' }, { merge: true }); return 1 }]))
+    await assert.rejects(setIp(admin, ADMIN.uid, 'not an ip', 'block'))
   })
 })

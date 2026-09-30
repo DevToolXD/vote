@@ -1,6 +1,7 @@
 import type { User } from 'firebase/auth'
 import { doc, updateDoc } from 'firebase/firestore'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { blockedIps, lastIpOf, myIp, readIp, recordIp, setIp, watchIp, type IpDoc } from './backend/ip'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, revokeItem, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, buySeries, buyPass, castVote, hasFakePass, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
@@ -164,6 +165,14 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   useEffect(() => { setTab(startTab) }, [startTab])
 
   // An anonymous login is only for 상담 (forgot password); the app treats it as signed out.
+  // 중복 가입 방지 / IP 차단 (backend/ip.ts): undefined = not looked up yet
+  const [myAddr, setMyAddr] = useState<string | null>(null)
+  const [ipDoc, setIpDoc] = useState<IpDoc | null | undefined>(undefined)
+  useEffect(() => { myIp().then(setMyAddr) }, [])
+  useEffect(() => (db && myAddr ? watchIp(db, myAddr, setIpDoc) : undefined), [myAddr])
+  useEffect(() => {
+    if (db && myAddr && authUser && ipDoc !== undefined && !isAdminEmail(authUser.email)) recordIp(db, authUser.uid, myAddr, ipDoc).catch(() => {})
+  }, [myAddr, authUser, ipDoc])
   useEffect(() => onAuthChange(u => { setAuthUser(u && !u.isAnonymous ? u : null); setAnonUid(u?.isAnonymous ? u.uid : null); setAuthReady(true) }), [])
   // The board comes from the Realtime Database (no Firestore reads). Only when that one is
   // missing or stale (or doesn't answer within 6 s) is the Firestore copy read, and only
@@ -652,6 +661,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
 
   if (!firebaseConfigured) return <SetupNotice />
   if (!authReady) return <div data-g="app" style={css('width:100%;max-width:var(--app-w);min-height:100vh;background:#ffffff')} />
+  // 차단된 IP: the app never finishes loading (the admin is never held back)
+  if (ipDoc?.blocked && !isAdmin) return <EndlessLoading />
 
   return (
     <div data-theme={theme} style={css("min-height:100vh;display:flex;justify-content:center;font-family:'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;color:#191f28;word-break:keep-all")}>
@@ -747,6 +758,13 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               renameUser={(t, n, p) => renameUser(db!, authUser.uid, t, n, p)}
               resetPassword={(t, p) => resetPassword(db!, authUser.uid, t, p)}
               deleteAccount={(t, p) => deleteAccount(db!, authUser.uid, t, p)}
+              ipTools={{
+                mine: myAddr,
+                lastOf: t => lastIpOf(db!, t),
+                read: a => readIp(db!, a),
+                blocked: () => blockedIps(db!),
+                set: (a, op, p) => setIp(db!, authUser.uid, a, op, p),
+              }}
               onLogout={doLogout}
             />
           )}
@@ -1017,6 +1035,17 @@ function SetupNotice() {
         <span style={css('font-size:15px;line-height:22.5px;color:#4e5968')}>
           이 앱은 로그인·투표·랭킹을 Firebase(Auth + Firestore)로 저장해요. 아직 <code>VITE_FIREBASE_*</code> 환경 변수가 설정되지 않아 화면을 열 수 없어요. <code>app/README.md</code>의 안내대로 Firebase 프로젝트를 연결해주세요.
         </span>
+      </div>
+    </div>
+  )
+}
+
+/** What a blocked address sees: a spinner that never stops. */
+function EndlessLoading() {
+  return (
+    <div style={css('min-height:100vh;display:flex;justify-content:center;background:#ffffff')}>
+      <div data-g="app" style={css('width:100%;max-width:var(--app-w);min-height:100vh;display:flex;align-items:center;justify-content:center')}>
+        <span aria-label="불러오는 중" role="progressbar" style={css('width:36px;height:36px;border-radius:50%;border:3.5px solid #e5e8eb;border-top-color:#3182f6;animation:avSpin 0.8s linear infinite')} />
       </div>
     </div>
   )

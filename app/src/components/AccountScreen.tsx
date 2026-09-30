@@ -157,6 +157,7 @@ function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus
       </div>
       <div style={css('padding:28px 24px 32px;display:flex;flex-direction:column;gap:8px')}>
         <button data-g="primary" className="pr-96" onClick={() => !cant && onSubmitSignup()} disabled={cant} style={sx(primaryBtn + ';transition:transform 150ms,opacity 200ms', { opacity: cant ? 0.4 : 1 })}>{authBusy ? '가입하는 중…' : '가입하기'}</button>
+        <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1;text-align:center')}>계정은 한 사람당 하나예요 · 중복 가입을 막으려고 접속한 IP를 저장해요 (관리자만 볼 수 있어요)</span>
       </div>
     </>
   )

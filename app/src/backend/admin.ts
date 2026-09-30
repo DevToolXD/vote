@@ -31,7 +31,7 @@ import { byRank } from './rank'
 export const ADMIN_EMAIL = 'admin@vote.local'
 export const isAdminEmail = (email: string | null | undefined) => email === ADMIN_EMAIL
 
-export type AdminAction = 'revokeItem' | 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount' | 'renameUser' | 'resetPassword' | 'postNotice' | 'seasonConfig' | 'tradeBan'
+export type AdminAction = 'revokeItem' | 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount' | 'renameUser' | 'resetPassword' | 'postNotice' | 'seasonConfig' | 'tradeBan' | 'ipSet'
 export type AdminProgress = { batch: number; batches: number; verified: number }
 
 /** Keep each batch's rule evaluation well under Firestore's per-request document-access limit. */

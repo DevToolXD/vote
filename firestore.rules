@@ -89,8 +89,11 @@ service cloud.firestore {
                 && p.target is string && p.target != request.auth.uid && p.until is int && p.until >= 0)
           || (action == 'revokeItem' && p.keys().hasOnly(['target', 'kind', 'key']) && p.keys().hasAll(['target', 'kind', 'key'])
                 && p.target is string && p.kind in ['frame', 'plate', 'skin', 'pass2x', 'passFake'] && p.key is string)
+          || (action == 'ipSet' && p.keys().hasOnly(['ip', 'op']) && p.keys().hasAll(['ip', 'op'])
+                && validIp(p.ip) && p.op in ['block', 'unblock', 'release'])
           || (action == 'deleteAccount' && p.keys().hasOnly(['target']) && p.target is string && p.target != request.auth.uid);
     }
+    function validIp(ip) { return ip is string && ip.matches('[0-9a-fA-F.:]{3,45}'); }
     function validSeasonName(n) { return n is string && n.size() >= 1 && n.size() <= 20; }
 
     function tokenOk(id, seq) {
@@ -126,7 +129,7 @@ service cloud.firestore {
         && request.resource.data.used == false
         && request.resource.data.createdAt == request.time
         && request.resource.data.seq in [1, 2, 3]
-        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser', 'resetPassword', 'postNotice', 'seasonConfig', 'tradeBan', 'revokeItem']
+        && request.resource.data.action in ['grantPoints', 'setSeasonName', 'seasonReset', 'deleteAccount', 'renameUser', 'resetPassword', 'postNotice', 'seasonConfig', 'tradeBan', 'revokeItem', 'ipSet']
         && request.resource.data.payload is map;
       // Burned only together with a lock that lists it.
       allow update: if isAdmin()
@@ -691,6 +694,46 @@ service cloud.firestore {
         && voteMatchesTally();
 
       allow delete: if (adminOp('deleteAccount') && (resource.data.uid == lock().payload.target || resource.data.candidateId == lock().payload.target));
+    }
+
+    // ---- 중복 가입 방지 / IP 차단 ----------------------------------------------------
+    // ips/{ip}: the first account seen on the address (uid) and the admin's block. The app
+    // finds its own address (backend/ip.ts), so this deters rather than proves anything.
+
+    function realUser() { return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+
+    match /ips/{ip} {
+      allow get: if true;
+      allow list: if isAdmin();
+      // an account claims an unclaimed address; the block (if any) stays as it was
+      allow create: if realUser() && validIp(ip)
+        && request.resource.data.keys().hasOnly(['uid', 'at'])
+        && request.resource.data.uid == request.auth.uid && request.resource.data.at == request.time;
+      allow update: if (realUser() && !('uid' in resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'at'])
+          && request.resource.data.uid == request.auth.uid && request.resource.data.at == request.time)
+        || ipAdmin(ip, resource.data);
+      allow create: if ipAdmin(ip, {});
+      allow delete: if false;
+    }
+    function ipAdmin(ip, o) {
+      let d = request.resource.data;
+      let op = lock().payload.op;
+      return adminOp('ipSet') && lock().payload.ip == ip
+        && d.keys().hasOnly(['uid', 'at', 'blocked'])
+        && (op == 'block'
+          ? d.diff(o).affectedKeys().hasOnly(['blocked']) && d.blocked == true
+          : op == 'unblock'
+            ? d.diff(o).affectedKeys().hasOnly(['blocked']) && !('blocked' in d)
+            : d.diff(o).affectedKeys().hasOnly(['uid']) && !('uid' in d));
+    }
+
+    match /userIps/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update: if realUser() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['ip', 'at'])
+        && validIp(request.resource.data.ip) && request.resource.data.at == request.time;
+      allow delete: if false;
     }
 
     // ---- deleted accounts ---------------------------------------------------------
