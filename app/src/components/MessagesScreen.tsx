@@ -5,7 +5,7 @@ import { MEDALS } from '../data'
 import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, postFooled, sendFakeGift, cancelScheduled, subscribeScheduled, type Scheduled, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, giftPrice, hasGift, itemLabel, subscribeGift, type Gift, type GiftKind } from '../backend/gifts'
 import { PASSES } from './ShopScreen'
-import { FRAMES, SKINS, LEGENDARY, isLimited, skinGeom } from '../data'
+import { FRAMES, LEGENDARY, SKIN_SERIES, skinGeom } from '../data'
 import { Nameplate } from './Nameplate'
 import { TowerSkin } from './TowerSkin'
 import { saveImage } from '../saveImage'
@@ -876,18 +876,23 @@ function ItemPreview({ kind, k, name }: { kind: GiftKind; k: string; name: strin
     const x = PASSES.find(p => p.key === k)
     return x ? <span style={sx('align-self:stretch;border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;color:#fff', { background: x.bg })}><span style={css('font-size:22px;font-weight:800;min-width:30px;text-align:center')}>{x.icon}</span><span style={css('font-size:12px;line-height:17px;opacity:0.9')}>영구 · {x.desc}</span></span> : null
   }
+  if (kind === 'set') {
+    // the whole series: the 이름표 with the frame on it, and the 막대 if it has one
+    const g = SKIN_SERIES.has(k) ? skinGeom(k, 56, false) : null
+    return <span style={css('align-self:stretch;display:flex;align-items:center;gap:10px')}><span style={css('flex:1;min-width:0;height:48px')}><Nameplate kind={k} person={name || '이름'} sub="세트 선물" frame={k} style={{ width: '100%', height: 48 }} /></span>{g && <span style={css('position:relative;width:20px;height:56px;flex:none;margin-right:4px')}><TowerSkin g={g} /></span>}</span>
+  }
   if (kind === 'frame') return <span style={css('align-self:center;width:64px;height:64px;margin:6px 0')}><Avatar frame={k} size={64} /></span>
   if (kind === 'plate') return <Nameplate kind={k} person={name || '이름'} sub="선물 받은 이름표" style={{ width: '100%', height: 48 }} />
   const g = skinGeom(k, 70, false)
   return <span style={css('align-self:center;position:relative;width:26px;height:70px;margin:12px 0 2px')}>{g && <TowerSkin g={g} />}</span>
 }
 
-/** 아이템 선물: pick a frame / 이름표 / 막대 스킨 to give. */
+/** 아이템 선물: pick a whole 세트 (every piece of a series) or a pass to give. */
 function ItemGiftSheet({ points, group, to, onClose, onSend }: { points: number; group: boolean; to?: Person; onClose: () => void; onSend: (kind: GiftKind, key: string) => Promise<void> }) {
-  const [kind, setKind] = useState<GiftKind>('frame')
+  const [kind, setKind] = useState<GiftKind>('set')
   const [pick, setPick] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const list: [string, string][] = kind === 'pass' ? PASSES.map(p => [p.key, p.title]) : (kind === 'skin' ? SKINS : FRAMES).filter(([k]) => k !== 'none' && !isLimited(kind, k)) // 리미티드 isn't sold
+  const list: [string, string][] = kind === 'pass' ? PASSES.map(p => [p.key, p.title]) : FRAMES.filter(([k]) => k !== 'none')
   const has = (k: string) => hasGift(to, kind, k)
   const price = pick ? giftPrice(kind, pick) : 0
   const ok = !!pick && price <= points && !has(pick)
@@ -899,21 +904,19 @@ function ItemGiftSheet({ points, group, to, onClose, onSend }: { points: number;
         <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{group ? '단톡방에서는 먼저 받는 한 명이 가져가요' : `${to?.name ?? '상대'}님에게 보내요`} · 받기 전에 취소하면 포인트가 돌아와요</span>
       </div>
       <div style={css('padding:8px 24px 12px;display:flex;gap:6px')}>
-        {(['frame', 'plate', 'skin', 'pass'] as GiftKind[]).map(k => (
-          <button key={k} className="pr-96" onClick={() => { setKind(k); setPick(null) }} style={sx('height:34px;padding:0 14px;border-radius:9999px;font-size:14px;font-weight:700', { background: kind === k ? '#191f28' : '#f2f4f6', color: kind === k ? '#fff' : '#4e5968' })}>{k === 'frame' ? '프레임' : k === 'plate' ? '이름표' : k === 'skin' ? '막대 스킨' : '패스'}</button>
+        {(['set', 'pass'] as GiftKind[]).map(k => (
+          <button key={k} className="pr-96" onClick={() => { setKind(k); setPick(null) }} style={sx('height:34px;padding:0 14px;border-radius:9999px;font-size:14px;font-weight:700', { background: kind === k ? '#191f28' : '#f2f4f6', color: kind === k ? '#fff' : '#4e5968' })}>{k === 'set' ? '세트' : '패스'}</button>
         ))}
       </div>
-      <div className="anim-list" style={sx('padding:4px 24px 0;max-height:38vh;overflow-y:auto;display:grid;gap:8px', { gridTemplateColumns: kind === 'plate' || kind === 'pass' ? '1fr' : 'repeat(auto-fill,minmax(92px,1fr))' })}>
+      <div className="anim-list" style={sx('padding:4px 24px 0;max-height:38vh;overflow-y:auto;display:grid;gap:8px', { gridTemplateColumns: '1fr' })}>
         {list.map(([k, l]) => {
           const on = pick === k, owned = has(k), legend = LEGENDARY.has(k)
           return (
             <button key={k} className="pr-96" disabled={owned} onClick={() => setPick(k)}
               style={sx('position:relative;border-radius:16px;padding:10px 8px 8px;display:flex;flex-direction:column;align-items:center;gap:6px;transition:box-shadow 150ms', { background: legend ? (k === 'matrix' ? '#021a0b' : k === 'korea' ? '#0d1b3d' : '#160538') : '#f9fafb', boxShadow: on ? 'inset 0 0 0 2px #3182f6' : 'none', opacity: owned ? 0.45 : 1 })}>
-              {kind === 'frame' && <span style={css('width:48px;height:48px;margin:4px')}><Avatar frame={k} size={48} /></span>}
-              {kind === 'plate' && <Nameplate kind={k} person={to?.name ?? '이름'} sub={l + ' 이름표'} style={{ width: '100%', height: 46 }} />}
-              {kind === 'skin' && <span style={css('position:relative;width:22px;height:60px;margin:6px 0 2px')}>{skinGeom(k, 60, false) && <TowerSkin g={skinGeom(k, 60, false)!} />}</span>}
+              {kind === 'set' && <ItemPreview kind="set" k={k} name={to?.name ?? l} />}
               {kind === 'pass' && <ItemPreview kind="pass" k={k} name="" />}
-              <span style={sx('font-size:12px;font-weight:700', { color: legend ? '#fff' : '#333d4b' })}>{kind === 'plate' ? '' : l} {owned ? '· 이미 있음' : `${giftPrice(kind, k).toLocaleString()}P`}</span>
+              <span style={sx('font-size:12px;font-weight:700', { color: legend ? '#fff' : '#333d4b' })}>{kind === 'set' ? `${l} 세트 · ${SKIN_SERIES.has(k) ? '프레임 + 이름표 + 막대 스킨' : '프레임 + 이름표'}` : l} {owned ? '· 이미 다 있음' : `· ${giftPrice(kind, k).toLocaleString()}P`}</span>
             </button>
           )
         })}
@@ -929,7 +932,7 @@ function ItemGiftSheet({ points, group, to, onClose, onSend }: { points: number;
 
 /** A small picture of a gift for the composer card. */
 export function GiftThumb({ kind, k }: { kind: GiftKind; k: string }) {
-  if (kind === 'frame') return <Avatar frame={k} size={36} full />
+  if (kind === 'set' || kind === 'frame') return <Avatar frame={k} size={36} full />
   if (kind === 'skin') { const g = skinGeom(k, 40, false); return <span style={css('position:relative;width:16px;height:40px')}>{g && <TowerSkin g={g} />}</span> }
   if (kind === 'pass') { const x = PASSES.find(p => p.key === k); return <span style={sx('width:36px;height:36px;border-radius:10px;color:#fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center', { background: x?.bg ?? '#3182f6' })}>{x?.icon}</span> }
   return <span style={css('width:44px;height:26px;border-radius:8px;overflow:hidden')}><Nameplate kind={k} person=" " showAvatar={false} style={{ width: 44, height: 26 }} /></span>

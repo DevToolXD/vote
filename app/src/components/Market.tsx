@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { css, sx } from '../css'
 import { FRAMES, SKINS, type ItemKind } from '../data'
 import type { Person } from '../model'
-import type { GiftKind } from '../backend/gifts'
+import type { TradeKind } from '../backend/gifts'
 import { itemLabel } from '../backend/gifts'
 import { MAX_PRICE, type Listing } from '../backend/market'
 import { Avatar } from './Avatar'
@@ -23,7 +23,7 @@ type Props = {
   points: number
   onLogin: () => void
   onBuy: (l: Listing) => Promise<void>
-  onList: (kind: GiftKind, key: string, price: number) => Promise<void>
+  onList: (kind: TradeKind, key: string, price: number) => Promise<void>
   onCancel: (l: Listing) => Promise<void>
 }
 
@@ -31,7 +31,7 @@ const ago = (ms: number) => {
   const m = Math.floor((Date.now() - ms) / 60_000)
   return m < 1 ? '방금' : m < 60 ? `${m}분 전` : m < 1440 ? `${Math.floor(m / 60)}시간 전` : `${Math.floor(m / 1440)}일 전`
 }
-const hasItem = (me: Mine | undefined, kind: GiftKind, key: string) => !!me && (kind === 'pass' ? !!me[key as 'pass2x' | 'passFake'] : me.owned[kind].includes(key))
+const hasItem = (me: Mine | undefined, kind: TradeKind, key: string) => !!me && (kind === 'pass' ? !!me[key as 'pass2x' | 'passFake'] : me.owned[kind].includes(key))
 
 /** 🥕 당근마켓: everyone's listings, 사기 / 내리기, and 팔기 (pick something of mine, set a price). */
 export function MarketView({ loggedIn, rows, me, byId, points, onLogin, onBuy, onList, onCancel }: Props) {
@@ -95,20 +95,20 @@ export function MarketView({ loggedIn, rows, me, byId, points, onLogin, onBuy, o
 }
 
 /** 팔기: one of my items (not 기본) or passes, and a price. */
-function SellSheet({ me, onClose, onList }: { me: Mine; onClose: () => void; onList: (kind: GiftKind, key: string, price: number) => Promise<void> }) {
-  const items: [GiftKind, string][] = [
-    ...me.owned.frame.filter(k => k !== 'none').map(k => ['frame', k] as [GiftKind, string]),
-    ...me.owned.plate.filter(k => k !== 'none').map(k => ['plate', k] as [GiftKind, string]),
-    ...me.owned.skin.filter(k => k !== 'none').map(k => ['skin', k] as [GiftKind, string]),
-    ...PASSES.filter(p => !!me[p.key]).map(p => ['pass', p.key] as [GiftKind, string]),
+function SellSheet({ me, onClose, onList }: { me: Mine; onClose: () => void; onList: (kind: TradeKind, key: string, price: number) => Promise<void> }) {
+  const items: [TradeKind, string][] = [
+    ...me.owned.frame.filter(k => k !== 'none').map(k => ['frame', k] as [TradeKind, string]),
+    ...me.owned.plate.filter(k => k !== 'none').map(k => ['plate', k] as [TradeKind, string]),
+    ...me.owned.skin.filter(k => k !== 'none').map(k => ['skin', k] as [TradeKind, string]),
+    ...PASSES.filter(p => !!me[p.key]).map(p => ['pass', p.key] as [TradeKind, string]),
   ]
-  const [pick, setPick] = useState<[GiftKind, string] | null>(null)
+  const [pick, setPick] = useState<[TradeKind, string] | null>(null)
   const [price, setPrice] = useState('')
   const [busy, setBusy] = useState(false)
   const n = Number(price)
   const ok = !!pick && Number.isSafeInteger(n) && n >= 1 && n <= MAX_PRICE && !busy
   // keep FRAMES / SKINS order
-  const order = (k: GiftKind, key: string) => (k === 'pass' ? 900 : (k === 'skin' ? SKINS : FRAMES).findIndex(([x]) => x === key) + (k === 'plate' ? 300 : k === 'skin' ? 600 : 0))
+  const order = (k: TradeKind, key: string) => (k === 'pass' ? 900 : (k === 'skin' ? SKINS : FRAMES).findIndex(([x]) => x === key) + (k === 'plate' ? 300 : k === 'skin' ? 600 : 0))
   items.sort((a, b) => order(...a) - order(...b))
   return (
     <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.25)" sheetStyle="border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));animation:sheetUp 420ms cubic-bezier(0.22,1,0.36,1) both;max-height:88vh;overflow-y:auto">

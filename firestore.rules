@@ -204,6 +204,10 @@ service cloud.firestore {
         && buyable('frame', [k])
         && k in d.owned.frame && k in d.owned.plate && (!(k in ['aura', 'matrix', 'korea', 'silver']) || k in d.owned.skin);
     }
+    // A whole 세트 (series): its pieces' prices added up; owning one means owning every piece.
+    function skinSeries(k) { return k in ['aura', 'matrix', 'korea', 'silver']; }
+    function setPrice(k) { return price('frame', k) + price('plate', k) + (skinSeries(k) ? price('skin', k) : 0); }
+    function hasSet(c, k) { return k in c.owned.frame && k in c.owned.plate && (!skinSeries(k) || k in c.owned.skin); }
     function costOf(kind, added) { return added.size() == 1 ? price(kind, added[0]) : 0; }
 
     // Owner editing their own profile, equipping, or buying one item at its real price.
@@ -308,6 +312,27 @@ service cloud.firestore {
         && d.owned.diff(o.owned).affectedKeys().hasOnly([k])
         && !(g0.itemKey in o.owned[k])
         && d.owned[k] == o.owned[k].concat([g0.itemKey])
+        && g0.status == 'open' && g1.status == 'claimed' && g1.claimedBy == request.auth.uid;
+    }
+    // 세트 선물 받기: every piece of the series I'm missing joins what I own (not if I have it all).
+    function giftClaimSet() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['owned', 'lastGift'])
+        && 'lastGift' in request.resource.data.diff(resource.data).affectedKeys()
+        && giftClaimSetFull();
+    }
+    function giftClaimSetFull() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let g0 = get(giftPath(d.lastGift)).data;
+      let g1 = getAfter(giftPath(d.lastGift)).data;
+      let k = g0.get('itemKey', 'none');
+      return request.auth.uid == o.ownerUid && canTrade(o)
+        && g0.get('itemKind', 'none') == 'set'
+        && d.owned.keys().hasOnly(['frame', 'plate', 'skin'])
+        && !hasSet(o, k)
+        && d.owned.frame == (k in o.owned.frame ? o.owned.frame : o.owned.frame.concat([k]))
+        && d.owned.plate == (k in o.owned.plate ? o.owned.plate : o.owned.plate.concat([k]))
+        && d.owned.skin == (skinSeries(k) && !(k in o.owned.skin) ? o.owned.skin.concat([k]) : o.owned.skin)
         && g0.status == 'open' && g1.status == 'claimed' && g1.claimedBy == request.auth.uid;
     }
     // Cancelling an unclaimed gift: the held points come back.
@@ -595,7 +620,10 @@ service cloud.firestore {
           // market branches, everything else against the rest: keeps each write under the limit.
           : (request.resource.data.get('lastMarket', '') != resource.data.get('lastMarket', '') || request.resource.data.get('lastSale', '') != resource.data.get('lastSale', '') || request.resource.data.get('lastCancel', '') != resource.data.get('lastCancel', ''))
             ? (marketList() || marketBuy() || marketCancel() || marketPayout(candidateId))
-            : (ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || loginIdBackfill() || giftSend() || giftClaim() || giftClaimItem() || giftClaimPass() || giftCancel() || gambleBet() || gamblePay())
+            // 선물 writes (they name the gift in lastGift, or a cancel gives points back) likewise
+            : (request.resource.data.get('lastGift', '') != resource.data.get('lastGift', '') || request.resource.data.get('spent', 0) < resource.data.get('spent', 0))
+              ? (giftSend() || giftClaim() || giftClaimItem() || giftClaimSet() || giftClaimPass() || giftCancel())
+              : (ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || loginIdBackfill() || gambleBet() || gamblePay())
       );
 
       allow delete: if adminOp('deleteAccount') && lock().payload.target == candidateId;
@@ -1031,12 +1059,12 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['chatId', 'from', 'to', 'amount', 'status', 'createdAt', 'itemKind', 'itemKey'])
         && request.resource.data.from == request.auth.uid
         && request.resource.data.amount is int && request.resource.data.amount >= 1
-        // 아이템 선물: a real item (not 기본) or a pass, held at exactly its shop price
+        // 아이템 선물: a whole 세트 (never a single piece) or a pass, held at exactly its shop price
         && (!('itemKind' in request.resource.data) || (
-              request.resource.data.itemKind in ['frame', 'plate', 'skin'] && request.resource.data.itemKey is string
+              request.resource.data.itemKind == 'set' && request.resource.data.itemKey is string
               && request.resource.data.itemKey != 'none'
-              && buyable(request.resource.data.itemKind, [request.resource.data.itemKey])
-              && request.resource.data.amount == price(request.resource.data.itemKind, request.resource.data.itemKey))
+              && buyable('frame', [request.resource.data.itemKey])
+              && request.resource.data.amount == setPrice(request.resource.data.itemKey))
             || (request.resource.data.itemKind == 'pass' && request.resource.data.itemKey in ['pass2x', 'passFake']
               && request.resource.data.amount == (request.resource.data.itemKey == 'pass2x' ? 5000 : 299)))
         && (('itemKind' in request.resource.data) == ('itemKey' in request.resource.data))
@@ -1062,6 +1090,8 @@ service cloud.firestore {
                 ? getAfter(me()).data.get('bonus', 0) == get(me()).data.get('bonus', 0) + resource.data.amount
                 : resource.data.itemKind == 'pass'
                   ? getAfter(me()).data.get(resource.data.itemKey, false) == true && get(me()).data.get(resource.data.itemKey, false) == false
+                  : resource.data.itemKind == 'set'
+                  ? hasSet(getAfter(me()).data, resource.data.itemKey) && !hasSet(get(me()).data, resource.data.itemKey)
                   : resource.data.itemKey in getAfter(me()).data.owned[resource.data.itemKind] && !(resource.data.itemKey in get(me()).data.owned[resource.data.itemKind]))) ||
         // 취소: the sender, while nobody has taken it
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'doneAt'])

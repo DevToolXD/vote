@@ -3,16 +3,21 @@ import {
   type Firestore, type Timestamp, type Unsubscribe,
 } from 'firebase/firestore'
 import { postGift, type ChatRow } from './messages'
-import { FRAMES, SKINS, priceOf, type ItemKind } from '../data'
+import { FRAMES, SKINS, priceOf, seriesItems, seriesPrice, type ItemKind } from '../data'
 import { FAKE_PASS_PRICE, PASS_PRICE, type PassKind } from './types'
 
-/** What can be given: an item, or a pass. */
-export type GiftKind = ItemKind | 'pass'
+/** What can be traded one by one (당근마켓): a single piece, or a pass. */
+export type TradeKind = ItemKind | 'pass'
+/**
+ * What can be given: a whole 세트 (the receiver gets every piece of the series), or a pass.
+ * Single pieces were giftable before; gifts like that already sent can still be taken.
+ */
+export type GiftKind = TradeKind | 'set'
 const PASS_NAME: Record<PassKind, string> = { pass2x: '투표 2배권', passFake: '페이크 선물 패스' }
-export const giftPrice = (kind: GiftKind, key: string) => (kind === 'pass' ? (key === 'pass2x' ? PASS_PRICE : FAKE_PASS_PRICE) : priceOf(kind, key))
+export const giftPrice = (kind: GiftKind, key: string) => (kind === 'pass' ? (key === 'pass2x' ? PASS_PRICE : FAKE_PASS_PRICE) : kind === 'set' ? seriesPrice(key) : priceOf(kind, key))
 /** Does this person already have it? (then they can't take it) */
 export const hasGift = (who: { owned?: Partial<Record<ItemKind, string[]>>; pass2x?: boolean | number; passFake?: boolean } | undefined, kind: GiftKind, key: string) =>
-  !!who && (kind === 'pass' ? !!who[key as PassKind] : !!who.owned?.[kind]?.includes(key))
+  !!who && (kind === 'pass' ? !!who[key as PassKind] : kind === 'set' ? seriesItems(key).every(([k, x]) => !!who.owned?.[k]?.includes(x)) : !!who.owned?.[kind]?.includes(key))
 
 // 포인트 선물 in chats. Sending holds the points (spent += amount); in a 1:1 only
 // the other person can take it, in a group the first member to tap does; the
@@ -35,7 +40,7 @@ export type Gift = {
 
 const KIND_LABEL: Record<ItemKind, string> = { frame: '프레임', plate: '이름표', skin: '막대 스킨' }
 /** "매트릭스 프레임", "왕관 이름표" … */
-export const itemLabel = (kind: GiftKind, key: string) => kind === 'pass' ? PASS_NAME[key as PassKind] ?? key : `${((kind === 'skin' ? SKINS : FRAMES).find(([k]) => k === key)?.[1] ?? key)} ${KIND_LABEL[kind]}`
+export const itemLabel = (kind: GiftKind, key: string) => kind === 'pass' ? PASS_NAME[key as PassKind] ?? key : kind === 'set' ? `${FRAMES.find(([k]) => k === key)?.[1] ?? key} 세트` : `${((kind === 'skin' ? SKINS : FRAMES).find(([k]) => k === key)?.[1] ?? key)} ${KIND_LABEL[kind]}`
 /** No real limit (only what you have); this just keeps the number sane to type. */
 export const MAX_GIFT = 1_000_000_000_000
 
@@ -76,6 +81,8 @@ export async function sendItemGift(db: Firestore, me: string, chat: ChatRow, kin
 /** What taking a gift changes on my candidate doc: points, or the item. */
 const claimPatch = (g: Gift, giftId: string) => (g.itemKind === 'pass' && g.itemKey
   ? { [g.itemKey]: true, lastGift: giftId }
+  : g.itemKind === 'set' && g.itemKey
+  ? { ...Object.fromEntries(seriesItems(g.itemKey).map(([k, x]) => [`owned.${k}`, arrayUnion(x)])), lastGift: giftId }
   : g.itemKind && g.itemKey
   ? { [`owned.${g.itemKind}`]: arrayUnion(g.itemKey), lastGift: giftId }
   : { bonus: increment(g.amount), lastGift: giftId })

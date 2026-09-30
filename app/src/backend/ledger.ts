@@ -24,8 +24,8 @@ export function subscribeAlerts(rtdb: Database, cb: (a: Alert[]) => void) {
 }
 export const dismissAlert = (rtdb: Database, uid: string) => remove(ref(rtdb, `alerts/${uid}`))
 
-export const ITEM_KIND: Record<string, string> = { frame: '프레임', plate: '이름표', skin: '막대 스킨', pass: '' }
-export const itemName = (kind: string, key: string) => kind === 'pass' ? (key === 'pass2x' ? '투표 2배권' : '페이크 선물 패스') : (kind === 'skin' ? SKINS : FRAMES).find(([k]) => k === key)?.[1] ?? key
+export const ITEM_KIND: Record<string, string> = { frame: '프레임', plate: '이름표', skin: '막대 스킨', pass: '', set: '세트' }
+export const itemName = (kind: string, key: string) => kind === 'set' ? FRAMES.find(([k]) => k === key)?.[1] ?? key : kind === 'pass' ? (key === 'pass2x' ? '투표 2배권' : '페이크 선물 패스') : (kind === 'skin' ? SKINS : FRAMES).find(([k]) => k === key)?.[1] ?? key
 
 /** One line of 거래 내역 in words, and an emoji for it. */
 export function describe(r: LedgerRow, nameOf: (uid: string) => string): { icon: string; text: string } {

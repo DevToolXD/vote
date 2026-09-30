@@ -930,31 +930,41 @@ describe('포인트 선물', () => {
     assert.equal((await read(a, 'candidates/a')).passFake, undefined)
     await assert.rejects(revokeItem(admin, ADMIN.uid, 'a', 'frame', 'crown')) // doesn't have it
   })
-  test('아이템 선물: the price is held, the taker gets the item (not twice, not if owned), 취소 refunds', async () => {
+  test('아이템 선물 is a whole 세트: the set price is held, the taker gets every piece (not twice, not if owned), 취소 refunds; single pieces refused', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
     await grantPoints(admin, ADMIN.uid, 'a', 5000)
     const id = await openDm(a, 'a', 'b')
-    await sendItemGift(a, 'a', await chatOf(a, id), 'frame', 'matrix')
-    assert.equal(await points(a, 'a'), 5000 - priceOf('frame', 'matrix'))
+    await assert.rejects(sendItemGift(a, 'a', await chatOf(a, id), 'frame', 'matrix')) // one piece: no
+    await sendItemGift(a, 'a', await chatOf(a, id), 'set', 'matrix')
+    assert.equal(await points(a, 'a'), 5000 - seriesPrice('matrix'))
     const gids = () => rt(a, `msgs/${id}`).then(m => (Object.values(m) as { giftId?: string }[]).map(x => x.giftId).filter(Boolean) as string[])
     const [g1] = await gids()
     await claimGift(b, 'b', g1)
     const cb = await read(b, 'candidates/b')
-    assert.ok(cb.owned.frame.includes('matrix')); assert.equal(pointsOf(cb), 0) // the item, not points
+    for (const k of ['frame', 'plate', 'skin'] as const) assert.ok(cb.owned[k].includes('matrix'))
+    assert.equal(pointsOf(cb), 0) // the items, not points
     await assert.rejects(claimGift(b, 'b', g1)) // only once
-    // b already has it now: a second copy can't be taken, and a can cancel it for a refund
-    await sendItemGift(a, 'a', await chatOf(a, id), 'frame', 'matrix')
+    // b has the whole set now: a second can't be taken, and a can cancel it for a refund
+    await sendItemGift(a, 'a', await chatOf(a, id), 'set', 'matrix')
     const g2 = (await gids()).find(g => g !== g1)!
     await assert.rejects(claimGift(b, 'b', g2))
     await cancelGift(a, 'a', g2)
-    assert.equal(await points(a, 'a'), 5000 - priceOf('frame', 'matrix'))
-    // a price that isn't the shop price, or 기본, is refused
+    assert.equal(await points(a, 'a'), 5000 - seriesPrice('matrix'))
+    // a price that isn't the set price is refused
     const fake = doc(collection(a, 'gifts'))
     const bt = writeBatch(a)
-    bt.set(fake, { chatId: id, from: 'a', to: 'b', amount: 1, status: 'open', createdAt: serverTimestamp(), itemKind: 'frame', itemKey: 'matrix' })
+    bt.set(fake, { chatId: id, from: 'a', to: 'b', amount: 1, status: 'open', createdAt: serverTimestamp(), itemKind: 'set', itemKey: 'neon' })
     bt.update(doc(a, 'candidates', 'a'), { spent: increment(1), lastGift: fake.id })
     await denied(bt.commit())
+    // someone missing only part of a set gets just those pieces
+    await sendItemGift(a, 'a', await chatOf(a, id), 'set', 'neon')
+    const g3 = (await gids()).find(g => g !== g1 && g !== g2)!
+    await seed('candidates/b', { owned: { mapValue: { fields: { frame: { arrayValue: { values: [{ stringValue: 'none' }, { stringValue: 'matrix' }, { stringValue: 'neon' }] } }, plate: { arrayValue: { values: [{ stringValue: 'none' }, { stringValue: 'matrix' }] } }, skin: { arrayValue: { values: [{ stringValue: 'none' }, { stringValue: 'matrix' }] } } } } } })
+    await claimGift(b, 'b', g3)
+    const cb3 = await read(b, 'candidates/b')
+    assert.deepEqual(cb3.owned.frame.filter(x => x === 'neon').length, 1); assert.ok(cb3.owned.plate.includes('neon'))
   })
+
   test('패스 선물: 5000P / 299P held, the taker gets the pass (not if they have it), 취소 refunds', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
     await grantPoints(admin, ADMIN.uid, 'a', 6000)

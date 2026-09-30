@@ -1,5 +1,5 @@
 import { arrayRemove, arrayUnion, collection, doc, increment, onSnapshot, query, serverTimestamp, where, writeBatch, type Firestore, type Timestamp, type Unsubscribe } from 'firebase/firestore'
-import type { GiftKind } from './gifts'
+import type { TradeKind } from './gifts'
 
 // 당근마켓: sell something you own for a price you set. Listing puts it in escrow (it leaves
 // your 보관함 until sold or taken down); a buyer pays, gets it, and the seller is paid — one
@@ -8,7 +8,7 @@ import type { GiftKind } from './gifts'
 export type Listing = {
   id: string
   seller: string
-  kind: GiftKind
+  kind: TradeKind
   key: string
   price: number
   status: 'open' | 'sold' | 'cancelled'
@@ -30,7 +30,7 @@ export function subscribeMarket(db: Firestore, cb: (rows: Listing[]) => void): U
 type Me = { id: string; frame: string; plate: string; skin: string }
 
 /** Puts one of my items up for sale (taken off me if I'm wearing it). */
-export async function listItem(db: Firestore, me: Me, kind: GiftKind, key: string, price: number) {
+export async function listItem(db: Firestore, me: Me, kind: TradeKind, key: string, price: number) {
   if (!Number.isSafeInteger(price) || price < 1 || price > MAX_PRICE) throw new Error('invalid-price')
   const ref = doc(collection(db, 'market'))
   const b = writeBatch(db)

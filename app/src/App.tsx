@@ -21,7 +21,7 @@ import { SupportFlow, SupportRoom } from './components/SupportScreen'
 import { closeTicket, linkTicket, sendSupport, subscribeLinkedTickets, subscribeTicket, subscribeTickets, type Ticket } from './backend/support'
 import { markNoticeSeen, nextUnseenNotice, pollResults, postNotice, subscribeNoticeIndex, voteNotice, type Notice } from './backend/notices'
 import { NoticeScreen } from './components/NoticeScreen'
-import { cancelGift, claimGift, holdItemGift, itemLabel, sendGift, sendItemGift, type GiftKind } from './backend/gifts'
+import { cancelGift, claimGift, holdItemGift, itemLabel, sendGift, sendItemGift, type TradeKind } from './backend/gifts'
 import { BuyDialog, Dialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
@@ -595,7 +595,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     if (tradeBanned(me)) { showToast(banText(me)); return }
     try { await buyListing(db!, me.id, l); showToast(`${itemLabel(l.kind, l.key)} 샀어요 · 보관함에 있어요`) } catch (e) { failToast('사지 못했어요. 이미 팔렸을 수도 있어요', e) }
   }
-  const marketList = async (kind: GiftKind, key: string, price: number) => {
+  const marketList = async (kind: TradeKind, key: string, price: number) => {
     if (!me) return
     if (tradeBanned(me)) { showToast(banText(me)); return }
     try { await listItem(db!, me, kind, key, price); showToast(`${itemLabel(kind, key)} 올렸어요`) } catch (e) { failToast('올리지 못했어요', e) }
