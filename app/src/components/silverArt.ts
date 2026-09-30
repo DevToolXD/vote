@@ -398,3 +398,38 @@ export const BAR_SPARKLE_SVG =
   `<circle r="9" fill="rgba(220,228,245,0.22)" class="sl-glow" style="transform-box:fill-box;transform-origin:center;animation:auraBreath 1.8s ease-in-out infinite"></circle>` +
   `<g class="sl-spin" style="transform-box:fill-box;transform-origin:center;animation:slStar 3.2s ease-in-out infinite"><path d="${SPARKLE_PATH}" fill="#ffffff"></path></g>` +
   `</svg>`
+
+// ---- grains breaking out past the edges and scattering (a few HTML dots, CSS-animated) --------
+const SPILL_DOT = 'position:absolute;border-radius:50%;background:#eef1f6;box-shadow:0 0 0 0.7px rgba(20,22,28,0.55),0 0 4px rgba(235,240,255,0.95),0 0 9px rgba(190,200,225,0.6);opacity:0;pointer-events:none'
+/** Around the 이름표 (outside its clipped box): out of the top, bottom and right edge of the art side. */
+export const SILVER_PLATE_SPILL = (() => {
+  const r = seeded(51); let out = ''
+  for (let i = 0; i < 34; i++) {
+    const e = r(); let left: string, top: string, dx: number, dy: number
+    if (e < 0.42) { left = `${(32 + r() * 66).toFixed(1)}%`; top = '0%'; dx = (r() - 0.35) * 22; dy = -(5 + r() * 16) }
+    else if (e < 0.84) { left = `${(32 + r() * 66).toFixed(1)}%`; top = '100%'; dx = (r() - 0.35) * 22; dy = 5 + r() * 14 }
+    else { left = '100%'; top = `${(10 + r() * 80).toFixed(1)}%`; dx = 6 + r() * 18; dy = (r() - 0.5) * 14 }
+    const s = 1.5 + r() * 2, dur = 1.6 + r() * 2
+    out += `<span class="sl-spill" style="${SPILL_DOT};left:${left};top:${top};width:${s.toFixed(1)}px;height:${s.toFixed(1)}px;margin:${(-s / 2).toFixed(2)}px 0 0 ${(-s / 2).toFixed(2)}px;--dx:${dx.toFixed(1)}px;--dy:${dy.toFixed(1)}px;animation:slSpill ${dur.toFixed(2)}s ease-out ${(-r() * dur).toFixed(2)}s infinite"></span>`
+  }
+  return `<div style="position:absolute;inset:0;pointer-events:none;z-index:4">${out}</div>`
+})()
+/** Around the frame: flung outward from the silk rings, past the dark disc (sizes follow --av). */
+const FRAME_SPILL = (() => {
+  const r = seeded(53); let out = ''
+  for (let i = 0; i < 28; i++) {
+    const a = r() * 360, r0 = 0.62 + r() * 0.1, r1 = 0.92 + r() * 0.3, dur = 1.8 + r() * 2
+    out += `<span class="sl-spill" style="${SPILL_DOT};left:0;top:0;width:max(1.2px,calc(var(--av,52px) * 0.03));height:max(1.2px,calc(var(--av,52px) * 0.03));margin:calc(max(1.2px,calc(var(--av,52px) * 0.03)) / -2) 0 0 calc(max(1.2px,calc(var(--av,52px) * 0.03)) / -2);--a:${a.toFixed(0)}deg;--r0:calc(var(--av,52px) * ${r0.toFixed(2)});--r1:calc(var(--av,52px) * ${r1.toFixed(2)});animation:slSpillR ${dur.toFixed(2)}s ease-out ${(-r() * dur).toFixed(2)}s infinite"></span>`
+  }
+  return `<div style="position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none">${out}</div>`
+})()
+SILVER_AVATAR.after += FRAME_SPILL
+/** Around the 막대: off both sides, drifting up and out. */
+export const SILVER_BAR_SPILL = (() => {
+  const r = seeded(57); let out = ''
+  for (let i = 0; i < 22; i++) {
+    const right = r() < 0.5, s = 1.5 + r() * 1.8, dur = 1.6 + r() * 1.8
+    out += `<span class="sl-spill" style="${SPILL_DOT};left:${right ? '100%' : '0%'};top:${(4 + r() * 92).toFixed(1)}%;width:${s.toFixed(1)}px;height:${s.toFixed(1)}px;--dx:${((right ? 1 : -1) * (5 + r() * 14)).toFixed(1)}px;--dy:${(-(3 + r() * 14)).toFixed(1)}px;animation:slSpill ${dur.toFixed(2)}s ease-out ${(-r() * dur).toFixed(2)}s infinite"></span>`
+  }
+  return out
+})()

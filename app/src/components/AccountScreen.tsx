@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from 'react'
+import { useState, type ReactNode, type RefObject } from 'react'
 import { css, sx } from '../css'
 import { ID_PATTERN } from '../backend/auth'
 import type { Person } from '../model'
@@ -35,6 +35,8 @@ type Props = {
   onGender: (g: string) => void
   points: number
   mine: Person[]
+  /** Everyone else I haven't voted for (shown folded under 내 투표). */
+  others: Person[]
   onOpenVote: (p: Person) => void
   openEdit: () => void
   openEarn: () => void
@@ -160,7 +162,10 @@ function SignupView({ signup: s, onSignup, onView, nameAck, nameRef, onNameFocus
   )
 }
 
-function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot, openLedger }: Props & { me: Person }) {
+function Profile({ me, points, mine, others, onOpenVote, onLogout, goHome, notifySlot, openLedger }: Props & { me: Person }) {
+  // 내 투표: two foldable lists — people I voted for (open) and people I haven't (folded)
+  const [openVoted, setOpenVoted] = useState(true)
+  const [openOthers, setOpenOthers] = useState(false)
   const sep = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
   return (
     <>
@@ -204,7 +209,8 @@ function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot, o
       )}
       {sep}
       <div style={css('padding:24px 24px 8px;font-size:17px;line-height:25.5px;font-weight:700;color:#191f28')}>내 투표</div>
-      {mine.map(d => (
+      <FoldHeader label="투표한 사람" count={mine.length} open={openVoted} onToggle={() => setOpenVoted(o => !o)} />
+      {openVoted && mine.map(d => (
         <div key={d.id}>
           <div style={css('padding:14px 16px 14px 24px;display:flex;align-items:center;gap:12px')}>
             <span style={css('width:40px;height:40px;border-radius:9999px;background:#f2f4f6;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#6b7684;flex:none')}>{d.name[0]}</span>
@@ -224,7 +230,7 @@ function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot, o
           <div style={css('height:0.5px;margin-left:24px;background:rgba(0,0,33,0.07)')} />
         </div>
       ))}
-      {mine.length === 0 && (
+      {openVoted && mine.length === 0 && (
         <div style={css('padding:40px 24px 48px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center')}>
           <span style={css('font-size:40px;line-height:1;margin-bottom:12px')}>🗳️</span>
           <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#333d4b')}>아직 투표한 후보가 없어요</span>
@@ -232,11 +238,37 @@ function Profile({ me, points, mine, onOpenVote, onLogout, goHome, notifySlot, o
           <button className="pr-96" onClick={goHome} style={css('margin-top:16px;height:38px;padding:0 16px;border-radius:10px;background:rgba(100,168,255,0.15);color:#2272eb;font-size:15px;font-weight:600;transition:transform 150ms')}>투표하러 가기</button>
         </div>
       )}
+      <FoldHeader label="투표 안 한 사람" count={others.length} open={openOthers} onToggle={() => setOpenOthers(o => !o)} />
+      {openOthers && others.map(d => (
+        <div key={d.id}>
+          <div style={css('padding:12px 16px 12px 24px;display:flex;align-items:center;gap:12px')}>
+            <span style={css('width:40px;height:40px;border-radius:9999px;background:#f2f4f6;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#6b7684;flex:none')}>{d.name[0]}</span>
+            <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+              <span style={css('font-size:17px;line-height:25.5px;font-weight:500;color:#333d4b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{d.name}</span>
+              <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>{d.rank}위 · {d.scoreLabel}점</span>
+            </span>
+            <button data-g="secondary" className="pr-96" onClick={() => onOpenVote(d)} style={css('flex:none;height:32px;padding:0 12px;border-radius:8px;background:#e8f3ff;color:#1b64da;font-size:13px;font-weight:600;transition:transform 150ms')}>투표하기</button>
+          </div>
+          <div style={css('height:0.5px;margin-left:24px;background:rgba(0,0,33,0.07)')} />
+        </div>
+      ))}
+      {openOthers && others.length === 0 && <div style={css('padding:20px 24px;font-size:15px;color:#8b95a1')}>모두에게 투표했어요</div>}
       {notifySlot && <>{sep}{notifySlot}</>}
       {sep}
       <button className="pr-dim" onClick={onLogout} style={css('width:100%;text-align:left;padding:16px 24px;font-size:17px;font-weight:500;color:#4e5968;border-radius:12px')}>로그아웃</button>
       <div style={{ height: 24 }} />
     </>
+  )
+}
+
+/** A foldable list header: label, count and a chevron that turns when open. */
+function FoldHeader({ label, count, open, onToggle }: { label: string; count: number; open: boolean; onToggle: () => void }) {
+  return (
+    <button className="pr-dim" onClick={onToggle} aria-expanded={open} style={css('width:100%;height:48px;padding:0 20px 0 24px;display:flex;align-items:center;gap:8px;text-align:left')}>
+      <span style={css('font-size:15px;font-weight:600;color:#4e5968')}>{label}</span>
+      <span style={css('font-size:15px;font-weight:600;color:#3182f6;font-variant-numeric:tabular-nums')}>{count}</span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b95a1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={sx('margin-left:auto;transition:transform 250ms cubic-bezier(0.22,1,0.36,1)', { transform: open ? 'rotate(180deg)' : 'none' })}><path d="m6 9 6 6 6-6" /></svg>
+    </button>
   )
 }
 

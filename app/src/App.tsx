@@ -702,6 +702,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               onGender={g => authUser && updateMyProfile(db!, authUser.uid, { gender: g }).catch(e => failToast('저장하지 못했어요', e))}
               points={points}
               mine={mine}
+              others={all.filter(d => !d.isMe && !mine.includes(d))}
               onOpenVote={d => setSheet(d.id)}
               openEdit={() => setEditOpen(true)}
               openEarn={() => setEarnOpen(true)}

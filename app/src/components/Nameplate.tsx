@@ -6,7 +6,7 @@ import { PLATE_ART } from './plateArt'
 import { AURA_PLATE } from './auraArt'
 import { MATRIX_PLATE } from './matrixArt'
 import { KOREA_PLATE } from './koreaArt'
-import { SILVER_PLATE, ensureSilverArt } from './silverArt'
+import { SILVER_PLATE, SILVER_PLATE_SPILL, ensureSilverArt } from './silverArt'
 import { pauseOffscreen } from '../offscreen'
 
 const PLATES: Record<string, { bg: string; fg: string; sub: string; dark: boolean; glow?: string }> = {
@@ -48,7 +48,9 @@ export const Nameplate = memo(function Nameplate({ kind = 'none', person, sub, f
     : 'inset 0 0 0 1px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.8)'
   const art = k === 'aura' ? AURA_PLATE : k === 'matrix' ? MATRIX_PLATE : k === 'korea' ? KOREA_PLATE : k === 'silver' ? (ensureSilverArt(), SILVER_PLATE) : PLATE_ART[k]?.before
   return (
-    <div ref={k !== 'none' ? pauseOffscreen : undefined} style={{ display: 'block', ...style }}>
+    <div ref={k !== 'none' ? pauseOffscreen : undefined} style={{ display: 'block', ...(k === 'silver' ? { position: 'relative' } : {}), ...style }}>
+      {/* 삼겹살 먹고싶다: grains breaking out past the plate's edges (outside its clipped box) */}
+      {k === 'silver' && <div className="av-art" dangerouslySetInnerHTML={{ __html: SILVER_PLATE_SPILL }} />}
       <div style={{ ...css('position:relative;width:100%;height:100%;border-radius:14px;overflow:hidden;isolation:isolate'), background: p.bg }}>
         {art && <div className="av-art" dangerouslySetInnerHTML={{ __html: art }} />}
         {k !== 'none' && (

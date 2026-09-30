@@ -4,7 +4,7 @@ import { GEM } from './auraArt'
 import { MX_FONT, MX_STRIPS, cubeOrbit } from './matrixArt'
 import { BAR_TIP_SVG, BLUE, INK, IVORY, SEAM_TILE, barCoinOrbit } from './koreaArt'
 import { pauseOffscreen } from '../offscreen'
-import { BAR_SPARKLE_SVG, BAR_TILE, ensureSilverArt } from './silverArt'
+import { BAR_SPARKLE_SVG, BAR_TILE, SILVER_BAR_SPILL, ensureSilverArt } from './silverArt'
 
 const segment = 'display:block;width:100%;flex:none;background-repeat:no-repeat;background-size:100% 100%'
 
@@ -186,6 +186,8 @@ function SilverBar({ flip, h }: { flip: boolean; h: number }) {
       {SL_MOTES.map(([left, dur, delay, c]) => (
         <span key={left} className="aura-spark" style={{ ...css('position:absolute;bottom:8%;width:2px;height:2px;margin-left:-1px;border-radius:50%;opacity:0'), left, background: c, boxShadow: `0 0 4px ${c},0 0 8px rgba(220,228,245,0.8)`, animation: `auraSpark ${dur}s ease-out ${delay}s infinite` }} />
       ))}
+      {/* grains breaking out off its sides */}
+      <span style={css('position:absolute;inset:0;pointer-events:none')} dangerouslySetInnerHTML={{ __html: SILVER_BAR_SPILL }} />
       <span style={css('position:absolute;left:50%;top:-24px;margin-left:-16px;width:32px;height:32px')} dangerouslySetInnerHTML={{ __html: BAR_SPARKLE_SVG }} />
     </span>
   )
