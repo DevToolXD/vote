@@ -36,9 +36,10 @@ export function waitLabel(ms: number) {
  * Ranks never repeat: higher score first, and on the same score whoever reached it first
  * (see backend/rank.ts) — so there is exactly one 1st, 2nd and 3rd.
  */
-export function buildPeople(rows: CandidateRow[], myVotes: Record<string, MyVote>, myUid: string | null, now = Date.now()): Person[] {
+export function buildPeople(rows: CandidateRow[], myVotes: Record<string, MyVote>, myUid: string | null, now = Date.now(), season?: number): Person[] {
   return [...rows].sort(byRank).map((d, i) => {
-    const my = myVotes[d.id]
+    // a vote from an earlier season counts for nothing now (the new season starts afresh)
+    const my = season !== undefined && myVotes[d.id] && myVotes[d.id].season !== season ? undefined : myVotes[d.id]
     const left = my ? my.weekEndsAt - now : 0
     return {
       ...d,

@@ -313,7 +313,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     const merged = base.some(r => r.id === ownRow.id) ? base.map(r => (r.id === ownRow.id ? ownRow : r)) : [...base, ownRow]
     return merged.sort(byRank)
   }, [src.rows, boardFallback, fallbackRows, ownRow, photoMap])
-  const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null, Date.now()), [rows, votes, authUser, minute]) // eslint-disable-line react-hooks/exhaustive-deps
+  const all = useMemo(() => buildPeople(rows, votes, authUser?.uid ?? null, Date.now(), season.number), [rows, votes, authUser, minute, season.number]) // eslint-disable-line react-hooks/exhaustive-deps
   const me = authUser ? all.find(d => d.id === authUser.uid) : undefined
   const mine = all.filter(d => d.my && (d.my.ups > 0 || d.my.downs > 0 || d.inWeek))
   const points = me ? pointsOf(me) : 0

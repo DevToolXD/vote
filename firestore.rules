@@ -669,7 +669,8 @@ service cloud.firestore {
       let oWeekAt = o.get('weekAt', null);
       let oKind = o.get('weekKind', 'none');
       let oN = o.get('weekN', oKind in ['up', 'down'] ? 1 : 0);
-      let inWeek = oWeekAt != null && request.time < oWeekAt + duration.value(7, 'd');
+      // a vote from an earlier season never holds up this one (a new season starts everyone's week afresh)
+      let inWeek = oWeekAt != null && o.get('season', 0) == cur && request.time < oWeekAt + duration.value(7, 'd');
       // paid = most votes this week that already earned the candidate 10P each; given = all ever.
       // Only votes above what was paid this week pay again, so cancel + vote again can't farm points.
       return d.season == cur && d.ups is int && d.downs is int && d.weekKind in ['up', 'down', 'none']

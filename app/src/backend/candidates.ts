@@ -41,7 +41,7 @@ const known = (candidateId: string) => allKnown || knownIds.has(candidateId)
 function toMyVote(v: Partial<VoteDoc>): MyVote {
   const weekEndsAt = v.weekAt ? v.weekAt.toMillis() + VOTE_EVERY_MS : 0
   const kind = weekEndsAt > Date.now() ? v.weekKind ?? 'none' : 'none'
-  return { ups: v.ups ?? 0, downs: v.downs ?? 0, weekEndsAt, weekKind: kind, weekN: kind === 'none' ? 0 : v.weekN ?? 1 }
+  return { ups: v.ups ?? 0, downs: v.downs ?? 0, weekEndsAt, weekKind: kind, weekN: kind === 'none' ? 0 : v.weekN ?? 1, season: v.season ?? 0 }
 }
 
 /** All my votes, as { candidateId: MyVote } — only while a screen lists them (계정 → 내 투표). */
@@ -75,11 +75,11 @@ export function subscribeMyVote(db: Firestore, uid: string, candidateId: string,
 /** What this week's vote becomes (see castVote), or null when nothing changes. */
 function planVote(o: Partial<VoteDoc>, cur: number, kind: WeekKind, count: number, now: number) {
   const thisSeason = o.season === cur
-  const inWeek = !!o.weekAt && now < o.weekAt.toMillis() + VOTE_EVERY_MS
+  // a vote from an earlier season never holds up this one (firestore.rules: voteAction)
+  const inWeek = thisSeason && !!o.weekAt && now < o.weekAt.toMillis() + VOTE_EVERY_MS
   const oKind: WeekKind = inWeek ? o.weekKind ?? 'none' : 'none'
   const oN = oKind === 'none' ? 0 : o.weekN ?? 1
   if (kind === 'none') count = 0
-  if (inWeek && !thisSeason) throw new Error('vote-too-soon')
   if (!inWeek && kind === 'none') return null
   if (!inWeek) count = 1
   if (kind === oKind && count === oN) return null
@@ -119,7 +119,9 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
   if (season && known(candidateId) && local !== null) {
     try {
       const p = planVote(local ?? {}, season, kind, count, Date.now())
-      if (!p) return
+      // nothing to do — unless my season number might be out of date (then check below)
+      if (!p && (!local || local.season === season)) return
+      if (!p) throw new Error('recheck')
       const b = writeBatch(db)
       b.set(voteRef, { ...base, ...p.vote })
       b.update(candidateRef, { up: increment(p.dUp), down: increment(p.dDown), score: increment(p.dUp - p.dDown), scoreAt: serverTimestamp(), ...(p.dEarned ? { earned: increment(p.dEarned) } : {}) })

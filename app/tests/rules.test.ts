@@ -467,11 +467,13 @@ describe('admin: single-use tokens ×3', () => {
     // Renaming keeps the podium; nobody can forge one.
     await setSeasonName(admin, ADMIN.uid, '시즌 2+')
     assert.equal((await getDoc(doc(admin, 'meta', 'season'))).data()!.last.name, 'BETA')
-    // New season: the tally starts from zero, but the per-person limits still apply.
-    await assert.rejects(castVote(dbs[3], 'u3', 'u0', 'up'), /vote-too-soon/)
-    await assert.rejects(castVote(dbs[3], 'u3', 'u1', 'down'), /vote-too-soon/)
-    await seed('votes/u3_u0', { weekAt: new Date(Date.now() - 8 * 86400_000) })
+    // New season: tallies from zero and everyone's week starts afresh — last season's votes (even
+    // from yesterday) don't hold anyone up; the vote pays the candidate 10P again.
+    const earnedBefore = (await read(admin, 'candidates/u0')).earned
     await castVote(dbs[3], 'u3', 'u0', 'up')
+    assert.equal((await read(admin, 'candidates/u0')).earned, earnedBefore + 10)
+    // and within the new season the weekly limit applies again (no second vote the same way)
+    await denied(setDoc(doc(dbs[3], 'votes', 'u3_u0'), { ...(await getDoc(doc(dbs[3], 'votes', 'u3_u0'))).data(), weekN: 2, ups: 2, paid: 2, given: 3, updatedAt: serverTimestamp() }))
     await castVote(dbs[7], 'u7', 'u1', 'down')
     assert.deepEqual(await tally(admin, 'u0'), [1, 0, 1])
     assert.deepEqual(await tally(admin, 'u1'), [0, 1, -1])

@@ -77,7 +77,7 @@ export const VOTE_EVERY_MS = 7 * 24 * 60 * 60 * 1000
 
 /** My history with one candidate, as the app needs it. */
 export type WeekKind = 'up' | 'down' | 'none'
-export type MyVote = { ups: number; downs: number; weekEndsAt: number; weekKind: WeekKind; weekN: number }
+export type MyVote = { ups: number; downs: number; weekEndsAt: number; weekKind: WeekKind; weekN: number; season: number }
 export const PASS_PRICE = 5000
 /** 페이크 선물 패스: lets you send 페이크 선물 in chats. */
 export const FAKE_PASS_PRICE = 299
