@@ -63,7 +63,7 @@ export const Nameplate = memo(function Nameplate({ kind = 'none', person, sub, f
             </span>
           )}
           <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
-            <span className={k === 'matrix' ? 'mx-name' : undefined} data-text={k === 'matrix' ? person : undefined} style={{ ...css('font-size:16px;line-height:22px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), color: p.fg, textShadow: shadow }}>{person}</span>
+            <span className={k === 'matrix' ? 'mx-name' : k === 'silver' ? 'sl-name' : undefined} data-text={k === 'matrix' ? person : undefined} style={{ ...css('font-size:16px;line-height:22px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), color: p.fg, textShadow: shadow }}>{person}</span>
             {sub && (
               <span style={{ ...css('font-size:12px;line-height:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), color: p.sub, textShadow: shadow }}>{sub}</span>
             )}
@@ -94,7 +94,7 @@ export function PlateBanner({ kind = 'none', fallback, name, sub, height, childr
         {k !== 'none' && <div style={css('position:absolute;top:0;bottom:0;left:0;width:30%;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,0.22),rgba(255,255,255,0));animation:npShine 5s ease-in-out infinite;pointer-events:none')} />}
       </div>
       <div style={css('position:absolute;left:140px;right:64px;top:34px;display:flex;flex-direction:column;gap:2px;min-width:0')}>
-        <span className={k === 'matrix' ? 'mx-name' : undefined} data-text={k === 'matrix' ? name : undefined} style={{ ...css('font-size:22px;line-height:30px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), color: k !== 'none' ? p.fg : '#191f28', textShadow: shadow }}>{name}</span>
+        <span className={k === 'matrix' ? 'mx-name' : k === 'silver' ? 'sl-name' : undefined} data-text={k === 'matrix' ? name : undefined} style={{ ...css('font-size:22px;line-height:30px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), color: k !== 'none' ? p.fg : '#191f28', textShadow: shadow }}>{name}</span>
         <span style={{ ...css('font-size:13px;line-height:19px;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all'), color: k !== 'none' ? p.sub : '#4e5968', textShadow: shadow }}>{sub}</span>
       </div>
       {children}

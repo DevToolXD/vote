@@ -23,7 +23,7 @@ export const Avatar = memo(function Avatar({ frame = 'none', photo = 'none', siz
   const hasPhoto = !!photo && photo !== 'none'
   const innerRing = frame === 'none' || frame === 'cat' || frame === 'bunny' || frame === 'matrix' || frame === 'korea' || frame === 'silver' ? 'none' : '0 0 0 1px rgba(255,255,255,0.9)'
   return (
-    <div className="av-host" ref={art ? pauseOffscreen : undefined} style={{ width: size, height: size, ['--av' as string]: `${size}px`, ...style }}>
+    <div className="av-host" data-small={size <= 24 ? '' : undefined} ref={art ? pauseOffscreen : undefined} style={{ width: size, height: size, ['--av' as string]: `${size}px`, ...style }}>
       <div style={{ position: 'relative', width: '100%', height: '100%', pointerEvents: 'none' }}>
         {art?.before && <div className="av-art" dangerouslySetInnerHTML={{ __html: art.before }} />}
         <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'hidden', background: '#dbdbdb', boxShadow: innerRing }}>

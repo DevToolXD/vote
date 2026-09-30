@@ -269,5 +269,18 @@ html,body{overscroll-behavior:none}
 @keyframes slSpillR{0%{transform:rotate(var(--a)) translateX(var(--r0)) scale(1);opacity:0}12%{opacity:1}100%{transform:rotate(var(--a)) translateX(var(--r1)) scale(.25);opacity:0}}
 @keyframes slRise{from{transform:translateY(0)}to{transform:translateY(-120px)}}
 @keyframes slStar{0%,100%{transform:rotate(0deg) scale(.9)}50%{transform:rotate(45deg) scale(1.15)}}
+/* lens glints: a quick flash, then a long rest (the flash is the first quarter of each round) */
+@keyframes slGlint{0%,100%{opacity:0;transform:scale(.15) rotate(-30deg)}9%{opacity:1;transform:scale(1) rotate(0deg)}24%{opacity:0;transform:scale(.35) rotate(22deg)}}
+@keyframes slSheen{0%{transform:translateX(-110%)}62%,100%{transform:translateX(340%)}}
+@keyframes slRiseT{from{transform:translateY(0)}to{transform:translateY(calc(-1 * var(--t,60px)))}}
+@keyframes slBreath{0%{transform:scale(.97)}100%{transform:scale(1.05)}}
+@keyframes slZip{0%{transform:rotate(-40deg);opacity:0}5%{opacity:1}30%{transform:rotate(330deg);opacity:1}36%,100%{transform:rotate(360deg);opacity:0}}
+@keyframes slWave{0%{transform:scale(1);opacity:.9}70%,100%{transform:scale(1.42);opacity:0}}
+@keyframes slFlare{0%,100%{transform:rotate(0deg) scale(.9);opacity:.85}50%{transform:rotate(18deg) scale(1.12);opacity:1}}
+@keyframes slFlare2{0%,100%{transform:rotate(45deg) scale(.8);opacity:.35}50%{transform:rotate(70deg) scale(1.05);opacity:.75}}
+/* the name in chrome (the plate's glow comes from a drop-shadow: a text-shadow would sit on top of it) */
+.sl-name{background:linear-gradient(180deg,#ffffff 0%,#f4f6f9 36%,#a4aab3 50%,#e2e6eb 66%,#ffffff 100%);-webkit-background-clip:text;background-clip:text;color:transparent !important;text-shadow:none !important;filter:drop-shadow(0 0 5px rgba(220,228,245,0.45)) drop-shadow(0 1px 1px rgba(0,0,0,0.9))}
 @media (prefers-reduced-motion:reduce){[class^="sl-"],[class*=" sl-"]{animation:none !important}}
+/* tiny avatars (the ranking's): the stardust rings, the second dust layer and the pulses are too small to see there, so they aren't drawn */
+.av-host[data-small] :is(.sl-orbit,.sl-iGB,.sl-zip,.sl-wave){display:none}
 .legend-tag.sl-tag{background:linear-gradient(90deg,#7d7d7d 0%,#2a2a2a 52%,#0a0a0a 100%);color:#f2f2f2;animation:none;box-shadow:0 0 0 1px rgba(198,198,198,0.55),0 0 8px rgba(200,210,230,0.35)}

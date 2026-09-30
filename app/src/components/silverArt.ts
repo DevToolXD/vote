@@ -1,12 +1,19 @@
-// 삼겹살 먹고싶다 — a set (frame, 이름표, 막대 스킨) in the look of a silver particle film on pure
-// black: sheets of silk made of countless grains of light, folding into a bright crest, a dark
-// grainy dune in front, loose specks drifting in the dark, film grain over it all.
+// 삼겹살 먹고싶다 — the 2500P 레전드 set (frame, 이름표, 막대 스킨): liquid chrome and silver
+// stardust on pure black.
+//  · frame: a thick chrome ring whose reflections flow like liquid metal, two tilted rings of
+//    stardust orbiting it (behind the photo, then round in front of it), black smoke curling round
+//    it with silver wisps, lens glints flashing on the metal, grains flung off into the air.
+//  · 이름표: a silver particle film — a sheet of silk made of countless grains of light folding
+//    into a bright crest, light running along it, a dark dune in front, bokeh and loose specks,
+//    film grain and glints — in a polished chrome bezel, with the name in chrome.
+//  · 막대: chrome rails round a black glass channel with the silk flowing up inside, a double
+//    helix of stardust winding up round it, a lens flare on its tip.
 //
-// How: the first time an item of the set is shown, the surfaces are painted into canvases —
-// tens of thousands of grains added up with 'lighter' blending over a soft glow — and turned into
-// image URLs in one stylesheet (classes sl-i*). The markup below only names those classes; its
-// layers then sway, flow, turn and twinkle with CSS transforms and opacity, so nothing is painted
-// per frame, however many grains there are.
+// How: the first time an item of the set is shown, the surfaces are painted into canvases — tens of
+// thousands of grains added up with 'lighter' blending over soft glows, smoke from fractal noise —
+// and turned into image URLs in one stylesheet (classes sl-i*). The markup below only names those
+// classes; its layers turn, sway, flow and flash with CSS transforms and opacity (the GPU runs all
+// of it), so nothing is painted per frame, however many grains there are.
 
 type Ctx = CanvasRenderingContext2D
 const TAU = Math.PI * 2
@@ -24,6 +31,8 @@ function seeded(seed: number) {
 }
 const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t) }
 const angDiff = (a: number, b: number) => { const d = ((a - b) % TAU + TAU) % TAU; return d > Math.PI ? TAU - d : d }
+/** ≈ normal(0, 1): four uniforms added up. */
+const gauss = (r: () => number) => (r() + r() + r() + r() - 2) * 1.732
 /** Smooth curve through key points (cosine easing between them). */
 function keys(pts: [number, number][]) {
   return (x: number) => {
@@ -55,7 +64,15 @@ function dotAt(x: Ctx, X: number, Y: number, s: number) {
   if (s < 1.8) x.fillRect(X - s / 2, Y - s / 2, s, s)
   else { x.beginPath(); x.arc(X, Y, s / 2, 0, TAU); x.fill() }
 }
+/** A bright bead in a soft halo (a grain catching the light). */
+function bead(x: Ctx, X: number, Y: number, rad: number, a = 1) {
+  const g = x.createRadialGradient(X, Y, 0, X, Y, rad)
+  g.addColorStop(0, `rgba(255,255,255,${0.95 * a})`); g.addColorStop(0.16, `rgba(242,246,255,${0.5 * a})`); g.addColorStop(1, 'rgba(220,228,250,0)')
+  x.fillStyle = g; x.beginPath(); x.arc(X, Y, rad, 0, TAU); x.fill()
+}
+const tick = () => new Promise(r => setTimeout(r, 0))
 
+// ---- sheets of silk (이름표, 막대) ----------------------------------------------------------------
 type Pt = (t: number, v: number) => [number, number]
 type Light = (t: number, v: number) => number
 /**
@@ -64,9 +81,6 @@ type Light = (t: number, v: number) => number
  */
 type Band = { t0: number; t1: number; c: (t: number) => number; h: (t: number) => number; L: Light; vertical?: boolean }
 const bandPt = (b: Band): Pt => (t, v) => { const a = b.c(t) + v * b.h(t); return b.vertical ? [a, t] : [t, a] }
-/** A polar band round (cx, cy): t is the angle. */
-type Ring = { cx: number; cy: number; rc: (t: number) => number; h: (t: number) => number; L: Light }
-const ringPt = (g: Ring): Pt => (t, v) => { const r = g.rc(t) + v * g.h(t); return [g.cx + Math.cos(t) * r, g.cy + Math.sin(t) * r] }
 
 /** Paints a sheet's light as soft quads (blurred afterwards: the seams vanish). */
 function glowSheet(x: Ctx, pt: Pt, L: Light, t0: number, t1: number, K: number, oy: number, steps: number, strips: number) {
@@ -142,7 +156,6 @@ function toUrl(c: HTMLCanvasElement): Promise<string> {
     try { c.toBlob(b => res(b ? URL.createObjectURL(b) : c.toDataURL()), 'image/webp', 0.9) } catch { res(c.toDataURL()) }
   })
 }
-const tick = () => new Promise(r => setTimeout(r, 0))
 
 // ---- 이름표 (canvas units 368×80: the plate plus a margin all round, so it can sway) --------------
 const PW = 368, PH = 80, PK = 5
@@ -161,6 +174,12 @@ const A: Band = {
     return Math.min(1, (base + fold + rim) * (1 - smooth(0.8, 1, Math.abs(v))))
   },
 }
+// C: a thin, sharp ribbon of light arcing up behind the sheet (depth: a second fold further back)
+const cC = keys([[60, 70], [150, 58], [230, 44], [300, 22], [374, 6]])
+const C: Band = {
+  t0: 60, t1: 374, c: cC, h: () => 2.6,
+  L: (t, v) => (0.3 + 0.7 * Math.exp(-(((t - 262) / 40) ** 2))) * smooth(60, 140, t) * (1 - smooth(0.6, 1, Math.abs(v))),
+}
 // B: the dark dune in front, low on the right, its top edge faintly lit
 const duneTop = (t: number) => 52 + 30 * ((t - 300) / 100) ** 2
 const B: Band = {
@@ -172,13 +191,25 @@ const B: Band = {
 const FLOW_W = 92 // flow tile, units wide (× PH tall), repeats sideways
 
 async function paintPlate() {
-  const aPt = bandPt(A), bPt = bandPt(B)
-  // A: the bright sheet
+  const aPt = bandPt(A), bPt = bandPt(B), cPt = bandPt(C)
+  // A: the bright sheet (and the ribbon behind it)
   const a = mk(PW * PK, PH * PK), ax = ctx2(a)
+  sheetLight(ax, cPt, C.L, C.t0, C.t1, PK, 0, 200, 4, { body: 0.35, bloom: 0.5, down: [6, 60], pow: [1.2, 2.2] })
+  await grainSheet(ax, cPt, C.L, C.h, 2.6, C.t0, C.t1, 2600, PK, 0, seeded(2), { size: [0.22, 0.6], gamma: 0.6, alpha: 0.8 })
   sheetLight(ax, aPt, A.L, A.t0, A.t1, PK, 0, 300, 12, { body: 0.55, bloom: 1, down: [12, 100], pow: [1.5, 2.6] })
-  await grainSheet(ax, aPt, A.L, A.h, 26, A.t0, A.t1, 15000, PK, 0, seeded(3), { size: [0.26, 0.85], gamma: 0.7, alpha: 1 })
+  await grainSheet(ax, aPt, A.L, A.h, 26, A.t0, A.t1, 17000, PK, 0, seeded(3), { size: [0.24, 0.85], gamma: 0.7, alpha: 1 })
+  // beads catching the light along the crest
+  ax.save(); ax.globalCompositeOperation = 'lighter'
+  const rb = seeded(4)
+  for (let i = 0; i < 22; i++) {
+    const t = 200 + rb() * 150, v = rb() * 1.6 - 0.8
+    if (rb() > A.L(t, v) + 0.15) continue
+    const [px, py] = aPt(t, v)
+    bead(ax, px * PK, py * PK, (0.9 + 1.6 * rb()) * PK, 0.7 + 0.3 * rb())
+  }
+  ax.restore()
   await tick()
-  // its soft silhouette, to mask the flowing grains
+  // its soft silhouette, to mask the flowing grains and the light running along it
   const am = mk(PW, PH)
   glowSheet(ctx2(am), aPt, (t, v) => Math.min(1, A.L(t, v) * 1.6), A.t0, A.t1, 1, 0, 180, 8)
   // B: the dark dune in front (a soft black body hides A behind it; grains and a lit rim on top)
@@ -189,24 +220,24 @@ async function paintPlate() {
   ox.lineTo(B.t1 * PK, PH * PK + 40); ox.lineTo(B.t0 * PK, PH * PK + 40); ox.closePath(); ox.fill()
   bx.drawImage(soften(occ, 9), 0, 0)
   sheetLight(bx, bPt, B.L, B.t0, B.t1, PK, 0, 200, 12, { body: 0.35, bloom: 0.25, down: [12, 64], pow: [1.3, 2.4] })
-  await grainSheet(bx, bPt, B.L, B.h, 18, B.t0, B.t1, 5200, PK, 0, seeded(5), { size: [0.24, 0.7], gamma: 0.75, alpha: 0.75 })
+  await grainSheet(bx, bPt, B.L, B.h, 18, B.t0, B.t1, 5600, PK, 0, seeded(5), { size: [0.24, 0.7], gamma: 0.75, alpha: 0.78 })
   await tick()
   // loose specks, two sets (they take turns to twinkle)
   const keep = (px: number) => 0.3 + 0.7 * smooth(80, 230, px)
   const s1 = mk(PW * PK, PH * PK), s2 = mk(PW * PK, PH * PK)
-  specks(ctx2(s1), 700, PW, PH, PK, seeded(7), { size: [0.22, 1.0], alpha: [0.4, 1], halo: 0.15, keep })
-  specks(ctx2(s2), 700, PW, PH, PK, seeded(11), { size: [0.22, 1.0], alpha: [0.4, 1], halo: 0.15, keep })
+  specks(ctx2(s1), 760, PW, PH, PK, seeded(7), { size: [0.22, 1.0], alpha: [0.4, 1], halo: 0.16, keep })
+  specks(ctx2(s2), 760, PW, PH, PK, seeded(11), { size: [0.22, 1.0], alpha: [0.4, 1], halo: 0.16, keep })
   // flowing grains: a tile that repeats sideways (grains and faint motion streaks)
   const f = mk(FLOW_W * PK, PH * PK), fx = ctx2(f), r = seeded(13)
   fx.fillStyle = '#fff'; fx.globalCompositeOperation = 'lighter'
-  for (let i = 0; i < 2600; i++) {
+  for (let i = 0; i < 2800; i++) {
     const px = r() * FLOW_W, py = r() * PH, s = (0.25 + 0.55 * Math.pow(r(), 3)) * PK
     fx.globalAlpha = 0.25 + 0.7 * r()
     dotAt(fx, px * PK, py * PK, s)
     if (px < 2) dotAt(fx, (px + FLOW_W) * PK, py * PK, s)
     if (px > FLOW_W - 2) dotAt(fx, (px - FLOW_W) * PK, py * PK, s)
   }
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 130; i++) {
     const px = r() * FLOW_W, py = r() * PH, len = (1.5 + r() * 4.5) * PK
     fx.globalAlpha = 0.06 + 0.16 * r()
     fx.fillRect(px * PK, py * PK, len, 0.2 * PK); fx.fillRect((px - FLOW_W) * PK, py * PK, len, 0.2 * PK)
@@ -214,53 +245,135 @@ async function paintPlate() {
   return { a, am, b, s1, s2, f }
 }
 
-// ---- frame (canvas units 160×160 round the photo, which is the circle r=50 at the centre) ------
-const FK = 4
-const RA: Ring = {
-  cx: 80, cy: 80,
-  rc: t => 63.5 + 3.6 * Math.sin(2 * t + 0.6),
-  h: t => 2.4 + 7.2 * (0.5 + 0.5 * Math.sin(t + 0.9)) ** 2,
-  L: (t, v) => Math.min(1, (0.1 + 0.07 * (1 - Math.abs(v)) + 1 * Math.exp(-((angDiff(t, 3.81) / 0.45) ** 2)) + 0.34 * Math.exp(-((angDiff(t, 3.81) / 1.2) ** 2)) + 0.55 * Math.exp(-((angDiff(t, 0.7) / 0.35) ** 2)) + 0.2 * Math.exp(-(((v - 0.8) / 0.2) ** 2))) * (1 - smooth(0.78, 1, Math.abs(v)))),
+// ---- frame (units: the photo is 100 across, centred) ------------------------------------------
+// A black disc of space behind the photo (soft-edged, so it reads on white as well as on black)
+// with a galaxy of silver dust round it: spiral arms of grains, trailing as it turns, and stars.
+const GAL_U = 160, GAL_K = 3.2 // the layer is the frame box at inset −30%
+async function paintGalaxy(o: { seed: number; disc: boolean; arms: number; n: number; wind: number; phase: number; alpha: number }) {
+  const S = GAL_U * GAL_K, Cc = GAL_U / 2, r = seeded(o.seed)
+  const c = mk(S, S), x = ctx2(c)
+  if (o.disc) {
+    const g = x.createRadialGradient(Cc * GAL_K, Cc * GAL_K, 0, Cc * GAL_K, Cc * GAL_K, Cc * GAL_K)
+    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.64, 'rgba(0,0,0,1)'); g.addColorStop(0.76, 'rgba(2,2,3,0.78)')
+    g.addColorStop(0.88, 'rgba(4,4,6,0.28)'); g.addColorStop(0.97, 'rgba(6,6,8,0)')
+    x.fillStyle = g; x.fillRect(0, 0, S, S)
+  }
+  // arm k at radius rr: angle = phase + k·τ/arms + wind·ln(rr / 52) (wind < 0: arms trail a clockwise turn)
+  const armAt = (k: number, rr: number) => o.phase + (k * TAU) / o.arms + o.wind * Math.log(rr / 52)
+  const light = (rr: number) => Math.exp(-(rr - 53) / 11) * (1 - smooth(66, 75, rr))
+  // their glow (small, blurred)
+  const q = mk(S / 4, S / 4), qx = ctx2(q), qk = GAL_K / 4
+  for (let k = 0; k < o.arms; k++) for (let rr = 51; rr < 74; rr += 0.5) {
+    const a = armAt(k, rr), w = 1.2 + (rr - 50) * 0.12
+    qx.fillStyle = `rgba(228,234,248,${(0.5 * light(rr) * o.alpha).toFixed(3)})`
+    qx.beginPath(); qx.arc((Cc + Math.cos(a) * rr) * qk, (Cc + Math.sin(a) * rr) * qk, w * qk * 1.6, 0, TAU); qx.fill()
+  }
+  x.save(); x.globalCompositeOperation = 'lighter'; x.drawImage(soften(q, 4), 0, 0, S, S); x.restore()
+  // the grains
+  const begin = () => { x.save(); x.fillStyle = '#fff'; x.globalCompositeOperation = 'lighter' }
+  begin()
+  for (let i = 0; i < o.n; i++) {
+    const rr = 51 + 24 * r() ** 1.5, k = Math.floor(r() * o.arms)
+    const spread = 0.05 + 0.2 * ((rr - 50) / 30)
+    const a = armAt(k, rr) + gauss(r) * spread * (r() < 0.2 ? 2.5 : 1)
+    const l = light(rr)
+    x.globalAlpha = Math.min(1, (0.25 + 0.75 * r()) * (0.35 + 0.65 * l) * o.alpha)
+    dotAt(x, (Cc + Math.cos(a) * rr) * GAL_K, (Cc + Math.sin(a) * rr) * GAL_K, (0.28 + 0.6 * r() ** 3.5 + 0.35 * l * r()) * GAL_K)
+    if (i % 2500 === 2499) { x.restore(); await tick(); begin() }
+  }
+  // stars scattered through the dark, a few catching the light
+  for (let i = 0; i < 220; i++) {
+    const a = r() * TAU, rr = 52 + 22 * Math.sqrt(r())
+    x.globalAlpha = (0.2 + 0.6 * r()) * o.alpha
+    dotAt(x, (Cc + Math.cos(a) * rr) * GAL_K, (Cc + Math.sin(a) * rr) * GAL_K, (0.25 + 0.4 * r() ** 3) * GAL_K)
+  }
+  x.restore()
+  x.save(); x.globalCompositeOperation = 'lighter'
+  for (let i = 0; i < 9; i++) { const a = r() * TAU, rr = 54 + 17 * r(); bead(x, (Cc + Math.cos(a) * rr) * GAL_K, (Cc + Math.sin(a) * rr) * GAL_K, (1.2 + 1.6 * r()) * GAL_K, o.alpha) }
+  x.restore()
+  return c
 }
-const RB: Ring = {
-  cx: 80, cy: 80,
-  rc: t => 70 + 4.5 * Math.sin(3 * t + 2.1),
-  h: t => 3.4 + 5.2 * (0.5 + 0.5 * Math.cos(2 * t + 0.4)) ** 1.5,
-  L: (t, v) => (0.08 + 0.45 * Math.exp(-((angDiff(t, 1.1) / 0.5) ** 2)) + 0.1 * Math.exp(-(((v + 0.85) / 0.2) ** 2))) * (1 - smooth(0.72, 1, Math.abs(v))),
+// Stardust rings (seen flat here; the markup tilts them): grains in a thin band round a circle,
+// clumped, with a comet — a bright, dense head and a long tail — so the turning shows.
+const ORB_U = 192, ORB_K = 3, ORB_R = 70
+async function paintOrbit(o: { seed: number; n: number; head: number; tail: number; w: number; clumps: [number, number, number][] }) {
+  const S = ORB_U * ORB_K, Cc = ORB_U / 2, r = seeded(o.seed)
+  const c = mk(S, S), x = ctx2(c)
+  const wrap = (t: number) => ((t % TAU) + TAU) % TAU
+  // it turns clockwise: brightest at the head, a long tail behind it, a quick fade ahead
+  const comet = (t: number) => { const p = wrap(t - o.head + o.tail); return p <= o.tail ? (p / o.tail) ** 2.4 : Math.exp(-(((p - o.tail) / 0.09) ** 2)) }
+  const clump = (t: number) => o.clumps.reduce((s, [ang, w, h]) => s + h * Math.exp(-((angDiff(t, ang) / w) ** 2)), 0)
+  const dens = (t: number) => 0.2 + clump(t) + 1.2 * comet(t)
+  // soft light along it (painted small, blurred), brighter along the comet
+  const g = mk(S / 4, S / 4), gx = ctx2(g), gk = ORB_K / 4
+  gx.lineCap = 'round'
+  for (let i = 0; i < 240; i++) {
+    const t0 = (i / 240) * TAU, l = Math.min(1, 0.07 + 0.3 * clump(t0) + comet(t0))
+    gx.strokeStyle = `rgba(232,238,250,${l.toFixed(3)})`; gx.lineWidth = (2 + 3.5 * comet(t0)) * gk
+    gx.beginPath(); gx.arc(Cc * gk, Cc * gk, ORB_R * gk, t0, t0 + (1.4 / 240) * TAU); gx.stroke()
+  }
+  x.save(); x.globalCompositeOperation = 'lighter'
+  x.globalAlpha = 0.85; x.drawImage(soften(g, 9), 0, 0, S, S)
+  x.globalAlpha = 0.6; x.drawImage(soften(g, 2), 0, 0, S, S)
+  x.restore()
+  // the grains
+  const begin = () => { x.save(); x.fillStyle = '#fff'; x.globalCompositeOperation = 'lighter' }
+  begin()
+  let drawn = 0, tries = 0
+  while (drawn < o.n && tries < o.n * 20) {
+    tries++
+    const t = r() * TAU
+    if (r() * 2.6 > dens(t)) continue
+    const wide = r() < 0.28, off = gauss(r) * o.w * (wide ? 3.4 : 1), cm = comet(t)
+    x.globalAlpha = Math.min(1, (0.22 + 0.55 * r() + 0.45 * cm) * (wide ? 0.6 : 1))
+    const s = (0.32 + 0.9 * r() ** 3.4 + 0.5 * cm * r()) * ORB_K
+    dotAt(x, (Cc + Math.cos(t) * (ORB_R + off)) * ORB_K, (Cc + Math.sin(t) * (ORB_R + off)) * ORB_K, s)
+    if (++drawn % 2500 === 0) { x.restore(); await tick(); begin() }
+  }
+  x.restore()
+  // beads that catch the light, most of them on the comet
+  x.save(); x.globalCompositeOperation = 'lighter'
+  for (let i = 0; i < 16; i++) {
+    const t = i < 6 ? o.head - r() * o.tail * 0.6 : r() * TAU, rr = ORB_R + gauss(r) * o.w
+    bead(x, (Cc + Math.cos(t) * rr) * ORB_K, (Cc + Math.sin(t) * rr) * ORB_K, (1.5 + 2.3 * r()) * ORB_K)
+  }
+  x.restore()
+  return c
+}
+/** A lens glint: a hot core in a bloom, long thin rays (the horizontal pair longest), faint diagonals. */
+function paintGlint() {
+  const S = 160, Cc = S / 2, c = mk(S, S), x = ctx2(c)
+  x.globalCompositeOperation = 'lighter'
+  const bloom = (rad: number, a: number) => {
+    const g = x.createRadialGradient(Cc, Cc, 0, Cc, Cc, rad)
+    g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(0.25, `rgba(236,241,255,${a * 0.4})`); g.addColorStop(1, 'rgba(210,220,245,0)')
+    x.fillStyle = g; x.beginPath(); x.arc(Cc, Cc, rad, 0, TAU); x.fill()
+  }
+  const ray = (ang: number, len: number, w: number, a: number) => {
+    x.save(); x.translate(Cc, Cc); x.rotate(ang)
+    const g = x.createLinearGradient(0, 0, len, 0)
+    g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(0.3, `rgba(240,244,255,${a * 0.5})`); g.addColorStop(1, 'rgba(230,236,255,0)')
+    x.fillStyle = g; x.beginPath(); x.moveTo(0, -w); x.quadraticCurveTo(len * 0.2, -w * 0.2, len, 0); x.quadraticCurveTo(len * 0.2, w * 0.2, 0, w); x.closePath(); x.fill()
+    x.restore()
+  }
+  bloom(Cc * 0.55, 0.5)
+  ray(0, Cc, 2.6, 1); ray(Math.PI, Cc, 2.6, 1); ray(Math.PI / 2, Cc * 0.66, 2.1, 0.9); ray(-Math.PI / 2, Cc * 0.66, 2.1, 0.9)
+  for (const q of [1, 3, 5, 7]) ray((q * Math.PI) / 4, Cc * 0.3, 1.2, 0.45)
+  bloom(Cc * 0.14, 1)
+  // a faint halo ring, as a lens leaves
+  x.strokeStyle = 'rgba(190,212,255,0.13)'; x.lineWidth = 1.6; x.beginPath(); x.arc(Cc, Cc, Cc * 0.42, 0, TAU); x.stroke()
+  return c
 }
 async function paintFrame() {
-  const S = 160 * FK
-  const aPt = ringPt(RA), bPt = ringPt(RB)
-  const ra = mk(S, S), rax = ctx2(ra)
-  sheetLight(rax, aPt, RA.L, 0, TAU, FK, 0, 400, 10, { body: 0.7, bloom: 1, down: [9, 81], pow: [1.4, 2.6] })
-  await grainSheet(rax, aPt, RA.L, RA.h, 9.6, 0, TAU, 9000, FK, 0, seeded(17), { size: [0.28, 0.85], gamma: 0.7, alpha: 1 })
-  const ram = mk(160, 160)
-  glowSheet(ctx2(ram), aPt, (t, v) => Math.min(1, RA.L(t, v) * 1.7), 0, TAU, 1, 0, 240, 6)
-  await tick()
-  const rb = mk(S, S), rbx = ctx2(rb)
-  sheetLight(rbx, bPt, RB.L, 0, TAU, FK, 0, 300, 8, { body: 0.35, bloom: 0.3, down: [9, 64], pow: [1.5, 2.8] })
-  await grainSheet(rbx, bPt, RB.L, RB.h, 8.6, 0, TAU, 4200, FK, 0, seeded(19), { size: [0.26, 0.7], gamma: 0.75, alpha: 0.8 })
-  await tick()
-  // grains streaming round (turned faster inside A's silhouette)
-  const rf = mk(S, S), rfx = ctx2(rf), r = seeded(23)
-  rfx.fillStyle = '#fff'; rfx.globalCompositeOperation = 'lighter'
-  for (let i = 0; i < 3600; i++) {
-    const t = r() * TAU, rad = 52 + r() * 28
-    rfx.globalAlpha = 0.25 + 0.7 * r()
-    dotAt(rfx, (80 + Math.cos(t) * rad) * FK, (80 + Math.sin(t) * rad) * FK, (0.26 + 0.5 * Math.pow(r(), 3)) * FK)
-  }
-  rfx.lineCap = 'round'; rfx.strokeStyle = '#fff'; rfx.lineWidth = 0.22 * FK
-  for (let i = 0; i < 280; i++) {
-    const t = r() * TAU, rad = 54 + r() * 24, len = 0.03 + r() * 0.07
-    rfx.globalAlpha = 0.1 + 0.25 * r()
-    rfx.beginPath(); rfx.arc(80 * FK, 80 * FK, rad * FK, t, t + len); rfx.stroke()
-  }
-  const rs = mk(S, S)
-  specks(ctx2(rs), 460, 160, 160, FK, seeded(29), { size: [0.24, 0.95], alpha: [0.35, 1], halo: 0.16, keep: (px, py) => { const d = Math.hypot(px - 80, py - 80); return d < 52 ? 0 : d > 80 ? 0.15 : 1 } })
-  return { ra, ram, rb, rf, rs }
+  const gA = await paintGalaxy({ seed: 71, disc: true, arms: 3, n: 7000, wind: -1.9, phase: 0.4, alpha: 1 })
+  const gB = await paintGalaxy({ seed: 73, disc: false, arms: 2, n: 3200, wind: -1.2, phase: 2.1, alpha: 0.55 })
+  const o1 = await paintOrbit({ seed: 79, n: 3600, head: 5.2, tail: 2.3, w: 1.1, clumps: [[1.2, 0.35, 0.4], [2.6, 0.25, 0.3], [3.9, 0.5, 0.2]] })
+  const o2 = await paintOrbit({ seed: 83, n: 2600, head: 2.1, tail: 1.7, w: 1.4, clumps: [[4.4, 0.4, 0.35], [0.2, 0.3, 0.25]] })
+  return { gA, gB, o1, o2, g: paintGlint() }
 }
 
-// ---- 막대 스킨 (a 32×120 tile that repeats up the bar) ---------------------------------------------
+// ---- 막대 스킨 ------------------------------------------------------------------------------------
+// The silk inside: a 32×120 tile that repeats up the channel.
 const BK = 4, BT = 120
 const BAR: Band = {
   vertical: true, t0: -BT, t1: 2 * BT,
@@ -293,6 +406,39 @@ async function paintBar() {
   }
   return { s, q }
 }
+// The double helix of stardust round the pillar: a tile HX_T tall (px on screen) and 1.9 × the
+// pillar wide, in two layers — the strands' near side (drawn over the pillar) and far side
+// (behind it, showing past its edges). Rising, it seems to turn.
+const HX_T = 60, HX_W = 48, HX_K = 4, HX_A = 15.5
+async function paintHelix() {
+  const W = HX_W * HX_K, H = HX_T * HX_K, r = seeded(67)
+  const front = mk(W, H), back = mk(W, H), fx = ctx2(front), bx = ctx2(back)
+  for (const x of [fx, bx]) { x.fillStyle = '#fff'; x.globalCompositeOperation = 'lighter' }
+  // fine glitter along two strands, split near/far with a soft crossover at the sides; thinned out
+  // in places so it sparkles as a trail of dust rather than a stripe
+  for (let i = 0; i < 1150; i++) {
+    const t = r() * HX_T, ang = (TAU * t) / HX_T + (i & 1) * Math.PI, z = Math.cos(ang), near = (z + 1) / 2
+    if (r() > 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(ang * 3 + (i & 1) * 2))) continue
+    const px = HX_W / 2 + HX_A * Math.sin(ang) + gauss(r) * (r() < 0.25 ? 2.2 : 0.6), py = t + gauss(r) * 0.7
+    const sz = (0.24 + 0.34 * near + 0.5 * r() ** 5) * HX_K, al = (0.14 + 0.5 * near) * (0.3 + 0.7 * r())
+    const wf = smooth(-0.2, 0.2, z)
+    for (const [x, w] of [[fx, wf], [bx, (1 - wf) * 0.75]] as [Ctx, number][]) {
+      if (w < 0.01) continue
+      x.globalAlpha = al * w
+      for (const dy of py < 3 ? [0, HX_T] : py > HX_T - 3 ? [0, -HX_T] : [0]) dotAt(x, px * HX_K, (py + dy) * HX_K, sz)
+    }
+  }
+  await tick()
+  // a few beads on the near side, catching the light
+  fx.globalAlpha = 1
+  for (let i = 0, n = 0; n < 3 && i < 40; i++) {
+    const t = r() * HX_T, ang = (TAU * t) / HX_T + (i & 1) * Math.PI
+    if (Math.cos(ang) < 0.5) continue
+    n++
+    bead(fx, (HX_W / 2 + HX_A * Math.sin(ang)) * HX_K, t * HX_K, (1.1 + 0.9 * r()) * HX_K)
+  }
+  return { front, back }
+}
 
 /** Film grain: sparse light specks, tiled over the art and jittered a few times a second. */
 function paintNoise() {
@@ -313,53 +459,91 @@ export function ensureSilverArt() {
   setTimeout(() => { paintAll().catch(() => { /* no canvas: the layers stay empty */ }) }, 0)
 }
 async function paintAll() {
-  const p = await paintPlate(); await tick()
-  const f = await paintFrame(); await tick()
-  const b = await paintBar(); await tick()
-  const n = paintNoise()
   const bg = (cls: string, c: HTMLCanvasElement) => toUrl(c).then(u => `.${cls}{background-image:url(${u})}`)
   const mask = (cls: string, c: HTMLCanvasElement) => toUrl(c).then(u => `.${cls}{-webkit-mask-image:url(${u});mask-image:url(${u})}`)
-  const rules = await Promise.all([
+  // each piece gets its stylesheet as soon as it's painted (the frame first: it's on the most screens)
+  const add = async (id: string, rules: Promise<string>[]) => {
+    const style = document.createElement('style')
+    style.id = id
+    style.textContent = (await Promise.all(rules)).join('\n')
+    document.head.appendChild(style)
+  }
+  const f = await paintFrame()
+  await add('silver-art-frame', [bg('sl-iGA', f.gA), bg('sl-iGB', f.gB), bg('sl-iO1', f.o1), bg('sl-iO2', f.o2), bg('sl-iG', f.g)])
+  await tick()
+  const b = await paintBar()
+  const h = await paintHelix()
+  await add('silver-art-bar', [bg('sl-iBS', b.s), bg('sl-iBG', b.q), bg('sl-iHF', h.front), bg('sl-iHB', h.back)])
+  await tick()
+  const p = await paintPlate()
+  await add('silver-art', [
     bg('sl-iA', p.a), mask('sl-iAm', p.am), bg('sl-iB', p.b), bg('sl-iS1', p.s1), bg('sl-iS2', p.s2), bg('sl-iF', p.f),
-    bg('sl-iRA', f.ra), mask('sl-iRAm', f.ram), bg('sl-iRB', f.rb), bg('sl-iRF', f.rf), bg('sl-iRS', f.rs),
-    bg('sl-iBS', b.s), bg('sl-iBG', b.q), bg('sl-iN', n),
+    bg('sl-iN', paintNoise()),
   ])
-  const style = document.createElement('style')
-  style.id = 'silver-art'
-  style.textContent = rules.join('\n')
-  document.head.appendChild(style)
 }
 
 // ---- markup ------------------------------------------------------------------------------------
-const ring = (a: number, b: number) => `-webkit-mask:radial-gradient(closest-side,transparent ${a}%,#000 ${a + 1}%,#000 ${b}%,transparent ${b + 1}%);mask:radial-gradient(closest-side,transparent ${a}%,#000 ${a + 1}%,#000 ${b}%,transparent ${b + 1}%)`
-/** The badge sparkle from the design, centred on 0,0 (size ≈ 20). */
-export const SPARKLE_PATH = 'M0 -9.4C.55 -9.4 .88 -8.85 1.08 -7.3c.62 4.7 1.52 5.6 6.22 6.22 1.55.2 2.1.53 2.1 1.08s-.55.88-2.1 1.08c-4.7.62-5.6 1.52-6.22 6.22-.2 1.55-.53 2.1-1.08 2.1s-.88-.55-1.08-2.1c-.62-4.7-1.52-5.6-6.22-6.22C-8.85 .88-9.4 .55-9.4 0s.55-.88 2.1-1.08c4.7-.62 5.6-1.52 6.22-6.22C-.88 -8.85-.55 -9.4 0 -9.4Z'
-const sparkle = (x: number, y: number, s: number, delay: number) =>
-  `<g transform="translate(${x} ${y}) scale(${s})"><path d="${SPARKLE_PATH}" fill="#ffffff" class="sl-spark" style="transform-box:fill-box;transform-origin:center;animation:krTwinkle 2.8s ease-in-out ${delay}s infinite;opacity:0"></path></g>`
-const METAL = 'conic-gradient(from 0deg,#0a0a0a,#5a5a5a 9%,#f5f5f5 15%,#8a8a8a 21%,#1a1a1a 33%,#3a3a3a 46%,#d8d8d8 54%,#ffffff 58%,#6a6a6a 64%,#0e0e0e 77%,#7a7a7a 89%,#0a0a0a)'
 const IMG = 'background-repeat:no-repeat;background-position:center;background-size:100% 100%'
-const MASK = '-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;-webkit-mask-size:100% 100%;mask-size:100% 100%'
+/** An annulus mask (percent of the box's half size). */
+const ring = (a: number, b: number) => `-webkit-mask:radial-gradient(closest-side,transparent ${a}%,#000 ${a + 0.5}%,#000 ${b - 0.5}%,transparent ${b}%);mask:radial-gradient(closest-side,transparent ${a}%,#000 ${a + 0.5}%,#000 ${b - 0.5}%,transparent ${b}%)`
+/** A lens glint flashing now and then (left/top in %, size in `unit`). */
+const glint = (left: number, top: number, size: number, delay: number, dur: number, unit = '%') =>
+  `<div class="sl-glint sl-iG" style="position:absolute;left:${left}%;top:${top}%;width:${size}${unit};height:${size}${unit};margin:calc(${size}${unit} / -2) 0 0 calc(${size}${unit} / -2);${IMG};opacity:0;pointer-events:none;animation:slGlint ${dur}s ease-out ${delay}s infinite"></div>`
+
+// Chrome: a polished tube seen from above — its cross-section is the pattern of light across the
+// ring (a crisp highlight on the inner lip, a black horizon band, a bright lower band, dark edges),
+// with soft reflections turning round it both ways (so it seems to flow like liquid metal), a key
+// light from the top left and two hot spots. Ring box = the photo box at inset −10% (the photo's
+// edge at 83.3% of its half size); the chrome runs to 96.2%.
+const CHROME_BASE = 'radial-gradient(closest-side,#141414 83.3%,#f7f7f7 84.4%,#cfcfcf 85.8%,#5e5e5e 87.6%,#0a0a0a 89.3%,#1f1f1f 90.7%,#c4c4c4 92.3%,#fcfcfc 93.8%,#8d8d8d 95.1%,#161616 96.2%)'
+const CHROME_A = 'conic-gradient(from 0deg,rgba(255,255,255,0) 0deg,rgba(255,255,255,0.55) 26deg,rgba(255,255,255,0) 52deg,rgba(0,0,0,0.55) 96deg,rgba(0,0,0,0) 140deg,rgba(255,255,255,0.4) 176deg,rgba(255,255,255,0) 206deg,rgba(0,0,0,0.6) 252deg,rgba(0,0,0,0) 296deg,rgba(255,255,255,0.5) 330deg,rgba(255,255,255,0) 360deg)'
+const CHROME_B = 'conic-gradient(from 60deg,rgba(255,255,255,0) 0deg,rgba(255,255,255,0.7) 10deg,rgba(255,255,255,0) 22deg,rgba(255,255,255,0) 150deg,rgba(255,255,255,0.6) 158deg,rgba(255,255,255,0) 168deg,rgba(0,0,0,0) 220deg,rgba(0,0,0,0.5) 250deg,rgba(0,0,0,0) 280deg)'
+// sky above, warm ground below: the faint colour casts real chrome picks up
+const TINT = 'linear-gradient(180deg,rgba(150,182,255,0.16) 0%,rgba(150,182,255,0) 44%,rgba(255,206,160,0) 60%,rgba(255,206,160,0.13) 100%)'
+const KEY = 'radial-gradient(circle at 22% 19%,rgba(255,255,255,1) 0,rgba(255,255,255,0.5) 2.4%,rgba(255,255,255,0) 7%),radial-gradient(circle at 81% 84%,rgba(255,255,255,0.8) 0,rgba(255,255,255,0.25) 2%,rgba(255,255,255,0) 5.5%),linear-gradient(135deg,rgba(255,255,255,0.22) 0%,rgba(255,255,255,0) 40%,rgba(0,0,0,0) 60%,rgba(0,0,0,0.4) 100%)'
+// Every layer carries its own annulus mask: the mask is round, so a turning layer looks the same
+// with it baked in (drawn once), and the GPU only has to turn it — a still mask over turning
+// layers would have to be applied again every frame.
+const R = ring(82.9, 96.4)
+const CHROME =
+  // the photo's edge sinks into the metal
+  `<div style="position:absolute;inset:-10%;border-radius:50%;${ring(72, 83.6)};background:radial-gradient(closest-side,rgba(0,0,0,0) 72%,rgba(0,0,0,0.5) 83.6%)"></div>` +
+  `<div style="position:absolute;inset:-10%;border-radius:50%;${R};background:${CHROME_BASE}"></div>` +
+  `<div class="sl-ring" style="position:absolute;inset:-10%;border-radius:50%;${R};background:${CHROME_A};animation:avSpin 11s linear infinite"></div>` +
+  `<div class="sl-ring" style="position:absolute;inset:-10%;border-radius:50%;${R};background:${CHROME_B};animation:avSpin 6.5s linear infinite reverse"></div>` +
+  `<div style="position:absolute;inset:-10%;border-radius:50%;${R};background:${KEY},${TINT}"></div>` +
+  // now and then a streak of light races once round the metal
+  `<div class="sl-zip" style="position:absolute;inset:-10%;border-radius:50%;${R};background:conic-gradient(from 0deg,rgba(255,255,255,0) 0deg,rgba(255,255,255,0) 318deg,rgba(255,255,255,0.35) 340deg,#ffffff 356deg,rgba(255,255,255,0) 360deg);opacity:0;animation:slZip 4.8s cubic-bezier(.5,0,.3,1) 1.2s infinite"></div>` +
+  // a dark line round the outside, so it stays crisp on white
+  `<div style="position:absolute;inset:-10%;border-radius:50%;${ring(96, 97.8)};background:rgba(0,0,0,0.75)"></div>`
+
+// Stardust rings: flat texture → squashed (tilted away) → tilted sideways, turning in their own
+// plane. The far half (upper) goes behind the photo, the near half (lower) in front of it.
+const ORB_INSET = 46 // % — the texture box (192 units: ring radius 70)
+const ORBITS = [
+  { cls: 'sl-iO1', tilt: -14, squash: 0.3, dur: 12, flip: false },
+  { cls: 'sl-iO2', tilt: 26, squash: 0.2, dur: 18, flip: true },
+]
+// (a rectangular clip, not a mask: the GPU clips for free)
+const halfClip = (near: boolean) => `clip-path:inset(${near ? '50% 0 0 0' : '0 0 50% 0'})`
+const orbitHalf = (o: typeof ORBITS[number], near: boolean) =>
+  `<div style="position:absolute;inset:-${ORB_INSET}%;transform:rotate(${o.tilt}deg)"><div style="position:absolute;inset:0;${halfClip(near)}">` +
+  `<div style="position:absolute;inset:0;transform:scale(${o.flip ? -1 : 1},${o.squash})">` +
+  `<div class="sl-orbit ${o.cls}" style="position:absolute;inset:0;${IMG};animation:avSpin ${o.dur}s linear infinite"></div>` +
+  `</div></div></div>`
 
 export const SILVER_AVATAR: { before: string; after: string } = {
   before:
-    // a dark halo so the silver reads on any background
-    `<div style="position:absolute;inset:-30%;border-radius:50%;background:radial-gradient(closest-side,#000 90%,rgba(0,0,0,0.7) 95%,transparent 100%)"></div>`,
+    // the disc of space and its galaxy, turning; a fainter, faster layer of dust over it
+    `<div class="sl-rot sl-iGA" style="position:absolute;inset:-30%;${IMG};animation:avSpin 34s linear infinite"></div>` +
+    `<div class="sl-rot sl-iGB" style="position:absolute;inset:-30%;${IMG};animation:avSpin 19s linear infinite"></div>` +
+    ORBITS.map(o => orbitHalf(o, false)).join(''),
   after:
-    // the dim sheet behind, turning one way
-    `<div class="sl-rot" style="position:absolute;inset:-30%;animation:avSpin 28s linear infinite reverse"><div class="sl-iRB" style="position:absolute;inset:0;${IMG}"></div></div>` +
-    // the bright sheet, turning the other way, with grains streaming round inside it
-    `<div class="sl-rot" style="position:absolute;inset:-30%;animation:avSpin 16s linear infinite">` +
-    `<div class="sl-iRA" style="position:absolute;inset:0;${IMG}"></div>` +
-    `<div class="sl-iRAm" style="position:absolute;inset:0;${MASK}"><div class="sl-rot sl-iRF" style="position:absolute;inset:0;${IMG};animation:avSpin 5s linear infinite"></div></div>` +
-    `</div>` +
-    // loose specks, breathing
-    `<div class="sl-tw sl-iRS" style="position:absolute;inset:-30%;${IMG};animation:slTw 3s ease-in-out infinite alternate"></div>` +
-    // a fine liquid-metal edge on the photo
-    `<div class="sl-ring" style="position:absolute;inset:-12%;border-radius:50%;background:${METAL};${ring(80.6, 83.4)};animation:avSpin 6s linear infinite"></div>` +
-    `<div class="sl-ring" style="position:absolute;inset:-12%;border-radius:50%;background:conic-gradient(from 0deg,transparent 0 72%,rgba(255,255,255,0.9) 94%,transparent 100%);${ring(80.6, 83.4)};animation:avSpin 2.4s linear infinite reverse"></div>` +
-    `<svg viewBox="0 0 120 120" style="position:absolute;inset:-10%;width:120%;height:120%;overflow:visible">` +
-    sparkle(100, 16, 0.55, 0) + sparkle(16, 98, 0.4, 1.4) +
-    `</svg>`,
+    // a ring of light pulsing out of the chrome, over the dark
+    `<div class="sl-wave" style="position:absolute;inset:-10%;border-radius:50%;background:radial-gradient(closest-side,rgba(235,240,255,0) 90%,rgba(235,240,255,0.6) 95%,rgba(235,240,255,0) 98.5%);opacity:0;animation:slWave 3.6s cubic-bezier(.2,.6,.3,1) infinite"></div>` +
+    CHROME +
+    ORBITS.map(o => orbitHalf(o, true)).join('') +
+    glint(14, 14, 50, 0.3, 3.8) + glint(88, 86, 34, 2.1, 4.6) + glint(88, 16, 22, 3.3, 5.3),
 }
 
 // The 이름표's layers are the plate plus a margin (so they can sway), cover-fitted. On a plate the
@@ -368,14 +552,19 @@ export const SILVER_AVATAR: { before: string; after: string } = {
 const LAYER = 'position:absolute;inset:-20% -8%'
 const FIT = 'background-repeat:no-repeat;background-size:cover;background-position:50% center'
 const FIT_MASK = '-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-size:cover;mask-size:cover;-webkit-mask-position:50% center;mask-position:50% center'
+// polished chrome bezel: reflection bands, with two highlights running round it
+const BEZEL = 'conic-gradient(from 200deg,#3a3a3a,#f2f2f2 8%,#6a6a6a 16%,#1a1a1a 28%,#9a9a9a 40%,#ffffff 46%,#5a5a5a 54%,#141414 66%,#b0b0b0 78%,#2a2a2a 90%,#3a3a3a)'
 export const SILVER_PLATE =
   `<div style="position:absolute;inset:0;overflow:hidden;border-radius:14px;background:#000">` +
   // everything dims toward the name on the left
   `<div style="position:absolute;inset:0;-webkit-mask-image:linear-gradient(90deg,rgba(0,0,0,0.4) 0%,#000 44%);mask-image:linear-gradient(90deg,rgba(0,0,0,0.4) 0%,#000 44%)">` +
-  // the bright sheet, swaying, grains flowing along it
+  // the bright sheet, swaying, grains flowing along it and a sheen of light running down it
   `<div class="sl-sway" style="${LAYER};animation:slSwayA 9s ease-in-out infinite alternate">` +
   `<div class="sl-iA" style="position:absolute;inset:0;${FIT}"></div>` +
-  `<div class="sl-iAm" style="position:absolute;inset:0;${FIT_MASK};container-type:size"><div class="sl-flow sl-iF" style="--tw:calc(100cqh * ${(FLOW_W / PH).toFixed(4)});position:absolute;top:0;bottom:0;left:calc(-1 * var(--tw));width:calc(100% + var(--tw));background-repeat:repeat-x;background-size:auto 100%;will-change:transform;animation:slFlowT 6s linear infinite"></div></div>` +
+  `<div class="sl-iAm" style="position:absolute;inset:0;${FIT_MASK};container-type:size">` +
+  `<div class="sl-flow sl-iF" style="--tw:calc(100cqh * ${(FLOW_W / PH).toFixed(4)});position:absolute;top:0;bottom:0;left:calc(-1 * var(--tw));width:calc(100% + var(--tw));background-repeat:repeat-x;background-size:auto 100%;will-change:transform;animation:slFlowT 6s linear infinite"></div>` +
+  `<div class="sl-sheen" style="position:absolute;top:0;bottom:0;left:0;width:30%;transform:translateX(-110%);background:linear-gradient(100deg,rgba(255,255,255,0) 0%,rgba(255,255,255,0.1) 30%,rgba(255,255,255,0.8) 50%,rgba(255,255,255,0.1) 70%,rgba(255,255,255,0) 100%);animation:slSheen 5.2s cubic-bezier(.45,0,.3,1) infinite"></div>` +
+  `</div>` +
   `</div>` +
   // the dark dune in front, swaying against it
   `<div class="sl-sway" style="${LAYER};animation:slSwayB 12s ease-in-out infinite alternate"><div class="sl-iB" style="position:absolute;inset:0;${FIT}"></div></div>` +
@@ -384,20 +573,28 @@ export const SILVER_PLATE =
   `<div class="sl-tw sl-iS2" style="${LAYER};${FIT};animation:slTw 2.6s ease-in-out -1.3s infinite alternate"></div>` +
   `</div>` +
   // film grain
-  `<div class="sl-grain sl-iN" style="position:absolute;inset:-50%;background-repeat:repeat;background-size:128px 128px;opacity:0.32;animation:slGrain 0.9s steps(1) infinite"></div>` +
-  `<svg viewBox="0 0 320 56" preserveAspectRatio="xMaxYMid slice" style="position:absolute;inset:0;width:100%;height:100%">${sparkle(302, 12, 0.5, 0.4)}</svg>` +
+  `<div class="sl-grain sl-iN" style="position:absolute;inset:-50%;background-repeat:repeat;background-size:128px 128px;opacity:0.3;animation:slGrain 0.9s steps(1) infinite"></div>` +
+  // glints flashing on the crest
+  `<div style="position:absolute;inset:0;container-type:size;pointer-events:none">${glint(67, 33, 74, 0.6, 4.4, 'cqh')}${glint(80, 60, 52, 2.5, 4.4, 'cqh')}${glint(92, 22, 44, 3.7, 5.2, 'cqh')}</div>` +
   `</div>` +
-  // liquid-metal edge: a silver hairline with a light running round it
-  `<div style="position:absolute;inset:0;border-radius:14px;padding:1px;overflow:hidden;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);z-index:3;pointer-events:none;background:rgba(198,198,198,0.5)">` +
-  `<div class="sl-ring" style="position:absolute;left:-25%;top:50%;width:150%;padding-top:150%;margin-top:-75%;background:conic-gradient(from 0deg,transparent 0 32%,#8a8a8a 42%,#ffffff 50%,#8a8a8a 58%,transparent 68%);animation:avSpin 4s linear infinite"></div></div>`
+  // the chrome bezel
+  `<div style="position:absolute;inset:0;border-radius:14px;padding:1.6px;overflow:hidden;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);z-index:3;pointer-events:none;background:#6a6a6a">` +
+  `<div style="position:absolute;left:-25%;top:50%;width:150%;padding-top:150%;margin-top:-75%;background:${BEZEL}"></div>` +
+  `<div class="sl-ring" style="position:absolute;left:-25%;top:50%;width:150%;padding-top:150%;margin-top:-75%;background:conic-gradient(from 0deg,rgba(255,255,255,0) 0 34%,rgba(255,255,255,0.9) 42%,#ffffff 45%,rgba(255,255,255,0) 52%,rgba(255,255,255,0) 84%,rgba(255,255,255,0.8) 92%,rgba(255,255,255,0) 99%);animation:avSpin 5s linear infinite"></div></div>` +
+  // and a dark line just inside it
+  `<div style="position:absolute;inset:1.6px;border-radius:12.6px;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.85),inset 0 0 10px rgba(0,0,0,0.6);z-index:3;pointer-events:none"></div>`
 
-/** The 막대's silk tile height (px on screen). */
+/** The 막대's silk tile height and helix tile height (px on screen). */
 export const BAR_TILE = BT
-export const BAR_SPARKLE_SVG =
-  `<svg viewBox="-16 -16 32 32" width="32" height="32" style="overflow:visible;display:block;filter:drop-shadow(0 0 3px rgba(255,255,255,0.7))">` +
-  `<circle r="9" fill="rgba(220,228,245,0.22)" class="sl-glow" style="transform-box:fill-box;transform-origin:center;animation:auraBreath 1.8s ease-in-out infinite"></circle>` +
-  `<g class="sl-spin" style="transform-box:fill-box;transform-origin:center;animation:slStar 3.2s ease-in-out infinite"><path d="${SPARKLE_PATH}" fill="#ffffff"></path></g>` +
-  `</svg>`
+export const HELIX_TILE = HX_T
+/** The 막대's tip: a mercury bead (a chrome sphere) with a lens flare turning slowly and breathing on its highlight. */
+export const BAR_TIP =
+  `<div style="position:absolute;left:0;top:-3px;width:0;height:0">` +
+  `<div class="sl-glow" style="position:absolute;left:-22px;top:-22px;width:44px;height:44px;border-radius:50%;background:radial-gradient(closest-side,rgba(235,240,252,0.6),rgba(200,210,235,0.2) 55%,rgba(200,210,235,0));animation:auraBreath 2.2s ease-in-out infinite"></div>` +
+  `<div style="position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 35% 28%,#ffffff 0,#ffffff 10%,#dedede 22%,#7a7a7a 44%,#0d0d0d 60%,#2e2e2e 74%,#cfcfcf 90%,#7e7e7e 100%);box-shadow:0 0 0 1px rgba(0,0,0,0.85),0 0 10px rgba(230,236,250,0.75)"></div>` +
+  `<div class="sl-flare sl-iG" style="position:absolute;left:-35px;top:-37px;width:66px;height:66px;${IMG};animation:slFlare 7s ease-in-out infinite"></div>` +
+  `<div class="sl-flare sl-iG" style="position:absolute;left:-23px;top:-25px;width:42px;height:42px;${IMG};opacity:0.7;transform:rotate(45deg);animation:slFlare2 5s ease-in-out -1.5s infinite"></div>` +
+  `</div>`
 
 // ---- grains breaking out past the edges and scattering (a few HTML dots, CSS-animated) --------
 const SPILL_DOT = 'position:absolute;border-radius:50%;background:#eef1f6;box-shadow:0 0 0 0.7px rgba(20,22,28,0.55),0 0 4px rgba(235,240,255,0.95),0 0 9px rgba(190,200,225,0.6);opacity:0;pointer-events:none'
@@ -414,11 +611,11 @@ export const SILVER_PLATE_SPILL = (() => {
   }
   return `<div style="position:absolute;inset:0;pointer-events:none;z-index:4">${out}</div>`
 })()
-/** Around the frame: flung outward from the silk rings, past the dark disc (sizes follow --av). */
+/** Around the frame: flung outward off the chrome, past the smoke (sizes follow --av). */
 const FRAME_SPILL = (() => {
   const r = seeded(53); let out = ''
   for (let i = 0; i < 28; i++) {
-    const a = r() * 360, r0 = 0.62 + r() * 0.1, r1 = 0.92 + r() * 0.3, dur = 1.8 + r() * 2
+    const a = r() * 360, r0 = 0.6 + r() * 0.08, r1 = 0.95 + r() * 0.35, dur = 1.8 + r() * 2
     out += `<span class="sl-spill" style="${SPILL_DOT};left:0;top:0;width:max(1.2px,calc(var(--av,52px) * 0.03));height:max(1.2px,calc(var(--av,52px) * 0.03));margin:calc(max(1.2px,calc(var(--av,52px) * 0.03)) / -2) 0 0 calc(max(1.2px,calc(var(--av,52px) * 0.03)) / -2);--a:${a.toFixed(0)}deg;--r0:calc(var(--av,52px) * ${r0.toFixed(2)});--r1:calc(var(--av,52px) * ${r1.toFixed(2)});animation:slSpillR ${dur.toFixed(2)}s ease-out ${(-r() * dur).toFixed(2)}s infinite"></span>`
   }
   return `<div style="position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none">${out}</div>`

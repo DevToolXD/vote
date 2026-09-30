@@ -4,7 +4,7 @@ import { GEM_GLOW } from './auraArt'
 import { MX_FONT, MX_STRIPS, cubeOrbit } from './matrixArt'
 import { BAR_TIP_SVG, BLUE, INK, IVORY, SEAM_TILE, barCoinOrbit } from './koreaArt'
 import { pauseOffscreen } from '../offscreen'
-import { BAR_SPARKLE_SVG, BAR_TILE, SILVER_BAR_SPILL, ensureSilverArt } from './silverArt'
+import { BAR_TILE, BAR_TIP, HELIX_TILE, SILVER_BAR_SPILL, ensureSilverArt } from './silverArt'
 
 const segment = 'display:block;width:100%;flex:none;background-repeat:no-repeat;background-size:100% 100%'
 
@@ -191,29 +191,47 @@ function KoreaBar({ flip, h }: { flip: boolean; h: number }) {
 }
 
 const SL_MOTES: [string, number, number, string][] = [['4%', 2.4, 0, '#ffffff'], ['90%', 2.9, 0.7, '#dcdcdc'], ['34%', 2.6, 1.4, '#ffffff'], ['68%', 3.1, 0.3, '#bdbdbd'], ['-20%', 3.4, 1.9, '#ffffff'], ['116%', 2.8, 1.1, '#e8e8e8'], ['-8%', 3.6, 2.5, '#cfcfcf'], ['106%', 3.3, 2.9, '#ffffff'], ['18%', 2.2, 0.9, '#f2f2f2'], ['52%', 3.8, 2.1, '#ffffff'], ['-32%', 4.1, 1.6, '#d8d8d8'], ['128%', 3.9, 0.5, '#ffffff']]
+// Chrome rails: a polished tube's reflections (bright lines near the edges, dark horizon inside).
+const SL_RAILS = 'linear-gradient(90deg,#1c1c1c 0%,#9a9a9a 3%,#ffffff 7%,#e2e2e2 10%,#6e6e6e 15%,#2a2a2a 19%,#8a8a8a 23%,#141414 26%,#141414 74%,#5a5a5a 77%,#222222 81%,#7a7a7a 85%,#e8e8e8 90%,#ffffff 93%,#8a8a8a 97%,#1c1c1c 100%)'
+const SL_CAP = 'position:absolute;left:-2px;right:-2px;border-radius:3px;background:linear-gradient(180deg,#ffffff 0%,#d6d6d6 30%,#4a4a4a 55%,#9a9a9a 75%,#e6e6e6 100%);box-shadow:0 0 0 1px rgba(0,0,0,0.85),0 0 6px rgba(220,228,245,0.5)'
 /**
- * 삼겹살 먹고싶다 막대: a black liquid-metal pillar with a silver edge, a sheet of particle silk
- * flowing up inside it with fine grains rising over it, light sweeping up it, silver motes floating
- * up around it, and the sparkle on its tip.
+ * 삼겹살 먹고싶다 막대: chrome rails round a black glass channel with the particle silk flowing up
+ * inside, a double helix of stardust winding up round the whole pillar (its far side behind, its
+ * near side in front), light sweeping up it, motes and grains flying off, a lens flare on the tip.
  */
 function SilverBar({ flip, h }: { flip: boolean; h: number }) {
   ensureSilverArt()
+  // the helix tile is 1.9 × the pillar wide, clipped to its height (fading out at both ends)
+  const helix = (cls: string) => (
+    <span style={css('position:absolute;top:0;bottom:0;left:-45%;right:-45%;overflow:hidden;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 10px,#000 calc(100% - 8px),transparent 100%);mask-image:linear-gradient(180deg,transparent 0,#000 10px,#000 calc(100% - 8px),transparent 100%)')}>
+      <span className={'sl-helix ' + cls} style={css(`position:absolute;left:0;right:0;top:0;bottom:-${HELIX_TILE}px;will-change:transform;background-size:100% ${HELIX_TILE}px;background-repeat:repeat-y;--t:${HELIX_TILE}px;animation:slRiseT 2.8s linear infinite`)} />
+    </span>
+  )
   return (
     <span ref={pauseOffscreen} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', transform: flip ? 'scaleY(-1)' : 'none', ['--bh' as string]: `${h}px` }}>
-      <span className="sl-glow" style={css('position:absolute;left:-60%;right:-60%;top:-12px;bottom:-4px;border-radius:40%;background:radial-gradient(closest-side,rgba(220,228,245,0.45),rgba(160,170,190,0.18) 60%,transparent);filter:blur(5px);animation:auraPulse 2.6s ease-in-out infinite')} />
-      <span style={css('position:absolute;inset:0;border-radius:5px;overflow:hidden;background:linear-gradient(90deg,#030303 0%,#1e1e1e 30%,#4a4a4a 50%,#1e1e1e 70%,#030303 100%);box-shadow:inset 0 0 0 1px rgba(198,198,198,0.6),0 0 10px rgba(200,210,230,0.3),0 2px 8px rgba(0,0,0,0.35)')}>
-        {/* the silk flowing up, and fine grains rising faster over it (images: silverArt.ts) */}
-        <span className="sl-rise sl-iBS" style={css(`position:absolute;left:0;right:0;top:0;bottom:-${BAR_TILE}px;will-change:transform;background-size:100% ${BAR_TILE}px;background-repeat:repeat-y;animation:slRise 7s linear infinite`)} />
-        <span className="sl-rise sl-iBG" style={css('position:absolute;left:0;right:0;top:0;bottom:-48px;will-change:transform;background-size:100% 48px;background-repeat:repeat-y;opacity:0.8;animation:krSpiral 2.2s linear infinite')} />
-        <span className="sl-sweep" style={css('position:absolute;top:0;left:0;right:0;height:36px;background:linear-gradient(0deg,transparent,rgba(255,255,255,0.35),transparent);animation:mxScanUp 2.4s ease-in-out infinite')} />
-        <span style={css('position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,0.12) 50%,transparent 70%)')} />
+      <span className="sl-glow" style={css('position:absolute;left:-70%;right:-70%;top:-18px;bottom:-6px;border-radius:40%;background:radial-gradient(closest-side,rgba(225,232,248,0.5),rgba(160,170,190,0.2) 60%,transparent);filter:blur(6px);animation:auraPulse 2.6s ease-in-out infinite')} />
+      {/* the helix's far side, behind the pillar */}
+      {helix('sl-iHB')}
+      <span style={css(`position:absolute;inset:0;border-radius:6px;overflow:hidden;background:${SL_RAILS};box-shadow:0 0 0 1px rgba(0,0,0,0.85),0 0 14px rgba(210,220,240,0.35),0 3px 10px rgba(0,0,0,0.35)`)}>
+        {/* the black glass channel, the silk flowing up inside (images: silverArt.ts) */}
+        <span style={css('position:absolute;top:4px;bottom:4px;left:24%;right:24%;border-radius:4px;overflow:hidden;background:#020202;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.95),inset 0 0 8px rgba(0,0,0,0.9),0 0 0 1px rgba(255,255,255,0.18)')}>
+          <span className="sl-rise sl-iBS" style={css(`position:absolute;left:0;right:0;top:0;bottom:-${BAR_TILE}px;will-change:transform;background-size:100% ${BAR_TILE}px;background-repeat:repeat-y;animation:slRise 7s linear infinite`)} />
+          <span className="sl-rise sl-iBG" style={css('position:absolute;left:0;right:0;top:0;bottom:-48px;will-change:transform;background-size:100% 48px;background-repeat:repeat-y;opacity:0.85;animation:krSpiral 2.2s linear infinite')} />
+          {/* glass: a reflection down its left side */}
+          <span style={css('position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,0.2) 0,rgba(255,255,255,0.06) 22%,transparent 34%,transparent 82%,rgba(255,255,255,0.08) 100%)')} />
+        </span>
+        <span className="sl-sweep" style={css('position:absolute;top:0;left:0;right:0;height:40px;background:linear-gradient(0deg,transparent,rgba(255,255,255,0.4),transparent);animation:mxScanUp 2.4s ease-in-out infinite')} />
       </span>
+      {/* the helix's near side, in front */}
+      {helix('sl-iHF')}
+      <span style={css(SL_CAP + ';top:-3px;height:6px')} />
+      <span style={css(SL_CAP + ';bottom:-3px;height:5px')} />
       {SL_MOTES.map(([left, dur, delay, c]) => (
         <span key={left} className="aura-spark" style={{ ...css('position:absolute;bottom:8%;width:2px;height:2px;margin-left:-1px;border-radius:50%;opacity:0'), left, background: c, boxShadow: `0 0 4px ${c},0 0 8px rgba(220,228,245,0.8)`, animation: `auraSpark ${dur}s ease-out ${delay}s infinite` }} />
       ))}
       {/* grains breaking out off its sides */}
       <span style={css('position:absolute;inset:0;pointer-events:none')} dangerouslySetInnerHTML={{ __html: SILVER_BAR_SPILL }} />
-      <span style={css('position:absolute;left:50%;top:-24px;margin-left:-16px;width:32px;height:32px')} dangerouslySetInnerHTML={{ __html: BAR_SPARKLE_SVG }} />
+      <span style={css('position:absolute;left:50%;top:-5px;width:0;height:0')} dangerouslySetInnerHTML={{ __html: BAR_TIP }} />
     </span>
   )
 }
