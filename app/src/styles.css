@@ -241,7 +241,11 @@ html,body{overscroll-behavior:none}
 
 /* 삼겹살 먹고싶다 (silverArt.ts): silver particle waves, twinkling dust, the sparkle */
 @keyframes slFlowT{from{transform:translateX(0)}to{transform:translateX(var(--tw,320px))}}
-@keyframes slTwinkle{0%,100%{transform:scale(.4);opacity:.15}50%{transform:scale(1.2);opacity:1}}
+@keyframes slSwayA{0%{transform:translate(0,0) scale(1,1) skewX(0deg)}100%{transform:translate(-2.5%,5%) scale(1.04,0.9) skewX(-4deg)}}
+@keyframes slSwayB{0%{transform:translate(0,0) scale(1,1)}100%{transform:translate(2%,-4%) scale(1.03,1.07)}}
+@keyframes slTw{0%{opacity:.2}100%{opacity:1}}
+@keyframes slGrain{0%{transform:translate(0,0)}25%{transform:translate(-7%,4%)}50%{transform:translate(5%,-6%)}75%{transform:translate(-3%,-8%)}100%{transform:translate(0,0)}}
+@keyframes slRise{from{transform:translateY(0)}to{transform:translateY(-120px)}}
 @keyframes slStar{0%,100%{transform:rotate(0deg) scale(.9)}50%{transform:rotate(45deg) scale(1.15)}}
 @media (prefers-reduced-motion:reduce){[class^="sl-"],[class*=" sl-"]{animation:none !important}}
 .legend-tag.sl-tag{background:linear-gradient(90deg,#7d7d7d 0%,#2a2a2a 52%,#0a0a0a 100%);color:#f2f2f2;animation:none;box-shadow:0 0 0 1px rgba(198,198,198,0.55),0 0 8px rgba(200,210,230,0.35)}

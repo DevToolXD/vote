@@ -6,7 +6,7 @@ import { PLATE_ART } from './plateArt'
 import { AURA_PLATE } from './auraArt'
 import { MATRIX_PLATE } from './matrixArt'
 import { KOREA_PLATE } from './koreaArt'
-import { SILVER_PLATE } from './silverArt'
+import { SILVER_PLATE, ensureSilverArt } from './silverArt'
 import { pauseOffscreen } from '../offscreen'
 
 const PLATES: Record<string, { bg: string; fg: string; sub: string; dark: boolean; glow?: string }> = {
@@ -46,7 +46,7 @@ export const Nameplate = memo(function Nameplate({ kind = 'none', person, sub, f
   const edge = p.dark
     ? 'inset 0 0 0 1px rgba(255,255,255,0.12),inset 0 1px 0 rgba(255,255,255,0.14)'
     : 'inset 0 0 0 1px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.8)'
-  const art = k === 'aura' ? AURA_PLATE : k === 'matrix' ? MATRIX_PLATE : k === 'korea' ? KOREA_PLATE : k === 'silver' ? SILVER_PLATE : PLATE_ART[k]?.before
+  const art = k === 'aura' ? AURA_PLATE : k === 'matrix' ? MATRIX_PLATE : k === 'korea' ? KOREA_PLATE : k === 'silver' ? (ensureSilverArt(), SILVER_PLATE) : PLATE_ART[k]?.before
   return (
     <div ref={k !== 'none' ? pauseOffscreen : undefined} style={{ display: 'block', ...style }}>
       <div style={{ ...css('position:relative;width:100%;height:100%;border-radius:14px;overflow:hidden;isolation:isolate'), background: p.bg }}>
@@ -81,7 +81,7 @@ export const Nameplate = memo(function Nameplate({ kind = 'none', person, sub, f
 export function PlateBanner({ kind = 'none', fallback, name, sub, height, children }: { kind?: string; fallback: string; name: string; sub: string; height: number; children?: React.ReactNode }) {
   const k = PLATES[kind] ? kind : 'none'
   const p = PLATES[k]
-  const art = k === 'aura' ? AURA_PLATE : k === 'matrix' ? MATRIX_PLATE : k === 'korea' ? KOREA_PLATE : k === 'silver' ? SILVER_PLATE : k !== 'none' ? PLATE_ART[k]?.before : undefined
+  const art = k === 'aura' ? AURA_PLATE : k === 'matrix' ? MATRIX_PLATE : k === 'korea' ? KOREA_PLATE : k === 'silver' ? (ensureSilverArt(), SILVER_PLATE) : k !== 'none' ? PLATE_ART[k]?.before : undefined
   const fade = 'linear-gradient(180deg,#000 0%,#000 42%,rgba(0,0,0,0.55) 72%,rgba(0,0,0,0) 100%)'
   const dark = k !== 'none' ? p.dark : false
   const shadow = (k !== 'none' && p.glow) || (dark ? '0 1px 3px rgba(0,0,0,0.45)' : '0 1px 2px rgba(255,255,255,0.6)')

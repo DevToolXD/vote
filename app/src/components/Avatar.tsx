@@ -3,7 +3,7 @@ import { AVATAR_ART } from './avatarArt'
 import { AURA_AVATAR } from './auraArt'
 import { MATRIX_AVATAR } from './matrixArt'
 import { KOREA_AVATAR } from './koreaArt'
-import { SILVER_AVATAR } from './silverArt'
+import { SILVER_AVATAR, ensureSilverArt } from './silverArt'
 import { pauseOffscreen } from '../offscreen'
 
 type Props = {
@@ -19,6 +19,7 @@ type Props = {
 /** Profile photo with a Discord-style decoration frame that can overflow the circle. Full art at every size. */
 export const Avatar = memo(function Avatar({ frame = 'none', photo = 'none', size, style }: Props) {
   const art = frame === 'aura' ? AURA_AVATAR : frame === 'matrix' ? MATRIX_AVATAR : frame === 'korea' ? KOREA_AVATAR : frame === 'silver' ? SILVER_AVATAR : AVATAR_ART[frame]
+  if (frame === 'silver') ensureSilverArt()
   const hasPhoto = !!photo && photo !== 'none'
   const innerRing = frame === 'none' || frame === 'cat' || frame === 'bunny' || frame === 'matrix' || frame === 'korea' || frame === 'silver' ? 'none' : '0 0 0 1px rgba(255,255,255,0.9)'
   return (
