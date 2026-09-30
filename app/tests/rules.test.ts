@@ -1200,7 +1200,7 @@ describe('몰래 도박장', () => {
     b.update(doc(db, 'candidates', uid), { spent: increment(amount), lastBet: ref.id })
     await b.commit()
     const d = (await getDoc(ref)).data()!
-    return { id: ref.id, won: d.at.toMillis() % 2 === 1 }
+    return { id: ref.id, won: d.at.toMillis() % 100 < 37 }
   }
   const payBy = (db: Firestore, uid: string, id: string, amount: number) => {
     const b = writeBatch(db)

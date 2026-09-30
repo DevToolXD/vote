@@ -8,7 +8,7 @@ export type Bet = { id: string; amount: number; won: boolean; paid: boolean }
 type BetDoc = { uid: string; amount: number; at: Timestamp | null; paid: boolean }
 
 /** Same test as betWon() in firestore.rules. */
-const won = (at: Timestamp) => at.toMillis() % 2 === 1
+const won = (at: Timestamp) => at.toMillis() % 100 < 37
 
 async function readBet(db: Firestore, id: string): Promise<Bet | null> {
   const s = await getDoc(doc(db, 'gambles', id))

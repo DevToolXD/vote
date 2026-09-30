@@ -384,7 +384,7 @@ service cloud.firestore {
     // won comes from the server time the bet landed (at == request.time), which nobody knows
     // before the points are gone, so a lost bet can't be retried or undone.
     function betPath(id) { return /databases/$(database)/documents/gambles/$(id); }
-    function betWon(b) { return b.at.toMillis() % 2 == 1; }
+    function betWon(b) { return b.at.toMillis() % 100 < 37; }
     function gambleBet() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['spent', 'lastBet'])
         && 'lastBet' in request.resource.data.diff(resource.data).affectedKeys()
