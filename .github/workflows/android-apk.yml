@@ -73,6 +73,38 @@ jobs:
           "$BT/apksigner" sign --ks "$RUNNER_TEMP/release.keystore" --ks-pass env:KEY_PASS --ks-key-alias vote --key-pass env:KEY_PASS \
             --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out popular-vote.apk aligned.apk
           "$BT/apksigner" verify --verbose popular-vote.apk | head -8
+      # Proof it really installs: boot Android emulators (the oldest supported version and a recent
+      # one), install the APK, start it and check it's running. Nothing is published otherwise.
+      - name: Enable KVM (for the emulator)
+        working-directory: .
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and launch on Android 14
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          working-directory: app
+          script: |
+            adb install -r popular-vote.apk
+            adb shell monkey -p io.github.devtoolxd.vote -c android.intent.category.LAUNCHER 1
+            sleep 10
+            adb shell pidof io.github.devtoolxd.vote
+      - name: Install and launch on Android 7 (the oldest supported)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 24
+          arch: x86_64
+          target: default
+          working-directory: app
+          script: |
+            adb install -r popular-vote.apk
+            adb shell monkey -p io.github.devtoolxd.vote -c android.intent.category.LAUNCHER 1
+            sleep 10
+            adb shell pidof io.github.devtoolxd.vote
       - name: Publish to the android-latest release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -85,3 +117,14 @@ jobs:
               --title "인기투표 안드로이드 앱" \
               --notes "갤럭시/안드로이드용 설치 파일이에요. 사이트의 '앱 설치하기 → 갤럭시'에서 받을 수 있어요."
           fi
+      # The site links to this copy (same address as the site: no redirects to another server,
+      # which some in-app browsers and download managers trip over).
+      - name: Serve it from the site too
+        working-directory: .
+        run: |
+          cp app/popular-vote.apk popular-vote.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add popular-vote.apk
+          git commit -m "Publish Android APK to GitHub Pages [skip ci]" || exit 0
+          for i in 1 2 3 4; do git pull --rebase -q origin main && git push -q origin HEAD:main && break; sleep $((i * 5)); done
