@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { css, sx } from '../css'
 import { BANNERS, MEDALS, THEMES } from '../data'
-import { APK_URL, canPromptInstall, detectPlatform, isIosSafari, onInstallPromptChange, promptInstall } from '../install'
+import { apkHref, inAppBrowser, canPromptInstall, detectPlatform, isIosSafari, onInstallPromptChange, promptInstall } from '../install'
 import type { Person } from '../model'
 import type { WeekKind } from '../backend/types'
 import { Segmented } from './AccountScreen'
@@ -319,9 +319,14 @@ export function InstallSheet({ onClose, onToast }: { onClose: () => void; onToas
         </div>
       ) : (
         <div style={css('padding:0 24px;display:flex;flex-direction:column;gap:20px')}>
-          <a data-g="primary" className="pr-96" href={APK_URL} style={css(bigBtn + ';display:flex;align-items:center;justify-content:center;gap:8px;background:#3182f6;color:#ffffff;text-decoration:none;transition:transform 150ms')}>
+          {inAppBrowser() && (
+            <div data-g="l1" style={css('padding:14px 16px;border-radius:14px;background:#fff8e6;font-size:14px;line-height:21px;color:#8a5a00')}>
+              지금 {/KAKAOTALK/i.test(navigator.userAgent) ? '카카오톡' : '앱'} 안의 브라우저로 열려 있어요. 여기선 받은 파일이 안 열려서, 아래 버튼을 누르면 <b>휴대폰 기본 브라우저(Chrome·삼성 인터넷)</b>에서 받아요
+            </div>
+          )}
+          <a data-g="primary" className="pr-96" href={apkHref()} style={css(bigBtn + ';display:flex;align-items:center;justify-content:center;gap:8px;background:#3182f6;color:#ffffff;text-decoration:none;transition:transform 150ms')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v11M7 10.5l5 5 5-5" /><path d="M5 20h14" /></svg>
-            설치 파일(APK) 받기
+            {inAppBrowser() ? '브라우저에서 설치 파일 받기' : '설치 파일(APK) 받기'}
           </a>
           <Steps items={[
             <>받은 <b>popular-vote.apk</b> 파일을 눌러 열어요</>,

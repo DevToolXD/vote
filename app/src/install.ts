@@ -19,6 +19,21 @@ export function isIosSafari() {
   return detectPlatform() === 'ios' && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|KAKAOTALK|NAVER|Instagram|FBAN|FBAV|Line\//i.test(ua)
 }
 
+/** An in-app browser (KakaoTalk, Naver, Instagram…): a downloaded APK often can't be opened from there. */
+export function inAppBrowser() {
+  return /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\/|everytimeApp|DaumApps|wv\)/i.test(navigator.userAgent)
+}
+/**
+ * The APK link that works from where we are: in KakaoTalk, open the file in the phone's own
+ * browser (kakaotalk://web/openExternal); in other in-app browsers, hand it to Chrome (intent://),
+ * which downloads it and offers to install. Otherwise the plain link.
+ */
+export function apkHref() {
+  if (detectPlatform() !== 'android' || !inAppBrowser()) return APK_URL
+  if (/KAKAOTALK/i.test(navigator.userAgent)) return 'kakaotalk://web/openExternal?url=' + encodeURIComponent(APK_URL)
+  return 'intent://' + APK_URL.replace(/^https:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end'
+}
+
 /** Already running as the installed app (home-screen PWA or the Android APK). */
 export function isInstalledApp() {
   return window.matchMedia?.('(display-mode: standalone)').matches ||
