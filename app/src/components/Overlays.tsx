@@ -343,14 +343,21 @@ export function InstallSheet({ onClose, onToast }: { onClose: () => void; onToas
               <span>• 예전에 받은 앱이 있는데 "앱이 설치되지 않았어요"가 뜨면, 예전 앱을 한 번 지우고 다시 설치해요 (서명이 바뀌어서 딱 한 번만 필요해요)</span>
             </div>
           </details>
-          <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1')}>스토어 밖에서 받는 앱이라 안내가 떠요. 앱 화면은 이 사이트를 그대로 보여줘서, 업데이트도 자동으로 반영돼요. 막는 프로그램이 있으면 아래 <b>홈 화면에 추가</b>로도 똑같이 쓸 수 있어요</span>
-          {canPrompt ? (
-            <button data-g="secondary" className="pr-96" onClick={async () => { if (await promptInstall()) onClose() }} style={css('height:48px;border-radius:14px;background:#f2f4f6;color:#4e5968;font-size:15px;font-weight:600')}>
-              파일 없이 홈 화면에 바로 추가하기
-            </button>
-          ) : (
-            <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1')}>파일 없이 쓰려면 Chrome 메뉴(⋮) → <b>홈 화면에 추가</b>(또는 <b>앱 설치</b>)를 눌러요. 알림도 똑같이 받을 수 있어요</span>
-          )}
+          <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1')}>스토어 밖에서 받는 앱이라 안내가 떠요. 앱 화면은 이 사이트를 그대로 보여줘서, 업데이트도 자동으로 반영돼요</span>
+          {/* the way that always works: no file at all (Chrome / 삼성 인터넷 install the site as an app) */}
+          <div data-g="l1" style={css('padding:16px;border-radius:16px;background:#e8f3ff;display:flex;flex-direction:column;gap:10px')}>
+            <span style={css('font-size:15px;line-height:22px;font-weight:700;color:#1b64da')}>파일 설치가 안 되면 이걸로 하세요 (무조건 돼요)</span>
+            <span style={css('font-size:14px;line-height:21px;color:#33415c')}>파일 없이 홈 화면에 앱으로 추가돼요. 알림, 300P 보너스 모두 똑같아요</span>
+            {canPrompt ? (
+              <button data-g="primary" className="pr-96" onClick={async () => { if (await promptInstall()) onClose() }} style={css('height:46px;border-radius:12px;background:#3182f6;color:#ffffff;font-size:15px;font-weight:700')}>홈 화면에 앱 추가하기</button>
+            ) : (
+              <span style={css('font-size:14px;line-height:22px;color:#33415c')}>
+                <b>Chrome</b>: 오른쪽 위 점 세 개(⋮) → <b>홈 화면에 추가</b> 또는 <b>앱 설치</b><br />
+                <b>삼성 인터넷</b>: 아래 줄 세 개(≡) → <b>현재 페이지 추가</b> → <b>홈 화면</b><br />
+                {inAppBrowser() && <>카카오톡 안에서 열렸다면 먼저 오른쪽 아래 점 세 개(⋮) → <b>다른 브라우저로 열기</b>를 눌러요</>}
+              </span>
+            )}
+          </div>
         </div>
       )}
     </BottomSheet>

@@ -1,7 +1,10 @@
 // Home-screen / APK install helpers for the "앱 설치하기" sheet.
 
-/** Always the newest Android build — .github/workflows/android-apk.yml re-uploads it to this release. */
-export const APK_URL = 'https://github.com/DevToolXD/vote/releases/download/android-latest/popular-vote.apk'
+/**
+ * Always the newest Android build — .github/workflows/android-apk.yml publishes it next to the
+ * site (same address: no redirect to another server, which some download managers trip over).
+ */
+export const APK_URL = 'https://devtoolxd.github.io/vote/popular-vote.apk'
 
 export type Platform = 'ios' | 'android' | 'other'
 
