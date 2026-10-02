@@ -84,7 +84,7 @@ const ms = (t: Stamp | null | undefined) => (t ? t.toMillis() : 0)
 // The Realtime Database belonging to the same app as `db` (tests run one app per user).
 const rtdbs = new WeakMap<Firestore, Database>()
 export function setChatDatabase(db: Firestore, rtdb: Database) { rtdbs.set(db, rtdb) }
-const R = (db: Firestore) => rtdbs.get(db) ?? getDatabase(db.app)
+export const R = (db: Firestore) => rtdbs.get(db) ?? getDatabase(db.app)
 
 type ChatNode = {
   info?: { type: 'dm' | 'group'; name?: string; createdBy: string; createdAt?: number; photoAt?: number }

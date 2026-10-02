@@ -17,6 +17,7 @@ import { EditProfile } from './components/EditProfile'
 import { ShopScreen, type ShopTab } from './components/ShopScreen'
 import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScreen'
 import { NotifySettings } from './components/NotifySettings'
+import { startPresence } from './backend/presence'
 import { MessageBanner, type Banner } from './components/MessageBanner'
 import { SupportFlow, SupportRoom } from './components/SupportScreen'
 import { closeTicket, linkTicket, sendSupport, subscribeLinkedTickets, subscribeTicket, subscribeTickets, type Ticket } from './backend/support'
@@ -240,6 +241,15 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     if (!authUser || !db) { setNotify(DEFAULT_NOTIFY); return }
     refreshPush(db, authUser.uid).then(() => setPushOn(deviceRegistered()))
     return subscribeNotifySettings(db, authUser.uid, setNotify)
+  }, [authUser])
+
+  // 온라인 표시: on while the app is open and on screen
+  const presenceStop = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    if (!authUser || !db) return
+    const stop = startPresence(db, authUser.uid)
+    presenceStop.current = stop
+    return () => { if (presenceStop.current === stop) { presenceStop.current = null; stop() } }
   }, [authUser])
 
   // 알림 is on by default: on app open, a device that isn't registered yet registers by itself
@@ -535,6 +545,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     // This device stops getting the old account's notifications.
     if (db) await disablePush(db)
     setPushOn(false)
+    // offline before signing out (afterwards the write isn't allowed)
+    presenceStop.current?.(); presenceStop.current = null
     await logOut()
     setVotes({})
     showToast('로그아웃했어요')
@@ -961,6 +973,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             d={profilePerson.isMe ? { ...profilePerson, bio: bioDraft, loginId: profilePerson.loginId ?? myLoginId } : profilePerson}
             onClose={() => setProfile(null)}
             canMessage={!profilePerson.msgOff && !me?.msgOff}
+            db={authUser ? db : null}
             onMessage={() => startDm(profilePerson.id)}
             onCta={() => {
               setProfile(null)

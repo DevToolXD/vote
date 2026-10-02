@@ -186,12 +186,40 @@
         "$key": {
           ".write": "auth != null && auth.uid === $uid && (!newData.exists() || (!data.exists() && root.child('chats/' + newData.child('chatId').val() + '/members/' + auth.uid).val() === true))",
           ".validate": "!newData.exists() || (newData.hasChildren(['chatId', 'text', 'at', 'createdAt']) && newData.child('at').val() > now && newData.child('at').val() < now + 31536000000 && newData.child('createdAt').val() === now)",
-          "chatId": { ".validate": "newData.isString()" },
-          "text": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 500" },
-          "at": { ".validate": "newData.isNumber()" },
-          "createdAt": { ".validate": "newData.isNumber()" },
-          "giftId": { ".validate": "newData.isString() && newData.val().length <= 40" },
-          "$other": { ".validate": false }
+          "chatId": {
+            ".validate": "newData.isString()"
+          },
+          "text": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 500"
+          },
+          "at": {
+            ".validate": "newData.isNumber()"
+          },
+          "createdAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "giftId": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "status": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && $uid === auth.uid",
+        ".validate": "newData.hasChildren(['on', 'last'])",
+        "on": {
+          ".validate": "newData.isBoolean()"
+        },
+        "last": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000 && newData.val() > now - 600000"
+        },
+        "$other": {
+          ".validate": false
         }
       }
     }

@@ -10,6 +10,8 @@ import { Avatar } from './Avatar'
 import { CloseIcon } from './icons'
 import { PlateBanner } from './Nameplate'
 import { Badges } from './Badges'
+import { PresenceText } from './Presence'
+import type { Firestore } from 'firebase/firestore'
 import { readView, watchView } from '../viewport'
 
 const handle = <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
@@ -124,7 +126,7 @@ export function VoteSheet({ d, loggedIn, colors, onVote, onClose, onLogin, pass 
   )
 }
 
-export function ProfileSheet({ d, onClose, onCta, onMessage, canMessage }: { d: Person; onClose: () => void; onCta: () => void; onMessage: () => void; canMessage: boolean }) {
+export function ProfileSheet({ d, onClose, onCta, onMessage, canMessage, db }: { d: Person; onClose: () => void; onCta: () => void; onMessage: () => void; canMessage: boolean; db?: Firestore | null }) {
   const medal = MEDALS[d.rank - 1]
   const stat = (k: string, v: string) => (
     <div data-g="l1" style={css('padding:14px 16px;border-radius:16px;background:#f9fafb;display:flex;flex-direction:column;gap:2px')}>
@@ -145,7 +147,10 @@ export function ProfileSheet({ d, onClose, onCta, onMessage, canMessage }: { d: 
         <div style={css('display:flex;justify-content:flex-end;align-items:center;gap:8px;padding-top:12px;min-height:52px')}>
           <span style={css('margin-right:auto;margin-left:110px;min-width:0;display:flex;flex-direction:column;gap:4px')}>
             <Badges person={d} />
-            {d.loginId && <span style={css('font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>@{d.loginId}</span>}
+            <span style={css('min-width:0;display:flex;align-items:center;gap:6px')}>
+              {d.loginId && <span style={css('min-width:0;font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>@{d.loginId}</span>}
+              {db && <PresenceText db={db} uid={d.id} sep={!!d.loginId} />}
+            </span>
           </span>
           <span style={sx('height:30px;padding:0 12px;border-radius:9999px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums', { background: medal ? medal[0] : '#f2f4f6', color: medal ? medal[1] : '#4e5968' })}>{d.rank}위</span>
         </div>

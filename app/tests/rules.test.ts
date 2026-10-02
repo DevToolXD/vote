@@ -25,6 +25,7 @@ import type { CandidateDoc } from '../src/backend/types'
 import { priceOf, seriesPrice } from '../src/data'
 import { placeBet, settleLastBet } from '../src/backend/gamble'
 import { accessOf, blockedUsers, readIp, recordIp, setAccess } from '../src/backend/ip'
+import { presenceLabel, watchPresence, type Presence } from '../src/backend/presence'
 import { buyListing, cancelListing, listItem, subscribeMarket, type Listing } from '../src/backend/market'
 
 const PROJECT = 'demo-vote'
@@ -1113,6 +1114,25 @@ describe('moving chats to the Realtime Database', () => {
     assert.equal(await rt(a, 'userChats/a/g1'), true)
     assert.equal(await rt(a, 'msgOff/b'), true)
     assert.equal((await rt(a, 'meta/chatMigration')).done, true)
+  })
+})
+
+describe('온라인 표시', () => {
+  test('anyone signed in sees it, only the owner sets it, and only { on, last }', async () => {
+    const a = await signUp('a'), b = await signUp('b')
+    const rt = (db: Firestore) => getDatabase(db.app)
+    await rtSet(rtRef(rt(a), 'status/a'), { on: true, last: Date.now() })
+    const seen = await new Promise<Presence>(res => { const stop = watchPresence(b, 'a', p => { if (p) { stop(); res(p) } }) })
+    assert.equal(seen?.on, true)
+    assert.equal(presenceLabel(seen), '온라인')
+    await denied(rtSet(rtRef(rt(b), 'status/a'), { on: false, last: Date.now() }))
+    await denied(rtSet(rtRef(rt(a), 'status/a'), { on: 'yes', last: Date.now() }))
+    await denied(rtSet(rtRef(rt(a), 'status/a'), { on: true, last: Date.now(), name: 'x' }))
+    await denied(rtSet(rtRef(rt(a), 'status/a'), { on: false, last: Date.now() - 86_400_000 })) // can't fake an old time
+    const now = Date.now()
+    assert.equal(presenceLabel({ on: false, last: now - 5 * 60_000 }, now), '5분 전 접속')
+    assert.equal(presenceLabel({ on: false, last: now - 3 * 3_600_000 }, now), '3시간 전 접속')
+    assert.equal(presenceLabel({ on: false, last: now - 30 * 86_400_000 }, now).endsWith('일 접속'), true)
   })
 })
 

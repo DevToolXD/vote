@@ -12,6 +12,7 @@ import { saveImage } from '../saveImage'
 import { readView, watchView } from '../viewport'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
+import { PresenceText } from './Presence'
 import { BackIcon, ChevronRight, CloseIcon, SearchIcon } from './icons'
 import { BottomSheet, Dialog } from './Overlays'
 import { DurationInput, dhmsSeconds, durationLabel, leftLabel, type Dhms } from './Duration'
@@ -515,9 +516,12 @@ export function ChatRoom(p: RoomProps) {
           <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28')}><BackIcon /></button>
           <button className="pr-dim" onClick={() => (chat.type === 'dm' && v.people[0] ? onOpenProfile(v.people[0].id) : setMenu(true))} style={css('flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:4px;border-radius:12px;text-align:left')}>
             <ChatAvatar people={v.people} size={32} photo={chat.photo} />
-            <span style={css('min-width:0;display:flex;align-items:baseline;gap:6px')}>
-              <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#191f28;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{v.title}</span>
-              {chat.type === 'group' && <span style={css('flex:none;font-size:15px;color:#8b95a1')}>{chat.members.length}</span>}
+            <span style={css('min-width:0;display:flex;flex-direction:column')}>
+              <span style={css('min-width:0;display:flex;align-items:baseline;gap:6px')}>
+                <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#191f28;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{v.title}</span>
+                {chat.type === 'group' && <span style={css('flex:none;font-size:15px;color:#8b95a1')}>{chat.members.length}</span>}
+              </span>
+              {chat.type === 'dm' && v.people[0] && <PresenceText db={db} uid={v.people[0].id} size={12} />}
             </span>
           </button>
           <button className="pr-dim" onClick={() => setMenu(true)} aria-label="채팅방 메뉴" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#4e5968')}><MenuIcon /></button>
