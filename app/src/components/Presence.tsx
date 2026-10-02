@@ -17,9 +17,8 @@ export function PresenceText({ db, uid, size = 15, sep = false }: { db: Firestor
   const label = presenceLabel(p, now)
   if (!label) return null
   return (
-    <span style={sx('flex:none;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-weight:500', { fontSize: size, lineHeight: `${Math.round(size * 1.5)}px`, color: p?.on ? '#00a661' : '#8b95a1' })}>
+    <span style={sx('flex:none;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-weight:500', { fontSize: size, lineHeight: `${Math.round(size * 1.5)}px`, color: p?.on ? '#191f28' : '#8b95a1' })}>
       {sep && <span style={css('color:#b0b8c1;margin-right:1px')}>·</span>}
-      {p?.on && <span aria-hidden style={css('width:7px;height:7px;border-radius:9999px;background:#03c75a;box-shadow:0 0 0 2px rgba(3,199,90,0.18)')} />}
       {label}
     </span>
   )
