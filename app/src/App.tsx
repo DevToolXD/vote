@@ -1,6 +1,6 @@
 import type { User } from 'firebase/auth'
 import { doc, updateDoc } from 'firebase/firestore'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { accessOf, blockedUsers, myIp, recordIp, setAccess, watchAccess, watchIp, type Access, type IpDoc } from './backend/ip'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, revokeItem, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
@@ -11,7 +11,9 @@ import { DEFAULT_OWNED, DEFAULT_SEASON, FAKE_PASS_PRICE, PASS_PRICE, type PassKi
 import { deviceRegistered, disablePush, enablePush, pushAskLater, pushErrorMessage, pushOnOpen, pushSupport, refreshPush, setPushOptOut } from './push'
 import { fileToChatImage, fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
-import { AdminProgressOverlay, AdminScreen } from './components/AdminScreen'
+import { AdminProgressOverlay } from './components/AdminProgress'
+// only the admin ever opens it: loaded on demand
+const AdminScreen = lazy(() => import('./components/AdminScreen').then(m => ({ default: m.AdminScreen })))
 import { BottomNav } from './components/BottomNav'
 import { EditProfile } from './components/EditProfile'
 import { ShopScreen, type ShopTab } from './components/ShopScreen'
@@ -768,6 +770,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             />
           )}
           {tab === 'admin' && isAdmin && authUser && (
+            <Suspense fallback={null}>
             <AdminScreen
               all={all}
               tickets={tickets}
@@ -796,6 +799,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               }}
               onLogout={doLogout}
             />
+            </Suspense>
           )}
         </main>
 
