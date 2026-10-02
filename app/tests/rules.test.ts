@@ -1128,6 +1128,9 @@ describe('notifications', () => {
     await denied(getDoc(doc(b, 'settings', 'a')))
     await denied(setDoc(doc(b, 'settings', 'a'), { notify: false }))
     await denied(setDoc(doc(a, 'settings', 'a'), { notify: 'no' }))
+    await saveNotifySettings(a, 'a', { notifySound: false })
+    await denied(setDoc(doc(a, 'settings', 'a'), { notifySound: 'off' }))
+    await denied(setDoc(doc(a, 'settings', 'a'), { loud: true }))
     await denied(getDoc(doc(a, 'meta', 'notifyCursor')))
     await removePushToken(a, 'tok-a')
   })
@@ -1149,14 +1152,15 @@ describe('notifications', () => {
     await castVote(b, 'b', 'c', 'up')
     await castVote(c, 'c', 'a', 'down')
     await saveNotifySettings(a, 'a', { notifyVote: false })
+    await saveNotifySettings(c, 'c', { notifySound: false })
 
-    const got: { token: string; title: string; body: string }[] = []
+    const got: { token: string; title: string; body: string; quiet: boolean; channel?: string }[] = []
     const fcm = createServer((req, res) => {
       let body = ''
       req.on('data', ch => { body += ch })
       req.on('end', () => {
         const m = JSON.parse(body).message
-        got.push({ token: m.token, title: m.data?.title ?? m.notification.title, body: m.data?.body ?? m.notification.body })
+        got.push({ token: m.token, title: m.data?.title ?? m.notification.title, body: m.data?.body ?? m.notification.body, quiet: m.data?.silent === '1' || m.android?.notification?.channel_id === 'quiet', channel: m.android?.notification?.channel_id })
         res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}')
       })
     })
@@ -1179,9 +1183,12 @@ describe('notifications', () => {
     assert.ok(!to('tok-a').some(x => x.includes('방에 있어요')), 'a was in that room, no push')
     assert.ok(!to('tok-a').some(x => x.includes('비추천')), 'a turned vote notifications off')
     assert.deepEqual(to('tok-c'), ['인기투표|누군가 회원님을 추천했어요'], 'c muted the group, so only the vote')
+    // sound is on by default; c turned 알림 소리 off → the quiet channel
+    assert.ok(got.filter(g => g.token !== 'tok-c').every(g => !g.quiet))
+    assert.ok(got.filter(g => g.token === 'tok-c').every(g => g.quiet && g.channel === 'quiet'))
     // Nothing is sent twice: a second run finds nothing new.
     got.length = 0
-    const fcm2 = createServer((req, res) => { got.push({ token: 'x', title: '', body: '' }); req.resume(); res.end('{}') })
+    const fcm2 = createServer((req, res) => { got.push({ token: 'x', title: '', body: '', quiet: false }); req.resume(); res.end('{}') })
     await new Promise<void>(r => fcm2.listen(port, '127.0.0.1', r))
     await new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
       env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: `http://127.0.0.1:${port}`, PROJECT_ID: PROJECT, RUN_FOR_MS: '0', SETTLE_MS: '0' },

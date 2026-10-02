@@ -24,7 +24,7 @@ rules_version = '2';
 //                                 reads/mutes maps hold each member's read time / 알림 off
 //   chats/{chatId}/messages/{id}  { uid, text, at }
 //   pushTokens/{token}            one device's push token { uid, token, platform, updatedAt }
-//   settings/{uid}                private notification settings { notify, notifyMsg, notifyVote }
+//   settings/{uid}                private notification settings { notify, notifyMsg, notifyVote, notifySound }
 //   meta/notifyCursor             the notification sender's progress (service account only)
 //   support/{uid}                 a 상담 (support chat) with the admin; uid may be an anonymous login
 //   support/{uid}/messages/{id}   { from: 'user'|'admin', text, at }
@@ -985,8 +985,9 @@ service cloud.firestore {
     match /settings/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
       allow create, update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['notify', 'notifyMsg', 'notifyVote'])
+        && request.resource.data.keys().hasOnly(['notify', 'notifyMsg', 'notifyVote', 'notifySound'])
         && request.resource.data.get('notify', true) is bool
+        && request.resource.data.get('notifySound', true) is bool
         && request.resource.data.get('notifyMsg', true) is bool
         && request.resource.data.get('notifyVote', true) is bool;
       allow delete: if false;

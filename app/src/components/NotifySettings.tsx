@@ -40,6 +40,7 @@ export function NotifySettings({ support, on, busy, settings, onToggle, onChange
         <>
           {row('알림 받기', busy ? '설정하는 중이에요' : on ? '이 기기로 알림을 보내드려요' : '켜면 새 메시지와 받은 투표를 알려드려요', on, () => !busy && onToggle(!on), busy)}
           {row('새 메시지', '채팅방별로도 끌 수 있어요', on && settings.notifyMsg, () => onChange({ notifyMsg: !settings.notifyMsg }), !on)}
+          {row('알림 소리', settings.notifySound ? '소리와 진동으로 바로 알려드려요' : '소리 없이 조용히 알려드려요', on && settings.notifySound, () => onChange({ notifySound: !settings.notifySound }), !on)}
           {row('받은 추천·비추천', '누가 했는지는 알려드리지 않아요', on && settings.notifyVote, () => onChange({ notifyVote: !settings.notifyVote }), !on)}
         </>
       )}

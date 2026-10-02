@@ -64,7 +64,7 @@ const tokens = new Map()   // uid → [{ token, platform, ref }]
 const candidates = new Map() // uid → candidate doc (the leaderboard; also gives names)
 let here = {}                // chatId → { uid: until } (Realtime Database here/)
 let reads = {}               // uid → { chatId: when they last read it } (reads/)
-const settingsOf = uid => ({ notify: true, notifyMsg: true, notifyVote: true, ...settings.get(uid) })
+const settingsOf = uid => ({ notify: true, notifyMsg: true, notifyVote: true, notifySound: true, ...settings.get(uid) })
 const tokensOf = uid => tokens.get(uid) ?? []
 const nameOf = async uid => candidates.get(uid)?.name ?? '알 수 없음'
 
@@ -277,29 +277,35 @@ async function pruneLedger() {
 
 // ---- sending ----
 let sent = 0, dropped = 0
+// Sound is on unless they turned 알림 소리 off (then the app's quiet channel / a silent web notification).
+// Every device of the person is sent to at once.
 async function push(uid, { title, body, url, tag }) {
-  for (const t of tokensOf(uid)) {
-    const message = t.platform === 'android'
-      ? { token: t.token, notification: { title, body }, data: { url, tag }, android: { priority: 'HIGH', notification: {
-          tag, sound: 'default', channel_id: tag.startsWith('chat-') || tag.startsWith('support-') ? 'messages' : 'votes',
-          notification_priority: 'PRIORITY_MAX', default_vibrate_timings: true, visibility: 'PUBLIC',
-        } } }
-      : { token: t.token, data: { title, body, url, tag }, webpush: { headers: { Urgency: 'high', TTL: '86400' } } }
-    const r = await call(`${FCM}/v1/projects/${project}/messages:send`, { method: 'POST', headers: await headers(), body: JSON.stringify({ message }) })
-    if (r.ok) { sent++; continue }
-    const code = r.json?.error?.details?.find?.(d => d.errorCode)?.errorCode ?? r.json?.error?.status
-    if (r.status === 404 || code === 'UNREGISTERED' || code === 'INVALID_ARGUMENT') {
-      // The app was uninstalled / permission revoked / token rotated: forget this device.
-      await t.ref.delete().catch(() => {})
-      dropped++
-    } else {
-      warn(`FCM send failed (${r.status} ${code ?? ''})`)
-    }
+  const loud = settingsOf(uid).notifySound !== false
+  await Promise.all(tokensOf(uid).map(t => pushTo(t, { title, body, url, tag }, loud)))
+}
+async function pushTo(t, { title, body, url, tag }, loud) {
+  const message = t.platform === 'android'
+    ? { token: t.token, notification: { title, body }, data: { url, tag }, android: { priority: 'HIGH', ttl: '86400s', notification: {
+        tag, channel_id: !loud ? 'quiet' : tag.startsWith('chat-') || tag.startsWith('support-') ? 'messages' : 'votes',
+        ...(loud ? { sound: 'default', default_vibrate_timings: true, notification_priority: 'PRIORITY_MAX' } : { notification_priority: 'PRIORITY_LOW' }),
+        visibility: 'PUBLIC',
+      } } }
+    : { token: t.token, data: { title, body, url, tag, ...(loud ? {} : { silent: '1' }) }, webpush: { headers: { Urgency: 'high', TTL: '86400' } } }
+  const r = await call(`${FCM}/v1/projects/${project}/messages:send`, { method: 'POST', headers: await headers(), body: JSON.stringify({ message }) })
+  if (r.ok) { sent++; return }
+  const code = r.json?.error?.details?.find?.(d => d.errorCode)?.errorCode ?? r.json?.error?.status
+  if (r.status === 404 || code === 'UNREGISTERED' || code === 'INVALID_ARGUMENT') {
+    // The app was uninstalled / permission revoked / token rotated: forget this device.
+    await t.ref.delete().catch(() => {})
+    dropped++
+  } else {
+    warn(`FCM send failed (${r.status} ${code ?? ''})`)
   }
 }
 
 // A chat whose latest message (chat.last) is new → each other member, once per burst.
 // `chat` is a Realtime Database chats/{id} node: { info, members, last, mutes }.
+const roomOpen = chat => Object.entries(here[chat.id] ?? {}).some(([m, until]) => m !== chat.last?.uid && until > Date.now())
 async function notifyChat(chat, count) {
   const last = chat.last
   const type = chat.info?.type, name = chat.info?.name
@@ -624,8 +630,11 @@ async function deliverScheduled() {
 async function newerCodeOnMain() {
   if (LOCAL || !process.env.GITHUB_TOKEN || !process.env.GITHUB_SHA) return false
   try {
-    const r = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/commits/main`, { headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.sha' } })
-    return r.ok && (await r.text()).trim() !== process.env.GITHUB_SHA
+    // only when the worker itself changed: app deploys don't interrupt notifications
+    const r = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/compare/${process.env.GITHUB_SHA}...main`, { headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json' } })
+    if (!r.ok) return false
+    const files = (await r.json()).files ?? []
+    return files.some(f => /^\.github\/(scripts\/(?!node_modules\/)|workflows\/notify\.yml$)/.test(f.filename))
   } catch { return false }
 }
 // Firestore rules: re-deployed hourly if they differ from this checkout (no Firestore reads).
@@ -634,30 +643,32 @@ const rulesCheck = () => new Promise(res => execFile('node', ['.github/scripts/d
 let migrated = await migrateChats().catch(e => { warn('Moving chats to the Realtime Database failed (will retry): ' + e.message); return false })
 let nextMigration = Date.now() + 30 * 60_000
 let rounds = 0
-const TICK_MS = Number(process.env.TICK_MS ?? 3000)
+const TICK_MS = Number(process.env.TICK_MS ?? 1000)
 let nextCodeCheck = Date.now() + 10 * 60_000, nextRules = Date.now() + 60 * 60_000
 while (true) {
   const due = Date.now() - SETTLE_MS
   let sentUpTo = 0
   for (const [id, e] of chatEvents) {
-    if (e.at > due) continue
+    // waits SETTLE_MS only while someone has the room open (their read receipt may be on its way)
+    if (e.at > due && roomOpen(e.chat)) continue
     chatEvents.delete(id)
     await notifyChat(e.chat, e.count)
     sentUpTo = Math.max(sentUpTo, e.at)
   }
-  const readyVotes = voteEvents.filter(v => v.at <= due)
+  // votes and 상담 go out right away
+  const readyVotes = voteEvents.splice(0)
   if (readyVotes.length) {
-    voteEvents.splice(0, voteEvents.length, ...voteEvents.filter(v => v.at > due))
     const per = new Map()
     for (const v of readyVotes) { const n = per.get(v.candidateId) ?? { up: 0, down: 0 }; n[v.kind]++; per.set(v.candidateId, n); sentUpTo = Math.max(sentUpTo, v.at) }
     await notifyVotes(per)
   }
   for (const [id, e] of supportEvents) {
-    if (e.at > due) continue
     supportEvents.delete(id)
     await notifySupport(e.ticket)
     sentUpTo = Math.max(sentUpTo, e.at)
   }
+  // a chat still waiting keeps the cursor before it, so a restart can't skip it
+  for (const e of chatEvents.values()) sentUpTo = Math.min(sentUpTo, e.at - 1)
   if (sentUpTo > cursor) {
     cursor = sentUpTo
     await cursorRef.set({ at: Timestamp.fromMillis(cursor) }, { merge: true })
@@ -673,7 +684,7 @@ while (true) {
   if (resetsPending) { resetsPending = false; await passwordResets() }
   if (seasonEndsAt && Date.now() >= seasonEndsAt) { seasonEndsAt = null; await endSeasonIfDue().catch(e => warn('Season end check failed: ' + e)) }
   if (Date.now() >= nextRules && !LOCAL) { nextRules = Date.now() + 60 * 60_000; await rulesCheck() }
-  if (Date.now() >= nextCodeCheck) { nextCodeCheck = Date.now() + 10 * 60_000; if (await newerCodeOnMain()) { notice('Newer code on main; handing over to a fresh run.'); break } }
+  if (Date.now() >= nextCodeCheck) { nextCodeCheck = Date.now() + 5 * 60_000; if (await newerCodeOnMain()) { notice('Newer code on main; handing over to a fresh run.'); break } }
   if (Date.now() - started + TICK_MS > RUN_FOR_MS && !chatEvents.size && !voteEvents.length && !supportEvents.size) break
   await new Promise(res => setTimeout(res, TICK_MS))
 }

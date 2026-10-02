@@ -54,6 +54,8 @@ async function nativeToken(): Promise<string> {
   // High importance = shows as a heads-up popup like a messenger app, with sound and vibration.
   await PushNotifications.createChannel({ id: 'messages', name: '메시지', description: '새 메시지', importance: 5, visibility: 1, vibration: true, lights: true }).catch(() => {})
   await PushNotifications.createChannel({ id: 'votes', name: '받은 투표', description: '받은 추천·비추천', importance: 4, visibility: 1, vibration: true }).catch(() => {})
+  // 알림 소리 off: shown in the list without sound or popup.
+  await PushNotifications.createChannel({ id: 'quiet', name: '무음 알림', description: '알림 소리를 끄면 이 채널로 와요', importance: 2, visibility: 1, vibration: false }).catch(() => {})
   return new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('push-register-timeout')), 15000)
     PushNotifications.addListener('registration', t => { clearTimeout(timer); resolve(t.value) })
@@ -87,6 +89,29 @@ export async function disablePush(db: Firestore) {
   if (pushSupport() === 'web') {
     try { const { getMessaging, deleteToken } = await import('firebase/messaging'); await deleteToken(getMessaging(app!)) } catch { /* not registered */ }
   }
+}
+
+// 앱을 열면 "알림 보내드려도 될까요?": asked until they answer. 나중에 asks again after
+// 3 days; turning 알림 받기 off in 계정 never asks again (until they turn it back on).
+const ASK_KEY = 'vote.pushAsk', ASK_AGAIN_MS = 3 * 86_400_000
+export function setPushOptOut(off: boolean) { try { off ? localStorage.setItem(ASK_KEY, 'off') : localStorage.removeItem(ASK_KEY) } catch { /* */ } }
+export function pushAskLater() { try { localStorage.setItem(ASK_KEY, String(Date.now())) } catch { /* */ } }
+function askState() { try { return localStorage.getItem(ASK_KEY) } catch { return null } }
+export const pushOptedOut = () => askState() === 'off'
+
+/** What to do on app open: register silently (already allowed), ask, or nothing. */
+export async function pushOnOpen(): Promise<'register' | 'ask' | 'none'> {
+  const support = pushSupport()
+  if ((support !== 'web' && support !== 'native') || pushOptedOut()) return 'none'
+  let perm: string
+  if (support === 'web') perm = Notification.permission
+  else {
+    try { const { PushNotifications } = await import('@capacitor/push-notifications'); perm = (await PushNotifications.checkPermissions()).receive } catch { return 'none' }
+  }
+  if (perm === 'granted') return 'register'
+  if (perm === 'denied') return 'none'
+  const later = Number(askState() || 0)
+  return Date.now() - later > ASK_AGAIN_MS ? 'ask' : 'none'
 }
 
 /** Keeps the stored token fresh for a registered device (tokens can rotate). */

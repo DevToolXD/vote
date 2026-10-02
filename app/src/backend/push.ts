@@ -3,8 +3,8 @@ import { deleteDoc, doc, getDoc, serverTimestamp, setDoc, type Firestore, type U
 // Push notification bookkeeping in Firestore. The sender
 // (.github/scripts/send-notifications.mjs) reads these with the service account.
 
-export type NotifySettings = { notify: boolean; notifyMsg: boolean; notifyVote: boolean }
-export const DEFAULT_NOTIFY: NotifySettings = { notify: true, notifyMsg: true, notifyVote: true }
+export type NotifySettings = { notify: boolean; notifyMsg: boolean; notifyVote: boolean; notifySound: boolean }
+export const DEFAULT_NOTIFY: NotifySettings = { notify: true, notifyMsg: true, notifyVote: true, notifySound: true }
 export type PushPlatform = 'web' | 'android'
 
 // Only this person changes their settings, almost always from this device, so they're kept

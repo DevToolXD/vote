@@ -8,7 +8,7 @@ import { buyItem, buySeries, buyPass, castVote, hasFakePass, hasPass, claimAppBo
 import { createGroup, inviteMembers, isUnread, leaveGroup, onMyReads, setReadsUser, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, scheduleMessage, subscribeMyChats, type ChatRow } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
 import { DEFAULT_OWNED, DEFAULT_SEASON, FAKE_PASS_PRICE, PASS_PRICE, type PassKind, type MyVote, type Season, type WeekKind } from './backend/types'
-import { deviceRegistered, disablePush, enablePush, pushErrorMessage, pushSupport, refreshPush } from './push'
+import { deviceRegistered, disablePush, enablePush, pushAskLater, pushErrorMessage, pushOnOpen, pushSupport, refreshPush, setPushOptOut } from './push'
 import { fileToChatImage, fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
 import { AdminProgressOverlay, AdminScreen } from './components/AdminScreen'
@@ -131,6 +131,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [notify, setNotify] = useState<NotifyPrefs>(DEFAULT_NOTIFY)
   const [pushOn, setPushOn] = useState(deviceRegistered)
   const [pushBusy, setPushBusy] = useState(false)
+  const [pushAsk, setPushAsk] = useState(false)
   // 상담 (forgot password): 'new' from 비밀번호를 잊었어요, 'resume' from the 계정 card.
   const [supportOpen, setSupportOpen] = useState<'new' | 'resume' | null>(null)
   const [anonUid, setAnonUid] = useState<string | null>(null)
@@ -240,6 +241,19 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     refreshPush(db, authUser.uid).then(() => setPushOn(deviceRegistered()))
     return subscribeNotifySettings(db, authUser.uid, setNotify)
   }, [authUser])
+
+  // 알림 is on by default: on app open, a device that isn't registered yet registers by itself
+  // when notifications are already allowed, or asks "알림 보내드려도 될까요?" (until they answer).
+  useEffect(() => {
+    if (!authUser || !db || pushOn) return
+    let dead = false
+    const t = setTimeout(() => pushOnOpen().then(next => {
+      if (dead || deviceRegistered()) return
+      if (next === 'ask') setPushAsk(true)
+      else if (next === 'register') enablePush(db!, authUser.uid).then(() => !dead && setPushOn(deviceRegistered())).catch(() => {})
+    }), 1200)
+    return () => { dead = true; clearTimeout(t) }
+  }, [authUser, pushOn])
 
   useEffect(() => {
     if (!authUser) { setChats([]); setChatId(null); return }
@@ -647,10 +661,12 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     setPushBusy(true)
     try {
       if (on) {
+        setPushOptOut(false)
         await enablePush(db, authUser.uid)
         await saveNotifySettings(db, authUser.uid, { notify: true })
         showToast('알림을 켰어요')
       } else {
+        setPushOptOut(true)
         await disablePush(db)
         showToast('이 기기의 알림을 껐어요')
       }
@@ -1014,6 +1030,19 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
                 catch (e) { setNewPw(s => ({ ...s, busy: false })); failToast('바꾸지 못했어요', e) }
               }}
               style={sx('height:54px;border-radius:16px;background:#3182f6;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms', { opacity: newPw.a.length >= 8 && newPw.a === newPw.b && !newPw.busy ? 1 : 0.3 })}>바꾸기</button>
+          </Dialog>
+        )}
+        {pushAsk && authUser && !mustChangePw && !notice && me && (guideDone === me.id || guideSeen(me.id)) && (
+          <Dialog onScrim={() => { pushAskLater(); setPushAsk(false) }} labelledBy="push-ask" gap={20}>
+            <div style={css('padding:0 4px;display:flex;flex-direction:column;gap:12px')}>
+              <span aria-hidden style={css('width:48px;height:48px;border-radius:9999px;background:#e8f3ff;display:flex;align-items:center;justify-content:center;font-size:26px')}>🔔</span>
+              <span id="push-ask" style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>알림 보내드려도 될까요?</span>
+              <span style={css('font-size:15px;line-height:22.5px;color:#4e5968')}>새 메시지와 받은 추천을 소리로 바로 알려드려요. 계정 탭 → 알림에서 언제든 끄거나 소리만 끌 수 있어요</span>
+            </div>
+            <div style={css('display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
+              <button data-g="secondary" className="pr-96" onClick={() => { pushAskLater(); setPushAsk(false) }} style={css('height:54px;border-radius:16px;background:#f2f4f6;color:#4e5968;font-size:17px;font-weight:600')}>나중에</button>
+              <button data-g="primary" className="pr-96" onClick={() => { setPushAsk(false); togglePush(true) }} style={css('height:54px;border-radius:16px;background:#3182f6;color:#ffffff;font-size:17px;font-weight:600')}>허용</button>
+            </div>
           </Dialog>
         )}
         {installOpen && <InstallSheet onClose={() => setInstallOpen(false)} onToast={showToast} />}
