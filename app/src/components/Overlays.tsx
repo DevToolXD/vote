@@ -10,6 +10,7 @@ import { Avatar } from './Avatar'
 import { CloseIcon } from './icons'
 import { PlateBanner } from './Nameplate'
 import { Badges } from './Badges'
+import { readView, watchView } from '../viewport'
 
 const handle = <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
 const bigBtn = 'height:56px;border-radius:16px;font-size:17px;font-weight:600'
@@ -20,22 +21,8 @@ const bigBtn = 'height:56px;border-radius:16px;font-size:17px;font-weight:600'
  * and dialogs can sit above the keyboard instead of behind it.
  */
 export function useVisibleViewport() {
-  const read = () => {
-    const vv = typeof window !== 'undefined' ? window.visualViewport : null
-    return vv ? { inset: Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)), top: vv.offsetTop, height: vv.height } : { inset: 0, top: 0, height: typeof window !== 'undefined' ? window.innerHeight : 800 }
-  }
-  const [v, setV] = useState(read)
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    const u = () => setV(read())
-    vv.addEventListener('resize', u); vv.addEventListener('scroll', u)
-    // A sheet whose input auto-focuses opens the keyboard before this effect runs, so that
-    // first resize is missed: read again now and after the keyboard animation.
-    u()
-    const t1 = setTimeout(u, 120), t2 = setTimeout(u, 450)
-    return () => { clearTimeout(t1); clearTimeout(t2); vv.removeEventListener('resize', u); vv.removeEventListener('scroll', u) }
-  }, [])
+  const [v, setV] = useState(readView)
+  useEffect(() => watchView(() => setV(o => { const n = readView(); return o.top === n.top && o.height === n.height && o.inset === n.inset ? o : n })), [])
   return v
 }
 

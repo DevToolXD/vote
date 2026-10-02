@@ -9,6 +9,7 @@ import { FRAMES, LEGENDARY, SKIN_SERIES, skinGeom } from '../data'
 import { Nameplate } from './Nameplate'
 import { TowerSkin } from './TowerSkin'
 import { saveImage } from '../saveImage'
+import { readView, watchView } from '../viewport'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
 import { BackIcon, ChevronRight, CloseIcon, SearchIcon } from './icons'
@@ -213,28 +214,21 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
  * "screen tearing open" feeling on iPhone). The input stays right above the keyboard.
  */
 export function useKeyboardSafeBox() {
-  const [box, setBox] = useState(() => ({ top: 0, height: typeof window === 'undefined' ? 0 : (window.visualViewport?.height ?? window.innerHeight) }))
+  const [box, setBox] = useState(() => { const v = readView(); return { top: v.top, height: v.height } })
   useEffect(() => {
     const y = window.scrollY
     const b = document.body.style
     const prev = { position: b.position, top: b.top, width: b.width, overflow: b.overflow }
     Object.assign(b, { position: 'fixed', top: `-${y}px`, width: '100%', overflow: 'hidden' })
-    const vv = window.visualViewport
     const update = () => {
+      const v = readView()
       // iPhone sometimes leaves the page scrolled after the keyboard closes; the body is locked, so put it back.
-      if (vv && vv.height >= window.innerHeight - 1 && window.scrollY !== 0) window.scrollTo(0, 0)
-      setBox({ top: vv ? vv.offsetTop : 0, height: vv ? vv.height : window.innerHeight })
+      if (!v.inset && window.scrollY !== 0) window.scrollTo(0, 0)
+      setBox(o => (o.top === v.top && o.height === v.height ? o : { top: v.top, height: v.height }))
     }
-    update()
-    const t1 = setTimeout(update, 120), t2 = setTimeout(update, 450)
-    vv?.addEventListener('resize', update)
-    vv?.addEventListener('scroll', update)
-    window.addEventListener('resize', update)
+    const stop = watchView(update)
     return () => {
-      clearTimeout(t1); clearTimeout(t2)
-      vv?.removeEventListener('resize', update)
-      vv?.removeEventListener('scroll', update)
-      window.removeEventListener('resize', update)
+      stop()
       Object.assign(b, prev)
       window.scrollTo(0, y)
     }
