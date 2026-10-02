@@ -12,7 +12,7 @@ import { saveImage } from '../saveImage'
 import { readView, watchView } from '../viewport'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
-import { PresenceText } from './Presence'
+import { GroupPresence, PresenceText } from './Presence'
 import { BackIcon, ChevronRight, CloseIcon, SearchIcon } from './icons'
 import { BottomSheet, Dialog } from './Overlays'
 import { DurationInput, dhmsSeconds, durationLabel, leftLabel, type Dhms } from './Duration'
@@ -135,9 +135,11 @@ type ScreenProps = {
   onOpen: (chatId: string) => void
   onNew: () => void
   onToggleOff: (off: boolean) => void
+  /** for 온라인 표시 next to 1:1 chats */
+  db?: Firestore | null
 }
 
-export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onNew, onToggleOff }: ScreenProps) {
+export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onNew, onToggleOff, db = null }: ScreenProps) {
   if (!loggedIn || !me) {
     return (
       <div className="anim-list" style={css('flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:48px 24px;text-align:center')}>
@@ -181,6 +183,7 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
                   <span style={css('display:flex;align-items:center;gap:4px;min-width:0')}>
                     <span style={sx(title17 + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis', { fontWeight: unread ? 600 : 500, color: unread ? '#191f28' : '#333d4b' })}>{v.title}</span>
                     {c.type === 'group' && <span style={css('flex:none;font-size:15px;color:#8b95a1')}>{c.members.length}</span>}
+                    {c.type === 'dm' && v.people[0] && <PresenceText db={db} uid={v.people[0].id} size={13} sep />}
                     {muted && <BellOffIcon />}
                   </span>
                   <span style={sx('font-size:15px;line-height:22.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis', { color: unread ? '#333d4b' : '#6b7684', fontWeight: unread ? 500 : 400 })}>{c.last ? who + lastText : '대화를 시작해보세요'}</span>
@@ -520,6 +523,7 @@ export function ChatRoom(p: RoomProps) {
               <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#191f28;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{v.title}</span>
               {chat.type === 'group' && <span style={css('flex:none;font-size:15px;color:#8b95a1')}>{chat.members.length}</span>}
               {chat.type === 'dm' && v.people[0] && <PresenceText db={db} uid={v.people[0].id} size={14} sep />}
+              {chat.type === 'group' && <GroupPresence db={db} uids={chat.members.filter(m => m !== me.id)} sep />}
             </span>
           </button>
           <button className="pr-dim" onClick={() => setMenu(true)} aria-label="채팅방 메뉴" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#4e5968')}><MenuIcon /></button>

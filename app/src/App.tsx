@@ -767,6 +767,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             <MessagesScreen
               loggedIn={loggedIn} me={me} chats={chats} byId={byId}
               onLogin={() => go('acct')} onOpen={setChatId} onNew={() => setNewChatOpen(true)} onToggleOff={toggleMsgOff}
+              db={db}
             />
           )}
           {tab === 'admin' && isAdmin && authUser && (
