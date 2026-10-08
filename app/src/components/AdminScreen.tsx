@@ -509,7 +509,7 @@ function CoinBoost({ db, boost, setConfirm }: { db: Firestore | null; boost: (sy
         {MIN_CHIPS.map(v => <button key={v} className="pr-96" onClick={() => setMin(String(v))} style={chip(m === v)}>{v}분</button>)}
       </div>
       <div style={css('display:flex;gap:8px;align-items:center')}>
-        <input inputMode="numeric" value={pct} onChange={e => setPct(e.target.value.replace(/[^0-9+-]/g, '').slice(0, 4))} aria-label="변동률 %" placeholder="%" className="box-focus" style={css(field + ';flex:1')} />
+        <input inputMode="numeric" value={pct} onChange={e => setPct(e.target.value.replace(/[^0-9+-]/g, '').slice(0, 12))} aria-label="변동률 %" placeholder="%" className="box-focus" style={css(field + ';flex:1')} />
         <input inputMode="numeric" value={min} onChange={e => setMin(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))} aria-label="분" placeholder="분" className="box-focus" style={css(field + ';width:96px')} />
       </div>
       <button className="pr-96" disabled={!ok} onClick={() => setConfirm({
