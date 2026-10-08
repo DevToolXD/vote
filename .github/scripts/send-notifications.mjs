@@ -698,17 +698,19 @@ function coinStep() {
 // move is spread evenly over the minutes, then the request is removed. Applied once.
 const coinEventsQueue = []
 rdb.ref('coinEvents').on('child_added', s => { if (s.val()?.sym in COINS) coinEventsQueue.push({ id: s.key, ...s.val() }) }, e => warn('Coin events failed: ' + e.message))
-function applyCoinEvents() {
+async function applyCoinEvents() {
+  const done = []
   for (const ev of coinEventsQueue.splice(0)) {
     const pct = Math.max(-50, Math.min(50, Number(ev.pct) || 0)), minutes = Math.max(1, Math.min(30, Number(ev.minutes) || 1))
     const ticks = Math.max(1, Math.round((minutes * 60_000) / COIN_TICK_MS))
     trend[ev.sym] = { drift: Math.log(1 + pct / 100) / ticks, left: ticks, free: true }
-    rdb.ref(`coinEvents/${ev.id}`).remove().catch(() => {})
+    done.push(rdb.ref(`coinEvents/${ev.id}`).remove().catch(() => {}))
   }
+  await Promise.all(done) // removed before the worker can exit
 }
 async function coinTick() {
   if (!coinPrices) return
-  applyCoinEvents()
+  await applyCoinEvents()
   const now = Date.now()
   if (now - coinAt < COIN_TICK_MS) return
   coinAt = now
