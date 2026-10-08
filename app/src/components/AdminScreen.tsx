@@ -15,12 +15,17 @@ import type { PollResult } from '../backend/notices'
 import type { Season } from '../backend/types'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
+import { COINS, watchLive, type CoinSym, type Live } from '../backend/coins'
+import type { Firestore } from 'firebase/firestore'
 import { SearchIcon } from './icons'
 import { Dialog } from './Overlays'
 import { shortPoints } from './PointsChip'
 
 type Props = {
   all: Person[]
+  /** 코인 상승: the price feed (for the live price) and the admin's boost request. */
+  db: Firestore | null
+  boostCoin: (sym: CoinSym, pct: number, minutes: number) => Promise<void>
   tickets: Ticket[]
   onOpenTicket: (id: string) => void
   postNotice: (title: string, body: string, onProgress: (p: AdminProgress) => void, options?: string[]) => Promise<void>
@@ -59,7 +64,7 @@ const gap = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
 
 type Confirm = { title: string; desc: string; cta: string; danger?: boolean; go: () => void }
 
-export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls, setSeasonConfig, season, run, grantPoints, setTradeBan, revokeItem, setSeasonName, resetSeason, renameUser, deleteAccount, resetPassword, access, onLogout }: Props) {
+export function AdminScreen({ all, db, boostCoin, tickets, onOpenTicket, postNotice, loadPolls, setSeasonConfig, season, run, grantPoints, setTradeBan, revokeItem, setSeasonName, resetSeason, renameUser, deleteAccount, resetPassword, access, onLogout }: Props) {
   const [issued, setIssued] = useState<{ name: string; loginId?: string; code: string } | null>(null)
   const [nameDraft, setNameDraft] = useState('')
   const [notice, setNotice] = useState({ title: '', body: '' })
@@ -100,6 +105,8 @@ export function AdminScreen({ all, tickets, onOpenTicket, postNotice, loadPolls,
 
       {gap}
       <AdminLedger all={all} />
+      {gap}
+      <CoinBoost db={db} boost={boostCoin} setConfirm={setConfirm} />
       {all.some(p => (p.tradeBan ?? 0) > Date.now()) && (
         <>
           {gap}
@@ -467,5 +474,52 @@ function PersonAccess({ uid, name, tools, run, setConfirm }: AccessProps & { uid
         </span>
       )}
     </div>
+  )
+}
+
+const PCT_CHIPS = [-30, -10, 10, 20, 30, 50]
+const MIN_CHIPS = [1, 3, 5, 10, 30]
+
+/** 코인 상승 (관리자): make one coin rise or fall over a few minutes. The worker spreads the move. */
+function CoinBoost({ db, boost, setConfirm }: { db: Firestore | null; boost: (sym: CoinSym, pct: number, minutes: number) => Promise<void>; setConfirm: (c: Confirm) => void }) {
+  const [sym, setSym] = useState<CoinSym>('JEONG')
+  const [pct, setPct] = useState('20')
+  const [min, setMin] = useState('5')
+  const [live, setLive] = useState<Live>(null)
+  useEffect(() => (db ? watchLive(db, setLive) : undefined), [db])
+  const n = Number(pct), m = Number(min)
+  const ok = Number.isFinite(n) && n !== 0 && Math.abs(n) <= 50 && Number.isInteger(m) && m >= 1 && m <= 30
+  const coin = COINS.find(c => c.sym === sym)!
+  const price = live?.p?.[sym]
+  const chip = (on: boolean) => sx('height:36px;padding:0 12px;border-radius:10px;font-size:15px;font-weight:600;transition:background 200ms,color 200ms', { background: on ? '#191f28' : '#f2f4f6', color: on ? '#fff' : '#4e5968' })
+  return (
+    <section style={css('padding:24px 24px 12px;display:flex;flex-direction:column;gap:12px')}>
+      <span style={css(sectionTitle)}>코인 상승</span>
+      <span style={css(hint)}>가상 코인 가격을 정한 시간 동안 천천히 올리거나 내려요. 실제 포인트는 바뀌지 않아요</span>
+      <div style={css('display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px')}>
+        {COINS.map(c => (
+          <button key={c.sym} className="pr-96" onClick={() => setSym(c.sym)} style={{ ...chip(c.sym === sym), padding: 0, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name.replace('코인', '')}</button>
+        ))}
+      </div>
+      <span style={css('font-size:15px;color:#4e5968;font-variant-numeric:tabular-nums')}>{coin.name} · 지금 {price == null ? '-' : price.toLocaleString(undefined, { maximumFractionDigits: 4 })}P</span>
+      <div style={css('display:flex;gap:6px;flex-wrap:wrap')}>
+        {PCT_CHIPS.map(v => <button key={v} className="pr-96" onClick={() => setPct(String(v))} style={chip(n === v)}>{v > 0 ? `+${v}` : v}%</button>)}
+      </div>
+      <div style={css('display:flex;gap:6px;flex-wrap:wrap;align-items:center')}>
+        {MIN_CHIPS.map(v => <button key={v} className="pr-96" onClick={() => setMin(String(v))} style={chip(m === v)}>{v}분</button>)}
+      </div>
+      <div style={css('display:flex;gap:8px;align-items:center')}>
+        <input inputMode="numeric" value={pct} onChange={e => setPct(e.target.value.replace(/[^0-9+-]/g, '').slice(0, 4))} aria-label="변동률 %" placeholder="%" className="box-focus" style={css(field + ';flex:1')} />
+        <input inputMode="numeric" value={min} onChange={e => setMin(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))} aria-label="분" placeholder="분" className="box-focus" style={css(field + ';width:96px')} />
+      </div>
+      <button className="pr-96" disabled={!ok} onClick={() => setConfirm({
+        title: `${coin.name} ${n > 0 ? '+' : ''}${n}% 할까요?`,
+        desc: `${m}분 동안 천천히 ${n > 0 ? '올라' : '내려'}가요. 다른 사람들도 바로 볼 수 있어요`,
+        cta: '시작',
+        go: () => { boost(sym, n, m).catch(() => {}) },
+      })} style={sx('height:56px;border-radius:16px;background:#3182f6;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms', { opacity: ok ? 1 : 0.35 })}>
+        {ok ? `${coin.name} ${n > 0 ? '+' : ''}${n}% (${m}분)` : '변동률과 시간을 확인해주세요'}
+      </button>
+    </section>
   )
 }

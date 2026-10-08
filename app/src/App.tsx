@@ -20,6 +20,7 @@ import { ShopScreen, type ShopTab } from './components/ShopScreen'
 import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScreen'
 import { NotifySettings } from './components/NotifySettings'
 import { CoinScreen } from './components/CoinScreen'
+import { boostCoin } from './backend/coinBoost'
 import { CallScreen } from './components/CallScreen'
 import { CallSession, canCall, declineCall, talkLabel, watchIncoming, type CallPhase, type EndReason, type Incoming } from './backend/calls'
 import { startPresence } from './backend/presence'
@@ -810,6 +811,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             <Suspense fallback={null}>
             <AdminScreen
               all={all}
+              db={db}
+              boostCoin={(sym, pct, minutes) => boostCoin(db!, sym, pct, minutes)}
               tickets={tickets}
               onOpenTicket={setTicketId}
               loadPolls={() => pollResults(db!)}

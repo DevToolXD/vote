@@ -686,15 +686,29 @@ const trend = {}
 function coinStep() {
   for (const [sym, c] of Object.entries(COINS)) {
     const x = Math.log(coinPrices[sym] / c.base)
-    let dx = -COIN_PULL * x + c.vol * gauss()
+    // an admin boost (trend.free) moves the price without being pulled back toward the base
+    let dx = (trend[sym]?.free ? 0 : -COIN_PULL * x) + c.vol * gauss()
     if (!trend[sym] && Math.random() < 1 / 2500) trend[sym] = { drift: (Math.random() < 0.5 ? -1 : 1) * (0.0005 + Math.random() * 0.0007), left: 60 + Math.floor(Math.random() * 60) }
     if (trend[sym]) { dx += trend[sym].drift; if (--trend[sym].left <= 0) delete trend[sym] }
     if (Math.random() < 1 / 3000) dx += (Math.random() < 0.5 ? -1 : 1) * (0.03 + Math.random() * 0.05) // 급등 / 급락
     coinPrices[sym] = roundPrice(Math.min(c.base * COIN_BOUND, Math.max(c.base / COIN_BOUND, coinPrices[sym] * Math.exp(dx))))
   }
 }
+// 관리자 코인 상승 (coinEvents/{id} { sym, pct, minutes }, written by the admin screen): the
+// move is spread evenly over the minutes, then the request is removed. Applied once.
+const coinEventsQueue = []
+rdb.ref('coinEvents').on('child_added', s => { if (s.val()?.sym in COINS) coinEventsQueue.push({ id: s.key, ...s.val() }) }, e => warn('Coin events failed: ' + e.message))
+function applyCoinEvents() {
+  for (const ev of coinEventsQueue.splice(0)) {
+    const pct = Math.max(-50, Math.min(50, Number(ev.pct) || 0)), minutes = Math.max(1, Math.min(30, Number(ev.minutes) || 1))
+    const ticks = Math.max(1, Math.round((minutes * 60_000) / COIN_TICK_MS))
+    trend[ev.sym] = { drift: Math.log(1 + pct / 100) / ticks, left: ticks, free: true }
+    rdb.ref(`coinEvents/${ev.id}`).remove().catch(() => {})
+  }
+}
 async function coinTick() {
   if (!coinPrices) return
+  applyCoinEvents()
   const now = Date.now()
   if (now - coinAt < COIN_TICK_MS) return
   coinAt = now

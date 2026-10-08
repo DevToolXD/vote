@@ -296,6 +296,28 @@
           ".validate": false
         }
       }
+    },
+    "coinEvents": {
+      ".read": false,
+      "$id": {
+        ".write": "auth != null && (auth.token.email === 'admin@vote.local' || auth.token.admin === true) && !data.exists()",
+        ".validate": "newData.hasChildren(['sym','pct','minutes','at']) && newData.child('at').val() <= now + 60000",
+        "sym": {
+          ".validate": "newData.val() === 'JEONG' || newData.val() === 'BTC' || newData.val() === 'ETH' || newData.val() === 'XRP' || newData.val() === 'DOGE' || newData.val() === 'SGP' || newData.val() === 'KIMCHI' || newData.val() === 'TTEOK' || newData.val() === 'CHICKEN' || newData.val() === 'RAMEN' || newData.val() === 'MOON'"
+        },
+        "pct": {
+          ".validate": "newData.isNumber() && newData.val() >= -50 && newData.val() <= 50 && newData.val() != 0"
+        },
+        "minutes": {
+          ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 30"
+        },
+        "at": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }

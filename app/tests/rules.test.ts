@@ -1249,6 +1249,27 @@ describe('음성 통화', () => {
   })
 })
 
+describe('코인 상승 (관리자)', () => {
+  test('only the admin can request a rise; the worker applies it and removes the request', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    const R = (db: Firestore) => rtdbOf.get(db)!
+    const ev = { sym: 'JEONG', pct: 30, minutes: 1, at: Date.now() }
+    await denied(rtSet(rtRef(R(a), 'coinEvents/x1'), ev))
+    await denied(rtSet(rtRef(R(admin), 'coinEvents/x2'), { ...ev, pct: 80 }))
+    await denied(rtSet(rtRef(R(admin), 'coinEvents/x3'), { ...ev, minutes: 0 }))
+    await denied(rtSet(rtRef(R(admin), 'coinEvents/x4'), { ...ev, sym: 'FAKE' }))
+    await denied(rtSet(rtRef(R(admin), 'coinEvents/x5'), { ...ev, pct: 0 }))
+    await rtSet(rtRef(R(admin), 'coinEvents/ok1'), ev)
+    await assert.rejects(rt(a, 'coinEvents/ok1'))
+    const run = new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
+      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '4000', SETTLE_MS: '0', COIN_TICK_MS: '1000' },
+    }, (err, stdout, stderr) => err ? reject(new Error(stderr || stdout)) : resolve()))
+    await run
+    // removed by the worker: the id can be written again (the rule only allows a new request)
+    await rtSet(rtRef(R(admin), 'coinEvents/ok1'), ev)
+  })
+})
+
 describe('코인 판매 큰 수량', () => {
   test('a huge holding (608 billion coins) can be sold', async () => {
     const a = await signUp('a')
