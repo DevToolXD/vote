@@ -671,6 +671,7 @@ const COINS = {
   MOON: { base: 0.5, vol: 0.012 },
 }
 const COIN_TICK_MS = Number(process.env.COIN_TICK_MS ?? 3000), COIN_PULL = 0.0015
+const COIN_FLOOR = 0.0001
 const HIST_MS = 15_000, COIN_KEEP_MS = 24 * 60 * 60_000
 const COIN_BOUND = 20 // a coin stays between base / 20 and base × 20
 let coinPrices = null, coinAt = 0, coinMinute = 0
@@ -703,8 +704,10 @@ function coinStep() {
     if (Math.random() < 1 / 3000) dx += (Math.random() < 0.5 ? -1 : 1) * (0.03 + Math.random() * 0.05) // 급등 / 급락
     // the normal walk stays within 20× of base (and never pushes a price that's above it further up);
     // an admin boost has no upper limit, it returns to base by the pull-back once it ends
-    const hi = trend[sym]?.free ? Infinity : Math.max(c.base * COIN_BOUND, coinPrices[sym])
-    coinPrices[sym] = roundPrice(Math.min(hi, Math.max(c.base / COIN_BOUND, coinPrices[sym] * Math.exp(dx))))
+    const free = !!trend[sym]?.free
+    const hi = free ? Infinity : Math.max(c.base * COIN_BOUND, coinPrices[sym])
+    const lo = free ? COIN_FLOOR : c.base / COIN_BOUND
+    coinPrices[sym] = roundPrice(Math.min(hi, Math.max(lo, coinPrices[sym] * Math.exp(dx))))
   }
 }
 // 관리자 코인 상승 (coinEvents/{id} { sym, pct, minutes }, written by the admin screen): the
@@ -714,7 +717,8 @@ rdb.ref('coinEvents').on('child_added', s => { if (s.val()?.sym in COINS) coinEv
 // The path of an admin boost: the log-price moves by `target` over `ticks`, with waves on top
 // (a sine over the ride), normalized so the whole ride adds up to exactly the target.
 function boostPath(sym, pct, ticks) {
-  const target = Math.log(1 + pct / 100), period = 25 + Math.random() * 35, phase = Math.random() * 2 * Math.PI, wave = 0.9
+  // a drop of 100 % or more goes to the price floor (never 0: buying divides by the price)
+  const target = Math.log(Math.max(COIN_FLOOR, 1 + pct / 100)), period = 25 + Math.random() * 35, phase = Math.random() * 2 * Math.PI, wave = 0.9
   let norm = 0
   for (let i = 0; i < ticks; i++) norm += 1 + wave * Math.sin((2 * Math.PI * i) / period + phase)
   return { target, norm, total: ticks, left: ticks, free: true, period, phase, wave }

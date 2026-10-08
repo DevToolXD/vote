@@ -477,7 +477,7 @@ function PersonAccess({ uid, name, tools, run, setConfirm }: AccessProps & { uid
   )
 }
 
-const PCT_CHIPS = [-30, -10, 10, 20, 30, 50]
+const PCT_CHIPS = [-90, -50, -30, -10, 10, 20, 30, 50]
 const MIN_CHIPS = [1, 3, 5, 10, 30]
 
 /** 코인 상승 (관리자): make one coin rise or fall over a few minutes. The worker spreads the move. */
@@ -488,7 +488,7 @@ function CoinBoost({ db, boost, setConfirm }: { db: Firestore | null; boost: (sy
   const [live, setLive] = useState<Live>(null)
   useEffect(() => (db ? watchLive(db, setLive) : undefined), [db])
   const n = Number(pct), m = Number(min)
-  const ok = Number.isFinite(n) && n !== 0 && n > -100 && Number.isInteger(m) && m >= 1 && m <= 30
+  const ok = Number.isFinite(n) && n !== 0 && Number.isInteger(m) && m >= 1 && m <= 30
   const coin = COINS.find(c => c.sym === sym)!
   const price = live?.p?.[sym]
   const chip = (on: boolean) => sx('height:36px;padding:0 12px;border-radius:10px;font-size:15px;font-weight:600;transition:background 200ms,color 200ms', { background: on ? '#191f28' : '#f2f4f6', color: on ? '#fff' : '#4e5968' })

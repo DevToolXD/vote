@@ -1255,7 +1255,7 @@ describe('코인 상승 (관리자)', () => {
     const R = (db: Firestore) => rtdbOf.get(db)!
     const ev = { sym: 'JEONG', pct: 30, minutes: 1, at: Date.now() }
     await denied(rtSet(rtRef(R(a), 'coinEvents/x1'), ev))
-    await denied(rtSet(rtRef(R(admin), 'coinEvents/x2'), { ...ev, pct: -100 }))
+    await denied(rtSet(rtRef(R(admin), 'coinEvents/x2'), { ...ev, pct: 'big' }))
     await denied(rtSet(rtRef(R(admin), 'coinEvents/x3'), { ...ev, minutes: 0 }))
     await denied(rtSet(rtRef(R(admin), 'coinEvents/x4'), { ...ev, sym: 'FAKE' }))
     await denied(rtSet(rtRef(R(admin), 'coinEvents/x5'), { ...ev, pct: 0 }))
