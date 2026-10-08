@@ -184,7 +184,7 @@ function CoinSheet({ sym, db, uid, points, price, wallet, series, change, onToas
 
   const n = Number(amount.replace(/,/g, '')) || 0
   // buy: n points; sell: n percent of what's held
-  const sellQty = h ? (n >= 100 ? h.q : Math.floor(h.q * (n / 100) * 1e8) / 1e8) : 0
+  const sellQty = h ? Math.floor((n >= 100 ? h.q : h.q * (n / 100)) * 1e8) / 1e8 : 0
   const canBuy = n >= MIN_BUY && n <= points && !!price
   const canSell = !!h && sellQty > 0 && !!price
 
@@ -198,8 +198,10 @@ function CoinSheet({ sym, db, uid, points, price, wallet, series, change, onToas
         setMode(null); setAmount('')
       } else if (r.status === 'failed') onToast(r.reason === 'not-enough' ? '가진 코인보다 많이 팔 수 없어요' : '체결하지 못했어요')
       else { onToast('주문을 넣었어요. 잠시 뒤에 체결돼요'); setMode(null); setAmount('') }
-    } catch {
-      onToast('주문하지 못했어요. 포인트를 확인해주세요')
+    } catch (e) {
+      // the reason is shown so it can be reported exactly (e.g. permission-denied)
+      const code = (e as { code?: string; message?: string }).code ?? (e as Error).message ?? ''
+      onToast(`주문하지 못했어요 (${code.slice(0, 40)})`)
     } finally {
       setBusy(false)
     }

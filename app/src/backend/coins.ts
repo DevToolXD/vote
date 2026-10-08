@@ -82,10 +82,12 @@ export async function buyCoin(db: Firestore, uid: string, coin: CoinSym, points:
 
 /** Sells `qty` of a coin for points at the current price. */
 export async function sellCoin(db: Firestore, uid: string, coin: CoinSym, qty: number): Promise<OrderResult> {
-  if (!(qty > 0)) throw new Error('invalid-amount')
+  // never more precision than the wallet keeps (8 decimals), rounded down
+  const q = Math.floor(qty * 1e8) / 1e8
+  if (!(q > 0)) throw new Error('invalid-amount')
   const r = doc(collection(db, 'coinOrders'))
   const b = writeBatch(db)
-  b.set(r, { uid, coin, side: 'sell', qty, at: serverTimestamp(), status: 'open' })
+  b.set(r, { uid, coin, side: 'sell', qty: q, at: serverTimestamp(), status: 'open' })
   await b.commit()
   return waitFill(db, r.id)
 }

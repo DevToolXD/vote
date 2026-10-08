@@ -1249,6 +1249,30 @@ describe('음성 통화', () => {
   })
 })
 
+describe('코인 판매 반복', () => {
+  test('sell everything after several buys (random prices), repeatedly', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 100000)
+    const runWorker = () => new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
+      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '0', SETTLE_MS: '0', COIN_TICK_MS: '1' },
+    }, (err, stdout, stderr) => err ? reject(new Error(stderr || stdout)) : resolve()))
+    const log: string[] = []
+    for (let i = 0; i < 4; i++) {
+      const coin = (['BTC', 'DOGE', 'MOON', 'JEONG'] as const)[i]
+      const buy = buyCoin(a, 'a', coin, 1234 + i * 777)
+      await new Promise(r => setTimeout(r, 300)); await runWorker()
+      const rb = await buy
+      log.push(`buy ${coin} ${rb.status} ${rb.qty}`)
+      const h = await rt(a, `wallets/a/${coin}`)
+      const sell = sellCoin(a, 'a', coin, h.q)
+      await new Promise(r => setTimeout(r, 300)); await runWorker()
+      const rs = await sell
+      log.push(`sell ${coin} ${rs.status} ${rs.reason ?? ''} q=${h.q}`)
+      assert.equal(rs.status, 'done', log.join('\n'))
+    }
+  })
+})
+
 describe('코인', () => {
   const pts = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
   const runWorker = () => new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {

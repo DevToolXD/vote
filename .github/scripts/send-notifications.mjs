@@ -727,8 +727,10 @@ async function fillCoinOrder(id, o) {
   let fill = filled
   if (fill == null) {
     const w = (await rdb.ref(`wallets/${o.uid}/${o.coin}`).once('value')).val() ?? { q: 0, c: 0 }
-    const qty = o.qty > w.q && o.qty - w.q < 1e-6 ? w.q : o.qty
-    if (!(qty > 0) || qty > w.q) return fail('not-enough')
+    // 8 decimals like the wallet; a sell of the whole holding can't fail on rounding
+    if (o.qty > w.q + 1e-7) return fail('not-enough')
+    const qty = Math.floor(Math.min(o.qty, w.q) * 1e8) / 1e8
+    if (!(qty > 0)) return fail('not-enough')
     const points = Math.floor(qty * price)
     const left = Math.round((w.q - qty) * 1e8) / 1e8
     fill = { price, qty, points }
