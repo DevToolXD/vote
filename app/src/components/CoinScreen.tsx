@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { BottomSheet } from './Overlays'
-import { COINS, MIN_BUY, buyCoin, fmtPrice, fmtQty, sellCoin, watchHistory, watchLive, watchWallet, type CoinSym, type Live, type Point, type Wallet } from '../backend/coins'
+import { COINS, MIN_BUY, buyCoin, fmtPrice, fmtQty, floor8, sellCoin, watchHistory, watchLive, watchWallet, type CoinSym, type Live, type Point, type Wallet } from '../backend/coins'
 
 // 코인 탭: made-up coins with random prices, bought and sold with points.
 // Korean convention: up = red, down = blue.
@@ -184,7 +184,7 @@ function CoinSheet({ sym, db, uid, points, price, wallet, series, change, onToas
 
   const n = Number(amount.replace(/,/g, '')) || 0
   // buy: n points; sell: n percent of what's held
-  const sellQty = h ? Math.floor((n >= 100 ? h.q : h.q * (n / 100)) * 1e8) / 1e8 : 0
+  const sellQty = h ? floor8(n >= 100 ? h.q : h.q * (n / 100)) : 0
   const canBuy = n >= MIN_BUY && n <= points && !!price
   const canSell = !!h && sellQty > 0 && !!price
 
@@ -250,7 +250,7 @@ function CoinSheet({ sym, db, uid, points, price, wallet, series, change, onToas
           </div>
           <span style={css('font-size:14px;color:#6b7684;font-variant-numeric:tabular-nums')}>
             {mode === 'buy'
-              ? (price && n ? `약 ${fmtQty(Math.floor((n / price) * 1e8) / 1e8)} ${sym}` : ' ')
+              ? (price && n ? `약 ${fmtQty(floor8(n / price))} ${sym}` : ' ')
               : (price && sellQty ? `${fmtQty(sellQty)} ${sym} → 약 ${Math.floor(sellQty * price).toLocaleString()}P` : ' ')}
           </span>
           <div style={css('display:grid;grid-template-columns:1fr 2fr;gap:8px')}>

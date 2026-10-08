@@ -1261,12 +1261,17 @@ describe('코인 상승 (관리자)', () => {
     await denied(rtSet(rtRef(R(admin), 'coinEvents/x5'), { ...ev, pct: 0 }))
     await rtSet(rtRef(R(admin), 'coinEvents/ok1'), ev)
     await assert.rejects(rt(a, 'coinEvents/ok1'))
-    const run = new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
-      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '4000', SETTLE_MS: '0', COIN_TICK_MS: '1000' },
-    }, (err, stdout, stderr) => err ? reject(new Error(stderr || stdout)) : resolve()))
-    await run
-    // removed by the worker: the id can be written again (the rule only allows a new request)
-    await rtSet(rtRef(R(admin), 'coinEvents/ok1'), ev)
+    // the worker runs in the background; the request is gone once it has applied it (poll: a
+    // re-write is refused while the request exists, and allowed once it's removed)
+    execFile('node', ['../.github/scripts/send-notifications.mjs'], {
+      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '20000', SETTLE_MS: '0', COIN_TICK_MS: '1000' },
+    })
+    let removed = false
+    for (let i = 0; i < 60 && !removed; i++) {
+      await new Promise(r => setTimeout(r, 500))
+      removed = await rtSet(rtRef(R(admin), 'coinEvents/ok1'), ev).then(() => true, () => false)
+    }
+    assert.ok(removed, 'the worker removes the applied request')
   })
 })
 
@@ -1342,7 +1347,10 @@ describe('코인', () => {
     const w = await rt(a, 'wallets/a/BTC')
     assert.equal(w.q, r1.qty); assert.equal(w.c, 500)
     await assert.rejects(rt(b, 'wallets/a'))
-    assert.ok((await rt(b, 'coins/live')).p.BTC > 0)
+    // the price feed is written by the worker a moment after it starts: wait for it (up to 10 s)
+    let live = null
+    for (let i = 0; i < 20 && !live?.p?.BTC; i++) { live = await rt(b, 'coins/live').catch(() => null); if (!live?.p?.BTC) await new Promise(r => setTimeout(r, 500)) }
+    assert.ok(live?.p?.BTC > 0)
     const orders = await getDocs(query(collection(a, 'coinOrders'), where('uid', '==', 'a')))
     await denied(updateDoc(orders.docs[0].ref, { status: 'open' }))
 

@@ -23,6 +23,9 @@ export const COINS: { sym: CoinSym; name: string; color: string; mark: string }[
   { sym: 'RAMEN', name: '라면코인', color: '#fab005', mark: '🍜' },
   { sym: 'MOON', name: '문코인', color: '#6741d9', mark: '🌙' },
 ]
+/** Coin amounts keep 8 decimals, rounded down (the tiny allowance stops 0.12345678 × 1e8 landing just under). */
+export const floor8 = (x: number) => Math.floor(x * 1e8 + 1e-6) / 1e8
+
 export const MIN_BUY = 10
 
 export type Prices = Partial<Record<CoinSym, number>>
@@ -83,7 +86,7 @@ export async function buyCoin(db: Firestore, uid: string, coin: CoinSym, points:
 /** Sells `qty` of a coin for points at the current price. */
 export async function sellCoin(db: Firestore, uid: string, coin: CoinSym, qty: number): Promise<OrderResult> {
   // never more precision than the wallet keeps (8 decimals), rounded down
-  const q = Math.floor(qty * 1e8) / 1e8
+  const q = floor8(qty)
   if (!(q > 0)) throw new Error('invalid-amount')
   const r = doc(collection(db, 'coinOrders'))
   const b = writeBatch(db)

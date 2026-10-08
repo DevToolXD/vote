@@ -674,6 +674,9 @@ const COIN_TICK_MS = Number(process.env.COIN_TICK_MS ?? 3000), COIN_PULL = 0.001
 const COIN_BOUND = 20 // a coin stays between base / 20 and base × 20
 let coinPrices = null, coinAt = 0, coinMinute = 0
 const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) }
+// Coin amounts keep 8 decimals, rounded down. The tiny allowance stops 0.12345678 × 1e8 landing
+// just under a whole number and losing a unit.
+const floor8 = x => Math.floor(x * 1e8 + 1e-6) / 1e8
 const roundPrice = p => (p >= 100 ? Math.round(p * 100) / 100 : Math.round(p * 10000) / 10000)
 async function coinInit() {
   const live = (await rdb.ref('coins/live').once('value')).val()
@@ -732,7 +735,7 @@ async function fillCoinOrder(id, o) {
   const filled = (await rdb.ref(`coinFills/${id}`).once('value')).val()
   if (o.side === 'buy') {
     if (filled == null) {
-      const qty = Math.floor((o.points / price) * 1e8) / 1e8
+      const qty = floor8(o.points / price)
       const w = (await rdb.ref(`wallets/${o.uid}/${o.coin}`).once('value')).val() ?? { q: 0, c: 0 }
       await rdb.ref().update({ [`wallets/${o.uid}/${o.coin}`]: { q: Math.round((w.q + qty) * 1e8) / 1e8, c: w.c + o.points }, [`coinFills/${id}`]: { price, qty } })
       await fdb.doc(`coinOrders/${id}`).update({ status: 'done', price, qty, doneAt: FieldValue.serverTimestamp() })
@@ -745,7 +748,7 @@ async function fillCoinOrder(id, o) {
     const w = (await rdb.ref(`wallets/${o.uid}/${o.coin}`).once('value')).val() ?? { q: 0, c: 0 }
     // 8 decimals like the wallet; a sell of the whole holding can't fail on rounding
     if (o.qty > w.q + 1e-7) return fail('not-enough')
-    const qty = Math.floor(Math.min(o.qty, w.q) * 1e8) / 1e8
+    const qty = floor8(Math.min(o.qty, w.q))
     if (!(qty > 0)) return fail('not-enough')
     const points = Math.floor(qty * price)
     const left = Math.round((w.q - qty) * 1e8) / 1e8
