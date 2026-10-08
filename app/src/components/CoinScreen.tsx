@@ -86,6 +86,7 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
   const [hist, setHist] = useState<Point[]>([])
   const [wallet, setWallet] = useState<Wallet>({})
   const [open, setOpen] = useState<CoinSym | null>(null)
+  const [mineOpen, setMineOpen] = useState(false)
   useEffect(() => (db ? watchLive(db, setLive) : undefined), [db])
   useEffect(() => (db ? watchHistory(db, 5760, setHist) : undefined), [db])
   useEffect(() => { setWallet({}); return db && uid ? watchWallet(db, uid, setWallet) : undefined }, [db, uid])
@@ -129,9 +130,9 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
         <div style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>가상 코인이라 실제 시세와는 상관없어요</div>
       </div>
 
-      <div data-g="l1" style={css('margin:16px 20px 8px;padding:20px;border-radius:20px;background:#f9fafb;display:flex;flex-direction:column;gap:12px')}>
+      <button data-g="l1" className="pr-96" onClick={() => setMineOpen(true)} aria-label="내 코인 보기" style={css('margin:16px 20px 8px;padding:20px;border-radius:20px;background:#f9fafb;display:flex;flex-direction:column;gap:12px;text-align:left;width:calc(100% - 40px)')}>
         <div style={css('display:flex;flex-direction:column;gap:2px')}>
-          <span style={css('font-size:14px;color:#6b7684')}>내 코인 평가금액</span>
+          <span style={css('display:flex;align-items:center;gap:4px;font-size:14px;color:#6b7684')}>내 코인 평가금액 <span aria-hidden="true">›</span></span>
           <span style={css('font-size:26px;line-height:34px;font-weight:700;color:#191f28;font-variant-numeric:tabular-nums')}>{Math.round(evalSum).toLocaleString()}P</span>
           {costSum > 0 && <span style={sx('font-size:15px;font-weight:600;font-variant-numeric:tabular-nums', { color: tone(pl) })}>{signed(pl)}P ({pct(pl / costSum)})</span>}
         </div>
@@ -140,7 +141,7 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
           <span style={{ color: '#6b7684' }}>쓸 수 있는 포인트</span>
           <span style={css('font-weight:700;color:#191f28;font-variant-numeric:tabular-nums')}>{points.toLocaleString()}P</span>
         </div>
-      </div>
+      </button>
 
       <div style={css('padding:16px 24px 4px;font-size:17px;font-weight:700;color:#191f28')}>코인 시세</div>
       {/* highest price first; 정후교 대천재 코인 is not in this list */}
@@ -165,6 +166,33 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
         가격은 몇 초마다 무작위로 움직여요. 사고팔 때는 그 순간의 가격으로 체결되고, 오르든 내리든 포인트로 돌아와요.
       </div>
 
+      {mineOpen && (
+        <BottomSheet onScrim={() => setMineOpen(false)} scrim="rgba(0,0,0,0.25)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(20px + env(safe-area-inset-bottom));animation:sheetUp 420ms ${EASE} both`}>
+          <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
+          <div style={css('padding:18px 24px 8px;display:flex;flex-direction:column;gap:2px')}>
+            <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>내 코인</span>
+            <span style={css('font-size:15px;color:#6b7684;font-variant-numeric:tabular-nums')}>평가금액 {Math.round(evalSum).toLocaleString()}P{costSum > 0 ? ` · ${signed(pl)}P (${pct(pl / costSum)})` : ''}</span>
+          </div>
+          {COINS.filter(c => (wallet[c.sym]?.q ?? 0) > 0).length === 0 ? (
+            <span style={css('display:block;padding:24px;font-size:15px;color:#8b95a1;text-align:center')}>가진 코인이 없어요</span>
+          ) : COINS.filter(c => (wallet[c.sym]?.q ?? 0) > 0).map(c => {
+            const h = wallet[c.sym]!, p = price(c.sym) ?? 0, ev = h.q * p, gain = h.c > 0 ? (ev - h.c) / h.c : 0
+            return (
+              <button key={c.sym} className="pr-dim" onClick={() => { setMineOpen(false); setOpen(c.sym) }} style={css('display:flex;align-items:center;gap:14px;padding:12px 24px;width:100%;text-align:left')}>
+                <CoinIcon sym={c.sym} />
+                <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+                  <span style={css('font-size:16px;font-weight:600;color:#191f28')}>{c.name}</span>
+                  <span style={css('font-size:13px;color:#8b95a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums')}>{fmtQty(h.q)} {c.sym}</span>
+                </span>
+                <span style={css('flex:none;display:flex;flex-direction:column;align-items:flex-end;font-variant-numeric:tabular-nums')}>
+                  <span style={css('font-size:16px;font-weight:600;color:#191f28')}>{Math.round(ev).toLocaleString()}P</span>
+                  {h.c > 0 && <span style={sx('font-size:13px;font-weight:600', { color: tone(gain) })}>{pct(gain)}</span>}
+                </span>
+              </button>
+            )
+          })}
+        </BottomSheet>
+      )}
       {open && db && (
         <CoinSheet
           sym={open} db={db} uid={uid} points={points} price={price(open)} wallet={wallet} onToast={onToast}
