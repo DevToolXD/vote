@@ -109,9 +109,13 @@ export class CallSession {
       const pc = this.pc!
       // a call left over from before (an app that closed mid-call) is cleared first
       await remove(this.node).catch(() => {})
+      // The record exists BEFORE the offer is made: gathering the network addresses (ICE) starts
+      // with setLocalDescription, and those are written under this node. Writing the node after
+      // that wiped them, so the other side often got no way to reach us (Wi-Fi ↔ mobile data).
+      await set(this.node, { from: this.me, to: this.peer, state: 'ring', at: serverTimestamp(), video: this.video })
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
-      await set(this.node, { from: this.me, to: this.peer, state: 'ring', at: serverTimestamp(), video: this.video, offer: { type: offer.type, sdp: offer.sdp } })
+      await update(this.node, { offer: { type: offer.type, sdp: offer.sdp } })
       await set(ref(R(this.db), `callIn/${this.peer}`), { chatId: this.chatId, from: this.me, at: serverTimestamp(), video: this.video })
       this.watch()
       this.timers.push(setTimeout(() => { if (!this.remoteSet) this.hangup('missed') }, RING_MS))
@@ -124,13 +128,17 @@ export class CallSession {
     try {
       this.h.onPhase('connecting')
       await this.setup()
-      let offer: RTCSessionDescriptionInit | null = null
       // only one device (and only while it's still ringing) picks up
-      // (null = not known locally yet: written back unchanged, so the server's value comes in)
-      const r = await runTransaction(child(this.node, 'state'), st => (st === null ? null : st === 'ring' ? 'live' : undefined))
+      // Not known on this device yet (null): propose 'ring', which Firebase corrects to the server's
+      // value and runs again. (Returning null here would DELETE the state.)
+      const r = await runTransaction(child(this.node, 'state'), st => (st === null ? 'ring' : st === 'ring' ? 'live' : undefined))
       if (!r.committed || r.snapshot.val() !== 'live') throw new Error('taken')
-      await new Promise<void>(res => onValue(child(this.node, 'offer'), s => { offer = s.val(); res() }, { onlyOnce: true }))
-      if (!offer) throw new Error('taken')
+      // the caller writes its offer a moment after the record (see call()): wait for it
+      const offer = await new Promise<RTCSessionDescriptionInit>((res, rej) => {
+        let stop: Unsubscribe | undefined
+        const t = setTimeout(() => { stop?.(); rej(new Error('failed')) }, 15_000)
+        stop = onValue(child(this.node, 'offer'), s => { if (s.val()) { clearTimeout(t); stop?.(); res(s.val()) } })
+      })
       await this.applyRemote(offer)
       const answer = await this.pc!.createAnswer()
       await this.pc!.setLocalDescription(answer)
