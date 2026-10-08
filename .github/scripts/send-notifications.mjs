@@ -65,6 +65,7 @@ const candidates = new Map() // uid → candidate doc (the leaderboard; also giv
 let here = {}                // chatId → { uid: until } (Realtime Database here/)
 let reads = {}               // uid → { chatId: when they last read it } (reads/)
 const settingsOf = uid => ({ notify: true, notifyMsg: true, notifyVote: true, notifySound: true, ...settings.get(uid) })
+const coinOrders = new Map() // 코인 orders still open: id → order
 const tokensOf = uid => tokens.get(uid) ?? []
 const nameOf = async uid => candidates.get(uid)?.name ?? '알 수 없음'
 
@@ -151,7 +152,7 @@ const LEDGER_KEEP = 100, FEED_KEEP = 300
 const ALERT_WINDOW_MS = Number(process.env.ALERT_WINDOW_MS ?? 60 * 60_000)
 const ALERT_POINTS = Number(process.env.ALERT_POINTS ?? 1000), ALERT_VOTES = Number(process.env.ALERT_VOTES ?? 20)
 const pts = c => (c?.earned ?? c?.up ?? 0) + (c?.bonus ?? 0) - (c?.spent ?? 0)
-const stateOf = c => ({ earned: c.earned ?? c.up ?? 0, up: c.up ?? 0, down: c.down ?? 0, bonus: c.bonus ?? 0, spent: c.spent ?? 0, lastGift: c.lastGift ?? '', lastBet: c.lastBet ?? '', payBet: c.payBet ?? '', lastMarket: c.lastMarket ?? '', lastSale: c.lastSale ?? '', lastCancel: c.lastCancel ?? '', appBonus: !!c.appBonus, pass2x: !!c.pass2x, passFake: !!c.passFake, owned: JSON.stringify(c.owned ?? {}) })
+const stateOf = c => ({ earned: c.earned ?? c.up ?? 0, up: c.up ?? 0, down: c.down ?? 0, bonus: c.bonus ?? 0, spent: c.spent ?? 0, lastGift: c.lastGift ?? '', lastBet: c.lastBet ?? '', payBet: c.payBet ?? '', lastMarket: c.lastMarket ?? '', lastSale: c.lastSale ?? '', lastCancel: c.lastCancel ?? '', lastCoin: c.lastCoin ?? '', payCoin: c.payCoin ?? '', appBonus: !!c.appBonus, pass2x: !!c.pass2x, passFake: !!c.passFake, owned: JSON.stringify(c.owned ?? {}) })
 const lastVote = new Map() // uid → { key, at, d, n }: 추천 within 30 minutes go into one line
 const gains = new Map()    // uid → [{ at, d, k }] within ALERT_WINDOW_MS
 const ledgerWrites = new Map()
@@ -177,6 +178,9 @@ async function classify(o, d) {
   // 몰래 도박장: a bet (points out) and a win (twice the bet back)
   if (d.lastBet && d.lastBet !== o.lastBet && dSpent > 0) { out.push({ d: -dSpent, k: 'bet' }); dSpent = 0 }
   if (d.payBet && d.payBet !== o.payBet && dBonus > 0) { out.push({ d: dBonus, k: 'betWin' }); dBonus = 0 }
+  // 코인: buying (points out with the order) and selling (points back from the worker)
+  if (d.lastCoin && d.lastCoin !== o.lastCoin && dSpent > 0) { out.push({ d: -dSpent, k: 'coinBuy' }); dSpent = 0 }
+  if (d.payCoin && d.payCoin !== o.payCoin && dBonus > 0) { out.push({ d: dBonus, k: 'coinSell' }); dBonus = 0 }
   // 당근마켓: a sale (paid by the buyer), a purchase, a listing (item into escrow), a take-down
   const marketMoved = (d.lastMarket && d.lastMarket !== o.lastMarket) || (d.lastCancel && d.lastCancel !== o.lastCancel)
   if (d.lastSale && d.lastSale !== o.lastSale && dBonus > 0) {
@@ -226,7 +230,7 @@ async function record(uid, lines, at = Date.now()) {
       ledgerWrites.set(uid, (ledgerWrites.get(uid) ?? 0) + 1); feedWrites++
     }
     // 수상한 포인트 증가: gains that aren't the admin's or the season's, within the window.
-    if (e.d > 0 && !['grant', 'season', 'app', 'giftCancel', 'betWin'].includes(e.k)) {
+    if (e.d > 0 && !['grant', 'season', 'app', 'giftCancel', 'betWin', 'coinSell'].includes(e.k)) {
       const list = (gains.get(uid) ?? []).filter(g => at - g.at < ALERT_WINDOW_MS)
       list.push({ at, d: e.d, k: e.k }); gains.set(uid, list)
       const total = list.reduce((n, g) => n + g.d, 0), votes = list.filter(g => g.k === 'vote').reduce((n, g) => n + Math.round(g.d / 10), 0)
@@ -515,7 +519,7 @@ let seasonEndsAt = null
 
 const listeners = []
 const firstDone = new Promise(resolve => {
-  const seen = new Set(), total = 8
+  const seen = new Set(), total = 9
   const done = name => { if (!seen.has(name)) { seen.add(name); if (seen.size === total) resolve() } }
   const listen = (name, ref, onSnap) => ref.onSnapshot(snap => { onSnap(snap); done(name) }, err => { warn(`Listener ${name} failed: ${err.message}`); done(name) })
   listeners.push(
@@ -549,6 +553,9 @@ const firstDone = new Promise(resolve => {
     listen('resets', fdb.collection('pwResets').where('status', '==', 'pending'), snap => { if (!snap.empty) resetsPending = true }),
     listen('season', fdb.doc('meta/season'), snap => { const e = snap.get('endsAt'); seasonEndsAt = e ? e.toMillis() : null; seasonDoc = snap.data() ?? null; boardDirty = rtDirty = true }),
     listen('notices', fdb.doc('meta/noticeIndex'), snap => { noticeIds = snap.get('ids') ?? []; boardDirty = rtDirty = true }),
+    listen('coinOrders', fdb.collection('coinOrders').where('status', '==', 'open'), snap => {
+      for (const c of snap.docChanges()) c.type === 'removed' ? coinOrders.delete(c.doc.id) : coinOrders.set(c.doc.id, c.doc.data())
+    }),
   )
 })
 await firstDone
@@ -626,6 +633,95 @@ async function deliverScheduled() {
   }
 }
 
+
+// ---- 코인: made-up coins traded with points (nothing real behind them) ----
+// Prices are a random walk run here: each tick moves every coin a little (log-normal steps,
+// pulled slowly back toward its base price, with a rare sudden jump), published to the
+// Realtime Database:  coins/live { at, p: { BTC: …, … } } every few seconds and
+// coins/m1/{minute ms} { BTC: …, … } once a minute (the last 24 hours, for the charts).
+// Orders (coinOrders/{id}, written by the app): a buy has already paid its points
+// (firestore.rules: coinBuy) and gets coins at the current price; a sell gets points
+// (bonus, payCoin = order id) for coins it holds. Holdings: wallets/{uid}/{sym} { q, c }
+// (amount, points paid for it). coinFills/{order id} makes each fill happen exactly once.
+const COINS = {
+  BTC: { base: 60000, vol: 0.0012 },
+  ETH: { base: 3000, vol: 0.0016 },
+  XRP: { base: 80, vol: 0.0022 },
+  DOGE: { base: 15, vol: 0.0032 },
+  SGP: { base: 300, vol: 0.0045 },
+}
+const COIN_TICK_MS = Number(process.env.COIN_TICK_MS ?? 3000), COIN_PULL = 0.00005, COIN_KEEP_MIN = 24 * 60
+let coinPrices = null, coinAt = 0, coinMinute = 0
+const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) }
+const roundPrice = p => (p >= 100 ? Math.round(p * 100) / 100 : Math.round(p * 10000) / 10000)
+async function coinInit() {
+  const live = (await rdb.ref('coins/live').once('value')).val()
+  coinPrices = {}
+  for (const [sym, c] of Object.entries(COINS)) coinPrices[sym] = live?.p?.[sym] > 0 ? live.p[sym] : c.base
+}
+function coinStep() {
+  for (const [sym, c] of Object.entries(COINS)) {
+    const x = Math.log(coinPrices[sym] / c.base)
+    let dx = -COIN_PULL * x + c.vol * gauss()
+    if (Math.random() < 1 / 4000) dx += (Math.random() < 0.5 ? -1 : 1) * (0.04 + Math.random() * 0.1) // 급등 / 급락
+    coinPrices[sym] = roundPrice(Math.min(c.base * 50, Math.max(c.base / 50, coinPrices[sym] * Math.exp(dx))))
+  }
+}
+async function coinTick() {
+  if (!coinPrices) return
+  const now = Date.now()
+  if (now - coinAt < COIN_TICK_MS) return
+  coinAt = now
+  coinStep()
+  const up = { 'coins/live': { at: now, p: { ...coinPrices } } }
+  const minute = Math.floor(now / 60_000) * 60_000
+  if (minute !== coinMinute) {
+    up[`coins/m1/${minute}`] = { ...coinPrices }
+    // the minute that just left the 24 hours (and, after a gap, a few before it)
+    for (let k = 0; k < (coinMinute ? Math.min(30, (minute - coinMinute) / 60_000) : 1); k++) up[`coins/m1/${minute - (COIN_KEEP_MIN + k) * 60_000}`] = null
+    coinMinute = minute
+  }
+  await rdb.ref().update(up)
+}
+async function fillCoinOrder(id, o) {
+  const price = coinPrices?.[o.coin]
+  const fail = reason => fdb.doc(`coinOrders/${id}`).update({ status: 'failed', reason, doneAt: FieldValue.serverTimestamp() })
+  if (!price) return
+  const filled = (await rdb.ref(`coinFills/${id}`).once('value')).val()
+  if (o.side === 'buy') {
+    if (filled == null) {
+      const qty = Math.floor((o.points / price) * 1e8) / 1e8
+      const w = (await rdb.ref(`wallets/${o.uid}/${o.coin}`).once('value')).val() ?? { q: 0, c: 0 }
+      await rdb.ref().update({ [`wallets/${o.uid}/${o.coin}`]: { q: Math.round((w.q + qty) * 1e8) / 1e8, c: w.c + o.points }, [`coinFills/${id}`]: { price, qty } })
+      await fdb.doc(`coinOrders/${id}`).update({ status: 'done', price, qty, doneAt: FieldValue.serverTimestamp() })
+    } else await fdb.doc(`coinOrders/${id}`).update({ status: 'done', price: filled.price, qty: filled.qty, doneAt: FieldValue.serverTimestamp() })
+    return
+  }
+  // sell
+  let fill = filled
+  if (fill == null) {
+    const w = (await rdb.ref(`wallets/${o.uid}/${o.coin}`).once('value')).val() ?? { q: 0, c: 0 }
+    const qty = o.qty > w.q && o.qty - w.q < 1e-6 ? w.q : o.qty
+    if (!(qty > 0) || qty > w.q) return fail('not-enough')
+    const points = Math.floor(qty * price)
+    const left = Math.round((w.q - qty) * 1e8) / 1e8
+    fill = { price, qty, points }
+    await rdb.ref().update({ [`wallets/${o.uid}/${o.coin}`]: left > 0 ? { q: left, c: Math.round(w.c * (left / w.q)) } : null, [`coinFills/${id}`]: fill })
+  }
+  await fdb.runTransaction(async tx => {
+    const ord = await tx.get(fdb.doc(`coinOrders/${id}`))
+    if (ord.get('status') !== 'open') return
+    tx.update(fdb.doc(`candidates/${o.uid}`), { bonus: FieldValue.increment(fill.points), payCoin: id })
+    tx.update(ord.ref, { status: 'done', price: fill.price, qty: fill.qty, points: fill.points, doneAt: FieldValue.serverTimestamp() })
+  })
+}
+async function fillCoinOrders() {
+  for (const [id, o] of coinOrders) {
+    coinOrders.delete(id)
+    await fillCoinOrder(id, o).catch(e => warn(`Coin order ${id} failed: ${e.message}`))
+  }
+}
+
 // A newer commit on main (new worker code or rules): stop, and the workflow starts a fresh run.
 async function newerCodeOnMain() {
   if (LOCAL || !process.env.GITHUB_TOKEN || !process.env.GITHUB_SHA) return false
@@ -640,6 +736,7 @@ async function newerCodeOnMain() {
 // Firestore rules: re-deployed hourly if they differ from this checkout (no Firestore reads).
 const rulesCheck = () => new Promise(res => execFile('node', ['.github/scripts/deploy-firestore-rules.mjs'], { env: { ...process.env, SKIP_IF_SAME: '1' } }, err => { if (err) warn('Hourly rules check failed: ' + err.message); res() }))
 
+await coinInit().catch(e => warn('Coin start failed: ' + e.message))
 let migrated = await migrateChats().catch(e => { warn('Moving chats to the Realtime Database failed (will retry): ' + e.message); return false })
 let nextMigration = Date.now() + 30 * 60_000
 let rounds = 0
@@ -677,6 +774,8 @@ while (true) {
   await processLedger().catch(e => warn('Ledger failed: ' + e.message))
   await pruneLedger().catch(e => warn('Ledger prune failed: ' + e.message))
   await deliverScheduled().catch(e => warn('Scheduled messages failed: ' + e.message))
+  await coinTick().catch(e => warn('Coin prices failed: ' + e.message))
+  await fillCoinOrders()
   await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
   if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })
   if ((boardDirty && Date.now() - boardWrittenAt >= BOARD_MIN_MS) || Date.now() - boardWrittenAt > BOARD_HEARTBEAT_MS) await writeBoard().catch(e => warn('Writing the board failed: ' + e.message))

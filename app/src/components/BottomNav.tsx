@@ -2,18 +2,19 @@ import { css, sx } from '../css'
 import type { Tab } from '../data'
 import { CartIcon } from './ShopScreen'
 
-const BASE_TABS: [Tab, string][] = [['shop', '상점'], ['acct', '계정'], ['rank', '랭킹'], ['msg', '메시지']]
+const BASE_TABS: [Tab, string][] = [['shop', '상점'], ['acct', '계정'], ['rank', '랭킹'], ['coin', '코인'], ['msg', '메시지']]
 const ADMIN_TAB: [Tab, string] = ['admin', '관리']
 
 const icons: Record<Tab, JSX.Element> = {
   shop: <CartIcon />,
   acct: <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3.5 19.5C3.5 15.9 7.3 14 12 14s8.5 1.9 8.5 5.5c0 .8-.7 1.5-1.5 1.5H5c-.8 0-1.5-.7-1.5-1.5z" /></svg>,
   rank: <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="11" width="5" height="10" rx="1.5" /><rect x="9.5" y="4" width="5" height="17" rx="1.5" /><rect x="16" y="14" width="5" height="7" rx="1.5" /></svg>,
+  coin: <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9.5" /><path d="M9.6 7.4h3.6a2.3 2.3 0 0 1 0 4.6H9.6zm0 4.6h4.1a2.3 2.3 0 0 1 0 4.6H9.6zM11 6v1.4M11 16.6V18M13.4 6v1.4M13.4 16.6V18" fill="none" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>,
   msg: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinejoin="round" strokeLinecap="round"><path d="M22 3 9.218 10.083" /><path d="M11.698 20.334 22 3.001H2l7.218 7.083z" /></svg>,
   admin: <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5 4.5 5.3v5.9c0 4.6 3.1 8.8 7.5 10.3 4.4-1.5 7.5-5.7 7.5-10.3V5.3z" /><path d="m8.6 12 2.4 2.4 4.4-4.6" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>,
 }
 
-/** 상점 · 계정 · 랭킹 · 메시지, plus 관리 for the admin. `unread` badges 메시지. */
+/** 상점 · 계정 · 랭킹 · 코인 · 메시지, plus 관리 for the admin. `unread` badges 메시지. */
 export function BottomNav({ tab, onGo, isAdmin = false, unread = 0, adminUnread = 0 }: { tab: Tab; onGo: (t: Tab) => void; isAdmin?: boolean; unread?: number; adminUnread?: number }) {
   const tabs = isAdmin ? [...BASE_TABS, ADMIN_TAB] : BASE_TABS
   const idx = tabs.findIndex(([k]) => k === tab)

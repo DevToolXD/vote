@@ -222,6 +222,20 @@
           ".validate": false
         }
       }
+    },
+    "coins": {
+      ".read": "auth != null",
+      ".write": false
+    },
+    "wallets": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || (auth.token.email === 'admin@vote.local' || auth.token.admin === true))",
+        ".write": false
+      }
+    },
+    "coinFills": {
+      ".read": false,
+      ".write": false
     }
   }
 }

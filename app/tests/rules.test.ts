@@ -26,6 +26,7 @@ import { priceOf, seriesPrice } from '../src/data'
 import { placeBet, settleLastBet } from '../src/backend/gamble'
 import { accessOf, blockedUsers, readIp, recordIp, setAccess } from '../src/backend/ip'
 import { presenceLabel, watchPresence, type Presence } from '../src/backend/presence'
+import { buyCoin, sellCoin } from '../src/backend/coins'
 import { buyListing, cancelListing, listItem, subscribeMarket, type Listing } from '../src/backend/market'
 
 const PROJECT = 'demo-vote'
@@ -1215,6 +1216,65 @@ describe('notifications', () => {
     }, err => err ? reject(err) : resolve()))
     fcm2.close()
     assert.equal(got.length, 0)
+  })
+})
+
+describe('코인', () => {
+  const pts = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
+  const runWorker = () => new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
+    env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '0', SETTLE_MS: '0' },
+  }, (err, stdout, stderr) => err ? reject(new Error(stderr || stdout)) : resolve()))
+  const rawOrder = (db: Firestore, uid: string, data: Record<string, unknown>, spent = 0) => {
+    const r = doc(collection(db, 'coinOrders')), b = writeBatch(db)
+    b.set(r, { uid, coin: 'BTC', at: serverTimestamp(), status: 'open', ...data })
+    if (spent) b.update(doc(db, 'candidates', uid), { spent: increment(spent), lastCoin: r.id })
+    return b.commit()
+  }
+
+  test('buy pays points up front, the worker fills it; selling brings points back at the price', async () => {
+    const a = await signUp('a'), b = await signUp('b'), admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 1000)
+    const start = await pts(a, 'a')
+    // refused: paying less than the order says, too small, someone else's order, a sell that pays points
+    await denied(rawOrder(a, 'a', { side: 'buy', points: 500 }, 100))
+    await denied(rawOrder(a, 'a', { side: 'buy', points: 5 }, 5))
+    await denied(rawOrder(a, 'b', { side: 'buy', points: 100 }, 100))
+    await denied(rawOrder(a, 'a', { side: 'buy', points: 100 }))
+    await denied(rawOrder(a, 'a', { side: 'sell', qty: 1, points: 100 }))
+    await denied(rawOrder(a, 'a', { side: 'buy', points: start + 1 }, start + 1))
+    await denied(rawOrder(a, 'a', { side: 'buy', points: 100, coin: 'FAKE' }, 100))
+    await denied(updateDoc(doc(a, 'candidates', 'a'), { bonus: increment(1000), payCoin: 'x' }))
+
+    const bought = buyCoin(a, 'a', 'BTC', 500)
+    await new Promise(r => setTimeout(r, 300))
+    assert.equal(await pts(a, 'a'), start - 500)
+    await runWorker()
+    const r1 = await bought
+    assert.equal(r1.status, 'done')
+    assert.ok(r1.qty! > 0 && r1.price! > 0)
+    const w = await rt(a, 'wallets/a/BTC')
+    assert.equal(w.q, r1.qty); assert.equal(w.c, 500)
+    await assert.rejects(rt(b, 'wallets/a'))
+    assert.ok((await rt(b, 'coins/live')).p.BTC > 0)
+    const orders = await getDocs(query(collection(a, 'coinOrders'), where('uid', '==', 'a')))
+    await denied(updateDoc(orders.docs[0].ref, { status: 'open' }))
+
+    // selling more than held fails; selling it all pays floor(qty × price)
+    const tooMuch = sellCoin(a, 'a', 'BTC', w.q * 2)
+    await new Promise(r => setTimeout(r, 300))
+    await runWorker()
+    assert.equal((await tooMuch).status, 'failed')
+    const sold = sellCoin(a, 'a', 'BTC', w.q)
+    await new Promise(r => setTimeout(r, 300))
+    await runWorker()
+    const r2 = await sold
+    assert.equal(r2.status, 'done')
+    assert.equal(r2.points, Math.floor(w.q * r2.price!))
+    assert.equal(await pts(a, 'a'), start - 500 + r2.points!)
+    assert.equal(await rt(a, 'wallets/a/BTC'), null)
+    // a second worker run fills nothing twice
+    await runWorker()
+    assert.equal(await pts(a, 'a'), start - 500 + r2.points!)
   })
 })
 

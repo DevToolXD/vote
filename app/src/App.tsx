@@ -19,6 +19,7 @@ import { EditProfile } from './components/EditProfile'
 import { ShopScreen, type ShopTab } from './components/ShopScreen'
 import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScreen'
 import { NotifySettings } from './components/NotifySettings'
+import { CoinScreen } from './components/CoinScreen'
 import { startPresence } from './backend/presence'
 import { MessageBanner, type Banner } from './components/MessageBanner'
 import { SupportFlow, SupportRoom } from './components/SupportScreen'
@@ -762,6 +763,9 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
                 />
               }
             />
+          )}
+          {tab === 'coin' && (
+            <CoinScreen db={db} uid={authUser?.uid ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />
           )}
           {tab === 'msg' && (
             <MessagesScreen

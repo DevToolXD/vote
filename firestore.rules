@@ -416,6 +416,22 @@ service cloud.firestore {
         && d.bonus == o.get('bonus', 0) + b0.amount * 2;
     }
 
+    // ---- 코인: buying pays the points in the same write that creates the order (lastCoin) ----
+    // The worker fills it at the current price; selling needs no points change here (the
+    // worker adds the proceeds as bonus with payCoin).
+    function coinPath(id) { return /databases/$(database)/documents/coinOrders/$(id); }
+    function coinBuy() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let c = getAfter(coinPath(d.lastCoin)).data;
+      return d.diff(o).affectedKeys().hasOnly(['spent', 'lastCoin'])
+        && request.auth.uid == o.ownerUid && canTrade(o)
+        && !exists(coinPath(d.lastCoin))
+        && c.uid == request.auth.uid && c.side == 'buy'
+        && d.spent == o.spent + c.points
+        && d.spent <= d.get('earned', d.up) + d.get('bonus', 0);
+    }
+
     // ---- 당근마켓: sell something you own to someone else for a price you set ----
     // Listing puts the item in escrow (it leaves `owned`, or the pass is switched off) in the same
     // write that creates the listing (named in lastMarket). Buying: the buyer pays (spent), gets
@@ -627,6 +643,9 @@ service cloud.firestore {
           ? (adminGrant(candidateId) || adminTradeBan(candidateId) || adminRevoke(candidateId) || adminRename(candidateId) || adminSeasonReset() || adminDeleteAdjust(candidateId))
           // 당근마켓 writes (they name a listing in lastMarket / lastSale / lastCancel) are only tried against the
           // market branches, everything else against the rest: keeps each write under the limit.
+          // 코인 buys (they name the order in lastCoin) only against coinBuy
+          : request.resource.data.get('lastCoin', '') != resource.data.get('lastCoin', '')
+            ? coinBuy()
           : (request.resource.data.get('lastMarket', '') != resource.data.get('lastMarket', '') || request.resource.data.get('lastSale', '') != resource.data.get('lastSale', '') || request.resource.data.get('lastCancel', '') != resource.data.get('lastCancel', ''))
             ? (marketList() || marketBuy() || marketCancel() || marketPayout(candidateId))
             // 선물 writes (they name the gift in lastGift, or a cancel gives points back) likewise
@@ -1205,6 +1224,26 @@ service cloud.firestore {
         && getAfter(me()).data.get('payBet', '') == id
         && getAfter(me()).data.get('bonus', 0) == get(me()).data.get('bonus', 0) + resource.data.amount * 2;
       allow delete: if false;
+    }
+
+    // ---- 코인 orders (see coinBuy); filled by the worker, never changed by the app --------
+    match /coinOrders/{id} {
+      function me() { return /databases/$(database)/documents/candidates/$(request.auth.uid); }
+      allow read: if signedIn() && (resource == null || resource.data.uid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.coin in ['BTC', 'ETH', 'XRP', 'DOGE', 'SGP']
+        && request.resource.data.at == request.time
+        && request.resource.data.status == 'open'
+        && (request.resource.data.side == 'buy'
+          ? request.resource.data.keys().hasOnly(['uid', 'coin', 'side', 'points', 'at', 'status'])
+            && request.resource.data.points is int && request.resource.data.points >= 10
+            && getAfter(me()).data.get('lastCoin', '') == id
+            && getAfter(me()).data.spent == get(me()).data.spent + request.resource.data.points
+          : request.resource.data.side == 'sell'
+            && request.resource.data.keys().hasOnly(['uid', 'coin', 'side', 'qty', 'at', 'status'])
+            && request.resource.data.qty is number && request.resource.data.qty > 0 && request.resource.data.qty < 1000000000000);
+      allow update, delete: if false;
     }
 
     // ---- 당근마켓 listings (see marketList / marketBuy / marketCancel / marketPayout) ---------

@@ -5,7 +5,7 @@ import { FRAMES, SKINS } from '../data'
 // Realtime Database (ledger/{uid}; ledgerFeed and alerts for the admin). See
 // .github/scripts/send-notifications.mjs (classify / record).
 
-export type LedgerKind = 'vote' | 'giftSent' | 'giftClaim' | 'giftCancel' | 'buy' | 'pass' | 'grant' | 'season' | 'app' | 'revoke' | 'giftItemSent' | 'giftItemClaim' | 'bet' | 'betWin' | 'marketBuy' | 'marketSell' | 'marketList' | 'marketCancel' | 'other'
+export type LedgerKind = 'vote' | 'giftSent' | 'giftClaim' | 'giftCancel' | 'buy' | 'pass' | 'grant' | 'season' | 'app' | 'revoke' | 'giftItemSent' | 'giftItemClaim' | 'bet' | 'betWin' | 'marketBuy' | 'marketSell' | 'marketList' | 'marketCancel' | 'coinBuy' | 'coinSell' | 'other'
 /** d = point change; n = how many 추천 one 'vote' line adds up; x = detail (item, other person); u = whose (feed only). */
 export type LedgerRow = { id: string; at: number; d: number; k: LedgerKind; x?: string; n?: number; u?: string }
 /** 수상한 포인트 증가: gained within the worker's window (since → at). */
@@ -57,6 +57,8 @@ export function describe(r: LedgerRow, nameOf: (uid: string) => string): { icon:
     }
     case 'bet': return { icon: '🎰', text: '몰래 도박장 배팅' }
     case 'betWin': return { icon: '💰', text: '몰래 도박장 2배 당첨' }
+    case 'coinBuy': return { icon: '🪙', text: '코인 구매' }
+    case 'coinSell': return { icon: '🪙', text: '코인 판매' }
     default: return { icon: '•', text: '포인트 변동' }
   }
 }

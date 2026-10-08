@@ -13,7 +13,7 @@ const tab = params.get('tab')
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App
-      startTab={tab === 'acct' || tab === 'shop' || tab === 'msg' || tab === 'admin' ? (tab as Tab) : 'rank'}
+      startTab={tab === 'acct' || tab === 'shop' || tab === 'msg' || tab === 'coin' || tab === 'admin' ? (tab as Tab) : 'rank'}
       startSupport={params.get('support')}
       startChat={params.get('chat')}
       swapPalette={params.get('palette') === 'swap'}
