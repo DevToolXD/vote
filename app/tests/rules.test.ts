@@ -1249,6 +1249,16 @@ describe('음성 통화', () => {
   })
 })
 
+describe('코인 판매 큰 수량', () => {
+  test('a huge holding (608 billion coins) can be sold', async () => {
+    const a = await signUp('a')
+    const r = doc(collection(a, 'coinOrders'))
+    const b = writeBatch(a)
+    b.set(r, { uid: 'a', coin: 'KIMCHI', side: 'sell', qty: 608201574492.6045, at: serverTimestamp(), status: 'open' })
+    await b.commit()
+  })
+})
+
 describe('코인 판매 반복', () => {
   test('sell everything after several buys (random prices), repeatedly', async () => {
     const a = await signUp('a'), admin = dbAs(ADMIN)

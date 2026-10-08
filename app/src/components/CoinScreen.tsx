@@ -118,7 +118,7 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
   }
 
   return (
-    <div className="anim-list" style={css('display:flex;flex-direction:column')}>
+    <div className="anim-list" style={css('display:flex;flex-direction:column;width:100%;min-width:0;overflow-x:hidden')}>
       <div style={css('padding:24px 24px 4px')}>
         <h1 style={css('margin:0;font-size:22px;line-height:31px;font-weight:700;color:#191f28')}>코인</h1>
         <div style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>가상 코인이라 실제 시세와는 상관없어요</div>
@@ -145,7 +145,7 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
             <CoinIcon sym={c.sym} />
             <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
               <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#191f28')}>{c.name}</span>
-              <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1')}>{h ? `${fmtQty(h.q)} ${c.sym} 보유` : c.sym}</span>
+              <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h ? `${fmtQty(h.q)} ${c.sym} 보유` : c.sym}</span>
             </span>
             <Spark data={series(c.sym, 360).filter((_, i, a) => i % 6 === 0 || i === a.length - 1)} />
             <span style={css('flex:none;min-width:88px;display:flex;flex-direction:column;align-items:flex-end;font-variant-numeric:tabular-nums')}>

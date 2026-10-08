@@ -293,3 +293,5 @@ html,body{overscroll-behavior:none}
 .call-pulse{animation:callPulse 1.6s cubic-bezier(0.22,1,0.36,1) infinite}
 /* The page scrolls inside <main>: its screens keep their natural height instead of shrinking to fit. */
 main[data-scroll="page"]>*{flex-shrink:0}
+
+main[data-scroll="page"]{overflow-x:hidden}

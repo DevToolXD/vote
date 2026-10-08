@@ -1242,7 +1242,7 @@ service cloud.firestore {
             && getAfter(me()).data.spent == get(me()).data.spent + request.resource.data.points
           : request.resource.data.side == 'sell'
             && request.resource.data.keys().hasOnly(['uid', 'coin', 'side', 'qty', 'at', 'status'])
-            && request.resource.data.qty is number && request.resource.data.qty > 0 && request.resource.data.qty < 1000000000000);
+            && request.resource.data.qty is number && request.resource.data.qty > 0 && request.resource.data.qty < 1000000000000000000);
       allow update, delete: if false;
     }
 
