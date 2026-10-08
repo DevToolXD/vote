@@ -9,7 +9,7 @@ import { R } from './messages'
 //   wallets/{uid}/{sym} { q: amount, c: points paid for it }   (the worker keeps it)
 // Orders go in coinOrders/{id}; a buy pays its points in the same write (firestore.rules: coinBuy).
 
-export type CoinSym = 'JEONG' | 'BTC' | 'ETH' | 'XRP' | 'DOGE' | 'SGP' | 'KIMCHI' | 'TTEOK' | 'CHICKEN' | 'RAMEN' | 'MOON'
+export type CoinSym = 'JEONG' | 'BTC' | 'ETH' | 'XRP' | 'DOGE' | 'SGP' | 'KIMCHI' | 'TTEOK' | 'CHICKEN' | 'RAMEN' | 'MOON' | 'BUNGEO' | 'HOTTEOK' | 'SUNDAE' | 'GIMBAP' | 'BIBIM' | 'SOJU' | 'MAKGEOLI' | 'BEER' | 'SAMGYE' | 'BULGOGI' | 'JAJANG' | 'JJAMPPONG' | 'TANGSU' | 'PIZZA' | 'HAMBURGER' | 'COFFEE' | 'TEA' | 'BOBA' | 'MANGO' | 'APPLE' | 'BANANA' | 'CAT' | 'DOG' | 'DUCK' | 'DRAGON' | 'TIGER' | 'STAR' | 'DIAMOND' | 'GOLDBAR' | 'ROCKET'
 export const COINS: { sym: CoinSym; name: string; color: string; mark: string }[] = [
   { sym: 'JEONG', name: '정후교 대천재 코인', color: '#ffd43b', mark: '천' },
   { sym: 'BTC', name: '비트코인', color: '#f7931a', mark: '₿' },
@@ -22,6 +22,36 @@ export const COINS: { sym: CoinSym; name: string; color: string; mark: string }[
   { sym: 'CHICKEN', name: '치킨코인', color: '#f59f00', mark: '🍗' },
   { sym: 'RAMEN', name: '라면코인', color: '#fab005', mark: '🍜' },
   { sym: 'MOON', name: '문코인', color: '#6741d9', mark: '🌙' },
+  { sym: 'BUNGEO', name: '붕어빵코인', color: '#c9742b', mark: '붕' },
+  { sym: 'HOTTEOK', name: '호떡코인', color: '#b5651d', mark: '호' },
+  { sym: 'SUNDAE', name: '순대코인', color: '#8c4a2f', mark: '순' },
+  { sym: 'GIMBAP', name: '김밥코인', color: '#2b8a3e', mark: '밥' },
+  { sym: 'BIBIM', name: '비빔코인', color: '#e03131', mark: '비' },
+  { sym: 'SOJU', name: '소주코인', color: '#37b24d', mark: '소' },
+  { sym: 'MAKGEOLI', name: '막걸리코인', color: '#adb5bd', mark: '막' },
+  { sym: 'BEER', name: '맥주코인', color: '#fcc419', mark: '맥' },
+  { sym: 'SAMGYE', name: '삼계탕코인', color: '#f08c00', mark: '계' },
+  { sym: 'BULGOGI', name: '불고기코인', color: '#a61e4d', mark: '불' },
+  { sym: 'JAJANG', name: '짜장코인', color: '#212529', mark: '짜' },
+  { sym: 'JJAMPPONG', name: '짬뽕코인', color: '#e8590c', mark: '짬' },
+  { sym: 'TANGSU', name: '탕수육코인', color: '#f59f00', mark: '탕' },
+  { sym: 'PIZZA', name: '피자코인', color: '#fa5252', mark: '피' },
+  { sym: 'HAMBURGER', name: '햄버거코인', color: '#846358', mark: '햄' },
+  { sym: 'COFFEE', name: '커피코인', color: '#5c3d2e', mark: '커' },
+  { sym: 'TEA', name: '녹차코인', color: '#74b816', mark: '녹' },
+  { sym: 'BOBA', name: '버블티코인', color: '#8d6e63', mark: '버' },
+  { sym: 'MANGO', name: '망고코인', color: '#ffd43b', mark: '망' },
+  { sym: 'APPLE', name: '사과코인', color: '#c92a2a', mark: '사' },
+  { sym: 'BANANA', name: '바나나코인', color: '#fab005', mark: '바' },
+  { sym: 'CAT', name: '고양이코인', color: '#868e96', mark: '🐱' },
+  { sym: 'DOG', name: '강아지코인', color: '#a0522d', mark: '🐶' },
+  { sym: 'DUCK', name: '오리코인', color: '#ffe066', mark: '🦆' },
+  { sym: 'DRAGON', name: '용코인', color: '#2f9e44', mark: '용' },
+  { sym: 'TIGER', name: '호랑이코인', color: '#e8590c', mark: '虎' },
+  { sym: 'STAR', name: '별코인', color: '#7950f2', mark: '★' },
+  { sym: 'DIAMOND', name: '다이아코인', color: '#4dabf7', mark: '◆' },
+  { sym: 'GOLDBAR', name: '금괴코인', color: '#f1c40f', mark: '금' },
+  { sym: 'ROCKET', name: '로켓코인', color: '#495057', mark: '🚀' },
 ]
 /** Coin amounts keep 8 decimals, rounded down (the tiny allowance stops 0.12345678 × 1e8 landing just under). */
 export const floor8 = (x: number) => Math.floor(x * 1e8 + 1e-6) / 1e8

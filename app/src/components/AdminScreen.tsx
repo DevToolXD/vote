@@ -496,11 +496,9 @@ function CoinBoost({ db, boost, setConfirm }: { db: Firestore | null; boost: (sy
     <section style={css('padding:24px 24px 12px;display:flex;flex-direction:column;gap:12px')}>
       <span style={css(sectionTitle)}>코인 상승</span>
       <span style={css(hint)}>가상 코인 가격을 정한 시간 동안 천천히 올리거나 내려요. 실제 포인트는 바뀌지 않아요</span>
-      <div style={css('display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px')}>
-        {COINS.map(c => (
-          <button key={c.sym} className="pr-96" onClick={() => setSym(c.sym)} style={{ ...chip(c.sym === sym), padding: 0, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name.replace('코인', '')}</button>
-        ))}
-      </div>
+      <select value={sym} onChange={e => setSym(e.target.value as CoinSym)} aria-label="코인" className="box-focus" style={css(field + ';appearance:auto')}>
+        {COINS.map(c => <option key={c.sym} value={c.sym}>{c.mark} {c.name}</option>)}
+      </select>
       <span style={css('font-size:15px;color:#4e5968;font-variant-numeric:tabular-nums')}>{coin.name} · 지금 {price == null ? '-' : price.toLocaleString(undefined, { maximumFractionDigits: 4 })}P</span>
       <div style={css('display:flex;gap:6px;flex-wrap:wrap')}>
         {PCT_CHIPS.map(v => <button key={v} className="pr-96" onClick={() => setPct(String(v))} style={chip(n === v)}>{v > 0 ? `+${v}` : v}%</button>)}
