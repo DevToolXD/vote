@@ -236,6 +236,63 @@
     "coinFills": {
       ".read": false,
       ".write": false
+    },
+    "calls": {
+      "$chat": {
+        ".read": "auth != null && root.child('chats/' + $chat + '/members/' + auth.uid).val() === true",
+        ".write": "auth != null && $chat.contains('_') && root.child('chats/' + $chat + '/members/' + auth.uid).val() === true",
+        ".validate": "!newData.exists() || newData.hasChildren(['from', 'to', 'state'])",
+        "from": {
+          ".validate": "newData.isString() && root.child('chats/' + $chat + '/members/' + newData.val()).val() === true"
+        },
+        "to": {
+          ".validate": "newData.isString() && root.child('chats/' + $chat + '/members/' + newData.val()).val() === true"
+        },
+        "state": {
+          ".validate": "newData.val() === 'ring' || newData.val() === 'live' || newData.val() === 'end'"
+        },
+        "reason": {
+          ".validate": "newData.isString() && newData.val().length <= 20"
+        },
+        "at": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+        },
+        "offer": {
+          ".validate": "newData.hasChildren(['type', 'sdp']) && newData.child('sdp').isString() && newData.child('sdp').val().length <= 30000"
+        },
+        "answer": {
+          ".validate": "newData.hasChildren(['type', 'sdp']) && newData.child('sdp').isString() && newData.child('sdp').val().length <= 30000"
+        },
+        "ice": {
+          "$uid": {
+            "$k": {
+              ".validate": "newData.isString() && newData.val().length <= 2000"
+            }
+          }
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "callIn": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (newData.exists() ? (newData.child('from').val() === auth.uid && root.child('chats/' + newData.child('chatId').val() + '/members/' + auth.uid).val() === true && root.child('chats/' + newData.child('chatId').val() + '/members/' + $uid).val() === true && newData.child('chatId').val().contains('_') && root.child('msgOff/' + $uid).val() !== true) : (auth.uid === $uid || data.child('from').val() === auth.uid))",
+        ".validate": "!newData.exists() || newData.hasChildren(['chatId', 'from', 'at'])",
+        "chatId": {
+          ".validate": "newData.isString()"
+        },
+        "from": {
+          ".validate": "newData.isString()"
+        },
+        "at": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }

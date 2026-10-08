@@ -290,7 +290,7 @@ async function push(uid, { title, body, url, tag }) {
 async function pushTo(t, { title, body, url, tag }, loud) {
   const message = t.platform === 'android'
     ? { token: t.token, notification: { title, body }, data: { url, tag }, android: { priority: 'HIGH', ttl: '86400s', notification: {
-        tag, channel_id: !loud ? 'quiet' : tag.startsWith('chat-') || tag.startsWith('support-') ? 'messages' : 'votes',
+        tag, channel_id: !loud ? 'quiet' : tag.startsWith('chat-') || tag.startsWith('support-') || tag.startsWith('call-') ? 'messages' : 'votes',
         ...(loud ? { sound: 'default', default_vibrate_timings: true, notification_priority: 'PRIORITY_MAX' } : { notification_priority: 'PRIORITY_LOW' }),
         visibility: 'PUBLIC',
       } } }
@@ -587,6 +587,20 @@ chatsRef.on('child_changed', onChatNode)
 hereRef.on('value', s => { here = s.val() ?? {} }, e => warn('Presence listener failed: ' + e.message))
 readsRef.on('value', s => { reads = s.val() ?? {} }, () => {})
 await Promise.all([chatsRef.once('value'), hereRef.once('value'), readsRef.once('value')]).catch(e => warn('Realtime Database unavailable: ' + e.message))
+
+// ---- 음성 통화: callIn/{uid} { chatId, from, at } → "📞 OOO님의 전화" right away ----
+const callsPushed = new Map() // uid → at already pushed
+function onCallIn(snap) {
+  const uid = snap.key, c = snap.val()
+  if (!c?.chatId || !c.from || !(c.at > Date.now() - 30_000) || callsPushed.get(uid) === c.at) return
+  callsPushed.set(uid, c.at)
+  if (settingsOf(uid).notify === false) return
+  nameOf(c.from).then(name => push(uid, { title: `📞 ${name}`, body: '음성 통화가 왔어요', url: `${SITE}?tab=msg&chat=${c.chatId}`, tag: `call-${c.chatId}` }))
+    .catch(e => warn('Call push failed: ' + e.message))
+}
+const callInRef = rdb.ref('callIn')
+callInRef.on('child_added', onCallIn, e => warn('Call listener failed: ' + e.message))
+callInRef.on('child_changed', onCallIn)
 
 // ---- 예약 메시지: scheduled/{uid}/{key}, posted as that person when due ----
 // Checked like a normal send: still in the chat, not in 타임아웃, messages not turned off (either

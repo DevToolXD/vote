@@ -18,4 +18,10 @@ cat > "$res/drawable/splash.xml" <<'XML'
   <item><bitmap android:gravity="center" android:src="@mipmap/ic_launcher" /></item>
 </layer-list>
 XML
+# 음성 통화 (WebRTC in the web view): the microphone. Capacitor's web view asks for it at
+# runtime when the page calls getUserMedia, but only for permissions the manifest lists.
+manifest=android/app/src/main/AndroidManifest.xml
+for perm in RECORD_AUDIO MODIFY_AUDIO_SETTINGS; do
+  grep -q "android.permission.$perm" "$manifest" || sed -i "s#</manifest>#    <uses-permission android:name=\"android.permission.$perm\" />\n</manifest>#" "$manifest"
+done
 echo "Android branding applied."

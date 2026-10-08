@@ -279,6 +279,8 @@ type RoomProps = {
   onMute: (muted: boolean) => void
   onLeave: () => void
   onInvite: (ids: string[]) => Promise<boolean>
+  /** 1:1 only: start a 음성 통화 with the other person. */
+  onCall?: () => void
   onGroupInfo: (patch: { photoFile?: File; name?: string }) => Promise<boolean>
   onOpenProfile: (uid: string) => void
   onError: (msg: string, e: unknown) => void
@@ -526,6 +528,11 @@ export function ChatRoom(p: RoomProps) {
               {chat.type === 'group' && <GroupPresence db={db} uids={chat.members.filter(m => m !== me.id)} sep />}
             </span>
           </button>
+          {chat.type === 'dm' && p.onCall && v.people[0] && (
+            <button className="pr-dim" onClick={p.onCall} aria-label="음성 통화" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#4e5968')}>
+              <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M6.6 10.8a15.2 15.2 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z" /></svg>
+            </button>
+          )}
           <button className="pr-dim" onClick={() => setMenu(true)} aria-label="채팅방 메뉴" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#4e5968')}><MenuIcon /></button>
         </div>
 

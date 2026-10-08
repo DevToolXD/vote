@@ -1219,6 +1219,36 @@ describe('notifications', () => {
   })
 })
 
+describe('음성 통화', () => {
+  test('only the two people in a 1:1 chat can set up a call, and only ring each other', async () => {
+    const a = await signUp('a'), b = await signUp('b'), c = await signUp('c')
+    const R = (db: Firestore) => rtdbOf.get(db)!
+    const dm = await openDm(a, 'a', 'b')
+    const call = { from: 'a', to: 'b', state: 'ring', at: Date.now(), offer: { type: 'offer', sdp: 'v=0' } }
+    await rtSet(rtRef(R(a), `calls/${dm}`), call)
+    assert.equal((await rt(b, `calls/${dm}`)).state, 'ring')
+    await assert.rejects(rt(c, `calls/${dm}`))
+    await denied(rtSet(rtRef(R(c), `calls/${dm}/state`), 'end'))
+    await denied(rtSet(rtRef(R(a), `calls/${dm}`), { ...call, to: 'c' }))       // not in the chat
+    await denied(rtSet(rtRef(R(a), `calls/${dm}/state`), 'hacked'))
+    await rtUpdate(rtRef(R(b), `calls/${dm}`), { state: 'live', answer: { type: 'answer', sdp: 'v=0' } })
+    await rtSet(rtRef(R(b), `calls/${dm}/ice/b/k1`), '{"candidate":"x"}')
+    // ringing: from a member of a 1:1 chat with the callee, as yourself
+    await rtSet(rtRef(R(a), 'callIn/b'), { chatId: dm, from: 'a', at: Date.now() })
+    await assert.rejects(rt(a, 'callIn/b'))
+    assert.equal((await rt(b, 'callIn/b')).from, 'a')
+    await denied(rtSet(rtRef(R(c), 'callIn/b'), { chatId: dm, from: 'c', at: Date.now() }))
+    await denied(rtSet(rtRef(R(c), 'callIn/b'), { chatId: dm, from: 'a', at: Date.now() }))
+    await denied(rtSet(rtRef(R(c), 'callIn/b'), null))
+    await rtSet(rtRef(R(b), 'callIn/b'), null)
+    // a group chat can't be called; someone with 메시지 off can't be rung
+    const g = await createGroup(a, 'a', ['b', 'c'], '모임')
+    await denied(rtSet(rtRef(R(a), `calls/${g}`), { ...call }))
+    await setMessagesOff(b, 'b', true)
+    await denied(rtSet(rtRef(R(a), 'callIn/b'), { chatId: dm, from: 'a', at: Date.now() }))
+  })
+})
+
 describe('코인', () => {
   const pts = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
   const runWorker = () => new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
