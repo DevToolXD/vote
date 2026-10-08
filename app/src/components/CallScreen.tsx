@@ -95,7 +95,7 @@ export function CallScreen({ name, photoCss, phase, liveAt, muted, video = false
             <button className="pr-96" onClick={onDecline} aria-label="거절" style={css(round('#f04452'))}>{phone(135)}</button>{label('거절')}
           </span>
           <span style={css('display:flex;flex-direction:column;align-items:center')}>
-            <button className="pr-96" onClick={onAccept} aria-label="받기" style={css(round('#0bb05a'))}>{phone(0)}</button>{label('받기')}
+            <button className="pr-96" onClick={onAccept} aria-label="받기" style={css(round('#03b26c'))}>{phone(0)}</button>{label('받기')}
           </span>
         </div>
       ) : (

@@ -254,17 +254,17 @@ function CoinSheet({ sym, db, uid, points, price, wallet, series, change, onToas
               : (price && sellQty ? `${fmtQty(sellQty)} ${sym} → 약 ${Math.floor(sellQty * price).toLocaleString()}P` : ' ')}
           </span>
           <div style={css('display:grid;grid-template-columns:1fr 2fr;gap:8px')}>
-            <button data-g="secondary" className="pr-96" onClick={() => { setMode(null); setAmount('') }} style={css('height:54px;border-radius:16px;background:#f2f4f6;color:#4e5968;font-size:17px;font-weight:600')}>취소</button>
+            <button data-g="secondary" className="pr-96" onClick={() => { setMode(null); setAmount('') }} style={css('height:56px;border-radius:16px;background:#f2f4f6;color:#4e5968;font-size:17px;font-weight:600')}>취소</button>
             <button className="pr-96" disabled={busy || !(mode === 'buy' ? canBuy : canSell)} onClick={submit}
-              style={sx('height:54px;border-radius:16px;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms', { background: mode === 'buy' ? UP : DOWN, opacity: busy || !(mode === 'buy' ? canBuy : canSell) ? 0.4 : 1 })}>
+              style={sx('height:56px;border-radius:16px;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms', { background: mode === 'buy' ? UP : DOWN, opacity: busy || !(mode === 'buy' ? canBuy : canSell) ? 0.4 : 1 })}>
               {busy ? '체결 중…' : mode === 'buy' ? '구매하기' : '판매하기'}
             </button>
           </div>
         </div>
       ) : (
         <div style={css('margin:16px 24px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
-          <button className="pr-96" onClick={() => { setMode('sell'); setAmount('100') }} disabled={!h} style={sx('height:54px;border-radius:16px;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms', { background: DOWN, opacity: h ? 1 : 0.4 })}>판매</button>
-          <button className="pr-96" onClick={() => { setMode('buy'); setAmount('') }} style={css(`height:54px;border-radius:16px;background:${UP};color:#fff;font-size:17px;font-weight:600`)}>구매</button>
+          <button className="pr-96" onClick={() => { setMode('sell'); setAmount('100') }} disabled={!h} style={sx('height:56px;border-radius:16px;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms', { background: DOWN, opacity: h ? 1 : 0.4 })}>판매</button>
+          <button className="pr-96" onClick={() => { setMode('buy'); setAmount('') }} style={css(`height:56px;border-radius:16px;background:${UP};color:#fff;font-size:17px;font-weight:600`)}>구매</button>
         </div>
       )}
     </BottomSheet>
