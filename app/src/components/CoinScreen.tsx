@@ -76,7 +76,10 @@ function Spark({ data }: { data: number[] }) {
   return <svg width="56" height="28" viewBox="0 0 56 28" style={css('flex:none')}><path d={d} fill="none" stroke={tone(data[data.length - 1] - data[0])} strokeWidth="1.6" strokeLinejoin="round" /></svg>
 }
 
-const RANGES: [string, number][] = [['1시간', 60], ['6시간', 360], ['하루', 1440]]
+/** Chart ranges, in price samples (one every 15 s): 1 h = 240, 6 h = 1440, 24 h = 5760. */
+const RANGES: [string, number][] = [['1시간', 240], ['6시간', 1440], ['하루', 5760]]
+/** Longer series are thinned to about this many points so the chart stays light. */
+const MAX_POINTS = 400
 
 export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
   const [live, setLive] = useState<Live>(null)
@@ -84,12 +87,14 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
   const [wallet, setWallet] = useState<Wallet>({})
   const [open, setOpen] = useState<CoinSym | null>(null)
   useEffect(() => (db ? watchLive(db, setLive) : undefined), [db])
-  useEffect(() => (db ? watchHistory(db, 1440, setHist) : undefined), [db])
+  useEffect(() => (db ? watchHistory(db, 5760, setHist) : undefined), [db])
   useEffect(() => { setWallet({}); return db && uid ? watchWallet(db, uid, setWallet) : undefined }, [db, uid])
 
   const price = (s: CoinSym) => live?.p?.[s] ?? hist[hist.length - 1]?.p?.[s]
-  const series = (s: CoinSym, minutes: number) => {
-    const out = hist.slice(-minutes).map(h => h.p?.[s]).filter((v): v is number => typeof v === 'number')
+  const series = (s: CoinSym, samples: number) => {
+    const raw = hist.slice(-samples).map(h => h.p?.[s]).filter((v): v is number => typeof v === 'number')
+    const step = Math.max(1, Math.ceil(raw.length / MAX_POINTS))
+    const out = raw.filter((_, i) => i % step === 0)
     const p = live?.p?.[s]
     if (p != null) out.push(p)
     return out
@@ -147,7 +152,7 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
               <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#191f28')}>{c.name}</span>
               <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h ? `${fmtQty(h.q)} ${c.sym} 보유` : c.sym}</span>
             </span>
-            <Spark data={series(c.sym, 360).filter((_, i, a) => i % 6 === 0 || i === a.length - 1)} />
+            <Spark data={series(c.sym, 240)} />
             <span style={css('flex:none;min-width:88px;display:flex;flex-direction:column;align-items:flex-end;font-variant-numeric:tabular-nums')}>
               <span style={css('font-size:16px;line-height:24px;font-weight:600;color:#191f28')}>{fmtPrice(p)}P</span>
               <span style={sx('font-size:13px;line-height:19.5px;font-weight:600', { color: tone(ch) })}>{pct(ch)}</span>

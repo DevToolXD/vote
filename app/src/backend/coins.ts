@@ -5,7 +5,7 @@ import { R } from './messages'
 // 코인: made-up coins traded with points. Prices are a random walk run by the worker
 // (.github/scripts/send-notifications.mjs — nothing real behind them):
 //   coins/live { at, p: { sym: price } }      every few seconds
-//   coins/m1/{minute ms} { sym: price }        the last 24 hours, for the charts
+//   coins/hist/{15 s slot ms} { sym: price }   the last 24 hours (a sample every 15 s), for the charts
 //   wallets/{uid}/{sym} { q: amount, c: points paid for it }   (the worker keeps it)
 // Orders go in coinOrders/{id}; a buy pays its points in the same write (firestore.rules: coinBuy).
 
@@ -39,13 +39,14 @@ export function watchLive(db: Firestore, cb: (l: Live) => void) {
 }
 
 /** The last `minutes` one-minute prices, kept up to date as new minutes arrive. */
-export function watchHistory(db: Firestore, minutes: number, cb: (pts: Point[]) => void) {
+/** The latest `samples` price samples (one every 15 s), oldest first. */
+export function watchHistory(db: Firestore, samples: number, cb: (pts: Point[]) => void) {
   const pts: Point[] = []
   let ready = false
-  const q = query(ref(R(db), 'coins/m1'), orderByKey(), limitToLast(minutes))
+  const q = query(ref(R(db), 'coins/hist'), orderByKey(), limitToLast(samples))
   const stop = onChildAdded(q, s => {
     pts.push({ t: Number(s.key), p: s.val() })
-    if (pts.length > minutes) pts.shift()
+    if (pts.length > samples) pts.shift()
     if (ready) cb([...pts])
   }, () => cb([]))
   // the first batch arrives as many child_added calls: report it once

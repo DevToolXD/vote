@@ -670,7 +670,8 @@ const COINS = {
   RAMEN: { base: 8, vol: 0.0105 },
   MOON: { base: 0.5, vol: 0.012 },
 }
-const COIN_TICK_MS = Number(process.env.COIN_TICK_MS ?? 3000), COIN_PULL = 0.0015, COIN_KEEP_MIN = 24 * 60
+const COIN_TICK_MS = Number(process.env.COIN_TICK_MS ?? 3000), COIN_PULL = 0.0015
+const HIST_MS = 15_000, COIN_KEEP_MS = 24 * 60 * 60_000
 const COIN_BOUND = 20 // a coin stays between base / 20 and base × 20
 let coinPrices = null, coinAt = 0, coinMinute = 0
 const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) }
@@ -690,9 +691,15 @@ function coinStep() {
   for (const [sym, c] of Object.entries(COINS)) {
     const x = Math.log(coinPrices[sym] / c.base)
     // an admin boost (trend.free) moves the price without being pulled back toward the base
-    let dx = (trend[sym]?.free ? 0 : -COIN_PULL * x) + c.vol * gauss()
+    const tr = trend[sym]
+    let dx = (tr?.free ? 0 : -COIN_PULL * x) + c.vol * (tr?.free ? 2.5 : 1) * gauss()
+    if (tr?.target !== undefined) {
+      const i = tr.total - tr.left
+      dx += (tr.target * (1 + tr.wave * Math.sin((2 * Math.PI * i) / tr.period + tr.phase))) / tr.norm
+    }
     if (!trend[sym] && Math.random() < 1 / 2500) trend[sym] = { drift: (Math.random() < 0.5 ? -1 : 1) * (0.0005 + Math.random() * 0.0007), left: 60 + Math.floor(Math.random() * 60) }
-    if (trend[sym]) { dx += trend[sym].drift; if (--trend[sym].left <= 0) delete trend[sym] }
+    if (tr && tr.target === undefined) dx += tr.drift
+    if (tr && --tr.left <= 0) delete trend[sym]
     if (Math.random() < 1 / 3000) dx += (Math.random() < 0.5 ? -1 : 1) * (0.03 + Math.random() * 0.05) // 급등 / 급락
     // the normal walk stays within 20× of base (and never pushes a price that's above it further up);
     // an admin boost has no upper limit, it returns to base by the pull-back once it ends
@@ -704,12 +711,22 @@ function coinStep() {
 // move is spread evenly over the minutes, then the request is removed. Applied once.
 const coinEventsQueue = []
 rdb.ref('coinEvents').on('child_added', s => { if (s.val()?.sym in COINS) coinEventsQueue.push({ id: s.key, ...s.val() }) }, e => warn('Coin events failed: ' + e.message))
+// The path of an admin boost: the log-price moves by `target` over `ticks`, with waves on top
+// (a sine over the ride), normalized so the whole ride adds up to exactly the target.
+function boostPath(sym, pct, ticks) {
+  const target = Math.log(1 + pct / 100), period = 25 + Math.random() * 35, phase = Math.random() * 2 * Math.PI, wave = 0.9
+  let norm = 0
+  for (let i = 0; i < ticks; i++) norm += 1 + wave * Math.sin((2 * Math.PI * i) / period + phase)
+  return { target, norm, total: ticks, left: ticks, free: true, period, phase, wave }
+}
 async function applyCoinEvents() {
   const done = []
   for (const ev of coinEventsQueue.splice(0)) {
     const pct = Number(ev.pct) || 0, minutes = Math.max(1, Math.min(30, Number(ev.minutes) || 1))
     const ticks = Math.max(1, Math.round((minutes * 60_000) / COIN_TICK_MS))
-    trend[ev.sym] = { drift: Math.log(1 + pct / 100) / ticks, left: ticks, free: true }
+    // A boost is a path, not a straight ramp: it still adds up to the target, but speeds up and
+    // slows down, dips and spikes along the way (a sine wave over the ride, plus extra noise).
+    trend[ev.sym] = boostPath(ev.sym, pct, ticks)
     done.push(rdb.ref(`coinEvents/${ev.id}`).remove().catch(() => {}))
   }
   await Promise.all(done) // removed before the worker can exit
@@ -722,12 +739,13 @@ async function coinTick() {
   coinAt = now
   coinStep()
   const up = { 'coins/live': { at: now, p: { ...coinPrices } } }
-  const minute = Math.floor(now / 60_000) * 60_000
-  if (minute !== coinMinute) {
-    up[`coins/m1/${minute}`] = { ...coinPrices }
-    // the minute that just left the 24 hours (and, after a gap, a few before it)
-    for (let k = 0; k < (coinMinute ? Math.min(30, (minute - coinMinute) / 60_000) : 1); k++) up[`coins/m1/${minute - (COIN_KEEP_MIN + k) * 60_000}`] = null
-    coinMinute = minute
+  // price history: one sample every 15 seconds, the last 24 hours kept
+  const slot = Math.floor(now / HIST_MS) * HIST_MS
+  if (slot !== coinMinute) {
+    up[`coins/hist/${slot}`] = { ...coinPrices }
+    // the sample that just left the 24 hours (and, after a gap, a few before it)
+    for (let k = 0; k < (coinMinute ? Math.min(40, (slot - coinMinute) / HIST_MS) : 1); k++) up[`coins/hist/${slot - COIN_KEEP_MS - k * HIST_MS}`] = null
+    coinMinute = slot
   }
   await rdb.ref().update(up)
 }
