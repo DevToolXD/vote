@@ -694,7 +694,10 @@ function coinStep() {
     if (!trend[sym] && Math.random() < 1 / 2500) trend[sym] = { drift: (Math.random() < 0.5 ? -1 : 1) * (0.0005 + Math.random() * 0.0007), left: 60 + Math.floor(Math.random() * 60) }
     if (trend[sym]) { dx += trend[sym].drift; if (--trend[sym].left <= 0) delete trend[sym] }
     if (Math.random() < 1 / 3000) dx += (Math.random() < 0.5 ? -1 : 1) * (0.03 + Math.random() * 0.05) // 급등 / 급락
-    coinPrices[sym] = roundPrice(Math.min(c.base * COIN_BOUND, Math.max(c.base / COIN_BOUND, coinPrices[sym] * Math.exp(dx))))
+    // the normal walk stays within 20× of base (and never pushes a price that's above it further up);
+    // an admin boost has no upper limit, it returns to base by the pull-back once it ends
+    const hi = trend[sym]?.free ? Infinity : Math.max(c.base * COIN_BOUND, coinPrices[sym])
+    coinPrices[sym] = roundPrice(Math.min(hi, Math.max(c.base / COIN_BOUND, coinPrices[sym] * Math.exp(dx))))
   }
 }
 // 관리자 코인 상승 (coinEvents/{id} { sym, pct, minutes }, written by the admin screen): the
@@ -704,7 +707,7 @@ rdb.ref('coinEvents').on('child_added', s => { if (s.val()?.sym in COINS) coinEv
 async function applyCoinEvents() {
   const done = []
   for (const ev of coinEventsQueue.splice(0)) {
-    const pct = Math.max(-50, Math.min(50, Number(ev.pct) || 0)), minutes = Math.max(1, Math.min(30, Number(ev.minutes) || 1))
+    const pct = Number(ev.pct) || 0, minutes = Math.max(1, Math.min(30, Number(ev.minutes) || 1))
     const ticks = Math.max(1, Math.round((minutes * 60_000) / COIN_TICK_MS))
     trend[ev.sym] = { drift: Math.log(1 + pct / 100) / ticks, left: ticks, free: true }
     done.push(rdb.ref(`coinEvents/${ev.id}`).remove().catch(() => {}))
@@ -728,6 +731,22 @@ async function coinTick() {
   }
   await rdb.ref().update(up)
 }
+// 거래 내역 for everyone (coinTrades/{coin}/{id} = who, side, points, qty, price): the newest 200
+// per coin are kept; the app shows the latest ones on each coin's page.
+const tradeWrites = new Map()
+async function recordTrade(id, o, price, qty, points) {
+  const name = await nameOf(o.uid)
+  const ref = rdb.ref(`coinTrades/${o.coin}/${id}`)
+  await ref.set({ name, side: o.side, points, qty, price, at: ServerValue.TIMESTAMP })
+  const n = (tradeWrites.get(o.coin) ?? 0) + 1
+  tradeWrites.set(o.coin, n)
+  if (n >= 50) {
+    tradeWrites.set(o.coin, 0)
+    const keys = Object.keys((await rdb.ref(`coinTrades/${o.coin}`).orderByKey().once('value')).val() ?? {}).sort()
+    const drop = keys.slice(0, Math.max(0, keys.length - 200))
+    if (drop.length) await rdb.ref(`coinTrades/${o.coin}`).update(Object.fromEntries(drop.map(k => [k, null])))
+  }
+}
 async function fillCoinOrder(id, o) {
   const price = coinPrices?.[o.coin]
   const fail = reason => fdb.doc(`coinOrders/${id}`).update({ status: 'failed', reason, doneAt: FieldValue.serverTimestamp() })
@@ -738,6 +757,7 @@ async function fillCoinOrder(id, o) {
       const qty = floor8(o.points / price)
       const w = (await rdb.ref(`wallets/${o.uid}/${o.coin}`).once('value')).val() ?? { q: 0, c: 0 }
       await rdb.ref().update({ [`wallets/${o.uid}/${o.coin}`]: { q: Math.round((w.q + qty) * 1e8) / 1e8, c: w.c + o.points }, [`coinFills/${id}`]: { price, qty } })
+      await recordTrade(id, o, price, qty, o.points).catch(e => warn('Recording a trade failed: ' + e.message))
       await fdb.doc(`coinOrders/${id}`).update({ status: 'done', price, qty, doneAt: FieldValue.serverTimestamp() })
     } else await fdb.doc(`coinOrders/${id}`).update({ status: 'done', price: filled.price, qty: filled.qty, doneAt: FieldValue.serverTimestamp() })
     return
@@ -761,6 +781,7 @@ async function fillCoinOrder(id, o) {
     tx.update(fdb.doc(`candidates/${o.uid}`), { bonus: FieldValue.increment(fill.points), payCoin: id })
     tx.update(ord.ref, { status: 'done', price: fill.price, qty: fill.qty, points: fill.points, doneAt: FieldValue.serverTimestamp() })
   })
+  await recordTrade(id, o, fill.price, fill.qty, fill.points).catch(e => warn('Recording a trade failed: ' + e.message))
 }
 async function fillCoinOrders() {
   for (const [id, o] of coinOrders) {

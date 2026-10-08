@@ -1255,7 +1255,7 @@ describe('코인 상승 (관리자)', () => {
     const R = (db: Firestore) => rtdbOf.get(db)!
     const ev = { sym: 'JEONG', pct: 30, minutes: 1, at: Date.now() }
     await denied(rtSet(rtRef(R(a), 'coinEvents/x1'), ev))
-    await denied(rtSet(rtRef(R(admin), 'coinEvents/x2'), { ...ev, pct: 80 }))
+    await denied(rtSet(rtRef(R(admin), 'coinEvents/x2'), { ...ev, pct: -100 }))
     await denied(rtSet(rtRef(R(admin), 'coinEvents/x3'), { ...ev, minutes: 0 }))
     await denied(rtSet(rtRef(R(admin), 'coinEvents/x4'), { ...ev, sym: 'FAKE' }))
     await denied(rtSet(rtRef(R(admin), 'coinEvents/x5'), { ...ev, pct: 0 }))
@@ -1272,6 +1272,17 @@ describe('코인 상승 (관리자)', () => {
       removed = await rtSet(rtRef(R(admin), 'coinEvents/ok1'), ev).then(() => true, () => false)
     }
     assert.ok(removed, 'the worker removes the applied request')
+  })
+})
+
+describe('코인 거래 내역', () => {
+  test('everyone signed in can read the trades; nobody can write them', async () => {
+    const a = await signUp('a'), b = await signUp('b')
+    const R = (db: Firestore) => rtdbOf.get(db)!
+    await rtSet(rtRef(R(a), 'coinTrades/BTC/t1'), { name: 'a', side: 'buy', points: 100, qty: 0.1, price: 1000, at: Date.now() }).catch(() => {})
+    await denied(rtSet(rtRef(R(b), 'coinTrades/BTC/t2'), { name: 'b', side: 'buy', points: 1, qty: 1, price: 1, at: 1 }))
+    await denied(rtSet(rtRef(R(a), 'coinTrades/BTC/t3'), { name: 'a', side: 'buy', points: 1, qty: 1, price: 1, at: 1 }))
+    assert.ok(await rt(b, 'coinTrades/BTC').then(() => true, () => false))
   })
 })
 

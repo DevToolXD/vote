@@ -488,7 +488,7 @@ function CoinBoost({ db, boost, setConfirm }: { db: Firestore | null; boost: (sy
   const [live, setLive] = useState<Live>(null)
   useEffect(() => (db ? watchLive(db, setLive) : undefined), [db])
   const n = Number(pct), m = Number(min)
-  const ok = Number.isFinite(n) && n !== 0 && Math.abs(n) <= 50 && Number.isInteger(m) && m >= 1 && m <= 30
+  const ok = Number.isFinite(n) && n !== 0 && n > -100 && Number.isInteger(m) && m >= 1 && m <= 30
   const coin = COINS.find(c => c.sym === sym)!
   const price = live?.p?.[sym]
   const chip = (on: boolean) => sx('height:36px;padding:0 12px;border-radius:10px;font-size:15px;font-weight:600;transition:background 200ms,color 200ms', { background: on ? '#191f28' : '#f2f4f6', color: on ? '#fff' : '#4e5968' })

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { BottomSheet } from './Overlays'
-import { COINS, MIN_BUY, buyCoin, fmtPrice, fmtQty, floor8, sellCoin, watchHistory, watchLive, watchWallet, type CoinSym, type Live, type Point, type Wallet } from '../backend/coins'
+import { COINS, MIN_BUY, buyCoin, fmtPrice, fmtQty, floor8, sellCoin, watchHistory, watchLive, watchTrades, watchWallet, type CoinSym, type Live, type Point, type Trade, type Wallet } from '../backend/coins'
 
 // 코인 탭: made-up coins with random prices, bought and sold with points.
 // Korean convention: up = red, down = blue.
@@ -175,6 +175,8 @@ function CoinSheet({ sym, db, uid, points, price, wallet, series, change, onToas
 }) {
   const c = COINS.find(x => x.sym === sym)!
   const [range, setRange] = useState(60)
+  const [trades, setTrades] = useState<Trade[] | null>(null)
+  useEffect(() => watchTrades(db, sym, setTrades), [db, sym])
   const [mode, setMode] = useState<'buy' | 'sell' | null>(null)
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
@@ -235,6 +237,21 @@ function CoinSheet({ sym, db, uid, points, price, wallet, series, change, onToas
         {h && h.c > 0 && <span style={css('display:flex;justify-content:space-between')}><span style={{ color: '#6b7684' }}>수익</span><span style={sx('font-weight:700', { color: tone(evalNow - h.c) })}>{signed(evalNow - h.c)}P ({pct((evalNow - h.c) / h.c)})</span></span>}
       </div>
 
+      <div style={css('margin:20px 24px 0;display:flex;flex-direction:column;gap:4px')}>
+        <span style={css('font-size:17px;line-height:25.5px;font-weight:700;color:#191f28')}>최근 거래</span>
+        {trades == null ? null : trades.length === 0 ? (
+          <span style={css('padding:12px 0;font-size:15px;color:#8b95a1')}>아직 거래가 없어요</span>
+        ) : trades.slice(0, 20).map(t => (
+          <div key={t.id} style={css('display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f2f4f6')}>
+            <span style={sx('flex:none;width:44px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff', { background: t.side === 'buy' ? UP : DOWN })}>{t.side === 'buy' ? '샀어요' : '팔았어요'}</span>
+            <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+              <span style={css('font-size:15px;font-weight:600;color:#191f28;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{t.name}</span>
+              <span style={css('font-size:13px;color:#8b95a1;font-variant-numeric:tabular-nums')}>{fmtQty(t.qty)} {sym} · @{fmtPrice(t.price)}P</span>
+            </span>
+            <span style={css('flex:none;font-size:15px;font-weight:600;color:#191f28;font-variant-numeric:tabular-nums')}>{t.points.toLocaleString()}P</span>
+          </div>
+        ))}
+      </div>
       {mode ? (
         <div style={css('margin:16px 24px 0;display:flex;flex-direction:column;gap:10px')}>
           <span style={css('font-size:15px;font-weight:600;color:#191f28')}>{mode === 'buy' ? `몇 포인트어치 살까요? (쓸 수 있는 포인트 ${points.toLocaleString()}P)` : '얼마나 팔까요?'}</span>

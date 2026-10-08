@@ -98,3 +98,17 @@ export async function sellCoin(db: Firestore, uid: string, coin: CoinSym, qty: n
 export const fmtPrice = (p: number | undefined) =>
   p == null ? '-' : p >= 100 ? Math.round(p).toLocaleString() : p.toLocaleString(undefined, { maximumFractionDigits: p >= 1 ? 2 : 4 })
 export const fmtQty = (q: number) => q.toLocaleString(undefined, { maximumFractionDigits: q >= 1 ? 4 : 8 })
+
+export type Trade = { id: string; name: string; side: 'buy' | 'sell'; points: number; qty: number; price: number; at: number }
+
+/** The latest trades in one coin, from everyone (the worker records each fill). Newest first. */
+export function watchTrades(db: Firestore, sym: CoinSym, cb: (t: Trade[]) => void) {
+  const list = new Map<string, Trade>()
+  const stop = onChildAdded(query(ref(R(db), `coinTrades/${sym}`), limitToLast(40)), s => {
+    const v = s.val()
+    if (!v) return
+    list.set(s.key!, { id: s.key!, name: v.name ?? '알 수 없음', side: v.side, points: v.points, qty: v.qty, price: v.price, at: v.at ?? 0 })
+    cb([...list.values()].sort((a, b) => b.id.localeCompare(a.id)))
+  }, () => cb([]))
+  return stop
+}
