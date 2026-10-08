@@ -143,7 +143,8 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
       </div>
 
       <div style={css('padding:16px 24px 4px;font-size:17px;font-weight:700;color:#191f28')}>코인 시세</div>
-      {COINS.map(c => {
+      {/* highest price first; 정후교 대천재 코인 is not in this list */}
+      {COINS.filter(c => c.sym !== 'JEONG').sort((x, y) => (price(y.sym) ?? 0) - (price(x.sym) ?? 0)).map(c => {
         const p = price(c.sym), ch = dayChange(c.sym), h = wallet[c.sym]
         return (
           <button key={c.sym} className="pr-dim" onClick={() => setOpen(c.sym)} style={css(`display:flex;align-items:center;gap:14px;padding:12px 20px 12px 24px;margin:0 4px;border-radius:12px;text-align:left;transition:background 200ms ${EASE}`)}>
