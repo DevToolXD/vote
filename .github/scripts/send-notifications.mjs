@@ -658,13 +658,19 @@ async function deliverScheduled() {
 // (bonus, payCoin = order id) for coins it holds. Holdings: wallets/{uid}/{sym} { q, c }
 // (amount, points paid for it). coinFills/{order id} makes each fill happen exactly once.
 const COINS = {
-  BTC: { base: 60000, vol: 0.0012 },
-  ETH: { base: 3000, vol: 0.0016 },
-  XRP: { base: 80, vol: 0.0022 },
-  DOGE: { base: 15, vol: 0.0032 },
-  SGP: { base: 300, vol: 0.0045 },
+  BTC: { base: 60000, vol: 0.004 },
+  ETH: { base: 3000, vol: 0.005 },
+  XRP: { base: 80, vol: 0.007 },
+  DOGE: { base: 15, vol: 0.010 },
+  SGP: { base: 300, vol: 0.012 },
+  KIMCHI: { base: 500, vol: 0.009 },
+  TTEOK: { base: 40, vol: 0.011 },
+  CHICKEN: { base: 120, vol: 0.008 },
+  RAMEN: { base: 8, vol: 0.013 },
+  MOON: { base: 0.5, vol: 0.020 },
 }
-const COIN_TICK_MS = Number(process.env.COIN_TICK_MS ?? 3000), COIN_PULL = 0.00005, COIN_KEEP_MIN = 24 * 60
+const COIN_TICK_MS = Number(process.env.COIN_TICK_MS ?? 3000), COIN_PULL = 0.0004, COIN_KEEP_MIN = 24 * 60
+const COIN_BOUND = 20 // a coin stays between base / 20 and base × 20
 let coinPrices = null, coinAt = 0, coinMinute = 0
 const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) }
 const roundPrice = p => (p >= 100 ? Math.round(p * 100) / 100 : Math.round(p * 10000) / 10000)
@@ -673,12 +679,17 @@ async function coinInit() {
   coinPrices = {}
   for (const [sym, c] of Object.entries(COINS)) coinPrices[sym] = live?.p?.[sym] > 0 ? live.p[sym] : c.base
 }
+// Each coin: a random walk that drifts back toward its base price, plus sudden jumps
+// (about every 35 minutes, 5–28 %) and trends (a run of 5–10 minutes all one way).
+const trend = {}
 function coinStep() {
   for (const [sym, c] of Object.entries(COINS)) {
     const x = Math.log(coinPrices[sym] / c.base)
     let dx = -COIN_PULL * x + c.vol * gauss()
-    if (Math.random() < 1 / 4000) dx += (Math.random() < 0.5 ? -1 : 1) * (0.04 + Math.random() * 0.1) // 급등 / 급락
-    coinPrices[sym] = roundPrice(Math.min(c.base * 50, Math.max(c.base / 50, coinPrices[sym] * Math.exp(dx))))
+    if (!trend[sym] && Math.random() < 1 / 900) trend[sym] = { drift: (Math.random() < 0.5 ? -1 : 1) * (0.0015 + Math.random() * 0.0025), left: 100 + Math.floor(Math.random() * 100) }
+    if (trend[sym]) { dx += trend[sym].drift; if (--trend[sym].left <= 0) delete trend[sym] }
+    if (Math.random() < 1 / 700) dx += (Math.random() < 0.5 ? -1 : 1) * (0.05 + Math.random() * 0.23) // 급등 / 급락
+    coinPrices[sym] = roundPrice(Math.min(c.base * COIN_BOUND, Math.max(c.base / COIN_BOUND, coinPrices[sym] * Math.exp(dx))))
   }
 }
 async function coinTick() {

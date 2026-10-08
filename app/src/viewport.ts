@@ -48,3 +48,8 @@ export function watchView(cb: () => void) {
     document.removeEventListener('visibilitychange', soon)
   }
 }
+
+/** Back to the top of the page (the page scrolls inside <main data-scroll="page">). */
+export function scrollPageTop() {
+  document.querySelector<HTMLElement>('[data-scroll="page"]')?.scrollTo({ top: 0 })
+}

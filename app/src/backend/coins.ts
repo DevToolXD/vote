@@ -9,13 +9,18 @@ import { R } from './messages'
 //   wallets/{uid}/{sym} { q: amount, c: points paid for it }   (the worker keeps it)
 // Orders go in coinOrders/{id}; a buy pays its points in the same write (firestore.rules: coinBuy).
 
-export type CoinSym = 'BTC' | 'ETH' | 'XRP' | 'DOGE' | 'SGP'
+export type CoinSym = 'BTC' | 'ETH' | 'XRP' | 'DOGE' | 'SGP' | 'KIMCHI' | 'TTEOK' | 'CHICKEN' | 'RAMEN' | 'MOON'
 export const COINS: { sym: CoinSym; name: string; color: string; mark: string }[] = [
   { sym: 'BTC', name: '비트코인', color: '#f7931a', mark: '₿' },
   { sym: 'ETH', name: '이더리움', color: '#627eea', mark: 'Ξ' },
   { sym: 'XRP', name: '리플', color: '#23292f', mark: '✕' },
   { sym: 'DOGE', name: '도지코인', color: '#c2a633', mark: 'Ð' },
   { sym: 'SGP', name: '삼겹코인', color: '#ff6b6b', mark: '🥓' },
+  { sym: 'KIMCHI', name: '김치코인', color: '#d9480f', mark: '김' },
+  { sym: 'TTEOK', name: '떡볶이코인', color: '#e64980', mark: '떡' },
+  { sym: 'CHICKEN', name: '치킨코인', color: '#f59f00', mark: '🍗' },
+  { sym: 'RAMEN', name: '라면코인', color: '#fab005', mark: '🍜' },
+  { sym: 'MOON', name: '문코인', color: '#6741d9', mark: '🌙' },
 ]
 export const MIN_BUY = 10
 

@@ -23,6 +23,7 @@ import { CoinScreen } from './components/CoinScreen'
 import { CallScreen } from './components/CallScreen'
 import { CallSession, canCall, declineCall, talkLabel, watchIncoming, type CallPhase, type EndReason, type Incoming } from './backend/calls'
 import { startPresence } from './backend/presence'
+import { scrollPageTop } from './viewport'
 import { MessageBanner, type Banner } from './components/MessageBanner'
 import { SupportFlow, SupportRoom } from './components/SupportScreen'
 import { closeTicket, linkTicket, sendSupport, subscribeLinkedTickets, subscribeTicket, subscribeTickets, type Ticket } from './backend/support'
@@ -492,7 +493,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
 
   const go = (t: Tab) => {
     setTab(t); setSheet(null); setProfile(null); setEditOpen(false)
-    window.scrollTo(0, 0)
+    scrollPageTop()
   }
 
   /** kind = what this week's vote should become ('none' cancels it). */
@@ -726,9 +727,11 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   if ((ipDoc?.blocked || access?.blocked) && !isAdmin) return <EndlessLoading />
 
   return (
-    <div data-theme={theme} style={css("min-height:100vh;display:flex;justify-content:center;font-family:'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;color:#191f28;word-break:keep-all")}>
-      <div data-g="app" style={css('width:100%;max-width:var(--app-w);min-height:100vh;background:#ffffff;position:relative;display:flex;flex-direction:column')}>
-        <main style={css('flex:1;display:flex;flex-direction:column')}>
+    <div data-theme={theme} style={css("height:100vh;height:100dvh;display:flex;justify-content:center;overflow:hidden;font-family:'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;color:#191f28;word-break:keep-all")}>
+      {/* The page never scrolls: <main> scrolls inside the screen and the tab bar sits below it.
+          (A fixed/sticky bar floated mid-screen on iPhone while the page moved.) */}
+      <div data-g="app" style={css('width:100%;max-width:var(--app-w);height:100%;min-height:0;background:#ffffff;position:relative;display:flex;flex-direction:column')}>
+        <main data-scroll="page" style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch')}>
           {tab === 'shop' && (
             <ShopScreen
               loggedIn={loggedIn} name={me?.name ?? '내 이름'} bio={me ? bioDraft : ''} photoCss={me?.photoCss ?? 'none'}

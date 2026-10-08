@@ -20,11 +20,8 @@ export function BottomNav({ tab, onGo, isAdmin = false, unread = 0, adminUnread 
   const idx = tabs.findIndex(([k]) => k === tab)
   const w = 100 / tabs.length
   return (
-    <>
-    {/* keeps the page's last row clear of the bar */}
-    <div aria-hidden="true" style={css('flex:none;height:calc(60px + env(safe-area-inset-bottom))')} />
-    {/* fixed, not sticky: iPhone sometimes left a sticky bar stuck mid-screen after scrolling */}
-    <nav data-g="nav" style={sx('position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:var(--app-w);transform:translateZ(0);z-index:50;background:#ffffff;box-shadow:0 -0.5px 0 rgba(0,0,33,0.07);display:grid;padding-bottom:env(safe-area-inset-bottom)', { gridTemplateColumns: `repeat(${tabs.length},1fr)` })}>
+    // A normal row under the scrolling <main> (not fixed or sticky): it can't float mid-screen.
+    <nav data-g="nav" style={sx('position:relative;flex:none;z-index:50;background:#ffffff;box-shadow:0 -0.5px 0 rgba(0,0,33,0.07);display:grid;padding-bottom:env(safe-area-inset-bottom)', { gridTemplateColumns: `repeat(${tabs.length},1fr)` })}>
       {/* Sliding capsule — only visible in the glass theme. */}
       <span data-g="navpill" aria-hidden="true" style={sx('display:none;position:absolute;top:6px;bottom:6px;border-radius:24px;transition:left 520ms cubic-bezier(0.34,1.4,0.64,1)', { width: `calc(${w}% - 12px)`, left: `calc(${idx * w}% + 6px)` })} />
       {tabs.map(([k, l]) => (
@@ -39,6 +36,5 @@ export function BottomNav({ tab, onGo, isAdmin = false, unread = 0, adminUnread 
         </button>
       ))}
     </nav>
-    </>
   )
 }
