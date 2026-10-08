@@ -1263,19 +1263,20 @@ describe('코인 판매 반복', () => {
   test('sell everything after several buys (random prices), repeatedly', async () => {
     const a = await signUp('a'), admin = dbAs(ADMIN)
     await grantPoints(admin, ADMIN.uid, 'a', 100000)
-    const runWorker = () => new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
-      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '0', SETTLE_MS: '0', COIN_TICK_MS: '1' },
-    }, (err, stdout, stderr) => err ? reject(new Error(stderr || stdout)) : resolve()))
+    // the worker runs in the background and fills open orders (each order call waits for its fill)
+    const kick = () => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
+      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '8000', SETTLE_MS: '0', COIN_TICK_MS: '1' },
+    })
     const log: string[] = []
     for (let i = 0; i < 4; i++) {
       const coin = (['BTC', 'DOGE', 'MOON', 'JEONG'] as const)[i]
       const buy = buyCoin(a, 'a', coin, 1234 + i * 777)
-      await new Promise(r => setTimeout(r, 300)); await runWorker()
+      kick()
       const rb = await buy
       log.push(`buy ${coin} ${rb.status} ${rb.qty}`)
       const h = await rt(a, `wallets/a/${coin}`)
       const sell = sellCoin(a, 'a', coin, h.q)
-      await new Promise(r => setTimeout(r, 300)); await runWorker()
+      kick()
       const rs = await sell
       log.push(`sell ${coin} ${rs.status} ${rs.reason ?? ''} q=${h.q}`)
       assert.equal(rs.status, 'done', log.join('\n'))
@@ -1285,9 +1286,11 @@ describe('코인 판매 반복', () => {
 
 describe('코인', () => {
   const pts = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
-  const runWorker = () => new Promise<void>((resolve, reject) => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
-    env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '0', SETTLE_MS: '0' },
-  }, (err, stdout, stderr) => err ? reject(new Error(stderr || stdout)) : resolve()))
+  // The worker runs in the background for a few seconds (filling open orders as they come); the
+  // order call waits for its fill (up to 20 s), so nothing depends on a fixed delay.
+  const kick = () => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
+    env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '8000', SETTLE_MS: '0', COIN_TICK_MS: '1' },
+  })
   const rawOrder = (db: Firestore, uid: string, data: Record<string, unknown>, spent = 0) => {
     const r = doc(collection(db, 'coinOrders')), b = writeBatch(db)
     b.set(r, { uid, coin: 'BTC', at: serverTimestamp(), status: 'open', ...data })
@@ -1310,10 +1313,9 @@ describe('코인', () => {
     await denied(updateDoc(doc(a, 'candidates', 'a'), { bonus: increment(1000), payCoin: 'x' }))
 
     const bought = buyCoin(a, 'a', 'BTC', 500)
-    await new Promise(r => setTimeout(r, 300))
-    assert.equal(await pts(a, 'a'), start - 500)
-    await runWorker()
+    kick()
     const r1 = await bought
+    assert.equal(await pts(a, 'a'), start - 500)
     assert.equal(r1.status, 'done')
     assert.ok(r1.qty! > 0 && r1.price! > 0)
     const w = await rt(a, 'wallets/a/BTC')
@@ -1325,19 +1327,18 @@ describe('코인', () => {
 
     // selling more than held fails; selling it all pays floor(qty × price)
     const tooMuch = sellCoin(a, 'a', 'BTC', w.q * 2)
-    await new Promise(r => setTimeout(r, 300))
-    await runWorker()
+    kick()
     assert.equal((await tooMuch).status, 'failed')
     const sold = sellCoin(a, 'a', 'BTC', w.q)
-    await new Promise(r => setTimeout(r, 300))
-    await runWorker()
+    kick()
     const r2 = await sold
     assert.equal(r2.status, 'done')
     assert.equal(r2.points, Math.floor(w.q * r2.price!))
     assert.equal(await pts(a, 'a'), start - 500 + r2.points!)
     assert.equal(await rt(a, 'wallets/a/BTC'), null)
-    // a second worker run fills nothing twice
-    await runWorker()
+    // a later worker run fills nothing twice
+    kick()
+    await new Promise(r => setTimeout(r, 9000))
     assert.equal(await pts(a, 'a'), start - 500 + r2.points!)
   })
 })
