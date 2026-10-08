@@ -701,6 +701,8 @@ const COINS = {
   ROCKET: { base: 250, vol: 0.007 },
 }
 const COIN_TICK_MS = Number(process.env.COIN_TICK_MS ?? 3000), COIN_PULL = 0.0015
+// the chance a random trend or sudden move goes down (0.5 = even); above 0.5 the coins fall more often
+const COIN_DOWN = 0.65
 const COIN_FLOOR = 0.0001
 const HIST_MS = 15_000, COIN_KEEP_MS = 24 * 60 * 60_000
 const COIN_BOUND = 20 // a coin stays between base / 20 and base × 20
@@ -728,10 +730,10 @@ function coinStep() {
       const i = tr.total - tr.left
       dx += (tr.target * (1 + tr.wave * Math.sin((2 * Math.PI * i) / tr.period + tr.phase))) / tr.norm
     }
-    if (!trend[sym] && Math.random() < 1 / 2500) trend[sym] = { drift: (Math.random() < 0.5 ? -1 : 1) * (0.0005 + Math.random() * 0.0007), left: 60 + Math.floor(Math.random() * 60) }
+    if (!trend[sym] && Math.random() < 1 / 2500) trend[sym] = { drift: (Math.random() < COIN_DOWN ? -1 : 1) * (0.0005 + Math.random() * 0.0007), left: 60 + Math.floor(Math.random() * 60) }
     if (tr && tr.target === undefined) dx += tr.drift
     if (tr && --tr.left <= 0) delete trend[sym]
-    if (Math.random() < 1 / 3000) dx += (Math.random() < 0.5 ? -1 : 1) * (0.03 + Math.random() * 0.05) // 급등 / 급락
+    if (Math.random() < 1 / 3000) dx += (Math.random() < COIN_DOWN ? -1 : 1) * (0.03 + Math.random() * 0.05) // 급등 / 급락
     // the normal walk stays within 20× of base (and never pushes a price that's above it further up);
     // an admin boost has no upper limit, it returns to base by the pull-back once it ends
     const free = !!trend[sym]?.free
