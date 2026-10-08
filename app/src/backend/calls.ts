@@ -12,12 +12,17 @@ import { R } from './messages'
 
 export type CallPhase = 'calling' | 'ringing' | 'connecting' | 'live' | 'ended'
 export type EndReason = 'hangup' | 'declined' | 'missed' | 'failed' | 'busy' | 'taken' | 'mic'
-export type Incoming = { chatId: string; from: string; at: number }
+export type Incoming = { chatId: string; from: string; at: number; video?: boolean }
 
 const ICE: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }]
 const RING_MS = 40_000
 
-type Handlers = { onPhase: (p: CallPhase) => void; onEnd: (reason: EndReason, talkedMs: number) => void }
+type Handlers = {
+  onPhase: (p: CallPhase) => void
+  onEnd: (reason: EndReason, talkedMs: number) => void
+  /** The camera / the other side's video, as they come and go (영상 통화). */
+  onStreams?: (local: MediaStream | null, remote: MediaStream | null) => void
+}
 
 export class CallSession {
   private pc: RTCPeerConnection | null = null
@@ -30,6 +35,9 @@ export class CallSession {
   private liveAt = 0
   private done = false
   muted = false
+  /** 영상 통화: camera on for both sides (set before call() / answer()). */
+  video = false
+  private remote: MediaStream | null = null
 
   constructor(private db: Firestore, private me: string, readonly chatId: string, readonly peer: string, readonly role: 'caller' | 'callee', private h: Handlers) {
     // Created during the tap that starts / answers the call, so phones let it play.
@@ -42,15 +50,18 @@ export class CallSession {
   private get node() { return ref(R(this.db), `calls/${this.chatId}`) }
 
   private async setup() {
+    const audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio, video: this.video ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } : false })
     } catch {
-      throw new Error('mic')
+      // no camera (or refused): the call goes on as a voice call
+      if (this.video) { this.video = false; try { this.stream = await navigator.mediaDevices.getUserMedia({ audio }) } catch { throw new Error('mic') } }
+      else throw new Error('mic')
     }
     const pc = new RTCPeerConnection({ iceServers: ICE })
     this.pc = pc
     this.stream.getTracks().forEach(t => pc.addTrack(t, this.stream!))
-    pc.ontrack = e => { this.audio.srcObject = e.streams[0]; this.audio.play().catch(() => {}) }
+    pc.ontrack = e => { this.remote = e.streams[0]; this.audio.srcObject = this.remote; this.audio.play().catch(() => {}); this.emitStreams() }
     pc.onicecandidate = e => { if (e.candidate) push(child(this.node, `ice/${this.me}`), JSON.stringify(e.candidate.toJSON())).catch(() => {}) }
     let lost: ReturnType<typeof setTimeout> | undefined
     pc.onconnectionstatechange = () => {
@@ -100,8 +111,8 @@ export class CallSession {
       await remove(this.node).catch(() => {})
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
-      await set(this.node, { from: this.me, to: this.peer, state: 'ring', at: serverTimestamp(), offer: { type: offer.type, sdp: offer.sdp } })
-      await set(ref(R(this.db), `callIn/${this.peer}`), { chatId: this.chatId, from: this.me, at: serverTimestamp() })
+      await set(this.node, { from: this.me, to: this.peer, state: 'ring', at: serverTimestamp(), video: this.video, offer: { type: offer.type, sdp: offer.sdp } })
+      await set(ref(R(this.db), `callIn/${this.peer}`), { chatId: this.chatId, from: this.me, at: serverTimestamp(), video: this.video })
       this.watch()
       this.timers.push(setTimeout(() => { if (!this.remoteSet) this.hangup('missed') }, RING_MS))
     } catch (e) {
@@ -138,6 +149,13 @@ export class CallSession {
     this.stream?.getAudioTracks().forEach(t => { t.enabled = !m })
   }
 
+  setCamera(on: boolean) {
+    this.stream?.getVideoTracks().forEach(t => { t.enabled = on })
+    this.emitStreams()
+  }
+
+  private emitStreams() { this.h.onStreams?.(this.stream, this.remote) }
+
   /** Ends the call for both sides. */
   hangup(reason: EndReason = 'hangup') {
     if (this.done) return
@@ -156,6 +174,8 @@ export class CallSession {
     this.stream?.getTracks().forEach(t => t.stop())
     try { this.pc?.close() } catch { /* closed */ }
     this.audio.srcObject = null
+    this.remote = null
+    this.h.onStreams?.(null, null)
     this.h.onPhase('ended')
     this.h.onEnd(reason, this.liveAt ? Date.now() - this.liveAt : 0)
   }

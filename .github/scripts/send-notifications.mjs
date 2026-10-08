@@ -595,7 +595,7 @@ function onCallIn(snap) {
   if (!c?.chatId || !c.from || !(c.at > Date.now() - 30_000) || callsPushed.get(uid) === c.at) return
   callsPushed.set(uid, c.at)
   if (settingsOf(uid).notify === false) return
-  nameOf(c.from).then(name => push(uid, { title: `📞 ${name}`, body: '음성 통화가 왔어요', url: `${SITE}?tab=msg&chat=${c.chatId}`, tag: `call-${c.chatId}` }))
+  nameOf(c.from).then(name => push(uid, { title: `${c.video ? '📹' : '📞'} ${name}`, body: c.video ? '영상 통화가 왔어요' : '음성 통화가 왔어요', url: `${SITE}?tab=msg&chat=${c.chatId}`, tag: `call-${c.chatId}` }))
     .catch(e => warn('Call push failed: ' + e.message))
 }
 const callInRef = rdb.ref('callIn')

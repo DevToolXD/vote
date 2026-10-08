@@ -251,26 +251,28 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
 
   // 음성 통화: someone calling me (while it rings), and the call in progress
   const [incoming, setIncoming] = useState<Incoming | null>(null)
-  const [call, setCall] = useState<{ s: CallSession; phase: CallPhase; liveAt: number; muted: boolean } | null>(null)
+  const [call, setCall] = useState<{ s: CallSession; phase: CallPhase; liveAt: number; muted: boolean; video: boolean; camOn: boolean; local: MediaStream | null; remote: MediaStream | null } | null>(null)
   useEffect(() => (authUser && db ? watchIncoming(db, authUser.uid, setIncoming) : undefined), [authUser])
   const endMessage: Record<EndReason, string> = {
     hangup: '통화를 끊었어요', declined: '상대가 전화를 받지 않았어요', missed: '상대가 전화를 받지 않았어요',
     failed: '연결하지 못했어요. 와이파이나 데이터를 바꿔서 다시 걸어보세요', busy: '상대가 통화 중이에요',
     taken: '다른 기기에서 받았어요', mic: '마이크 권한을 허용해야 통화할 수 있어요',
   }
-  const startCall = (chatId: string, peer: string, role: 'caller' | 'callee') => {
+  const startCall = (chatId: string, peer: string, role: 'caller' | 'callee', video = false) => {
     if (!authUser || !db || call) return
     if (!canCall()) { showToast('이 기기에서는 통화할 수 없어요'); return }
     const s = new CallSession(db, authUser.uid, chatId, peer, role, {
+      onStreams: (local, remote) => setCall(c => (c && c.s === s ? { ...c, local, remote } : c)),
       onPhase: phase => setCall(c => (c && c.s === s ? { ...c, phase, liveAt: phase === 'live' && !c.liveAt ? Date.now() : c.liveAt } : c)),
       onEnd: (reason, ms) => {
         setCall(c => (c?.s === s ? null : c))
         showToast(ms ? `통화를 마쳤어요 · ${talkLabel(ms)}` : endMessage[reason])
-        // the caller leaves a line in the chat: 📞 음성 통화 3:12 / 📞 부재중 전화
-        if (role === 'caller' && reason !== 'mic') sendMessage(db, authUser.uid, chatId, ms ? `📞 음성 통화 ${talkLabel(ms)}` : '📞 부재중 전화').catch(() => {})
+        // the caller leaves a line in the chat: 📞 음성 통화 3:12 / 📹 영상 통화 3:12 / 📞 부재중 전화
+        if (role === 'caller' && reason !== 'mic') sendMessage(db, authUser.uid, chatId, ms ? `${s.video ? '📹 영상 통화' : '📞 음성 통화'} ${talkLabel(ms)}` : '📞 부재중 전화').catch(() => {})
       },
     })
-    setCall({ s, phase: role === 'caller' ? 'calling' : 'connecting', liveAt: 0, muted: false })
+    s.video = video
+    setCall({ s, phase: role === 'caller' ? 'calling' : 'connecting', liveAt: 0, muted: false, video, camOn: true, local: null, remote: null })
     if (role === 'caller') s.call(); else s.answer()
   }
 
@@ -975,7 +977,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             onSendImage={async file => {
               try { await sendImage(db!, authUser.uid, openChat.id, await fileToChatImage(file)); return true } catch (e) { failToast('사진을 보내지 못했어요', e); return false }
             }}
-            onCall={() => { const peer = openChat.members.find(m => m !== authUser.uid); if (peer) startCall(openChat.id, peer, 'caller') }}
+            onCall={video => { const peer = openChat.members.find(m => m !== authUser.uid); if (peer) startCall(openChat.id, peer, 'caller', video) }}
             onInvite={async ids => {
               const names = ids.map(id => byId.get(id)?.name ?? '').filter(Boolean).join(', ')
               try { await inviteMembers(db!, authUser.uid, openChat.id, ids, `${me.name}님이 ${names}님을 초대했어요`); showToast('초대했어요'); return true } catch (e) { failToast('초대하지 못했어요. 상대가 메시지를 껐을 수 있어요', e); return false }
@@ -1105,9 +1107,11 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             <CallScreen
               name={peer?.name ?? '알 수 없음'} photoCss={peer?.photoCss ?? 'none'}
               phase={call ? call.phase : 'incoming'} liveAt={call?.liveAt ?? 0} muted={call?.muted ?? false}
+              video={call ? call.video : !!incoming?.video} local={call?.local} remote={call?.remote} camOn={call?.camOn ?? true}
+              onCam={() => call && (call.s.setCamera(!call.camOn), setCall({ ...call, camOn: !call.camOn }))}
               onMute={() => call && (call.s.setMuted(!call.muted), setCall({ ...call, muted: !call.muted }))}
               onHangup={() => call?.s.hangup()}
-              onAccept={() => incoming && startCall(incoming.chatId, incoming.from, 'callee')}
+              onAccept={() => incoming && startCall(incoming.chatId, incoming.from, 'callee', !!incoming.video)}
               onDecline={() => { if (incoming && authUser && db) { declineCall(db, authUser.uid, incoming.chatId); setIncoming(null) } }}
             />
           )

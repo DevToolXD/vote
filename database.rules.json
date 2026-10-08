@@ -272,6 +272,9 @@
         },
         "$other": {
           ".validate": false
+        },
+        "video": {
+          ".validate": "newData.isBoolean()"
         }
       }
     },
