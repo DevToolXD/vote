@@ -9,8 +9,9 @@ import { R } from './messages'
 //   wallets/{uid}/{sym} { q: amount, c: points paid for it }   (the worker keeps it)
 // Orders go in coinOrders/{id}; a buy pays its points in the same write (firestore.rules: coinBuy).
 
-export type CoinSym = 'BTC' | 'ETH' | 'XRP' | 'DOGE' | 'SGP' | 'KIMCHI' | 'TTEOK' | 'CHICKEN' | 'RAMEN' | 'MOON'
+export type CoinSym = 'JEONG' | 'BTC' | 'ETH' | 'XRP' | 'DOGE' | 'SGP' | 'KIMCHI' | 'TTEOK' | 'CHICKEN' | 'RAMEN' | 'MOON'
 export const COINS: { sym: CoinSym; name: string; color: string; mark: string }[] = [
+  { sym: 'JEONG', name: '정후교 대천재 코인', color: '#ffd43b', mark: '천' },
   { sym: 'BTC', name: '비트코인', color: '#f7931a', mark: '₿' },
   { sym: 'ETH', name: '이더리움', color: '#627eea', mark: 'Ξ' },
   { sym: 'XRP', name: '리플', color: '#23292f', mark: '✕' },
