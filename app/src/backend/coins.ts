@@ -2,80 +2,62 @@ import { limitToLast, onChildAdded, onValue, orderByKey, query, ref } from 'fire
 import { collection, doc, increment, onSnapshot, serverTimestamp, writeBatch, type Firestore } from 'firebase/firestore'
 import { R } from './messages'
 
-// 코인: made-up coins traded with points. Prices are a random walk run by the worker
-// (.github/scripts/send-notifications.mjs — nothing real behind them):
-//   coins/live { at, p: { sym: price } }      every few seconds
-//   coins/hist/{15 s slot ms} { sym: price }   the last 24 hours (a sample every 15 s), for the charts
-//   wallets/{uid}/{sym} { q: amount, c: points paid for it }   (the worker keeps it)
+// 코인: real coins (Upbit's KRW market, the top 100 by trading value), traded with points at 1P = 1원.
+// The worker (.github/scripts/send-notifications.mjs) publishes:
+//   coins/list/{SYM}  { n: Korean name, r: rank }
+//   coins/live        { at, p: { SYM: price }, chg: { SYM: change since yesterday } }
+//   coins/spark       { SYM: [last 60 one-minute prices] }
+//   coins/h/{SYM}/{15 s slot ms} = price                  a coin's chart (24 h)
+//   wallets/{uid}/{SYM} { q: amount, c: points paid for it }   (the worker keeps it)
 // Orders go in coinOrders/{id}; a buy pays its points in the same write (firestore.rules: coinBuy).
 
-export type CoinSym = 'JEONG' | 'BTC' | 'ETH' | 'XRP' | 'DOGE' | 'SGP' | 'KIMCHI' | 'TTEOK' | 'CHICKEN' | 'RAMEN' | 'MOON' | 'BUNGEO' | 'HOTTEOK' | 'SUNDAE' | 'GIMBAP' | 'BIBIM' | 'SOJU' | 'MAKGEOLI' | 'BEER' | 'SAMGYE' | 'BULGOGI' | 'JAJANG' | 'JJAMPPONG' | 'TANGSU' | 'PIZZA' | 'HAMBURGER' | 'COFFEE' | 'TEA' | 'BOBA' | 'MANGO' | 'APPLE' | 'BANANA' | 'CAT' | 'DOG' | 'DUCK' | 'DRAGON' | 'TIGER' | 'STAR' | 'DIAMOND' | 'GOLDBAR' | 'ROCKET'
-export const COINS: { sym: CoinSym; name: string; color: string; mark: string }[] = [
-  { sym: 'JEONG', name: '정후교 대천재 코인', color: '#ffd43b', mark: '천' },
-  { sym: 'BTC', name: '비트코인', color: '#f7931a', mark: '₿' },
-  { sym: 'ETH', name: '이더리움', color: '#627eea', mark: 'Ξ' },
-  { sym: 'XRP', name: '리플', color: '#23292f', mark: '✕' },
-  { sym: 'DOGE', name: '도지코인', color: '#c2a633', mark: 'Ð' },
-  { sym: 'SGP', name: '삼겹코인', color: '#ff6b6b', mark: '🥓' },
-  { sym: 'KIMCHI', name: '김치코인', color: '#d9480f', mark: '김' },
-  { sym: 'TTEOK', name: '떡볶이코인', color: '#e64980', mark: '떡' },
-  { sym: 'CHICKEN', name: '치킨코인', color: '#f59f00', mark: '🍗' },
-  { sym: 'RAMEN', name: '라면코인', color: '#fab005', mark: '🍜' },
-  { sym: 'MOON', name: '문코인', color: '#6741d9', mark: '🌙' },
-  { sym: 'BUNGEO', name: '붕어빵코인', color: '#c9742b', mark: '붕' },
-  { sym: 'HOTTEOK', name: '호떡코인', color: '#b5651d', mark: '호' },
-  { sym: 'SUNDAE', name: '순대코인', color: '#8c4a2f', mark: '순' },
-  { sym: 'GIMBAP', name: '김밥코인', color: '#2b8a3e', mark: '밥' },
-  { sym: 'BIBIM', name: '비빔코인', color: '#e03131', mark: '비' },
-  { sym: 'SOJU', name: '소주코인', color: '#37b24d', mark: '소' },
-  { sym: 'MAKGEOLI', name: '막걸리코인', color: '#adb5bd', mark: '막' },
-  { sym: 'BEER', name: '맥주코인', color: '#fcc419', mark: '맥' },
-  { sym: 'SAMGYE', name: '삼계탕코인', color: '#f08c00', mark: '계' },
-  { sym: 'BULGOGI', name: '불고기코인', color: '#a61e4d', mark: '불' },
-  { sym: 'JAJANG', name: '짜장코인', color: '#212529', mark: '짜' },
-  { sym: 'JJAMPPONG', name: '짬뽕코인', color: '#e8590c', mark: '짬' },
-  { sym: 'TANGSU', name: '탕수육코인', color: '#f59f00', mark: '탕' },
-  { sym: 'PIZZA', name: '피자코인', color: '#fa5252', mark: '피' },
-  { sym: 'HAMBURGER', name: '햄버거코인', color: '#846358', mark: '햄' },
-  { sym: 'COFFEE', name: '커피코인', color: '#5c3d2e', mark: '커' },
-  { sym: 'TEA', name: '녹차코인', color: '#74b816', mark: '녹' },
-  { sym: 'BOBA', name: '버블티코인', color: '#8d6e63', mark: '버' },
-  { sym: 'MANGO', name: '망고코인', color: '#ffd43b', mark: '망' },
-  { sym: 'APPLE', name: '사과코인', color: '#c92a2a', mark: '사' },
-  { sym: 'BANANA', name: '바나나코인', color: '#fab005', mark: '바' },
-  { sym: 'CAT', name: '고양이코인', color: '#868e96', mark: '🐱' },
-  { sym: 'DOG', name: '강아지코인', color: '#a0522d', mark: '🐶' },
-  { sym: 'DUCK', name: '오리코인', color: '#ffe066', mark: '🦆' },
-  { sym: 'DRAGON', name: '용코인', color: '#2f9e44', mark: '용' },
-  { sym: 'TIGER', name: '호랑이코인', color: '#e8590c', mark: '虎' },
-  { sym: 'STAR', name: '별코인', color: '#7950f2', mark: '★' },
-  { sym: 'DIAMOND', name: '다이아코인', color: '#4dabf7', mark: '◆' },
-  { sym: 'GOLDBAR', name: '금괴코인', color: '#f1c40f', mark: '금' },
-  { sym: 'ROCKET', name: '로켓코인', color: '#495057', mark: '🚀' },
-]
+export type CoinSym = string
+export type CoinInfo = { sym: string; name: string; rank: number }
+
+/** The coin list (top 100 by trading value), in rank order. */
+export function watchCoinList(db: Firestore, cb: (l: CoinInfo[]) => void) {
+  return onValue(ref(R(db), 'coins/list'), s => {
+    const v = (s.val() ?? {}) as Record<string, { n?: string; r?: number }>
+    cb(Object.entries(v).map(([sym, x]) => ({ sym, name: x.n ?? sym, rank: x.r ?? 999 })).sort((x, y) => x.rank - y.rank))
+  }, () => cb([]))
+}
+
+const KNOWN_MARK: Record<string, string> = { BTC: '₿', ETH: 'Ξ', XRP: '✕', DOGE: 'Ð', SOL: '◎', ADA: '₳' }
+/** A steady colour per coin (from its symbol) and a one- or two-letter mark. */
+export const coinColor = (sym: string) => {
+  let h = 0
+  for (const ch of sym) h = (h * 31 + ch.charCodeAt(0)) % 360
+  return `hsl(${h} 62% 46%)`
+}
+export const coinMark = (sym: string) => KNOWN_MARK[sym] ?? sym.slice(0, 2)
+
 /** Coin amounts keep 8 decimals, rounded down (the tiny allowance stops 0.12345678 × 1e8 landing just under). */
 export const floor8 = (x: number) => Math.floor(x * 1e8 + 1e-6) / 1e8
 
 export const MIN_BUY = 10
 
-export type Prices = Partial<Record<CoinSym, number>>
-export type Live = { at: number; p: Prices } | null
-export type Point = { t: number; p: Prices }
+export type Prices = Record<string, number>
+export type Live = { at: number; p: Prices; chg?: Record<string, number> } | null
 export type Holding = { q: number; c: number }
-export type Wallet = Partial<Record<CoinSym, Holding>>
+export type Wallet = Record<string, Holding>
+export type Point = { t: number; v: number }
 
 export function watchLive(db: Firestore, cb: (l: Live) => void) {
   return onValue(ref(R(db), 'coins/live'), s => cb(s.val()), () => cb(null))
 }
 
-/** The last `minutes` one-minute prices, kept up to date as new minutes arrive. */
-/** The latest `samples` price samples (one every 15 s), oldest first. */
-export function watchHistory(db: Firestore, samples: number, cb: (pts: Point[]) => void) {
+/** The small lines in the list: the last 60 one-minute prices of every coin. */
+export function watchSpark(db: Firestore, cb: (s: Record<string, number[]>) => void) {
+  return onValue(ref(R(db), 'coins/spark'), s => cb(s.val() ?? {}), () => cb({}))
+}
+
+/** One coin's chart: the latest `samples` prices (one every 15 s), oldest first, kept up to date. */
+export function watchCoinHistory(db: Firestore, sym: CoinSym, samples: number, cb: (pts: Point[]) => void) {
   const pts: Point[] = []
   let ready = false
-  const q = query(ref(R(db), 'coins/hist'), orderByKey(), limitToLast(samples))
+  const q = query(ref(R(db), `coins/h/${sym}`), orderByKey(), limitToLast(samples))
   const stop = onChildAdded(q, s => {
-    pts.push({ t: Number(s.key), p: s.val() })
+    pts.push({ t: Number(s.key), v: s.val() })
     if (pts.length > samples) pts.shift()
     if (ready) cb([...pts])
   }, () => cb([]))
@@ -127,7 +109,7 @@ export async function sellCoin(db: Firestore, uid: string, coin: CoinSym, qty: n
 }
 
 export const fmtPrice = (p: number | undefined) =>
-  p == null ? '-' : p >= 100 ? Math.round(p).toLocaleString() : p.toLocaleString(undefined, { maximumFractionDigits: p >= 1 ? 2 : 4 })
+  p == null ? '-' : p >= 100 ? Math.round(p).toLocaleString() : p >= 1 ? p.toLocaleString(undefined, { maximumFractionDigits: 2 }) : p.toLocaleString(undefined, { maximumSignificantDigits: 4 })
 export const fmtQty = (q: number) => q.toLocaleString(undefined, { maximumFractionDigits: q >= 1 ? 4 : 8 })
 
 export type Trade = { id: string; name: string; side: 'buy' | 'sell'; points: number; qty: number; price: number; at: number }

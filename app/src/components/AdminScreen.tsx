@@ -15,7 +15,7 @@ import type { PollResult } from '../backend/notices'
 import type { Season } from '../backend/types'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
-import { COINS, watchLive, type CoinSym, type Live } from '../backend/coins'
+import { coinMark, watchCoinList, watchLive, type CoinInfo, type CoinSym, type Live } from '../backend/coins'
 import type { Firestore } from 'firebase/firestore'
 import { SearchIcon } from './icons'
 import { Dialog } from './Overlays'
@@ -482,22 +482,24 @@ const MIN_CHIPS = [1, 3, 5, 10, 30]
 
 /** 코인 상승 (관리자): make one coin rise or fall over a few minutes. The worker spreads the move. */
 function CoinBoost({ db, boost, setConfirm }: { db: Firestore | null; boost: (sym: CoinSym, pct: number, minutes: number) => Promise<void>; setConfirm: (c: Confirm) => void }) {
-  const [sym, setSym] = useState<CoinSym>('JEONG')
+  const [sym, setSym] = useState<CoinSym>('BTC')
+  const [coins, setCoins] = useState<CoinInfo[]>([])
+  useEffect(() => (db ? watchCoinList(db, setCoins) : undefined), [db])
   const [pct, setPct] = useState('20')
   const [min, setMin] = useState('5')
   const [live, setLive] = useState<Live>(null)
   useEffect(() => (db ? watchLive(db, setLive) : undefined), [db])
   const n = Number(pct), m = Number(min)
   const ok = Number.isFinite(n) && n !== 0 && Number.isInteger(m) && m >= 1 && m <= 30
-  const coin = COINS.find(c => c.sym === sym)!
+  const coin = coins.find(c => c.sym === sym) ?? { sym, name: sym, rank: 0 }
   const price = live?.p?.[sym]
   const chip = (on: boolean) => sx('height:36px;padding:0 12px;border-radius:10px;font-size:15px;font-weight:600;transition:background 200ms,color 200ms', { background: on ? '#191f28' : '#f2f4f6', color: on ? '#fff' : '#4e5968' })
   return (
     <section style={css('padding:24px 24px 12px;display:flex;flex-direction:column;gap:12px')}>
       <span style={css(sectionTitle)}>코인 상승</span>
-      <span style={css(hint)}>가상 코인 가격을 정한 시간 동안 천천히 올리거나 내려요. 실제 포인트는 바뀌지 않아요</span>
+      <span style={css(hint)}>실제 시세 위에 얹어서, 정한 시간 동안 이 코인의 보이는 가격을 올리거나 내려요. 끝나면 실제 가격으로 천천히 돌아와요</span>
       <select value={sym} onChange={e => setSym(e.target.value as CoinSym)} aria-label="코인" className="box-focus" style={css(field + ';appearance:auto')}>
-        {COINS.map(c => <option key={c.sym} value={c.sym}>{c.mark} {c.name}</option>)}
+        {coins.map(c => <option key={c.sym} value={c.sym}>{coinMark(c.sym)} {c.name} ({c.sym})</option>)}
       </select>
       <span style={css('font-size:15px;color:#4e5968;font-variant-numeric:tabular-nums')}>{coin.name} · 지금 {price == null ? '-' : price.toLocaleString(undefined, { maximumFractionDigits: 4 })}P</span>
       <div style={css('display:flex;gap:6px;flex-wrap:wrap')}>

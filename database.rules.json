@@ -303,7 +303,7 @@
         ".write": "auth != null && (auth.token.email === 'admin@vote.local' || auth.token.admin === true) && !data.exists()",
         ".validate": "newData.hasChildren(['sym','pct','minutes','at']) && newData.child('at').val() <= now + 60000",
         "sym": {
-          ".validate": "newData.val() === 'JEONG' || newData.val() === 'BTC' || newData.val() === 'ETH' || newData.val() === 'XRP' || newData.val() === 'DOGE' || newData.val() === 'SGP' || newData.val() === 'KIMCHI' || newData.val() === 'TTEOK' || newData.val() === 'CHICKEN' || newData.val() === 'RAMEN' || newData.val() === 'MOON' || newData.val() === 'BUNGEO' || newData.val() === 'HOTTEOK' || newData.val() === 'SUNDAE' || newData.val() === 'GIMBAP' || newData.val() === 'BIBIM' || newData.val() === 'SOJU' || newData.val() === 'MAKGEOLI' || newData.val() === 'BEER' || newData.val() === 'SAMGYE' || newData.val() === 'BULGOGI' || newData.val() === 'JAJANG' || newData.val() === 'JJAMPPONG' || newData.val() === 'TANGSU' || newData.val() === 'PIZZA' || newData.val() === 'HAMBURGER' || newData.val() === 'COFFEE' || newData.val() === 'TEA' || newData.val() === 'BOBA' || newData.val() === 'MANGO' || newData.val() === 'APPLE' || newData.val() === 'BANANA' || newData.val() === 'CAT' || newData.val() === 'DOG' || newData.val() === 'DUCK' || newData.val() === 'DRAGON' || newData.val() === 'TIGER' || newData.val() === 'STAR' || newData.val() === 'DIAMOND' || newData.val() === 'GOLDBAR' || newData.val() === 'ROCKET'"
+          ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 12"
         },
         "pct": {
           ".validate": "newData.isNumber() && newData.val() != 0"

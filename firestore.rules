@@ -1232,7 +1232,8 @@ service cloud.firestore {
       allow read: if signedIn() && (resource == null || resource.data.uid == request.auth.uid);
       allow create: if signedIn()
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.coin in ['JEONG', 'BTC', 'ETH', 'XRP', 'DOGE', 'SGP', 'KIMCHI', 'TTEOK', 'CHICKEN', 'RAMEN', 'MOON', 'BUNGEO', 'HOTTEOK', 'SUNDAE', 'GIMBAP', 'BIBIM', 'SOJU', 'MAKGEOLI', 'BEER', 'SAMGYE', 'BULGOGI', 'JAJANG', 'JJAMPPONG', 'TANGSU', 'PIZZA', 'HAMBURGER', 'COFFEE', 'TEA', 'BOBA', 'MANGO', 'APPLE', 'BANANA', 'CAT', 'DOG', 'DUCK', 'DRAGON', 'TIGER', 'STAR', 'DIAMOND', 'GOLDBAR', 'ROCKET']
+        && request.resource.data.coin is string
+        && request.resource.data.coin in get(/databases/$(database)/documents/meta/coins).data.syms
         && request.resource.data.at == request.time
         && request.resource.data.status == 'open'
         && (request.resource.data.side == 'buy'

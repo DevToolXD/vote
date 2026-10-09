@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { BottomSheet } from './Overlays'
-import { COINS, MIN_BUY, buyCoin, fmtPrice, fmtQty, floor8, sellCoin, watchHistory, watchLive, watchTrades, watchWallet, type CoinSym, type Live, type Point, type Trade, type Wallet } from '../backend/coins'
+import { MIN_BUY, buyCoin, coinColor, coinMark, fmtPrice, fmtQty, floor8, sellCoin, watchCoinHistory, watchCoinList, watchLive, watchSpark, watchTrades, watchWallet, type CoinInfo, type CoinSym, type Live, type Point, type Trade, type Wallet } from '../backend/coins'
 
-// 코인 탭: made-up coins with random prices, bought and sold with points.
+// 코인 탭: real coins (Upbit KRW prices, the top 100), bought and sold with points — 1P = 1원.
 // Korean convention: up = red, down = blue.
 const UP = '#f04452', DOWN = '#3182f6', FLAT = '#8b95a1'
 const EASE = 'cubic-bezier(0.22,1,0.36,1)'
@@ -21,9 +21,9 @@ type Props = {
 }
 
 function CoinIcon({ sym, size = 40 }: { sym: CoinSym; size?: number }) {
-  const c = COINS.find(x => x.sym === sym)!
+  const c = { color: coinColor(sym), mark: coinMark(sym) }
   return (
-    <span aria-hidden="true" style={sx('flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800', { width: size, height: size, background: c.color, fontSize: size * 0.48 })}>{c.mark}</span>
+    <span aria-hidden="true" style={sx('flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800', { width: size, height: size, background: c.color, fontSize: size * (c.mark.length > 1 ? 0.34 : 0.48) })}>{c.mark}</span>
   )
 }
 
@@ -69,11 +69,11 @@ function Chart({ data, height = 180, interactive = true }: { data: number[]; hei
 }
 
 /** Tiny line for the list. */
-function Spark({ data }: { data: number[] }) {
+function Spark({ data, color }: { data: number[]; color: string }) {
   if (data.length < 2) return <span style={{ width: 56 }} />
   const min = Math.min(...data), max = Math.max(...data), span = max - min || 1
   const d = data.map((v, i) => `${i ? 'L' : 'M'}${((i / (data.length - 1)) * 56).toFixed(1)},${(2 + (1 - (v - min) / span) * 24).toFixed(1)}`).join('')
-  return <svg width="56" height="28" viewBox="0 0 56 28" style={css('flex:none')}><path d={d} fill="none" stroke={tone(data[data.length - 1] - data[0])} strokeWidth="1.6" strokeLinejoin="round" /></svg>
+  return <svg width="56" height="28" viewBox="0 0 56 28" style={css('flex:none')}><path d={d} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" /></svg>
 }
 
 /** Chart ranges, in price samples (one every 15 s): 1 h = 240, 6 h = 1440, 24 h = 5760. */
@@ -83,30 +83,22 @@ const MAX_POINTS = 400
 
 export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
   const [live, setLive] = useState<Live>(null)
-  const [hist, setHist] = useState<Point[]>([])
+  const [list, setList] = useState<CoinInfo[]>([])
+  const [spark, setSpark] = useState<Record<string, number[]>>({})
   const [wallet, setWallet] = useState<Wallet>({})
   const [open, setOpen] = useState<CoinSym | null>(null)
   const [mineOpen, setMineOpen] = useState(false)
   useEffect(() => (db ? watchLive(db, setLive) : undefined), [db])
-  useEffect(() => (db ? watchHistory(db, 5760, setHist) : undefined), [db])
+  useEffect(() => (db ? watchCoinList(db, setList) : undefined), [db])
+  useEffect(() => (db ? watchSpark(db, setSpark) : undefined), [db])
   useEffect(() => { setWallet({}); return db && uid ? watchWallet(db, uid, setWallet) : undefined }, [db, uid])
 
-  const price = (s: CoinSym) => live?.p?.[s] ?? hist[hist.length - 1]?.p?.[s]
-  const series = (s: CoinSym, samples: number) => {
-    const raw = hist.slice(-samples).map(h => h.p?.[s]).filter((v): v is number => typeof v === 'number')
-    const step = Math.max(1, Math.ceil(raw.length / MAX_POINTS))
-    const out = raw.filter((_, i) => i % step === 0)
-    const p = live?.p?.[s]
-    if (p != null) out.push(p)
-    return out
-  }
-  const dayChange = (s: CoinSym) => {
-    const first = hist[0]?.p?.[s], p = price(s)
-    return first && p ? (p - first) / first : 0
-  }
+  const price = (s: CoinSym) => live?.p?.[s]
+  const dayChange = (s: CoinSym) => live?.chg?.[s] ?? 0
+  const nameOf = (s: CoinSym) => list.find(c => c.sym === s)?.name ?? s
 
   let evalSum = 0, costSum = 0
-  for (const c of COINS) {
+  for (const c of list) {
     const h = wallet[c.sym], p = price(c.sym)
     if (h && p) { evalSum += h.q * p; costSum += h.c }
   }
@@ -127,7 +119,7 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
     <div className="anim-list" style={css('display:flex;flex-direction:column;width:100%;min-width:0;overflow-x:hidden')}>
       <div style={css('padding:24px 24px 4px')}>
         <h1 style={css('margin:0;font-size:22px;line-height:31px;font-weight:700;color:#191f28')}>코인</h1>
-        <div style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>가상 코인이라 실제 시세와는 상관없어요</div>
+        <div style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>업비트 원화 시세 그대로예요 · 1P = 1원</div>
       </div>
 
       <button data-g="l1" className="pr-96" onClick={() => setMineOpen(true)} aria-label="내 코인 보기" style={css('margin:16px 20px 8px;padding:20px;border-radius:20px;background:#f9fafb;display:flex;flex-direction:column;gap:12px;text-align:left;width:calc(100% - 40px)')}>
@@ -144,8 +136,9 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
       </button>
 
       <div style={css('padding:16px 24px 4px;font-size:17px;font-weight:700;color:#191f28')}>코인 시세</div>
-      {/* highest price first; 정후교 대천재 코인 is not in this list */}
-      {COINS.filter(c => c.sym !== 'JEONG').sort((x, y) => (price(y.sym) ?? 0) - (price(x.sym) ?? 0)).map(c => {
+      {/* highest price first */}
+      {list.length === 0 && <div style={css('padding:24px;font-size:15px;color:#8b95a1;text-align:center')}>코인 시세를 불러오는 중이에요</div>}
+      {[...list].sort((x, y) => (price(y.sym) ?? 0) - (price(x.sym) ?? 0)).map(c => {
         const p = price(c.sym), ch = dayChange(c.sym), h = wallet[c.sym]
         return (
           <button key={c.sym} className="pr-dim" onClick={() => setOpen(c.sym)} style={css(`display:flex;align-items:center;gap:14px;padding:12px 20px 12px 24px;margin:0 4px;border-radius:12px;text-align:left;transition:background 200ms ${EASE}`)}>
@@ -154,7 +147,7 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
               <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#191f28')}>{c.name}</span>
               <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h ? `${fmtQty(h.q)} ${c.sym} 보유` : c.sym}</span>
             </span>
-            <Spark data={series(c.sym, 240)} />
+            <Spark data={[...(spark[c.sym] ?? []), ...(p != null ? [p] : [])]} color={tone(ch)} />
             <span style={css('flex:none;min-width:88px;display:flex;flex-direction:column;align-items:flex-end;font-variant-numeric:tabular-nums')}>
               <span style={css('font-size:16px;line-height:24px;font-weight:600;color:#191f28')}>{fmtPrice(p)}P</span>
               <span style={sx('font-size:13px;line-height:19.5px;font-weight:600', { color: tone(ch) })}>{pct(ch)}</span>
@@ -163,7 +156,7 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
         )
       })}
       <div style={css('padding:16px 24px 24px;font-size:13px;line-height:19.5px;color:#8b95a1')}>
-        가격은 몇 초마다 무작위로 움직여요. 사고팔 때는 그 순간의 가격으로 체결되고, 오르든 내리든 포인트로 돌아와요.
+        가격은 업비트 원화 시세예요 (1P = 1원). 사고팔 때는 그 순간의 가격으로 체결돼요. 포인트로 하는 가상 게임이라 실제 돈은 오가지 않아요.
       </div>
 
       {mineOpen && (
@@ -173,9 +166,9 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
             <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>내 코인</span>
             <span style={css('font-size:15px;color:#6b7684;font-variant-numeric:tabular-nums')}>평가금액 {Math.round(evalSum).toLocaleString()}P{costSum > 0 ? ` · ${signed(pl)}P (${pct(pl / costSum)})` : ''}</span>
           </div>
-          {COINS.filter(c => (wallet[c.sym]?.q ?? 0) > 0).length === 0 ? (
+          {list.filter(c => (wallet[c.sym]?.q ?? 0) > 0).length === 0 ? (
             <span style={css('display:block;padding:24px;font-size:15px;color:#8b95a1;text-align:center')}>가진 코인이 없어요</span>
-          ) : COINS.filter(c => (wallet[c.sym]?.q ?? 0) > 0).map(c => {
+          ) : list.filter(c => (wallet[c.sym]?.q ?? 0) > 0).map(c => {
             const h = wallet[c.sym]!, p = price(c.sym) ?? 0, ev = h.q * p, gain = h.c > 0 ? (ev - h.c) / h.c : 0
             return (
               <button key={c.sym} className="pr-dim" onClick={() => { setMineOpen(false); setOpen(c.sym) }} style={css('display:flex;align-items:center;gap:14px;padding:12px 24px;width:100%;text-align:left')}>
@@ -195,20 +188,30 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
       )}
       {open && db && (
         <CoinSheet
-          sym={open} db={db} uid={uid} points={points} price={price(open)} wallet={wallet} onToast={onToast}
-          series={m => series(open, m)} change={dayChange(open)} onClose={() => setOpen(null)}
+          sym={open} name={nameOf(open)} db={db} uid={uid} points={points} price={price(open)} wallet={wallet} onToast={onToast}
+          change={dayChange(open)} onClose={() => setOpen(null)}
         />
       )}
     </div>
   )
 }
 
-function CoinSheet({ sym, db, uid, points, price, wallet, series, change, onToast, onClose }: {
-  sym: CoinSym; db: Firestore; uid: string; points: number; price: number | undefined; wallet: Wallet
-  series: (minutes: number) => number[]; change: number; onToast: (m: string) => void; onClose: () => void
+function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast, onClose }: {
+  sym: CoinSym; name: string; db: Firestore; uid: string; points: number; price: number | undefined; wallet: Wallet
+  change: number; onToast: (m: string) => void; onClose: () => void
 }) {
-  const c = COINS.find(x => x.sym === sym)!
-  const [range, setRange] = useState(60)
+  const c = { name }
+  const [range, setRange] = useState(240)
+  // this coin's chart: the last 24 h (a price every 15 s), thinned for drawing
+  const [hist, setHist] = useState<Point[]>([])
+  useEffect(() => watchCoinHistory(db, sym, 5760, setHist), [db, sym])
+  const series = (samples: number) => {
+    const raw = hist.slice(-samples).map(h => h.v)
+    const step = Math.max(1, Math.ceil(raw.length / MAX_POINTS))
+    const out = raw.filter((_, i) => i % step === 0)
+    if (price != null) out.push(price)
+    return out
+  }
   const [trades, setTrades] = useState<Trade[] | null>(null)
   useEffect(() => watchTrades(db, sym, setTrades), [db, sym])
   const [mode, setMode] = useState<'buy' | 'sell' | null>(null)

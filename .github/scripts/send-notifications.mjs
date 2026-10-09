@@ -230,7 +230,7 @@ async function record(uid, lines, at = Date.now()) {
       ledgerWrites.set(uid, (ledgerWrites.get(uid) ?? 0) + 1); feedWrites++
     }
     // 수상한 포인트 증가: gains that aren't the admin's or the season's, within the window.
-    if (e.d > 0 && !['grant', 'season', 'app', 'giftCancel', 'betWin', 'coinSell'].includes(e.k)) {
+    if (e.d > 0 && !['grant', 'season', 'app', 'giftCancel', 'betWin', 'coinSell', 'coinRefund'].includes(e.k)) {
       const list = (gains.get(uid) ?? []).filter(g => at - g.at < ALERT_WINDOW_MS)
       list.push({ at, d: e.d, k: e.k }); gains.set(uid, list)
       const total = list.reduce((n, g) => n + g.d, 0), votes = list.filter(g => g.k === 'vote').reduce((n, g) => n + Math.round(g.d / 10), 0)
@@ -648,140 +648,192 @@ async function deliverScheduled() {
 }
 
 
-// ---- 코인: made-up coins traded with points (nothing real behind them) ----
-// Prices are a random walk run here: each tick moves every coin a little (log-normal steps,
-// pulled slowly back toward its base price, with a rare sudden jump), published to the
-// Realtime Database:  coins/live { at, p: { BTC: …, … } } every few seconds and
-// coins/m1/{minute ms} { BTC: …, … } once a minute (the last 24 hours, for the charts).
+// ---- 코인: real coins (Upbit's KRW market), traded with points — 1P = 1원 ----
+// The list is the top 100 coins by 24 h trading value, chosen once (meta/coins in Firestore, so the
+// rules can check an order's coin) and then kept. Prices come from Upbit's public API every few
+// seconds and are published to the Realtime Database:
+//   coins/list/{SYM}   { n: Korean name, r: rank }
+//   coins/live         { at, p: { SYM: price }, chg: { SYM: change since yesterday } }
+//   coins/spark        { SYM: [last 60 one-minute prices] }        (the small lines in the list)
+//   coins/h/{SYM}/{15 s slot ms} = price                           (a coin's chart, 24 h)
+// An admin boost (coinEvents) is an overlay on the real price: it moves the shown price up or
+// down along a path, then fades back to the real price.
 // Orders (coinOrders/{id}, written by the app): a buy has already paid its points
 // (firestore.rules: coinBuy) and gets coins at the current price; a sell gets points
 // (bonus, payCoin = order id) for coins it holds. Holdings: wallets/{uid}/{sym} { q, c }
 // (amount, points paid for it). coinFills/{order id} makes each fill happen exactly once.
-const COINS = {
-  JEONG: { base: 1000, vol: 0.0075 },
-  BTC: { base: 60000, vol: 0.009 },
-  ETH: { base: 3000, vol: 0.009 },
-  XRP: { base: 80, vol: 0.009 },
-  DOGE: { base: 15, vol: 0.0105 },
-  SGP: { base: 300, vol: 0.009 },
-  KIMCHI: { base: 500, vol: 0.009 },
-  TTEOK: { base: 40, vol: 0.009 },
-  CHICKEN: { base: 120, vol: 0.009 },
-  RAMEN: { base: 8, vol: 0.0105 },
-  MOON: { base: 0.5, vol: 0.012 },
-  BUNGEO: { base: 20, vol: 0.006 },
-  HOTTEOK: { base: 30, vol: 0.006 },
-  SUNDAE: { base: 45, vol: 0.006 },
-  GIMBAP: { base: 12, vol: 0.006 },
-  BIBIM: { base: 35, vol: 0.006 },
-  SOJU: { base: 6, vol: 0.008 },
-  MAKGEOLI: { base: 5, vol: 0.008 },
-  BEER: { base: 7, vol: 0.008 },
-  SAMGYE: { base: 150, vol: 0.006 },
-  BULGOGI: { base: 90, vol: 0.006 },
-  JAJANG: { base: 25, vol: 0.006 },
-  JJAMPPONG: { base: 25, vol: 0.006 },
-  TANGSU: { base: 70, vol: 0.006 },
-  PIZZA: { base: 60, vol: 0.006 },
-  HAMBURGER: { base: 55, vol: 0.006 },
-  COFFEE: { base: 18, vol: 0.007 },
-  TEA: { base: 9, vol: 0.008 },
-  BOBA: { base: 22, vol: 0.007 },
-  MANGO: { base: 40, vol: 0.006 },
-  APPLE: { base: 110, vol: 0.006 },
-  BANANA: { base: 14, vol: 0.007 },
-  CAT: { base: 33, vol: 0.007 },
-  DOG: { base: 44, vol: 0.007 },
-  DUCK: { base: 16, vol: 0.008 },
-  DRAGON: { base: 500, vol: 0.006 },
-  TIGER: { base: 200, vol: 0.006 },
-  STAR: { base: 75, vol: 0.006 },
-  DIAMOND: { base: 900, vol: 0.005 },
-  GOLDBAR: { base: 2000, vol: 0.005 },
-  ROCKET: { base: 250, vol: 0.007 },
-}
-const COIN_TICK_MS = Number(process.env.COIN_TICK_MS ?? 3000), COIN_PULL = 0.0015
-// the chance a random trend or sudden move goes down (0.5 = even); above 0.5 the coins fall more often
-const COIN_DOWN = 0.65
-const COIN_FLOOR = 0.0001
+const UPBIT = process.env.UPBIT_BASE || 'https://api.upbit.com'
+const COIN_COUNT = 100
+const COIN_TICK_MS = Number(process.env.COIN_TICK_MS ?? 5000)
+const COIN_FLOOR = 0.0001 // a boosted price never goes below this (buying divides by the price)
 const HIST_MS = 15_000, COIN_KEEP_MS = 24 * 60 * 60_000
-const COIN_BOUND = 20 // a coin stays between base / 20 and base × 20
-let coinPrices = null, coinAt = 0, coinMinute = 0
+let coinList = null // [{ sym, market, name }]
+let coinSyms = new Set()
+const realPrices = {}, realChg = {}
+let coinPrices = null, coinAt = 0, coinSlot = 0, coinSparkAt = 0
+const sparkBuf = {}
+const overlay = {}, trend = {} // admin boost: log multiplier on the real price, and its path
 const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) }
 // Coin amounts keep 8 decimals, rounded down. The tiny allowance stops 0.12345678 × 1e8 landing
 // just under a whole number and losing a unit.
 const floor8 = x => Math.floor(x * 1e8 + 1e-6) / 1e8
-const roundPrice = p => (p >= 100 ? Math.round(p * 100) / 100 : Math.round(p * 10000) / 10000)
-async function coinInit() {
-  const live = (await rdb.ref('coins/live').once('value')).val()
-  coinPrices = {}
-  for (const [sym, c] of Object.entries(COINS)) coinPrices[sym] = live?.p?.[sym] > 0 ? live.p[sym] : c.base
+const sig = x => Number(Number(x).toPrecision(7)) // what's stored: 7 significant digits
+async function upbit(path) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000)
+  try {
+    const r = await fetch(UPBIT + path, { signal: ctl.signal, headers: { Accept: 'application/json' } })
+    if (!r.ok) throw new Error(`Upbit ${path.slice(0, 30)} → ${r.status}`)
+    return await r.json()
+  } finally { clearTimeout(t) }
 }
-// Each coin: a small random walk (about 3 % a minute) that drifts back toward its base price,
-// now and then a sudden 3–8 % jump, and rarer short trends (a few minutes all one way).
-const trend = {}
-function coinStep() {
-  for (const [sym, c] of Object.entries(COINS)) {
-    const x = Math.log(coinPrices[sym] / c.base)
-    // an admin boost (trend.free) moves the price without being pulled back toward the base
-    const tr = trend[sym]
-    let dx = (tr?.free ? 0 : -COIN_PULL * x) + c.vol * (tr?.free ? 2.5 : 1) * gauss()
-    if (tr?.target !== undefined) {
-      const i = tr.total - tr.left
-      dx += (tr.target * (1 + tr.wave * Math.sin((2 * Math.PI * i) / tr.period + tr.phase))) / tr.norm
+const tickers = async markets => {
+  const out = []
+  for (let i = 0; i < markets.length; i += 50) out.push(...await upbit(`/v1/ticker?markets=${markets.slice(i, i + 50).join(',')}`))
+  return out
+}
+/** The coin list: from meta/coins if it exists, else the top COIN_COUNT KRW coins by 24 h value (and saved). */
+async function loadCoinList() {
+  const doc = await fdb.doc('meta/coins').get()
+  if (doc.exists && doc.get('list')?.length) coinList = doc.get('list')
+  else {
+    const all = (await upbit('/v1/market/all')).filter(m => /^KRW-[A-Z0-9]{1,12}$/.test(m.market))
+    const names = new Map(all.map(m => [m.market, m.korean_name || m.english_name || m.market.slice(4)]))
+    const ts = (await tickers(all.map(m => m.market))).sort((x, y) => (y.acc_trade_price_24h ?? 0) - (x.acc_trade_price_24h ?? 0)).slice(0, COIN_COUNT)
+    coinList = ts.map(t => ({ sym: t.market.slice(4), market: t.market, name: names.get(t.market) }))
+    await fdb.doc('meta/coins').set({ list: coinList, syms: coinList.map(c => c.sym), at: FieldValue.serverTimestamp() })
+  }
+  coinSyms = new Set(coinList.map(c => c.sym))
+  await rdb.ref('coins/list').set(Object.fromEntries(coinList.map((c, i) => [c.sym, { n: c.name, r: i + 1 }])))
+}
+async function fetchPrices() {
+  const ts = await tickers(coinList.map(c => c.market))
+  for (const t of ts) {
+    const sym = t.market.slice(4)
+    if (coinSyms.has(sym) && t.trade_price > 0) { realPrices[sym] = t.trade_price; realChg[sym] = t.signed_change_rate ?? 0 }
+  }
+}
+// 코인 reset (once): everybody who holds coins gets the points back that are tied up in them,
+// the old prices / charts / trades are cleared, open orders are cancelled (buys refunded).
+// The refunds are saved first (meta/coinReal.pending) and each one is applied together with
+// deleting its entry, so a crash and restart in the middle can never refund anyone twice.
+async function migrateToReal() {
+  const ref = fdb.doc('meta/coinReal')
+  let snap = await ref.get()
+  if (snap.get('done')) return
+  if (!snap.exists) {
+    const refunds = new Map()
+    const add = (uid, pts) => { if (uid && pts > 0) refunds.set(uid, (refunds.get(uid) ?? 0) + pts) }
+    for (const d of (await fdb.collection('coinOrders').where('status', '==', 'open').get()).docs) {
+      const o = d.data()
+      if (o.side === 'buy') add(o.uid, o.points)
+      await d.ref.update({ status: 'failed', reason: 'reset', doneAt: FieldValue.serverTimestamp() })
     }
-    if (!trend[sym] && Math.random() < 1 / 2500) trend[sym] = { drift: (Math.random() < COIN_DOWN ? -1 : 1) * (0.0005 + Math.random() * 0.0007), left: 60 + Math.floor(Math.random() * 60) }
-    if (tr && tr.target === undefined) dx += tr.drift
-    if (tr && --tr.left <= 0) delete trend[sym]
-    if (Math.random() < 1 / 3000) dx += (Math.random() < COIN_DOWN ? -1 : 1) * (0.03 + Math.random() * 0.05) // 급등 / 급락
-    // the normal walk stays within 20× of base (and never pushes a price that's above it further up);
-    // an admin boost has no upper limit, it returns to base by the pull-back once it ends
-    const free = !!trend[sym]?.free
-    const hi = free ? Infinity : Math.max(c.base * COIN_BOUND, coinPrices[sym])
-    const lo = free ? COIN_FLOOR : c.base / COIN_BOUND
-    coinPrices[sym] = roundPrice(Math.min(hi, Math.max(lo, coinPrices[sym] * Math.exp(dx))))
+    for (const [uid, coins] of Object.entries((await rdb.ref('wallets').once('value')).val() ?? {})) for (const h of Object.values(coins ?? {})) add(uid, Math.round(h?.c ?? 0))
+    await ref.set({ done: false, pending: Object.fromEntries(refunds), at: FieldValue.serverTimestamp() })
+    await rdb.ref().update({ wallets: null, coinTrades: null, coinFills: null, 'coins/hist': null, 'coins/m1': null, 'coins/live': null, 'coins/spark': null, 'coins/h': null })
+    coinOrders.clear()
+    snap = await ref.get()
+  }
+  let n = 0
+  for (const [uid, pts] of Object.entries(snap.get('pending') ?? {})) {
+    try {
+      await fdb.runTransaction(async tx => {
+        const cand = await tx.get(fdb.doc(`candidates/${uid}`))
+        if (cand.exists) tx.update(cand.ref, { bonus: FieldValue.increment(pts), payCoin: 'refund' })
+        tx.update(ref, { [`pending.${uid}`]: FieldValue.delete() })
+      })
+      n++
+    } catch (e) { warn(`Refunding ${uid} failed (will retry): ${e.message}`) }
+  }
+  if (!Object.keys((await ref.get()).get('pending') ?? {}).length) await ref.update({ done: true })
+  notice(`Coins reset to real prices: ${n} people refunded.`)
+}
+async function coinInit() {
+  await migrateToReal()
+  await loadCoinList()
+  await fetchPrices()
+  const spark = (await rdb.ref('coins/spark').once('value')).val() ?? {}
+  for (const c of coinList) sparkBuf[c.sym] = Array.isArray(spark[c.sym]) ? spark[c.sym].slice(-60) : []
+  coinPrices = {}
+  for (const c of coinList) if (realPrices[c.sym]) coinPrices[c.sym] = realPrices[c.sym]
+}
+// The overlay follows the boost path (or fades back to 0): shown price = real price × exp(overlay).
+function coinStep() {
+  for (const c of coinList) {
+    const real = realPrices[c.sym]
+    if (!real) continue
+    const tr = trend[c.sym]
+    let o = overlay[c.sym] ?? 0
+    if (tr) {
+      const i = tr.total - tr.left
+      o += (tr.target * (1 + tr.wave * Math.sin((2 * Math.PI * i) / tr.period + tr.phase))) / tr.norm + 0.004 * gauss()
+      if (--tr.left <= 0) delete trend[c.sym]
+    } else o *= 0.97
+    if (!tr && Math.abs(o) < 1e-4) o = 0
+    overlay[c.sym] = o
+    coinPrices[c.sym] = o === 0 ? real : Math.max(COIN_FLOOR, real * Math.exp(o))
   }
 }
 // 관리자 코인 상승 (coinEvents/{id} { sym, pct, minutes }, written by the admin screen): the
-// move is spread evenly over the minutes, then the request is removed. Applied once.
+// move is spread over the minutes, then the request is removed. Applied once.
 const coinEventsQueue = []
-rdb.ref('coinEvents').on('child_added', s => { if (s.val()?.sym in COINS) coinEventsQueue.push({ id: s.key, ...s.val() }) }, e => warn('Coin events failed: ' + e.message))
+rdb.ref('coinEvents').on('child_added', s => { const v = s.val(); if (v?.sym) coinEventsQueue.push({ id: s.key, ...v }) }, e => warn('Coin events failed: ' + e.message))
 // The path of an admin boost: the log-price moves by `target` over `ticks`, with waves on top
 // (a sine over the ride), normalized so the whole ride adds up to exactly the target.
-function boostPath(sym, pct, ticks) {
+function boostPath(pct, ticks) {
   // a drop of 100 % or more goes to the price floor (never 0: buying divides by the price)
-  const target = Math.log(Math.max(COIN_FLOOR, 1 + pct / 100)), period = 25 + Math.random() * 35, phase = Math.random() * 2 * Math.PI, wave = 0.9
+  const target = Math.log(Math.max(1e-9, 1 + pct / 100)), period = 25 + Math.random() * 35, phase = Math.random() * 2 * Math.PI, wave = 0.9
   let norm = 0
   for (let i = 0; i < ticks; i++) norm += 1 + wave * Math.sin((2 * Math.PI * i) / period + phase)
-  return { target, norm, total: ticks, left: ticks, free: true, period, phase, wave }
+  return { target, norm, total: ticks, left: ticks, period, phase, wave }
 }
 async function applyCoinEvents() {
   const done = []
   for (const ev of coinEventsQueue.splice(0)) {
-    const pct = Number(ev.pct) || 0, minutes = Math.max(1, Math.min(30, Number(ev.minutes) || 1))
-    const ticks = Math.max(1, Math.round((minutes * 60_000) / COIN_TICK_MS))
-    // A boost is a path, not a straight ramp: it still adds up to the target, but speeds up and
-    // slows down, dips and spikes along the way (a sine wave over the ride, plus extra noise).
-    trend[ev.sym] = boostPath(ev.sym, pct, ticks)
+    if (coinSyms.has(ev.sym)) {
+      const pct = Number(ev.pct) || 0, minutes = Math.max(1, Math.min(30, Number(ev.minutes) || 1))
+      trend[ev.sym] = boostPath(pct, Math.max(1, Math.round((minutes * 60_000) / COIN_TICK_MS)))
+    }
     done.push(rdb.ref(`coinEvents/${ev.id}`).remove().catch(() => {}))
   }
   await Promise.all(done) // removed before the worker can exit
 }
+let coinFetchWarned = 0
+let coinInitAt = 0
 async function coinTick() {
-  if (!coinPrices) return
+  if (!coinPrices) {
+    // the start-up didn't finish (Upbit unreachable?): try again every 30 seconds
+    if (Date.now() - coinInitAt > 30_000) { coinInitAt = Date.now(); await coinInit().catch(e => warn('Coin start failed (retrying): ' + e.message)) }
+    return
+  }
   await applyCoinEvents()
   const now = Date.now()
   if (now - coinAt < COIN_TICK_MS) return
   coinAt = now
+  await fetchPrices().catch(e => { if (now - coinFetchWarned > 5 * 60_000) { coinFetchWarned = now; warn('Fetching prices failed (the last ones stay): ' + e.message) } })
   coinStep()
-  const up = { 'coins/live': { at: now, p: { ...coinPrices } } }
-  // price history: one sample every 15 seconds, the last 24 hours kept
+  const p = {}, chg = {}
+  for (const c of coinList) if (coinPrices[c.sym]) {
+    p[c.sym] = sig(coinPrices[c.sym])
+    // change since yesterday, with the boost included: (1 + real change) × overlay − 1
+    chg[c.sym] = Number((((1 + (realChg[c.sym] ?? 0)) * Math.exp(overlay[c.sym] ?? 0)) - 1).toFixed(5))
+  }
+  const up = { 'coins/live': { at: now, p, chg } }
+  // charts: one sample per coin every 15 seconds, the last 24 hours kept
   const slot = Math.floor(now / HIST_MS) * HIST_MS
-  if (slot !== coinMinute) {
-    up[`coins/hist/${slot}`] = { ...coinPrices }
-    // the sample that just left the 24 hours (and, after a gap, a few before it)
-    for (let k = 0; k < (coinMinute ? Math.min(40, (slot - coinMinute) / HIST_MS) : 1); k++) up[`coins/hist/${slot - COIN_KEEP_MS - k * HIST_MS}`] = null
-    coinMinute = slot
+  if (slot !== coinSlot) {
+    for (const sym of Object.keys(p)) {
+      up[`coins/h/${sym}/${slot}`] = p[sym]
+      for (let k = 0; k < (coinSlot ? Math.min(40, (slot - coinSlot) / HIST_MS) : 1); k++) up[`coins/h/${sym}/${slot - COIN_KEEP_MS - k * HIST_MS}`] = null
+    }
+    coinSlot = slot
+  }
+  // the small lines in the list: one price a minute, the last 60
+  if (now - coinSparkAt >= 60_000) {
+    coinSparkAt = now
+    const spark = {}
+    for (const sym of Object.keys(p)) { const b = (sparkBuf[sym] ??= []); b.push(p[sym]); if (b.length > 60) b.shift(); spark[sym] = b }
+    up['coins/spark'] = spark
   }
   await rdb.ref().update(up)
 }
@@ -858,7 +910,8 @@ async function newerCodeOnMain() {
 // Firestore rules: re-deployed hourly if they differ from this checkout (no Firestore reads).
 const rulesCheck = () => new Promise(res => execFile('node', ['.github/scripts/deploy-firestore-rules.mjs'], { env: { ...process.env, SKIP_IF_SAME: '1' } }, err => { if (err) warn('Hourly rules check failed: ' + err.message); res() }))
 
-await coinInit().catch(e => warn('Coin start failed: ' + e.message))
+coinInitAt = Date.now()
+await coinInit().catch(e => warn('Coin start failed (retrying): ' + e.message))
 let migrated = await migrateChats().catch(e => { warn('Moving chats to the Realtime Database failed (will retry): ' + e.message); return false })
 let nextMigration = Date.now() + 30 * 60_000
 let rounds = 0

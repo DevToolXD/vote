@@ -1,9 +1,9 @@
 // Security-rule tests: the app's own backend code (src/backend) against the
 // Firestore emulator running ../firestore.rules. Run with `npm run test:rules`.
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
+import { execFile, type ChildProcess } from 'node:child_process'
 import { createServer } from 'node:http'
-import { after, before, beforeEach, describe, test } from 'node:test'
+import { after, afterEach, before, beforeEach, describe, test } from 'node:test'
 import { readFileSync } from 'node:fs'
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app'
 import { connectDatabaseEmulator, get as rtGet, getDatabase, ref as rtRef, set as rtSet, update as rtUpdate, type Database } from 'firebase/database'
@@ -26,7 +26,7 @@ import { priceOf, seriesPrice } from '../src/data'
 import { placeBet, settleLastBet } from '../src/backend/gamble'
 import { accessOf, blockedUsers, readIp, recordIp, setAccess } from '../src/backend/ip'
 import { presenceLabel, watchPresence, type Presence } from '../src/backend/presence'
-import { buyCoin, sellCoin } from '../src/backend/coins'
+import { buyCoin, floor8, sellCoin } from '../src/backend/coins'
 import { buyListing, cancelListing, listItem, subscribeMarket, type Listing } from '../src/backend/market'
 
 const PROJECT = 'demo-vote'
@@ -1249,29 +1249,81 @@ describe('음성 통화', () => {
   })
 })
 
+// ---- 코인 (real prices): a stand-in for Upbit's public API, since tests can't reach the real one ----
+const FAKE_COINS = [
+  { sym: 'BTC', name: '비트코인', price: 150_000_000, vol: 9e12 },
+  { sym: 'ETH', name: '이더리움', price: 5_000_000, vol: 5e12 },
+  { sym: 'XRP', name: '리플', price: 3_000, vol: 3e12 },
+  { sym: 'DOGE', name: '도지코인', price: 300, vol: 2e12 },
+  { sym: 'SHIB', name: '시바이누', price: 0.0215, vol: 1e12 },
+]
+let upbitBase = ''
+async function fakeUpbit() {
+  if (upbitBase) return upbitBase
+  const server = createServer((req, res) => {
+    const u = new URL(req.url ?? '/', 'http://x')
+    const send = (v: unknown) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(v))
+    if (u.pathname === '/v1/market/all') return send(FAKE_COINS.map(c => ({ market: `KRW-${c.sym}`, korean_name: c.name, english_name: c.sym })))
+    if (u.pathname === '/v1/ticker') {
+      const want = (u.searchParams.get('markets') ?? '').split(',')
+      return send(FAKE_COINS.filter(c => want.includes(`KRW-${c.sym}`)).map(c => ({ market: `KRW-${c.sym}`, trade_price: c.price, signed_change_rate: 0.01, acc_trade_price_24h: c.vol })))
+    }
+    res.writeHead(404).end()
+  })
+  await new Promise<void>(r => server.listen(0, '127.0.0.1', r))
+  server.unref()
+  upbitBase = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+  return upbitBase
+}
+/** The saved coin list (what the rules check an order's coin against) and "the reset is done". */
+async function seedCoins(reset = true) {
+  const str = (v: string) => ({ stringValue: v })
+  await seed('meta/coins', {
+    syms: { arrayValue: { values: FAKE_COINS.map(c => str(c.sym)) } },
+    list: { arrayValue: { values: FAKE_COINS.map(c => ({ mapValue: { fields: { sym: str(c.sym), market: str(`KRW-${c.sym}`), name: str(c.name) } } })) } },
+  })
+  if (reset) await seed('meta/coinReal', { done: true })
+}
+/** The worker in the background for a while (it fills orders as they come; order calls wait for their fill). */
+const workers: ChildProcess[] = []
+async function kickWorker(ms = 8000) {
+  // one worker at a time, like the real thing (the workflow's concurrency group): two filling the same order would race
+  for (const old of workers.splice(0)) old.kill()
+  const base = await fakeUpbit()
+  const w = execFile('node', ['../.github/scripts/send-notifications.mjs'], {
+    env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, UPBIT_BASE: base, RUN_FOR_MS: String(ms), SETTLE_MS: '0', COIN_TICK_MS: '1000' },
+  })
+  const say = (d: unknown) => { const t = String(d); if (/Coins reset|Refunding|Coin start|Coin order|Fetching prices/.test(t)) console.log('[worker]', t.trim().slice(0, 240)) }
+  w.stdout?.on('data', say); w.stderr?.on('data', say)
+  workers.push(w)
+  return w
+}
+// a worker left running would keep writing prices / boosts into the next test
+afterEach(() => { for (const w of workers.splice(0)) w.kill() })
+
 describe('코인 상승 (관리자)', () => {
   test('only the admin can request a rise; the worker applies it and removes the request', async () => {
     const a = await signUp('a'), admin = dbAs(ADMIN)
     const R = (db: Firestore) => rtdbOf.get(db)!
-    const ev = { sym: 'JEONG', pct: 30, minutes: 1, at: Date.now() }
+    await seedCoins()
+    const ev = { sym: 'BTC', pct: 30, minutes: 1, at: Date.now() }
     await denied(rtSet(rtRef(R(a), 'coinEvents/x1'), ev))
     await denied(rtSet(rtRef(R(admin), 'coinEvents/x2'), { ...ev, pct: 'big' }))
     await denied(rtSet(rtRef(R(admin), 'coinEvents/x3'), { ...ev, minutes: 0 }))
-    await denied(rtSet(rtRef(R(admin), 'coinEvents/x4'), { ...ev, sym: 'FAKE' }))
+    await denied(rtSet(rtRef(R(admin), 'coinEvents/x4'), { ...ev, sym: 'X' }))
     await denied(rtSet(rtRef(R(admin), 'coinEvents/x5'), { ...ev, pct: 0 }))
     await rtSet(rtRef(R(admin), 'coinEvents/ok1'), ev)
     await assert.rejects(rt(a, 'coinEvents/ok1'))
-    // the worker runs in the background; the request is gone once it has applied it (poll: a
-    // re-write is refused while the request exists, and allowed once it's removed)
-    execFile('node', ['../.github/scripts/send-notifications.mjs'], {
-      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '20000', SETTLE_MS: '0', COIN_TICK_MS: '1000' },
-    })
-    let removed = false
-    for (let i = 0; i < 60 && !removed; i++) {
+    // the worker applies it: the shown price climbs above the real one (150,000,000)
+    await kickWorker(20000)
+    let top = 0
+    for (let i = 0; i < 80 && top < 150_000_000 * 1.01; i++) {
       await new Promise(r => setTimeout(r, 500))
-      removed = await rtSet(rtRef(R(admin), 'coinEvents/ok1'), ev).then(() => true, () => false)
+      top = (await rt(a, 'coins/live').catch(() => null))?.p?.BTC ?? 0
     }
-    assert.ok(removed, 'the worker removes the applied request')
+    assert.ok(top > 150_000_000 * 1.01, `the boosted price is above the real one (${top})`)
+    // other coins are untouched
+    assert.equal((await rt(a, 'coins/live')).p.ETH, 5_000_000)
   })
 })
 
@@ -1279,55 +1331,14 @@ describe('코인 거래 내역', () => {
   test('everyone signed in can read the trades; nobody can write them', async () => {
     const a = await signUp('a'), b = await signUp('b')
     const R = (db: Firestore) => rtdbOf.get(db)!
-    await rtSet(rtRef(R(a), 'coinTrades/BTC/t1'), { name: 'a', side: 'buy', points: 100, qty: 0.1, price: 1000, at: Date.now() }).catch(() => {})
     await denied(rtSet(rtRef(R(b), 'coinTrades/BTC/t2'), { name: 'b', side: 'buy', points: 1, qty: 1, price: 1, at: 1 }))
     await denied(rtSet(rtRef(R(a), 'coinTrades/BTC/t3'), { name: 'a', side: 'buy', points: 1, qty: 1, price: 1, at: 1 }))
     assert.ok(await rt(b, 'coinTrades/BTC').then(() => true, () => false))
   })
 })
 
-describe('코인 판매 큰 수량', () => {
-  test('a huge holding (608 billion coins) can be sold', async () => {
-    const a = await signUp('a')
-    const r = doc(collection(a, 'coinOrders'))
-    const b = writeBatch(a)
-    b.set(r, { uid: 'a', coin: 'KIMCHI', side: 'sell', qty: 608201574492.6045, at: serverTimestamp(), status: 'open' })
-    await b.commit()
-  })
-})
-
-describe('코인 판매 반복', () => {
-  test('sell everything after several buys (random prices), repeatedly', async () => {
-    const a = await signUp('a'), admin = dbAs(ADMIN)
-    await grantPoints(admin, ADMIN.uid, 'a', 100000)
-    // the worker runs in the background and fills open orders (each order call waits for its fill)
-    const kick = () => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
-      env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '8000', SETTLE_MS: '0', COIN_TICK_MS: '1' },
-    })
-    const log: string[] = []
-    for (let i = 0; i < 4; i++) {
-      const coin = (['BTC', 'DOGE', 'MOON', 'JEONG'] as const)[i]
-      const buy = buyCoin(a, 'a', coin, 1234 + i * 777)
-      kick()
-      const rb = await buy
-      log.push(`buy ${coin} ${rb.status} ${rb.qty}`)
-      const h = await rt(a, `wallets/a/${coin}`)
-      const sell = sellCoin(a, 'a', coin, h.q)
-      kick()
-      const rs = await sell
-      log.push(`sell ${coin} ${rs.status} ${rs.reason ?? ''} q=${h.q}`)
-      assert.equal(rs.status, 'done', log.join('\n'))
-    }
-  })
-})
-
-describe('코인', () => {
+describe('코인 (실제 시세)', () => {
   const pts = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
-  // The worker runs in the background for a few seconds (filling open orders as they come); the
-  // order call waits for its fill (up to 20 s), so nothing depends on a fixed delay.
-  const kick = () => execFile('node', ['../.github/scripts/send-notifications.mjs'], {
-    env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, RUN_FOR_MS: '8000', SETTLE_MS: '0', COIN_TICK_MS: '1' },
-  })
   const rawOrder = (db: Firestore, uid: string, data: Record<string, unknown>, spent = 0) => {
     const r = doc(collection(db, 'coinOrders')), b = writeBatch(db)
     b.set(r, { uid, coin: 'BTC', at: serverTimestamp(), status: 'open', ...data })
@@ -1335,11 +1346,27 @@ describe('코인', () => {
     return b.commit()
   }
 
+  test('the worker publishes the list and the real prices (1P = 1원), 100 at most', async () => {
+    const a = await signUp('a')
+    await seedCoins()
+    await kickWorker(10000)
+    let live = null
+    for (let i = 0; i < 40 && !live?.p?.BTC; i++) { live = await rt(a, 'coins/live').catch(() => null); if (!live?.p?.BTC) await new Promise(r => setTimeout(r, 500)) }
+    assert.equal(live.p.BTC, 150_000_000)
+    assert.equal(live.p.SHIB, 0.0215)
+    assert.ok(Math.abs(live.chg.BTC - 0.01) < 1e-6)
+    const list = await rt(a, 'coins/list')
+    assert.equal(list.BTC.n, '비트코인'); assert.equal(list.BTC.r, 1)
+    assert.ok(Object.keys(list).length <= 100)
+    await denied(rtSet(rtRef(rtdbOf.get(a)!, 'coins/live/p/BTC'), 1))
+  })
+
   test('buy pays points up front, the worker fills it; selling brings points back at the price', async () => {
     const a = await signUp('a'), b = await signUp('b'), admin = dbAs(ADMIN)
-    await grantPoints(admin, ADMIN.uid, 'a', 1000)
+    await seedCoins()
+    await grantPoints(admin, ADMIN.uid, 'a', 1_000_000)
     const start = await pts(a, 'a')
-    // refused: paying less than the order says, too small, someone else's order, a sell that pays points
+    // refused: paying less than the order says, too small, someone else's order, a sell that pays points, a coin not on the list
     await denied(rawOrder(a, 'a', { side: 'buy', points: 500 }, 100))
     await denied(rawOrder(a, 'a', { side: 'buy', points: 5 }, 5))
     await denied(rawOrder(a, 'b', { side: 'buy', points: 100 }, 100))
@@ -1347,39 +1374,93 @@ describe('코인', () => {
     await denied(rawOrder(a, 'a', { side: 'sell', qty: 1, points: 100 }))
     await denied(rawOrder(a, 'a', { side: 'buy', points: start + 1 }, start + 1))
     await denied(rawOrder(a, 'a', { side: 'buy', points: 100, coin: 'FAKE' }, 100))
+    await denied(rawOrder(a, 'a', { side: 'buy', points: 100, coin: 'JEONG' }, 100))
     await denied(updateDoc(doc(a, 'candidates', 'a'), { bonus: increment(1000), payCoin: 'x' }))
 
-    const bought = buyCoin(a, 'a', 'BTC', 500)
-    kick()
+    const bought = buyCoin(a, 'a', 'BTC', 500_000)
+    await kickWorker()
     const r1 = await bought
-    assert.equal(await pts(a, 'a'), start - 500)
+    assert.equal(await pts(a, 'a'), start - 500_000)
     assert.equal(r1.status, 'done')
-    assert.ok(r1.qty! > 0 && r1.price! > 0)
+    assert.equal(r1.price, 150_000_000)
+    assert.equal(r1.qty, floor8(500_000 / 150_000_000))
     const w = await rt(a, 'wallets/a/BTC')
-    assert.equal(w.q, r1.qty); assert.equal(w.c, 500)
+    assert.equal(w.q, r1.qty); assert.equal(w.c, 500_000)
     await assert.rejects(rt(b, 'wallets/a'))
-    // the price feed is written by the worker a moment after it starts: wait for it (up to 10 s)
-    let live = null
-    for (let i = 0; i < 20 && !live?.p?.BTC; i++) { live = await rt(b, 'coins/live').catch(() => null); if (!live?.p?.BTC) await new Promise(r => setTimeout(r, 500)) }
-    assert.ok(live?.p?.BTC > 0)
     const orders = await getDocs(query(collection(a, 'coinOrders'), where('uid', '==', 'a')))
     await denied(updateDoc(orders.docs[0].ref, { status: 'open' }))
 
     // selling more than held fails; selling it all pays floor(qty × price)
     const tooMuch = sellCoin(a, 'a', 'BTC', w.q * 2)
-    kick()
+    await kickWorker()
     assert.equal((await tooMuch).status, 'failed')
     const sold = sellCoin(a, 'a', 'BTC', w.q)
-    kick()
+    await kickWorker()
     const r2 = await sold
     assert.equal(r2.status, 'done')
-    assert.equal(r2.points, Math.floor(w.q * r2.price!))
-    assert.equal(await pts(a, 'a'), start - 500 + r2.points!)
+    assert.equal(r2.points, Math.floor(w.q * 150_000_000))
+    assert.equal(await pts(a, 'a'), start - 500_000 + r2.points!)
     assert.equal(await rt(a, 'wallets/a/BTC'), null)
     // a later worker run fills nothing twice
-    kick()
+    await kickWorker()
     await new Promise(r => setTimeout(r, 9000))
-    assert.equal(await pts(a, 'a'), start - 500 + r2.points!)
+    assert.equal(await pts(a, 'a'), start - 500_000 + r2.points!)
+  })
+
+  test('sell everything after several buys in different coins, repeatedly', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    await seedCoins()
+    await grantPoints(admin, ADMIN.uid, 'a', 100000)
+    const log: string[] = []
+    for (const [i, coin] of ['BTC', 'ETH', 'DOGE', 'SHIB'].entries()) {
+      const buy = buyCoin(a, 'a', coin, 1234 + i * 777)
+      await kickWorker()
+      const rb = await buy
+      log.push(`buy ${coin} ${rb.status} ${rb.qty}`)
+      const h = await rt(a, `wallets/a/${coin}`)
+      const sell = sellCoin(a, 'a', coin, h.q)
+      await kickWorker()
+      const rs = await sell
+      log.push(`sell ${coin} ${rs.status} ${rs.reason ?? ''} q=${h.q}`)
+      assert.equal(rs.status, 'done', log.join('\n'))
+      assert.equal(await rt(a, `wallets/a/${coin}`), null, `nothing left of ${coin}`)
+    }
+  })
+
+  test('a huge holding (a coin worth 0.0215P) can be sold', async () => {
+    const a = await signUp('a')
+    await seedCoins()
+    const r = doc(collection(a, 'coinOrders'))
+    const b = writeBatch(a)
+    b.set(r, { uid: 'a', coin: 'SHIB', side: 'sell', qty: 608201574492.6045, at: serverTimestamp(), status: 'open' })
+    await b.commit()
+  })
+
+  test('the one-time reset refunds what is tied up in coins, clears the old wallets, and never refunds twice', async () => {
+    const a = await signUp('a'), b = await signUp('b')
+    await seedCoins(false) // the reset hasn't happened yet
+    const start = await pts(a, 'a'), startB = await pts(b, 'b')
+    const put = (path: string, v: unknown) => fetch(`${RTDB}/${path}.json?ns=${RTDB_NS}`, { method: 'PUT', headers: { Authorization: 'Bearer owner' }, body: JSON.stringify(v) })
+    // a holds two (old, made-up) coins bought for 3,000 + 1,500 points; an old trade and chart exist
+    await put('wallets/a', { BTC: { q: 0.05, c: 3000 }, KIMCHI: { q: 12, c: 1500 } })
+    await put('coinTrades/KIMCHI/t1', { name: 'a', side: 'buy', points: 1500, qty: 12, price: 125, at: 1 })
+    await put('coins/h/KIMCHI/1', 125)
+    // b has an open buy order that was never filled: it is cancelled and refunded
+    await seed('candidates/b', { spent: 200, lastCoin: 'ob1' })
+    await seed('coinOrders/ob1', { uid: 'b', coin: 'BTC', side: 'buy', points: 200, status: 'open' })
+    await kickWorker(25000)
+    for (let i = 0; i < 60 && (await pts(a, 'a')) !== start + 4500; i++) await new Promise(r => setTimeout(r, 500))
+    assert.equal(await pts(a, 'a'), start + 4500)
+    // b's points were 200 lower after that buy; the refund brings them back to where they started
+    for (let i = 0; i < 60 && (await pts(b, 'b')) !== startB; i++) await new Promise(r => setTimeout(r, 500))
+    assert.equal(await pts(b, 'b'), startB, 'the open buy is refunded')
+    assert.equal(await rt(a, 'wallets/a'), null)
+    assert.equal((await read(b, 'coinOrders/ob1')).status, 'failed')
+    // a second run changes nothing
+    await kickWorker(8000)
+    await new Promise(r => setTimeout(r, 9000))
+    assert.equal(await pts(a, 'a'), start + 4500)
+    assert.equal(await pts(b, 'b'), startB)
   })
 })
 
