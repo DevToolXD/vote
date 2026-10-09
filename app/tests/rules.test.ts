@@ -26,7 +26,7 @@ import { priceOf, seriesPrice } from '../src/data'
 import { placeBet, settleLastBet } from '../src/backend/gamble'
 import { accessOf, blockedUsers, readIp, recordIp, setAccess } from '../src/backend/ip'
 import { presenceLabel, watchPresence, type Presence } from '../src/backend/presence'
-import { buyCoin, floor8, sellCoin } from '../src/backend/coins'
+import { buyCoin, closePosition, floor8, sellCoin } from '../src/backend/coins'
 import { buyListing, cancelListing, listItem, subscribeMarket, type Listing } from '../src/backend/market'
 
 const PROJECT = 'demo-vote'
@@ -1334,6 +1334,39 @@ describe('코인 거래 내역', () => {
     await denied(rtSet(rtRef(R(b), 'coinTrades/BTC/t2'), { name: 'b', side: 'buy', points: 1, qty: 1, price: 1, at: 1 }))
     await denied(rtSet(rtRef(R(a), 'coinTrades/BTC/t3'), { name: 'a', side: 'buy', points: 1, qty: 1, price: 1, at: 1 }))
     assert.ok(await rt(b, 'coinTrades/BTC').then(() => true, () => false))
+  })
+})
+
+describe('코인 레버리지', () => {
+  const pts = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
+  test('a 5× position takes the margin, shows its size and liquidation price, and closing returns the margin', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    await seedCoins()
+    await grantPoints(admin, ADMIN.uid, 'a', 1_000_000)
+    const start = await pts(a, 'a')
+    // only 2, 3, 5 or 10 are allowed
+    const bad = doc(collection(a, 'coinOrders')), bb = writeBatch(a)
+    bb.set(bad, { uid: 'a', coin: 'BTC', side: 'long', points: 100, lev: 4, at: serverTimestamp(), status: 'open' })
+    bb.update(doc(a, 'candidates', 'a'), { spent: increment(100), lastCoin: bad.id })
+    await denied(bb.commit())
+    const opened = buyCoin(a, 'a', 'BTC', 50_000, 5)
+    await kickWorker()
+    const r = await opened
+    assert.equal(r.status, 'done')
+    assert.equal(await pts(a, 'a'), start - 50_000)
+    const positions = await rt(a, 'positions/a')
+    const [id, pos] = Object.entries(positions)[0] as [string, { lev: number; margin: number; qty: number; entry: number; liq: number }]
+    assert.equal(pos.lev, 5); assert.equal(pos.margin, 50_000)
+    assert.equal(pos.liq, 150_000_000 * (1 - 1 / 5))
+    assert.ok(Math.abs(pos.qty * pos.entry - 50_000 * 5) < pos.entry * 2e-8) // the size, rounded down to 8 decimals
+    // closing: the price hasn't moved, so the margin comes back exactly
+    const closed = closePosition(a, 'a', id, 'BTC')
+    await kickWorker()
+    const rc = await closed
+    assert.equal(rc.status, 'done')
+    assert.equal(rc.points, 50_000)
+    assert.equal(await pts(a, 'a'), start)
+    assert.equal(await rt(a, `positions/a/${id}`), null)
   })
 })
 

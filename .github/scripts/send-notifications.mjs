@@ -673,6 +673,11 @@ const realPrices = {}, realChg = {}
 let coinPrices = null, coinAt = 0, coinSlot = 0, coinSparkAt = 0
 const sparkBuf = {}
 const overlay = {}, trend = {} // admin boost: log multiplier on the real price, and its path
+// 레버리지 positions (positions/{uid}/{orderId} = { sym, lev, margin, qty, entry, liq, at }), kept in
+// memory for the liquidation checks; the app reads them from the database.
+let positionsByUid = {}
+rdb.ref('positions').on('value', s => { positionsByUid = s.val() ?? {} }, e => warn('Positions listener failed: ' + e.message))
+const LEVERAGES = [2, 3, 5, 10]
 const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) }
 // Coin amounts keep 8 decimals, rounded down. The tiny allowance stops 0.12345678 × 1e8 landing
 // just under a whole number and losing a unit.
@@ -818,6 +823,14 @@ async function coinTick() {
     // change since yesterday, with the boost included: (1 + real change) × overlay − 1
     chg[c.sym] = Number((((1 + (realChg[c.sym] ?? 0)) * Math.exp(overlay[c.sym] ?? 0)) - 1).toFixed(5))
   }
+  // liquidation: a long is closed (margin lost) once the price falls to its liquidation price
+  for (const [uid, byId] of Object.entries(positionsByUid)) for (const [id, pos] of Object.entries(byId ?? {})) {
+    const price = p[pos.sym]
+    if (!price || !(price <= pos.liq)) continue
+    delete positionsByUid[uid]?.[id]
+    rdb.ref().update({ [`positions/${uid}/${id}`]: null, [`coinFills/${id}`]: { price, qty: pos.qty, points: 0, liquidated: true } }).catch(e => warn('Liquidation failed: ' + e.message))
+    recordTrade(id, { uid, coin: pos.sym, side: 'liq' }, price, pos.qty, 0).catch(() => {})
+  }
   const up = { 'coins/live': { at: now, p, chg } }
   // charts: one sample per coin every 15 seconds, the last 24 hours kept
   const slot = Math.floor(now / HIST_MS) * HIST_MS
@@ -856,8 +869,20 @@ async function recordTrade(id, o, price, qty, points) {
 async function fillCoinOrder(id, o) {
   const price = coinPrices?.[o.coin]
   const fail = reason => fdb.doc(`coinOrders/${id}`).update({ status: 'failed', reason, doneAt: FieldValue.serverTimestamp() })
+  if (o.side === 'close') return fillClose(id, o, fail)
   if (!price) return
   const filled = (await rdb.ref(`coinFills/${id}`).once('value')).val()
+  if (o.side === 'long') {
+    // 레버리지: the margin is already paid (coinBuy rules); the position is size = margin × lev
+    if (filled == null) {
+      const qty = floor8((o.points * o.lev) / price)
+      const liq = price * (1 - 1 / o.lev)
+      await rdb.ref().update({ [`positions/${o.uid}/${id}`]: { sym: o.coin, lev: o.lev, margin: o.points, qty, entry: price, liq, at: ServerValue.TIMESTAMP }, [`coinFills/${id}`]: { price, qty } })
+      await recordTrade(id, o, price, qty, o.points).catch(e => warn('Recording a trade failed: ' + e.message))
+      await fdb.doc(`coinOrders/${id}`).update({ status: 'done', price, qty, lev: o.lev, liq, doneAt: FieldValue.serverTimestamp() })
+    } else await fdb.doc(`coinOrders/${id}`).update({ status: 'done', price: filled.price, qty: filled.qty, doneAt: FieldValue.serverTimestamp() })
+    return
+  }
   if (o.side === 'buy') {
     if (filled == null) {
       const qty = floor8(o.points / price)
@@ -888,6 +913,22 @@ async function fillCoinOrder(id, o) {
     tx.update(ord.ref, { status: 'done', price: fill.price, qty: fill.qty, points: fill.points, doneAt: FieldValue.serverTimestamp() })
   })
   await recordTrade(id, o, fill.price, fill.qty, fill.points).catch(e => warn('Recording a trade failed: ' + e.message))
+}
+// Closing a leveraged position: margin ± profit or loss (never below 0) comes back as bonus.
+async function fillClose(id, o, fail) {
+  const pos = (await rdb.ref(`positions/${o.uid}/${o.posId}`).once('value')).val()
+  if (!pos) return fail('no-position')
+  const price = coinPrices?.[pos.sym]
+  if (!price) return
+  const points = Math.max(0, Math.floor(pos.margin + pos.qty * (price - pos.entry)))
+  await rdb.ref().update({ [`positions/${o.uid}/${o.posId}`]: null, [`coinFills/${id}`]: { price, qty: pos.qty, points } })
+  await fdb.runTransaction(async tx => {
+    const ord = await tx.get(fdb.doc(`coinOrders/${id}`))
+    if (ord.get('status') !== 'open') return
+    if (points > 0) tx.update(fdb.doc(`candidates/${o.uid}`), { bonus: FieldValue.increment(points), payCoin: id })
+    tx.update(ord.ref, { status: 'done', price, qty: pos.qty, points, doneAt: FieldValue.serverTimestamp() })
+  })
+  await recordTrade(id, { uid: o.uid, coin: pos.sym, side: 'sell' }, price, pos.qty, points).catch(e => warn('Recording a trade failed: ' + e.message))
 }
 async function fillCoinOrders() {
   for (const [id, o] of coinOrders) {

@@ -427,7 +427,7 @@ service cloud.firestore {
       return d.diff(o).affectedKeys().hasOnly(['spent', 'lastCoin'])
         && request.auth.uid == o.ownerUid && canTrade(o)
         && !exists(coinPath(d.lastCoin))
-        && c.uid == request.auth.uid && c.side == 'buy'
+        && c.uid == request.auth.uid && (c.side == 'buy' || c.side == 'long')
         && d.spent == o.spent + c.points
         && d.spent <= d.get('earned', d.up) + d.get('bonus', 0);
     }
@@ -1241,9 +1241,20 @@ service cloud.firestore {
             && request.resource.data.points is int && request.resource.data.points >= 10
             && getAfter(me()).data.get('lastCoin', '') == id
             && getAfter(me()).data.spent == get(me()).data.spent + request.resource.data.points
+          : request.resource.data.side == 'long'
+            // 레버리지: the margin goes in as for a buy; the position is margin × lev (2, 3, 5 or 10)
+            ? request.resource.data.keys().hasOnly(['uid', 'coin', 'side', 'points', 'lev', 'at', 'status'])
+            && request.resource.data.points is int && request.resource.data.points >= 10
+            && request.resource.data.lev in [2, 3, 5, 10]
+            && getAfter(me()).data.get('lastCoin', '') == id
+            && getAfter(me()).data.spent == get(me()).data.spent + request.resource.data.points
           : request.resource.data.side == 'sell'
-            && request.resource.data.keys().hasOnly(['uid', 'coin', 'side', 'qty', 'at', 'status'])
-            && request.resource.data.qty is number && request.resource.data.qty > 0 && request.resource.data.qty < 1000000000000000000);
+            ? request.resource.data.keys().hasOnly(['uid', 'coin', 'side', 'qty', 'at', 'status'])
+            && request.resource.data.qty is number && request.resource.data.qty > 0 && request.resource.data.qty < 1000000000000000000
+          // closing a position: nothing is paid here; the worker returns the margin ± result
+          : request.resource.data.side == 'close'
+            && request.resource.data.keys().hasOnly(['uid', 'coin', 'side', 'posId', 'at', 'status'])
+            && request.resource.data.posId is string && request.resource.data.posId.size() <= 40);
       allow update, delete: if false;
     }
 

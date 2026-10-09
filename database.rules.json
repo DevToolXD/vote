@@ -322,6 +322,13 @@
     "coinTrades": {
       ".read": "auth != null",
       ".write": false
+    },
+    "positions": {
+      ".read": false,
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
     }
   }
 }

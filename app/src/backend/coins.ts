@@ -84,13 +84,19 @@ function waitFill(db: Firestore, id: string, ms = 20000): Promise<OrderResult> {
   })
 }
 
-/** Buys `points` worth of a coin (the points leave right away). */
-export async function buyCoin(db: Firestore, uid: string, coin: CoinSym, points: number): Promise<OrderResult> {
+export const LEVERAGES = [2, 3, 5, 10] as const
+export type Lev = (typeof LEVERAGES)[number]
+
+/** Buys `points` worth of a coin (the points leave right away). With `lev` (2–10) it's a 레버리지
+ *  position: the points are the margin, the position is margin × lev, and it's liquidated when the
+ *  price falls by 1/lev (10× → −10 %). */
+export async function buyCoin(db: Firestore, uid: string, coin: CoinSym, points: number, lev: 1 | Lev = 1): Promise<OrderResult> {
   points = Math.floor(points)
   if (!(points >= MIN_BUY)) throw new Error('invalid-amount')
   const r = doc(collection(db, 'coinOrders'))
   const b = writeBatch(db)
-  b.set(r, { uid, coin, side: 'buy', points, at: serverTimestamp(), status: 'open' })
+  if (lev === 1) b.set(r, { uid, coin, side: 'buy', points, at: serverTimestamp(), status: 'open' })
+  else b.set(r, { uid, coin, side: 'long', points, lev, at: serverTimestamp(), status: 'open' })
   b.update(doc(db, 'candidates', uid), { spent: increment(points), lastCoin: r.id })
   await b.commit()
   return waitFill(db, r.id)
@@ -108,11 +114,30 @@ export async function sellCoin(db: Firestore, uid: string, coin: CoinSym, qty: n
   return waitFill(db, r.id)
 }
 
+export type Position = { id: string; sym: CoinSym; lev: number; margin: number; qty: number; entry: number; liq: number; at: number }
+
+/** My open 레버리지 positions (live). */
+export function watchPositions(db: Firestore, uid: string, cb: (p: Position[]) => void) {
+  return onValue(ref(R(db), `positions/${uid}`), s => {
+    const v = (s.val() ?? {}) as Record<string, Omit<Position, 'id'>>
+    cb(Object.entries(v).map(([id, x]) => ({ id, ...x })).sort((a, b) => b.at - a.at))
+  }, () => cb([]))
+}
+
+/** Closes a 레버리지 position at the current price (the margin ± result comes back). */
+export async function closePosition(db: Firestore, uid: string, posId: string, coin: CoinSym): Promise<OrderResult> {
+  const r = doc(collection(db, 'coinOrders'))
+  const b = writeBatch(db)
+  b.set(r, { uid, coin, side: 'close', posId, at: serverTimestamp(), status: 'open' })
+  await b.commit()
+  return waitFill(db, r.id)
+}
+
 export const fmtPrice = (p: number | undefined) =>
   p == null ? '-' : p >= 100 ? Math.round(p).toLocaleString() : p >= 1 ? p.toLocaleString(undefined, { maximumFractionDigits: 2 }) : p.toLocaleString(undefined, { maximumSignificantDigits: 4 })
 export const fmtQty = (q: number) => q.toLocaleString(undefined, { maximumFractionDigits: q >= 1 ? 4 : 8 })
 
-export type Trade = { id: string; name: string; side: 'buy' | 'sell'; points: number; qty: number; price: number; at: number }
+export type Trade = { id: string; name: string; side: 'buy' | 'sell' | 'liq'; points: number; qty: number; price: number; at: number }
 
 /** The latest trades in one coin, from everyone (the worker records each fill). Newest first. */
 export function watchTrades(db: Firestore, sym: CoinSym, cb: (t: Trade[]) => void) {

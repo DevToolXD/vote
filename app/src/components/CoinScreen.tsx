@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { BottomSheet } from './Overlays'
-import { MIN_BUY, buyCoin, coinColor, coinMark, fmtPrice, fmtQty, floor8, sellCoin, watchCoinHistory, watchCoinList, watchLive, watchSpark, watchTrades, watchWallet, type CoinInfo, type CoinSym, type Live, type Point, type Trade, type Wallet } from '../backend/coins'
+import { LEVERAGES, MIN_BUY, buyCoin, closePosition, coinColor, coinMark, fmtPrice, fmtQty, floor8, sellCoin, watchCoinHistory, watchCoinList, watchLive, watchPositions, watchSpark, watchTrades, watchWallet, type CoinInfo, type CoinSym, type Lev, type Live, type Point, type Position, type Trade, type Wallet } from '../backend/coins'
 
 // 코인 탭: real coins (Upbit KRW prices, the top 100), bought and sold with points — 1P = 1원.
 // Korean convention: up = red, down = blue.
@@ -93,6 +93,8 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
   const [wallet, setWallet] = useState<Wallet>({})
   const [open, setOpen] = useState<CoinSym | null>(null)
   const [mineOpen, setMineOpen] = useState(false)
+  const [positions, setPositions] = useState<Position[]>([])
+  useEffect(() => { setPositions([]); return db && uid ? watchPositions(db, uid, setPositions) : undefined }, [db, uid])
   useEffect(() => (db ? watchLive(db, setLive) : undefined), [db])
   useEffect(() => (db ? watchCoinList(db, setList) : undefined), [db])
   useEffect(() => (db ? watchSpark(db, setSpark) : undefined), [db])
@@ -171,7 +173,26 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
             <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>내 코인</span>
             <span style={css('font-size:15px;color:#6b7684;font-variant-numeric:tabular-nums')}>평가금액 {Math.round(evalSum).toLocaleString()}P{costSum > 0 ? ` · ${signed(pl)}P (${pct(pl / costSum)})` : ''}</span>
           </div>
-          {list.filter(c => (wallet[c.sym]?.q ?? 0) > 0).length === 0 ? (
+          {positions.length > 0 && (
+            <div style={css('padding:8px 24px 4px;display:flex;flex-direction:column;gap:2px')}>
+              <span style={css('font-size:15px;font-weight:700;color:#191f28')}>레버리지 포지션</span>
+            </div>
+          )}
+          {positions.map(x => {
+            const cur = price(x.sym) ?? x.entry, pnl = x.qty * (cur - x.entry), name = list.find(c => c.sym === x.sym)?.name ?? x.sym
+            return (
+              <div key={x.id} style={css('display:flex;align-items:center;gap:12px;padding:12px 24px')}>
+                <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+                  <span style={css('font-size:15px;font-weight:600;color:#191f28')}>{name} · {x.lev}배</span>
+                  <span style={css('font-size:13px;color:#8b95a1;font-variant-numeric:tabular-nums')}>증거금 {x.margin.toLocaleString()}P · 청산가 {fmtPrice(x.liq)}P</span>
+                </span>
+                <span style={sx('flex:none;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums', { color: tone(pnl) })}>{signed(pnl)}P</span>
+                <button className="pr-96" onClick={() => { setMineOpen(false); closePosition(db!, uid!, x.id, x.sym).then(r => onToast(r.status === 'done' ? `포지션을 닫았어요 · ${(r.points ?? 0).toLocaleString()}P 돌려받았어요` : r.status === 'failed' ? '포지션을 닫지 못했어요' : '주문을 넣었어요')).catch(() => onToast('포지션을 닫지 못했어요')) }}
+                  style={css('flex:none;height:36px;padding:0 12px;border-radius:10px;background:#191f28;color:#fff;font-size:14px;font-weight:600')}>닫기</button>
+              </div>
+            )
+          })}
+          {list.filter(c => (wallet[c.sym]?.q ?? 0) > 0).length === 0 && positions.length === 0 ? (
             <span style={css('display:block;padding:24px;font-size:15px;color:#8b95a1;text-align:center')}>가진 코인이 없어요</span>
           ) : list.filter(c => (wallet[c.sym]?.q ?? 0) > 0).map(c => {
             const h = wallet[c.sym]!, p = price(c.sym) ?? 0, ev = h.q * p, gain = h.c > 0 ? (ev - h.c) / h.c : 0
@@ -193,7 +214,7 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
       )}
       {open && db && (
         <CoinSheet
-          sym={open} name={nameOf(open)} db={db} uid={uid} points={points} price={price(open)} wallet={wallet} onToast={onToast}
+          sym={open} name={nameOf(open)} db={db} uid={uid} points={points} price={price(open)} wallet={wallet} onToast={onToast} positions={positions.filter(x => x.sym === open)}
           change={dayChange(open)} onClose={() => setOpen(null)}
         />
       )}
@@ -201,9 +222,9 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
   )
 }
 
-function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast, onClose }: {
+function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast, onClose, positions }: {
   sym: CoinSym; name: string; db: Firestore; uid: string; points: number; price: number | undefined; wallet: Wallet
-  change: number; onToast: (m: string) => void; onClose: () => void
+  change: number; onToast: (m: string) => void; onClose: () => void; positions: Position[]
 }) {
   const c = { name }
   const [range, setRange] = useState(240)
@@ -222,6 +243,7 @@ function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast,
   const [mode, setMode] = useState<'buy' | 'sell' | null>(null)
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
+  const [lev, setLev] = useState<1 | Lev>(1)
   const h = wallet[sym]
   const evalNow = h && price ? h.q * price : 0
   const data = series(range)
@@ -236,9 +258,9 @@ function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast,
     if (busy) return
     setBusy(true)
     try {
-      const r = mode === 'buy' ? await buyCoin(db, uid, sym, n) : await sellCoin(db, uid, sym, sellQty)
+      const r = mode === 'buy' ? await buyCoin(db, uid, sym, n, lev) : await sellCoin(db, uid, sym, sellQty)
       if (r.status === 'done') {
-        onToast(mode === 'buy' ? `${c.name} ${fmtQty(r.qty ?? 0)}개를 ${fmtPrice(r.price)}P에 샀어요` : `${c.name}을 팔아서 ${(r.points ?? 0).toLocaleString()}P를 받았어요`)
+        onToast(mode === 'buy' ? (lev > 1 ? `${c.name} ${lev}배 포지션을 열었어요` : `${c.name} ${fmtQty(r.qty ?? 0)}개를 ${fmtPrice(r.price)}P에 샀어요`) : `${c.name}을 팔아서 ${(r.points ?? 0).toLocaleString()}P를 받았어요`)
         setMode(null); setAmount('')
       } else if (r.status === 'failed') onToast(r.reason === 'not-enough' ? '가진 코인보다 많이 팔 수 없어요' : '체결하지 못했어요')
       else { onToast('주문을 넣었어요. 잠시 뒤에 체결돼요'); setMode(null); setAmount('') }
@@ -279,13 +301,23 @@ function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast,
         {h && h.c > 0 && <span style={css('display:flex;justify-content:space-between')}><span style={{ color: '#6b7684' }}>수익</span><span style={sx('font-weight:700', { color: tone(evalNow - h.c) })}>{signed(evalNow - h.c)}P ({pct((evalNow - h.c) / h.c)})</span></span>}
       </div>
 
+      {positions.map(x => (
+        <div key={x.id} style={css('margin:12px 24px 0;padding:12px 16px;border-radius:14px;background:#f9fafb;display:flex;align-items:center;gap:10px')}>
+          <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;font-size:14px;color:#4e5968;font-variant-numeric:tabular-nums')}>
+            <span style={css('font-weight:600;color:#191f28')}>{x.lev}배 포지션 · 증거금 {x.margin.toLocaleString()}P</span>
+            <span>진입 {fmtPrice(x.entry)}P · 청산가 {fmtPrice(x.liq)}P</span>
+          </span>
+          <button className="pr-96" onClick={() => closePosition(db, uid, x.id, sym).then(r => onToast(r.status === 'done' ? `포지션을 닫았어요 · ${(r.points ?? 0).toLocaleString()}P 돌려받았어요` : '포지션을 닫지 못했어요')).catch(() => onToast('포지션을 닫지 못했어요'))}
+            style={css('flex:none;height:36px;padding:0 12px;border-radius:10px;background:#191f28;color:#fff;font-size:14px;font-weight:600')}>닫기</button>
+        </div>
+      ))}
       <div style={css('margin:20px 24px 0;display:flex;flex-direction:column;gap:4px')}>
         <span style={css('font-size:17px;line-height:25.5px;font-weight:700;color:#191f28')}>최근 거래</span>
         {trades == null ? null : trades.length === 0 ? (
           <span style={css('padding:12px 0;font-size:15px;color:#8b95a1')}>아직 거래가 없어요</span>
         ) : trades.slice(0, 20).map(t => (
           <div key={t.id} style={css('display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f2f4f6')}>
-            <span style={sx('flex:none;width:44px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff', { background: t.side === 'buy' ? UP : DOWN })}>{t.side === 'buy' ? '샀어요' : '팔았어요'}</span>
+            <span style={sx('flex:none;width:44px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff', { background: t.side === 'buy' ? UP : t.side === 'liq' ? '#8b95a1' : DOWN })}>{t.side === 'buy' ? '샀어요' : t.side === 'liq' ? '청산' : '팔았어요'}</span>
             <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
               <span style={css('font-size:15px;font-weight:600;color:#191f28;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{t.name}</span>
               <span style={css('font-size:13px;color:#8b95a1;font-variant-numeric:tabular-nums')}>{fmtQty(t.qty)} {sym} · @{fmtPrice(t.price)}P</span>
@@ -296,6 +328,18 @@ function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast,
       </div>
       {mode ? (
         <div style={css('margin:16px 24px 0;display:flex;flex-direction:column;gap:10px')}>
+          {mode === 'buy' && (
+            <>
+              <div style={css('display:flex;gap:6px')}>
+                {([1, ...LEVERAGES] as const).map(v => (
+                  <button key={v} className="pr-96" onClick={() => setLev(v)} style={sx('flex:1;height:36px;border-radius:10px;font-size:14px;font-weight:600', { background: lev === v ? '#191f28' : '#f2f4f6', color: lev === v ? '#fff' : '#4e5968' })}>{v === 1 ? '현물' : `${v}배`}</button>
+                ))}
+              </div>
+              {lev > 1 && price != null && (
+                <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>레버리지 {lev}배: 가격이 {fmtPrice(price * (1 - 1 / lev))}P까지 떨어지면 증거금을 모두 잃어요 (약 −{Math.round(100 / lev)}%)</span>
+              )}
+            </>
+          )}
           <span style={css('font-size:15px;font-weight:600;color:#191f28')}>{mode === 'buy' ? `몇 포인트어치 살까요? (쓸 수 있는 포인트 ${points.toLocaleString()}P)` : '얼마나 팔까요?'}</span>
           <div style={css('display:flex;align-items:center;gap:8px;height:52px;padding:0 16px;border-radius:14px;background:#f2f4f6')}>
             <input inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 15))} placeholder={mode === 'buy' ? `${MIN_BUY}P 이상` : '0'} autoFocus
