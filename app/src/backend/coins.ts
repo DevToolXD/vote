@@ -84,10 +84,10 @@ function waitFill(db: Firestore, id: string, ms = 20000): Promise<OrderResult> {
   })
 }
 
-export const LEVERAGES = [2, 3, 5, 10] as const
+export const LEVERAGES = [2, 3, 5, 10, 500] as const
 export type Lev = (typeof LEVERAGES)[number]
 
-/** Buys `points` worth of a coin (the points leave right away). With `lev` (2–10) it's a 레버리지
+/** Buys `points` worth of a coin (the points leave right away). With `lev` (2–500) it's a 레버리지
  *  position: the points are the margin, the position is margin × lev, and it's liquidated when the
  *  price falls by 1/lev (10× → −10 %). */
 export async function buyCoin(db: Firestore, uid: string, coin: CoinSym, points: number, lev: 1 | Lev = 1): Promise<OrderResult> {

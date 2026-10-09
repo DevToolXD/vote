@@ -1339,12 +1339,24 @@ describe('코인 거래 내역', () => {
 
 describe('코인 레버리지', () => {
   const pts = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
+  test('500× is allowed and its liquidation price sits just under the entry price', async () => {
+    const c = await signUp('c'), admin = dbAs(ADMIN)
+    await seedCoins()
+    await grantPoints(admin, ADMIN.uid, 'c', 100_000)
+    const opened = buyCoin(c, 'c', 'BTC', 10_000, 500)
+    await kickWorker()
+    const r = await opened
+    assert.equal(r.status, 'done')
+    const [, pos] = Object.entries(await rt(c, 'positions/c'))[0] as [string, { lev: number; entry: number; liq: number }]
+    assert.equal(pos.lev, 500)
+    assert.ok(Math.abs(pos.liq - pos.entry * (1 - 1 / 500)) < pos.entry * 1e-8)
+  })
   test('a 5× position takes the margin, shows its size and liquidation price, and closing returns the margin', async () => {
     const a = await signUp('a'), admin = dbAs(ADMIN)
     await seedCoins()
     await grantPoints(admin, ADMIN.uid, 'a', 1_000_000)
     const start = await pts(a, 'a')
-    // only 2, 3, 5 or 10 are allowed
+    // only 2, 3, 5, 10 or 500 are allowed
     const bad = doc(collection(a, 'coinOrders')), bb = writeBatch(a)
     bb.set(bad, { uid: 'a', coin: 'BTC', side: 'long', points: 100, lev: 4, at: serverTimestamp(), status: 'open' })
     bb.update(doc(a, 'candidates', 'a'), { spent: increment(100), lastCoin: bad.id })

@@ -1242,10 +1242,10 @@ service cloud.firestore {
             && getAfter(me()).data.get('lastCoin', '') == id
             && getAfter(me()).data.spent == get(me()).data.spent + request.resource.data.points
           : request.resource.data.side == 'long'
-            // 레버리지: the margin goes in as for a buy; the position is margin × lev (2, 3, 5 or 10)
+            // 레버리지: the margin goes in as for a buy; the position is margin × lev (2, 3, 5, 10 or 500)
             ? request.resource.data.keys().hasOnly(['uid', 'coin', 'side', 'points', 'lev', 'at', 'status'])
             && request.resource.data.points is int && request.resource.data.points >= 10
-            && request.resource.data.lev in [2, 3, 5, 10]
+            && request.resource.data.lev in [2, 3, 5, 10, 500]
             && getAfter(me()).data.get('lastCoin', '') == id
             && getAfter(me()).data.spent == get(me()).data.spent + request.resource.data.points
           : request.resource.data.side == 'sell'

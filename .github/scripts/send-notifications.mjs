@@ -677,7 +677,7 @@ const overlay = {}, trend = {} // admin boost: log multiplier on the real price,
 // memory for the liquidation checks; the app reads them from the database.
 let positionsByUid = {}
 rdb.ref('positions').on('value', s => { positionsByUid = s.val() ?? {} }, e => warn('Positions listener failed: ' + e.message))
-const LEVERAGES = [2, 3, 5, 10]
+const LEVERAGES = [2, 3, 5, 10, 500]
 const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) }
 // Coin amounts keep 8 decimals, rounded down. The tiny allowance stops 0.12345678 × 1e8 landing
 // just under a whole number and losing a unit.

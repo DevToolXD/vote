@@ -245,6 +245,7 @@ function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast,
     return out
   }
   const [trades, setTrades] = useState<Trade[] | null>(null)
+  const [tradesOpen, setTradesOpen] = useState(false)
   useEffect(() => watchTrades(db, sym, setTrades), [db, sym])
   const [mode, setMode] = useState<'buy' | 'sell' | null>(null)
   const [amount, setAmount] = useState('')
@@ -317,21 +318,6 @@ function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast,
             style={css('flex:none;height:36px;padding:0 12px;border-radius:10px;background:#191f28;color:#fff;font-size:14px;font-weight:600')}>닫기</button>
         </div>
       ))}
-      <div style={css('margin:20px 24px 0;display:flex;flex-direction:column;gap:4px')}>
-        <span style={css('font-size:17px;line-height:25.5px;font-weight:700;color:#191f28')}>최근 거래</span>
-        {trades == null ? null : trades.length === 0 ? (
-          <span style={css('padding:12px 0;font-size:15px;color:#8b95a1')}>아직 거래가 없어요</span>
-        ) : trades.slice(0, 20).map(t => (
-          <div key={t.id} style={css('display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f2f4f6')}>
-            <span style={sx('flex:none;width:44px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff', { background: t.side === 'buy' ? UP : t.side === 'liq' ? '#8b95a1' : DOWN })}>{t.side === 'buy' ? '샀어요' : t.side === 'liq' ? '청산' : '팔았어요'}</span>
-            <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
-              <span style={css('font-size:15px;font-weight:600;color:#191f28;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{t.name}</span>
-              <span style={css('font-size:13px;color:#8b95a1;font-variant-numeric:tabular-nums')}>{fmtQty(t.qty)} {sym} · @{fmtPrice(t.price)}P</span>
-            </span>
-            <span style={css('flex:none;font-size:15px;font-weight:600;color:#191f28;font-variant-numeric:tabular-nums')}>{t.points.toLocaleString()}P</span>
-          </div>
-        ))}
-      </div>
       {mode ? (
         <div style={css('margin:16px 24px 0;display:flex;flex-direction:column;gap:10px')}>
           {mode === 'buy' && (
@@ -342,7 +328,7 @@ function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast,
                 ))}
               </div>
               {lev > 1 && price != null && (
-                <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>레버리지 {lev}배: 가격이 {fmtPrice(price * (1 - 1 / lev))}P까지 떨어지면 증거금을 모두 잃어요 (약 −{Math.round(100 / lev)}%)</span>
+                <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>레버리지 {lev}배: 가격이 {fmtPrice(price * (1 - 1 / lev))}P까지 떨어지면 증거금을 모두 잃어요 (약 −{+(100 / lev).toFixed(1)}%)</span>
               )}
             </>
           )}
@@ -374,6 +360,26 @@ function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast,
         <div style={css('margin:16px 24px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px')}>
           <button className="pr-96" onClick={() => { setMode('sell'); setAmount('100') }} disabled={!h} style={sx('height:56px;border-radius:16px;color:#fff;font-size:17px;font-weight:600;transition:opacity 200ms', { background: DOWN, opacity: h ? 1 : 0.4 })}>판매</button>
           <button className="pr-96" onClick={() => { setMode('buy'); setAmount('') }} style={css(`height:56px;border-radius:16px;background:${UP};color:#fff;font-size:17px;font-weight:600`)}>구매</button>
+        </div>
+      )}
+      <button className="pr-96" onClick={() => setTradesOpen(o => !o)} aria-expanded={tradesOpen} style={css('margin:20px 24px 0;width:calc(100% - 48px);height:44px;display:flex;align-items:center;justify-content:space-between;background:none;color:#191f28;font-size:17px;line-height:25.5px;font-weight:700')}>
+        최근 거래
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b95a1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: tradesOpen ? 'rotate(180deg)' : 'none', transition: 'transform 200ms' }}><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      {tradesOpen && (
+        <div style={css('margin:0 24px;display:flex;flex-direction:column;gap:4px')}>
+          {trades == null ? null : trades.length === 0 ? (
+            <span style={css('padding:12px 0;font-size:15px;color:#8b95a1')}>아직 거래가 없어요</span>
+          ) : trades.slice(0, 20).map(t => (
+            <div key={t.id} style={css('display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f2f4f6')}>
+              <span style={sx('flex:none;width:44px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff', { background: t.side === 'buy' ? UP : t.side === 'liq' ? '#8b95a1' : DOWN })}>{t.side === 'buy' ? '샀어요' : t.side === 'liq' ? '청산' : '팔았어요'}</span>
+              <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+                <span style={css('font-size:15px;font-weight:600;color:#191f28;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{t.name}</span>
+                <span style={css('font-size:13px;color:#8b95a1;font-variant-numeric:tabular-nums')}>{fmtQty(t.qty)} {sym} · @{fmtPrice(t.price)}P</span>
+              </span>
+              <span style={css('flex:none;font-size:15px;font-weight:600;color:#191f28;font-variant-numeric:tabular-nums')}>{t.points.toLocaleString()}P</span>
+            </div>
+          ))}
         </div>
       )}
     </BottomSheet>
