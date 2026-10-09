@@ -36,7 +36,7 @@ function Chart({ data, height = 180, interactive = true }: { data: number[]; hei
   // the scale is at least 1 % of the price, so a one-tick flicker doesn't fill the whole chart
   const min0 = Math.min(...data), max0 = Math.max(...data), mid = (min0 + max0) / 2
   const span = Math.max(max0 - min0, mid * 0.01) || 1
-  const min = mid - span / 2, max = mid + span / 2
+  const min = mid - span / 2
   const x = (i: number) => (i / (data.length - 1)) * W
   const y = (v: number) => 8 + (1 - (v - min) / span) * (height - 16)
   const line = data.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('')
