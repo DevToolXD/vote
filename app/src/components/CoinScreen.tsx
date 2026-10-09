@@ -33,7 +33,10 @@ function Chart({ data, height = 180, interactive = true }: { data: number[]; hei
   const [cur, setCur] = useState<number | null>(null)
   const box = useRef<SVGSVGElement>(null)
   if (data.length < 2) return <div style={sx('display:flex;align-items:center;justify-content:center;color:#8b95a1;font-size:14px', { height })}>가격을 모으는 중이에요</div>
-  const min = Math.min(...data), max = Math.max(...data), span = max - min || max * 0.01 || 1
+  // the scale is at least 1 % of the price, so a one-tick flicker doesn't fill the whole chart
+  const min0 = Math.min(...data), max0 = Math.max(...data), mid = (min0 + max0) / 2
+  const span = Math.max(max0 - min0, mid * 0.01) || 1
+  const min = mid - span / 2, max = mid + span / 2
   const x = (i: number) => (i / (data.length - 1)) * W
   const y = (v: number) => 8 + (1 - (v - min) / span) * (height - 16)
   const line = data.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('')
@@ -71,7 +74,9 @@ function Chart({ data, height = 180, interactive = true }: { data: number[]; hei
 /** Tiny line for the list. */
 function Spark({ data, color }: { data: number[]; color: string }) {
   if (data.length < 2) return <span style={{ width: 56 }} />
-  const min = Math.min(...data), max = Math.max(...data), span = max - min || 1
+  const min0 = Math.min(...data), max0 = Math.max(...data), mid = (min0 + max0) / 2
+  const span = Math.max(max0 - min0, mid * 0.01) || 1
+  const min = mid - span / 2
   const d = data.map((v, i) => `${i ? 'L' : 'M'}${((i / (data.length - 1)) * 56).toFixed(1)},${(2 + (1 - (v - min) / span) * 24).toFixed(1)}`).join('')
   return <svg width="56" height="28" viewBox="0 0 56 28" style={css('flex:none')}><path d={d} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" /></svg>
 }
