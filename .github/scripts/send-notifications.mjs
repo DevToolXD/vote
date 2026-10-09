@@ -878,7 +878,7 @@ async function fillCoinOrder(id, o) {
       const qty = floor8((o.points * o.lev) / price)
       const liq = price * (1 - 1 / o.lev)
       await rdb.ref().update({ [`positions/${o.uid}/${id}`]: { sym: o.coin, lev: o.lev, margin: o.points, qty, entry: price, liq, at: ServerValue.TIMESTAMP }, [`coinFills/${id}`]: { price, qty } })
-      await recordTrade(id, o, price, qty, o.points).catch(e => warn('Recording a trade failed: ' + e.message))
+      await recordTrade(id, { ...o, side: 'buy' }, price, qty, o.points).catch(e => warn('Recording a trade failed: ' + e.message))
       await fdb.doc(`coinOrders/${id}`).update({ status: 'done', price, qty, lev: o.lev, liq, doneAt: FieldValue.serverTimestamp() })
     } else await fdb.doc(`coinOrders/${id}`).update({ status: 'done', price: filled.price, qty: filled.qty, doneAt: FieldValue.serverTimestamp() })
     return

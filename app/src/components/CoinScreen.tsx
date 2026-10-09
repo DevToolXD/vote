@@ -109,6 +109,12 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
     const h = wallet[c.sym], p = price(c.sym)
     if (h && p) { evalSum += h.q * p; costSum += h.c }
   }
+  // 레버리지 positions count as their margin plus or minus the result (never below 0)
+  for (const x of positions) {
+    const p = price(x.sym) ?? x.entry
+    evalSum += Math.max(0, x.margin + x.qty * (p - x.entry))
+    costSum += x.margin
+  }
   const pl = evalSum - costSum
 
   if (!uid) {
