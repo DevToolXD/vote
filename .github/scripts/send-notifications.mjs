@@ -891,23 +891,42 @@ async function yahooSession() {
   if (!c.ok || !crumb || crumb.length > 60 || crumb.includes('<')) throw new Error(`Yahoo crumb → ${c.status}`)
   return (ySession = { cookie, crumb })
 }
+// The same answers come from a second Yahoo host: if the first one refuses or fails, that one is asked.
+const YAHOO_HOSTS = [YAHOO, process.env.YAHOO_ALT_BASE || 'https://query2.finance.yahoo.com'].filter((h, i, a) => a.indexOf(h) === i)
 async function yahoo(path, again = true) {
   const ses = await yahooSession()
-  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 10_000)
-  try {
-    const r = await fetch(`${YAHOO}${path}${path.includes('?') ? '&' : '?'}crumb=${encodeURIComponent(ses.crumb)}`, { signal: ctl.signal, headers: { 'User-Agent': STOCK_UA, Accept: 'application/json', Cookie: ses.cookie } })
-    if ((r.status === 401 || r.status === 403 || r.status === 429) && again) { ySession = null; await new Promise(res => setTimeout(res, 1500)); return yahoo(path, false) }
-    if (!r.ok) throw new Error(`Yahoo ${path.slice(0, 40)} → ${r.status}`)
-    return await r.json()
-  } finally { clearTimeout(t) }
+  let last = null
+  for (const host of YAHOO_HOSTS) {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 10_000)
+    try {
+      const r = await fetch(`${host}${path}${path.includes('?') ? '&' : '?'}crumb=${encodeURIComponent(ses.crumb)}`, { signal: ctl.signal, headers: { 'User-Agent': STOCK_UA, Accept: 'application/json', Cookie: ses.cookie } })
+      if ((r.status === 401 || r.status === 403 || r.status === 429) && again) { ySession = null; await new Promise(res => setTimeout(res, 1500)); return yahoo(path, false) }
+      if (!r.ok) throw new Error(`Yahoo ${host.replace(/^https:\/\//, '')} ${path.slice(0, 40)} → ${r.status}`)
+      return await r.json()
+    } catch (e) { last = e } finally { clearTimeout(t) }
+  }
+  throw last
 }
+/** Quotes for many symbols, in batches. A batch that fails leaves its symbols out; only all failing is an error. */
 async function yahooQuotes(symbols) {
   const out = new Map()
+  let failed = null
   for (let i = 0; i < symbols.length; i += 100) {
-    const j = await yahoo(`/v7/finance/quote?symbols=${encodeURIComponent(symbols.slice(i, i + 100).join(','))}`)
-    for (const q of j?.quoteResponse?.result ?? []) out.set(q.symbol, q)
+    try {
+      const j = await yahoo(`/v7/finance/quote?symbols=${encodeURIComponent(symbols.slice(i, i + 100).join(','))}`)
+      for (const q of j?.quoteResponse?.result ?? []) out.set(q.symbol, q)
+    } catch (e) { failed = e }
   }
+  if (!out.size && failed) throw failed
   return out
+}
+// What the app shows when the prices don't come: the last outcome, written to stocks/status.
+let stockStatusSig = '', stockStatusAt = 0
+function setStockStatus(ok, msg) {
+  const sig = `${ok}|${msg}`
+  if (sig === stockStatusSig && Date.now() - stockStatusAt < 5 * 60_000) return
+  stockStatusSig = sig; stockStatusAt = Date.now()
+  rdb.ref('stocks/status').set({ at: Date.now(), ok, msg: String(msg).slice(0, 200) }).catch(() => {})
 }
 const quoteOk = q => q && q.regularMarketPrice > 0
 /** The chart endpoint's meta as a quote (the fallback when the batch answer fails). */
@@ -994,6 +1013,7 @@ async function stockDaily() {
 async function stockInit() {
   await loadStockList()
   await fetchStockPrices()
+  setStockStatus(true, 'ok')
   stockDailyAt = (await rdb.ref('stocks/dmeta/at').once('value')).val() ?? 0
   if (Date.now() - stockDailyAt > 20 * 3600_000) { stockDailyTry = Date.now(); stockDaily().catch(e => warn('Stock history failed: ' + e.message)) }
 }
@@ -1002,14 +1022,15 @@ async function stockTick() {
     // the start-up didn't finish (Yahoo unreachable?): try again every 30 seconds
     if (Date.now() - stockInitAt > 30_000) {
       stockInitAt = Date.now()
-      await stockInit().catch(e => { if (stockInitAt - stockWarned > 5 * 60_000) { stockWarned = stockInitAt; warn('Stock start failed (retrying every 30 s): ' + e.message) } })
+      await stockInit().catch(e => { setStockStatus(false, 'Yahoo 연결 실패: ' + e.message); if (stockInitAt - stockWarned > 5 * 60_000) { stockWarned = stockInitAt; warn('Stock start failed (retrying every 30 s): ' + e.message) } })
     }
     return
   }
   const now = Date.now()
   if (now - stockAt < STOCK_TICK_MS) return
   stockAt = now
-  await fetchStockPrices().catch(async e => {
+  await fetchStockPrices().then(() => setStockStatus(true, 'ok'), async e => {
+    setStockStatus(false, '시세 가져오기 실패: ' + e.message)
     if (now - stockWarned > 5 * 60_000) { stockWarned = now; warn('Fetching stock prices failed (trying them one by one): ' + e.message) }
     await fetchStockSlice().catch(() => {})
   })

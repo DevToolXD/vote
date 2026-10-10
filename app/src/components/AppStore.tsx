@@ -12,11 +12,12 @@ const FONT = "-apple-system,BlinkMacSystemFont,system-ui,sans-serif"
 
 type StoreTab = 'today' | 'game' | 'app' | 'search'
 
-const META: Record<StoreApp, { sub: string; caption: string; headline: string; art: [string, string]; cat: '상점' | '투자'; game?: boolean }> = {
+const META: Record<StoreApp, { sub: string; caption: string; headline: string; art: [string, string]; cat: '상점' | '투자' | '게임'; game?: boolean }> = {
   shop: { sub: '프레임, 이름표, 막대 스킨', caption: '꾸미기', headline: '나만의 이름표를 골라보세요', art: ['#ff7a93', '#e8234f'], cat: '상점' },
   market: { sub: '우리 동네 아이템 직거래', caption: '새로운 앱', headline: '가진 아이템을 사고팔아요', art: ['#ffb347', '#ff6f0f'], cat: '상점' },
   coin: { sub: '실제 시세로 즐기는 코인 거래', caption: '오늘의 게임', headline: '포인트로 코인에 투자해요', art: ['#4f86f0', '#1b3fa8'], cat: '투자', game: true },
   stock: { sub: '국내·해외 주식 실시간 시세', caption: '새로운 앱', headline: '1포인트 = 1원으로 주식 투자', art: ['#3a3a3f', '#0c0c0e'], cat: '투자' },
+  block: { sub: '블록을 놓아 줄을 지워요', caption: '오늘의 게임', headline: '블록을 맞춰 줄을 지워보세요', art: ['#3a4a86', '#161d3e'], cat: '게임', game: true },
 }
 
 type Ctx = {
@@ -207,7 +208,7 @@ export function AppStore({ db, uid, phone, onOpen, onLogin, onToast }: Omit<Ctx,
           <>
             <Title title="투데이" caption={date} />
             {!visible.length && empty}
-            {(['stock', 'market', 'coin', 'shop'] as StoreApp[]).filter(a => visible.includes(a)).map(a => <Feature key={a} app={a} ctx={ctx} />)}
+            {(['block', 'stock', 'market', 'coin', 'shop'] as StoreApp[]).filter(a => visible.includes(a)).map(a => <Feature key={a} app={a} ctx={ctx} />)}
             <Section title="지금 써봐야 할 앱" apps={visible} ctx={ctx} />
           </>
         )}

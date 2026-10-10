@@ -4,8 +4,8 @@ import { css } from '../css'
 import { MIN_BUY, buyCoin, floor8, sellCoin, watchWallet, type Wallet } from '../backend/coins'
 import {
   fmtCap, fmtPct, fmtSigned, fmtStock, fmtVolume, stateLabel,
-  watchStockDaily, watchStockInfo, watchStockList, watchStockLive, watchStockSpark, watchStockToday,
-  type Daily, type Sample, type StockFacts, type StockLive, type StockMeta,
+  watchStockDaily, watchStockInfo, watchStockList, watchStockLive, watchStockSpark, watchStockStatus, watchStockToday,
+  type Daily, type Sample, type StockFacts, type StockLive, type StockMeta, type StockStatus,
 } from '../backend/stocks'
 
 // 주식, after Apple's Stocks app: black, a list of symbol + small line + price + a change pill, and
@@ -63,12 +63,13 @@ const fmtTime = (t: number, range: Range) => {
 }
 
 /** The area chart with grid lines and the price labels on the right; drag along it to read a value. */
-function Chart({ data, range, index, onHover }: { data: Sample[]; range: Range; index: boolean; onHover: (i: number | null) => void }) {
+function Chart({ data, range, index, prev, onHover }: { data: Sample[]; range: Range; index: boolean; prev?: number; onHover: (i: number | null) => void }) {
   const [hov, setHov] = useState<number | null>(null)
   const W = 340, H = 226, PW = 262, top = 10, bot = 190
   if (data.length < 2) return <div style={css(`height:${H}px;display:flex;align-items:center;justify-content:center;color:${SEC};font-size:15px`)}>그래프를 그릴 데이터가 아직 없어요</div>
   const vs = data.map(d => d.v)
-  const lo = Math.min(...vs), hi = Math.max(...vs), pad = (hi - lo || hi * 0.02 || 1) * 0.08
+  const showPrev = range === '1d' && !!prev
+  const lo = Math.min(...vs, ...(showPrev ? [prev!] : [])), hi = Math.max(...vs, ...(showPrev ? [prev!] : [])), pad = (hi - lo || hi * 0.02 || 1) * 0.08
   const a = lo - pad, b = hi + pad
   const X = (i: number) => (i / (data.length - 1)) * PW
   const Y = (v: number) => top + (1 - (v - a) / (b - a)) * (bot - top)
@@ -89,6 +90,7 @@ function Chart({ data, range, index, onHover }: { data: Sample[]; range: Range; 
       {[0, 1, 2, 3].map(k => <line key={k} x1={(PW / 3) * k} x2={(PW / 3) * k} y1={top} y2={bot} stroke={SEP} strokeWidth="0.6" opacity="0.7" />)}
       {labels.map((v, k) => <g key={k}><line x1="0" x2={W} y1={Y(v)} y2={Y(v)} stroke={SEP} strokeWidth="0.6" opacity="0.7" /><text x={W - 4} y={Y(v) - 6} textAnchor="end" fill="#fff" fontSize="14" fontWeight="700">{fmtStock(v, index)}</text></g>)}
       <line x1="0" x2={W} y1={bot} y2={bot} stroke={SEP} strokeWidth="1" />
+      {showPrev && <line x1="0" x2={PW} y1={Y(prev!)} y2={Y(prev!)} stroke="#8e8e93" strokeWidth="1" strokeDasharray="4 4" />}
       <path d={`${line}L${X(data.length - 1)} ${bot}L0 ${bot}Z`} fill={`url(#${gid})`} />
       <path d={line} fill="none" stroke={c} strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
       {[0, 0.5, 1].map(f => { const i = Math.round(f * (data.length - 1)); return <text key={f} x={Math.min(PW - 2, Math.max(2, X(i)))} y={bot + 22} textAnchor={f === 0 ? 'start' : f === 1 ? 'end' : 'middle'} fill="#fff" fontSize="13" fontWeight="700">{fmtTime(data[i].t, range)}</text> })}
@@ -185,7 +187,7 @@ function Detail({ s, price, chg, facts, live, holding, strip, onPick, onClose, c
               <button key={k} className="pr-96" onClick={() => setPick(k)} style={css(`height:40px;padding:0 14px;border-radius:20px;font-family:${FONT};font-size:17px;font-weight:700;background:${range === k ? CARD2 : 'none'};color:#fff`)}>{label}</button>
             ))}
           </div>
-          <div style={css('margin-top:8px')}><Chart data={data} range={range} index={index} onHover={setHov} /></div>
+          <div style={css('margin-top:8px')}><Chart data={data} range={range} index={index} prev={facts?.pc} onHover={setHov} /></div>
 
           {facts && (
             <div style={css('display:grid;grid-template-columns:1fr 1fr;column-gap:24px;margin-top:6px')}>
@@ -257,10 +259,11 @@ export function StockApp({ db, uid, points, onLogin, onToast }: Ctx) {
   const [menu, setMenu] = useState(false)
   const [searching, setSearching] = useState(false)
   const [q, setQ] = useState('')
+  const [status, setStatus] = useState<StockStatus>(null)
   const [waited, setWaited] = useState(false)
   useEffect(() => {
     if (!db) return
-    const stops = [watchStockList(db, setList), watchStockLive(db, setLive), watchStockSpark(db, setSpark), watchStockInfo(db, setInfo)]
+    const stops = [watchStockList(db, setList), watchStockLive(db, setLive), watchStockSpark(db, setSpark), watchStockInfo(db, setInfo), watchStockStatus(db, setStatus)]
     return () => stops.forEach(s => s())
   }, [db])
   useEffect(() => (db && uid ? watchWallet(db, uid, setWallet) : undefined), [db, uid])
@@ -336,7 +339,10 @@ export function StockApp({ db, uid, points, onLogin, onToast }: Ctx) {
         </div>
         {!rows.length ? (
           <div style={css(`padding:64px 0;text-align:center;font-size:16px;line-height:24px;color:${SEC}`)}>
-            {list.length && live ? (filter === 'mine' ? '가진 주식이 없어요' : '찾는 종목이 없어요') : waited ? '시세를 준비하고 있어요. 잠시 뒤에 다시 열어보세요' : '시세를 불러오는 중이에요…'}
+            {list.length && live ? (filter === 'mine' ? '가진 주식이 없어요' : '찾는 종목이 없어요')
+              : status && !status.ok ? <>시세를 가져오지 못했어요<br /><span style={css(`font-size:14px;color:${SEC}`)}>{status.msg}</span><br /><span style={css(`font-size:14px;color:${SEC}`)}>잠시 뒤에 다시 열어보세요. 자동으로 계속 다시 시도해요</span></>
+              : waited ? <>시세를 받아오는 중이에요<br /><span style={css(`font-size:14px;color:${SEC}`)}>처음에는 1~2분 걸릴 수 있어요</span></>
+              : '시세를 불러오는 중이에요…'}
           </div>
         ) : rows.map(s => {
           const p = price(s.sym), c = chgOf(s.sym), ix = s.market === 'IX'

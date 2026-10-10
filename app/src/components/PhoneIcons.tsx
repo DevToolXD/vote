@@ -5,14 +5,15 @@ import appstorePng from '../assets/phone/appstore.png'
 import daangnPng from '../assets/phone/daangn.png'
 import upbitPng from '../assets/phone/upbit.png'
 import stocksPng from '../assets/phone/stocks.png'
+import blockPng from '../assets/phone/block.png'
 
 // 앱스토어, 당근마켓, 코인 and 주식 use the real pictures (rounded and cropped to an icon shape);
 // 관리 and 상점 are drawn here.
-const PICTURE: Partial<Record<AppId, string>> = { store: appstorePng, market: daangnPng, coin: upbitPng, stock: stocksPng }
+const PICTURE: Partial<Record<AppId, string>> = { store: appstorePng, market: daangnPng, coin: upbitPng, stock: stocksPng, block: blockPng }
 
 type Tile = { top: string; bottom: string; ink?: string; scale: number; line?: number; glyph: ReactNode }
 
-const TILE: Record<Exclude<AppId, 'store' | 'market' | 'coin' | 'stock'>, Tile> = {
+const TILE: Record<Exclude<AppId, 'store' | 'market' | 'coin' | 'stock' | 'block'>, Tile> = {
   admin: { top: '#7f7de8', bottom: '#5856d6', scale: 0.54, glyph: <path d="M12 3.6 5.5 6v5.4c0 4 2.7 7.2 6.5 8.6 3.8-1.4 6.5-4.6 6.5-8.6V6zM9 12l2.2 2.2L15 10.4" /> },
   shop: { top: '#ff6a86', bottom: '#ff2d55', scale: 0.54, glyph: <><path d="M5.5 8.5h13l-1 11.5h-11z" /><path d="M9 8.5V7a3 3 0 0 1 6 0v1.5" /></> },
 }

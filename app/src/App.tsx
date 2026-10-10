@@ -17,6 +17,7 @@ const AdminScreen = lazy(() => import('./components/AdminScreen').then(m => ({ d
 import { BottomNav } from './components/BottomNav'
 import { PhoneScreen } from './components/PhoneScreen'
 import { StockApp } from './components/StockApp'
+import { BlockBlast } from './components/BlockBlast'
 import type { OpenableApp } from './backend/phone'
 import { EditProfile } from './components/EditProfile'
 import { ShopScreen, type ShopTab } from './components/ShopScreen'
@@ -746,6 +747,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   /** What an app shows on the phone screen. */
   const appView = (app: OpenableApp) => (
     <>
+          {app === 'block' && <BlockBlast />}
           {app === 'stock' && <StockApp db={db} uid={authUser?.uid ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />}
           {(app === 'shop' || app === 'market') && (
             <ShopScreen

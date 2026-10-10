@@ -18,7 +18,7 @@ const FONT = "-apple-system,BlinkMacSystemFont,system-ui,sans-serif"
 const APP_FONT = "'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif"
 const SW = 393, SH = 852, BEZEL = 11
 const DW = SW + BEZEL * 2, DH = SH + BEZEL * 2
-const WALL = 'radial-gradient(90% 48% at 18% 12%,#9dbcec 0%,rgba(157,188,236,0) 72%),radial-gradient(80% 50% at 92% 34%,#4f84cf 0%,rgba(79,132,207,0) 70%),radial-gradient(90% 42% at 22% 74%,#2c3d33 0%,rgba(44,61,51,0) 72%),radial-gradient(80% 40% at 80% 96%,#6f8b45 0%,rgba(111,139,69,0) 70%),#28344a'
+const WALL = 'radial-gradient(120% 16% at 50% 0%,#8faee0 0%,rgba(143,174,224,0) 100%),radial-gradient(90% 48% at 18% 12%,#9dbcec 0%,rgba(157,188,236,0) 72%),radial-gradient(80% 50% at 92% 34%,#4f84cf 0%,rgba(79,132,207,0) 70%),radial-gradient(90% 42% at 22% 74%,#2c3d33 0%,rgba(44,61,51,0) 72%),radial-gradient(80% 40% at 80% 96%,#6f8b45 0%,rgba(111,139,69,0) 70%),#28344a'
 const GLASS = 'background:rgba(255,255,255,0.26);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%)'
 
 const BackChevron = () => (
@@ -141,10 +141,9 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
   const swipe = useRef(0)
 
   const dock: AppId[] = (['shop', 'coin', 'stock'] as StoreApp[]).filter(a => onHome(phone, a))
-  const grid: AppId[] = [...(isAdmin ? ['admin' as const] : []), ...(['market'] as StoreApp[]).filter(a => onHome(phone, a))]
+  const grid: AppId[] = [...(isAdmin ? ['admin' as const] : []), ...(['market', 'block'] as StoreApp[]).filter(a => onHome(phone, a))]
   const inApp = !!shown
-  const dark = shown === 'stock' // 주식 is a black app
-  const light = (inApp && !dark) || view === 'store'
+  const dark = shown === 'stock' || shown === 'block' // 주식 and the game are black apps
   const away = inApp || view !== 'home'
   const backInk = dark ? '#0a84ff' : inApp ? '#007aff' : view === 'store' ? 'var(--ios-blue)' : '#fff'
   const btnInk = dark ? '#fff' : inApp ? '#191f28' : view === 'store' ? 'var(--ios-label)' : '#fff'
@@ -169,7 +168,7 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
           검색
         </button>
-        <div style={css(`flex:none;margin:0 12px calc(var(--phone-bottom) - 8px);padding:17px 12px;border-radius:38px;${GLASS};display:flex;justify-content:space-around;box-sizing:border-box`)}>
+        <div style={css(`flex:none;margin:0 12px calc(var(--phone-bottom) - 20px);padding:17px 12px;border-radius:38px;${GLASS};display:flex;justify-content:space-around;box-sizing:border-box`)}>
           {[...dock, 'store' as AppId].map(a => (
             <button key={a} className="pr-96" onClick={e => launch(a, e.currentTarget)} aria-label={APP_NAME[a]} style={css('background:none;padding:0;display:flex')}>
               <AppIcon app={a} />
@@ -196,12 +195,12 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
           <BackChevron />홈
         </button>
       )}
-      <button className="pr-96" onClick={() => setFull(f => !f)} aria-label={full ? '전체화면 풀기' : '전체화면'} title={full ? '전체화면 풀기' : '전체화면'} style={css(`position:absolute;z-index:60;right:14px;top:calc(var(--phone-top) - 43px);height:36px;min-width:36px;padding:0 ${full ? 14 : 0}px;border-radius:18px;display:flex;align-items:center;justify-content:center;gap:6px;background:${light ? 'rgba(120,120,128,0.2)' : 'rgba(255,255,255,0.26)'};-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);color:${btnInk};font-family:${FONT};font-size:15px;font-weight:600;line-height:20px;transition:background 220ms,color 220ms`)}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          {full ? <path d="M20 10h-6V4M4 14h6v6M14 10l7-7M10 14l-7 7" /> : <path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />}
-        </svg>
-        {full && '전체화면 풀기'}
-      </button>
+      <button className="pr-96" onClick={() => setFull(f => !f)} aria-label={full ? '전체화면 풀기' : '전체화면'} title={full ? '전체화면 풀기' : '전체화면'} style={css(`position:absolute;z-index:60;right:12px;top:calc(var(--phone-top) - 46px);width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:none;color:${btnInk};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45));transition:color 220ms`)}>
+              {/* YouTube's full-screen mark: four corner brackets (out to enter, in to leave) */}
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                {full ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
+              </svg>
+            </button>
       {!full && <span aria-hidden="true" style={css('position:absolute;z-index:70;top:11px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;pointer-events:none')} />}
 
       {/* home indicator: tap or swipe up to go home (full screen has no bar at the bottom) */}
