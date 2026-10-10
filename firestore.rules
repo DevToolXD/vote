@@ -1233,7 +1233,10 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.coin is string
-        && request.resource.data.coin in get(/databases/$(database)/documents/meta/coins).data.syms
+        && (request.resource.data.coin in get(/databases/$(database)/documents/meta/coins).data.syms
+          // 주식 (meta/stocks): bought and sold like a coin, never with leverage
+          || (request.resource.data.side in ['buy', 'sell']
+            && request.resource.data.coin in get(/databases/$(database)/documents/meta/stocks).data.syms))
         && request.resource.data.at == request.time
         && request.resource.data.status == 'open'
         && (request.resource.data.side == 'buy'

@@ -57,8 +57,8 @@ export function describe(r: LedgerRow, nameOf: (uid: string) => string): { icon:
     }
     case 'bet': return { icon: '🎰', text: '몰래 도박장 배팅' }
     case 'betWin': return { icon: '💰', text: '몰래 도박장 2배 당첨' }
-    case 'coinBuy': return { icon: '🪙', text: '코인 구매' }
-    case 'coinSell': return { icon: '🪙', text: '코인 판매' }
+    case 'coinBuy': return { icon: '🪙', text: '코인·주식 구매' }
+    case 'coinSell': return { icon: '🪙', text: '코인·주식 판매' }
     case 'coinRefund': return { icon: '↩️', text: '코인 환불 · 실제 시세로 바뀌어서 돌려받았어요' }
     default: return { icon: '•', text: '포인트 변동' }
   }

@@ -1275,6 +1275,42 @@ async function fakeUpbit() {
   upbitBase = `http://127.0.0.1:${(server.address() as { port: number }).port}`
   return upbitBase
 }
+// ---- a fake Yahoo Finance: the cookie, the crumb, the batch quote and the chart ----
+const FAKE_STOCKS: Record<string, { cur: string; price: number; chg: number }> = {
+  '005930.KS': { cur: 'KRW', price: 70_000, chg: 1.5 },
+  '247540.KQ': { cur: 'KRW', price: 200_000, chg: -2 }, // only known as .KQ: the .KS try must fall through
+  AAPL: { cur: 'USD', price: 200, chg: 1 },
+  'KRW=X': { cur: 'KRW', price: 1400, chg: 0 },
+  '^GSPC': { cur: 'USD', price: 5000, chg: 0.5 },
+}
+let yahooBase = ''
+async function fakeYahoo() {
+  if (yahooBase) return yahooBase
+  const server = createServer((req, res) => {
+    const u = new URL(req.url ?? '/', 'http://x')
+    const json = (v: unknown) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(v))
+    if (u.pathname === '/') return void res.writeHead(404, { 'Set-Cookie': 'A1=abc; Path=/; HttpOnly' }).end()
+    if (!String(req.headers.cookie ?? '').includes('A1=abc')) return void res.writeHead(401).end('no cookie')
+    if (u.pathname === '/v1/test/getcrumb') return void res.writeHead(200, { 'Content-Type': 'text/plain' }).end('crumb123')
+    if (u.searchParams.get('crumb') !== 'crumb123') return void res.writeHead(401).end('no crumb')
+    if (u.pathname === '/v7/finance/quote') {
+      const want = (u.searchParams.get('symbols') ?? '').split(',')
+      return json({ quoteResponse: { result: want.filter(s => FAKE_STOCKS[s]).map(s => ({ symbol: s, currency: FAKE_STOCKS[s].cur, regularMarketPrice: FAKE_STOCKS[s].price, regularMarketChangePercent: FAKE_STOCKS[s].chg, regularMarketPreviousClose: FAKE_STOCKS[s].price / (1 + FAKE_STOCKS[s].chg / 100), regularMarketOpen: FAKE_STOCKS[s].price, regularMarketDayHigh: FAKE_STOCKS[s].price * 1.02, regularMarketDayLow: FAKE_STOCKS[s].price * 0.98, regularMarketVolume: 1234567, fiftyTwoWeekHigh: FAKE_STOCKS[s].price * 1.3, fiftyTwoWeekLow: FAKE_STOCKS[s].price * 0.6, marketCap: FAKE_STOCKS[s].price * 1e6, marketState: 'REGULAR' })), error: null } })
+    }
+    if (u.pathname.startsWith('/v8/finance/chart/')) {
+      const s = decodeURIComponent(u.pathname.slice('/v8/finance/chart/'.length))
+      const f = FAKE_STOCKS[s]
+      if (!f) return json({ chart: { result: null, error: { code: 'Not Found' } } })
+      const ts = Array.from({ length: 40 }, (_, k) => 1_790_000_000 - (39 - k) * 86400)
+      return json({ chart: { result: [{ meta: { currency: f.cur, regularMarketPrice: f.price, chartPreviousClose: f.price / (1 + f.chg / 100) }, timestamp: ts, indicators: { quote: [{ close: ts.map((_, k) => f.price * (0.9 + 0.0025 * k)) }] } }], error: null } })
+    }
+    res.writeHead(404).end()
+  })
+  await new Promise<void>(r => server.listen(0, '127.0.0.1', r))
+  server.unref()
+  yahooBase = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+  return yahooBase
+}
 /** The saved coin list (what the rules check an order's coin against) and "the reset is done". */
 async function seedCoins(reset = true) {
   const str = (v: string) => ({ stringValue: v })
@@ -1290,10 +1326,11 @@ async function kickWorker(ms = 8000) {
   // one worker at a time, like the real thing (the workflow's concurrency group): two filling the same order would race
   for (const old of workers.splice(0)) old.kill()
   const base = await fakeUpbit()
+  const yahoo = await fakeYahoo()
   const w = execFile('node', ['../.github/scripts/send-notifications.mjs'], {
-    env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, UPBIT_BASE: base, RUN_FOR_MS: String(ms), SETTLE_MS: '0', COIN_TICK_MS: '1000' },
+    env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, UPBIT_BASE: base, YAHOO_BASE: yahoo, YAHOO_COOKIE_URL: yahoo + '/', STOCK_TICK_MS: '1000', STOCK_MIN_LIST: '3', RUN_FOR_MS: String(ms), SETTLE_MS: '0', COIN_TICK_MS: '1000' },
   })
-  const say = (d: unknown) => { const t = String(d); if (/Coins reset|Refunding|Coin start|Coin order|Fetching prices/.test(t)) console.log('[worker]', t.trim().slice(0, 240)) }
+  const say = (d: unknown) => { const t = String(d); if (/Coins reset|Refunding|Coin start|Coin order|Fetching prices|Stock/.test(t)) console.log('[worker]', t.trim().slice(0, 240)) }
   w.stdout?.on('data', say); w.stderr?.on('data', say)
   workers.push(w)
   return w
@@ -1736,5 +1773,59 @@ describe('폰 (홈 화면 앱)', () => {
     await rtSet(rtRef(R(a), 'phone/a/apps/market'), false)
     await denied(rtGet(rtRef(R(b), 'phone/a/apps')))
     assert.equal(await rt(a, 'phone/a/apps/market'), false)
+  })
+})
+
+describe('주식', () => {
+  const R = (db: Firestore) => rtdbOf.get(db)!
+  const pts = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
+  test('the worker builds the list from Yahoo, prices US stocks in won, and stocks trade like coins (no leverage)', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    await seedCoins()
+    await grantPoints(admin, ADMIN.uid, 'a', 1_000_000)
+    await kickWorker(40000)
+    // wait for the list (it is saved to meta/stocks before it is published)
+    let list: Record<string, { t: string; n: string; m: string }> | null = null
+    for (let i = 0; i < 60 && !list; i++) { await new Promise(r => setTimeout(r, 500)); list = await rt(a, 'stocks/list').catch(() => null) }
+    assert.ok(list, 'the stock list is published')
+    assert.deepEqual(Object.keys(list!).sort(), ['I_GSPC', 'S_005930', 'S_247540', 'S_AAPL'])
+    assert.equal(list!.S_247540.m, 'KR') // found as .KQ after .KS failed
+    assert.equal(list!.I_GSPC.m, 'IX')
+    // prices: US in won (200 USD × 1400), Korean as they are, an index in its own points
+    let live = null as null | { p: Record<string, number>; fx: number; st: Record<string, string> }
+    for (let i = 0; i < 40 && !live?.p?.S_AAPL; i++) { await new Promise(r => setTimeout(r, 500)); live = await rt(a, 'stocks/live').catch(() => null) }
+    assert.equal(live!.p.S_AAPL, 280_000); assert.equal(live!.p.S_005930, 70_000); assert.equal(live!.p.S_247540, 200_000); assert.equal(live!.p.I_GSPC, 5000)
+    assert.equal(live!.fx, 1400); assert.equal(live!.st.US, 'REGULAR')
+    // an unknown stock, and leverage on a stock, are refused; only the list in meta/stocks counts
+    const ord = (extra: Record<string, unknown>) => { const d = doc(collection(a, 'coinOrders')), b = writeBatch(a); b.set(d, { uid: 'a', coin: 'S_AAPL', side: 'buy', points: 1000, at: serverTimestamp(), status: 'open', ...extra }); b.update(doc(a, 'candidates', 'a'), { spent: increment(1000), lastCoin: d.id }); return b.commit() }
+    await denied(ord({ coin: 'S_NOPE' }))
+    await denied(ord({ side: 'long', lev: 5 }))
+    await denied(ord({ coin: 'I_GSPC' })) // an index is not tradable
+    // buy 100,000P of AAPL: 100000 / 280000 shares; the points leave at once
+    const start = await pts(a, 'a')
+    const bought = buyCoin(a, 'a', 'S_AAPL', 100_000)
+    const r = await bought
+    assert.equal(r.status, 'done'); assert.equal(r.price, 280_000)
+    assert.equal(r.qty, 0.35714285)
+    assert.equal(await pts(a, 'a'), start - 100_000)
+    assert.deepEqual(await rt(a, 'wallets/a/S_AAPL'), { q: 0.35714285, c: 100_000 })
+    // sell it all: floor(qty × price) comes back
+    const sold = await sellCoin(a, 'a', 'S_AAPL', 0.35714285)
+    assert.equal(sold.status, 'done'); assert.equal(sold.points, Math.floor(0.35714285 * 280_000))
+    assert.equal(await pts(a, 'a'), start - 100_000 + Math.floor(0.35714285 * 280_000))
+    // the history: 5 years of closes in won, and the small line
+    const d = await rt(a, 'stocks/d/S_AAPL')
+    assert.equal(d.v.length, 40); assert.equal(d.d.length, 40)
+    assert.ok(Math.abs(d.v[39] - 200 * (0.9 + 0.0025 * 39) * 1400) < 1)
+    assert.equal((await rt(a, 'stocks/spark/S_AAPL')).length, 30)
+    // the trade is on the stock's page for everyone
+    const trades = await rt(a, 'coinTrades/S_AAPL')
+    assert.equal(Object.keys(trades).length, 2)
+  })
+  test('the stock data is read-only for everyone', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    await denied(rtSet(rtRef(R(a), 'stocks/live'), { p: { S_AAPL: 1 } }))
+    await denied(rtSet(rtRef(R(admin), 'stocks/live'), { p: { S_AAPL: 1 } }))
+    assert.ok(await rt(a, 'stocks').then(() => true, () => false))
   })
 })

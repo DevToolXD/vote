@@ -300,8 +300,8 @@ main[data-scroll="page"]{overflow-x:hidden}
 [data-phone]{--ios-bg:#f2f2f7;--ios-card:#ffffff;--ios-label:#000000;--ios-sec:rgba(60,60,67,0.6);--ios-sep:rgba(60,60,67,0.29);--ios-blue:#007aff;--ios-red:#ff3b30;--ios-fill:rgba(120,120,128,0.2)}
 @media (prefers-color-scheme: dark){[data-phone]{--ios-bg:#000000;--ios-card:#1c1c1e;--ios-label:#ffffff;--ios-sec:rgba(235,235,245,0.6);--ios-sep:rgba(84,84,88,0.6);--ios-blue:#0a84ff;--ios-red:#ff453a;--ios-fill:rgba(120,120,128,0.36)}}
 /* 폰: an app zooms out of its icon (and back into it); its screen scrolls inside the phone. */
-@keyframes appOpen{from{transform:scale(0.16);opacity:0;border-radius:90px}to{transform:scale(1);opacity:1;border-radius:53px}}
-@keyframes appClose{from{transform:scale(1);opacity:1;border-radius:53px}to{transform:scale(0.16);opacity:0;border-radius:90px}}
+@keyframes appOpen{from{transform:scale(0.16);opacity:0;border-radius:90px}to{transform:scale(1);opacity:1;border-radius:var(--phone-r,53px)}}
+@keyframes appClose{from{transform:scale(1);opacity:1;border-radius:var(--phone-r,53px)}to{transform:scale(0.16);opacity:0;border-radius:90px}}
 [data-phone-scroll]{overscroll-behavior:contain;-webkit-overflow-scrolling:touch;overflow-x:hidden}
 [data-phone-scroll]>*{flex-shrink:0}
 @media (prefers-reduced-motion: reduce){.phone-app{animation-name:fade !important}}

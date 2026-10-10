@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
 import { APP_NAME, onHome, watchPhone, type AppId, type OpenableApp, type PhoneState, type StoreApp } from '../backend/phone'
@@ -109,6 +110,14 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
   const [shown, setShown] = useState<OpenableApp | null>(app)
   const [closing, setClosing] = useState(false)
   const [origin, setOrigin] = useState({ x: SW / 2, y: SH * 0.6 })
+  // once an app has finished opening, the home screen under it is hidden (its glass dock painted
+  // outside the rounded corners)
+  const [covered, setCovered] = useState(false)
+  useEffect(() => {
+    if (!shown || closing) { setCovered(false); return }
+    const t = setTimeout(() => setCovered(true), 480)
+    return () => clearTimeout(t)
+  }, [shown, closing])
   useEffect(() => {
     if (app) { setShown(app); setClosing(false); return }
     if (!shown) return
@@ -131,86 +140,104 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
   const goHome = () => { setView('home'); if (app) onClose() }
   const swipe = useRef(0)
 
-  const dock: AppId[] = (['shop', 'coin'] as StoreApp[]).filter(a => onHome(phone, a))
+  const dock: AppId[] = (['shop', 'coin', 'stock'] as StoreApp[]).filter(a => onHome(phone, a))
   const grid: AppId[] = [...(isAdmin ? ['admin' as const] : []), ...(['market'] as StoreApp[]).filter(a => onHome(phone, a))]
   const inApp = !!shown
-  const light = inApp || view === 'store'
+  const dark = shown === 'stock' // 주식 is a black app
+  const light = (inApp && !dark) || view === 'store'
   const away = inApp || view !== 'home'
-  const backInk = inApp ? '#007aff' : view === 'store' ? 'var(--ios-blue)' : '#fff'
-  const btnInk = inApp ? '#191f28' : view === 'store' ? 'var(--ios-label)' : '#fff'
-  const indicator = inApp ? '#000' : view === 'store' ? 'var(--ios-label)' : '#fff'
+  const backInk = dark ? '#0a84ff' : inApp ? '#007aff' : view === 'store' ? 'var(--ios-blue)' : '#fff'
+  const btnInk = dark ? '#fff' : inApp ? '#191f28' : view === 'store' ? 'var(--ios-label)' : '#fff'
+  const indicator = dark ? '#fff' : inApp ? '#000' : view === 'store' ? 'var(--ios-label)' : '#fff'
 
-  const side = (pos: string) => <span aria-hidden="true" style={css(`position:absolute;width:3px;border-radius:2px;background:#2b2b30;${pos}`)} />
+  const side = (pos: string) => <span aria-hidden="true" style={css(`position:absolute;z-index:95;width:3px;border-radius:2px;background:#2b2b30;${pos}`)} />
   const vars = full
     ? '--phone-top:calc(env(safe-area-inset-top) + 48px);--phone-bottom:calc(env(safe-area-inset-bottom) + 34px);--phone-r:0px'
     : '--phone-top:54px;--phone-bottom:34px;--phone-r:53px'
   const screenBox = full
     ? 'position:fixed;top:0;left:0;right:0;bottom:0;max-width:var(--app-w);margin:0 auto;z-index:150'
-    : `position:relative;width:${SW}px;height:${SH}px;border-radius:53px;clip-path:inset(0 round 53px)`
+    : `position:relative;width:${SW}px;height:${SH}px;border-radius:53px;contain:paint`
+
+  const screenEl = (
+    <div ref={screen} data-phone onContextMenu={e => e.preventDefault()} style={css(`${screenBox};overflow:hidden;background:${WALL};color:#fff;${vars}`)}>
+      {/* home screen */}
+      <div style={css(`position:absolute;inset:0;display:flex;flex-direction:column;padding-top:var(--phone-top);box-sizing:border-box;visibility:${covered ? 'hidden' : 'visible'}`)}>
+        <div style={css('flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,72px);justify-content:space-between;align-content:start;row-gap:24px;padding:30px 21px 0;box-sizing:border-box')}>
+          {grid.map(a => <AppTile key={a} app={a} badge={a === 'admin' ? adminUnread : 0} onOpen={el => launch(a, el)} />)}
+        </div>
+        <button className="pr-96" onClick={() => setView('search')} aria-label="검색" style={css(`flex:none;align-self:center;height:40px;margin:0 0 14px;padding:0 24px;display:flex;align-items:center;gap:6px;border-radius:20px;${GLASS};color:#fff;font-family:${FONT};font-size:17px;line-height:22px`)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
+          검색
+        </button>
+        <div style={css(`flex:none;margin:0 12px calc(var(--phone-bottom) - 8px);padding:17px 12px;border-radius:38px;${GLASS};display:flex;justify-content:space-around;box-sizing:border-box`)}>
+          {[...dock, 'store' as AppId].map(a => (
+            <button key={a} className="pr-96" onClick={e => launch(a, e.currentTarget)} aria-label={APP_NAME[a]} style={css('background:none;padding:0;display:flex')}>
+              <AppIcon app={a} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {view === 'store' && <AppStore db={db} uid={uid} phone={phone} onOpen={a => launch(a)} onLogin={onLogin} onToast={onToast} />}
+      {view === 'search' && <SearchView phone={phone} isAdmin={isAdmin} onOpen={a => launch(a)} onClose={() => setView('home')} />}
+
+      {/* the open app */}
+      {shown && (
+        <div className="phone-app" data-phone-app style={css(`position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;padding-top:var(--phone-top);box-sizing:border-box;background:${dark ? '#000000' : '#ffffff'};border-radius:${full ? 0 : 53}px;overflow:hidden;color:${dark ? '#ffffff' : '#191f28'};font-family:${APP_FONT};word-break:keep-all;transform-origin:${origin.x}px ${origin.y}px;animation:${closing ? 'appClose' : 'appOpen'} ${closing ? 280 : 420}ms cubic-bezier(0.32,0.72,0,1) both`)}>
+          <div data-phone-scroll style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;padding-bottom:var(--phone-bottom)')}>
+            {renderApp(shown)}
+          </div>
+        </div>
+      )}
+
+      {/* top corners: ‹ 홈 on the left, full screen on the right (no clock, Wi-Fi or battery) */}
+      {away && (
+        <button className="pr-96" onClick={goHome} aria-label="뒤로 가기" style={css(`position:absolute;z-index:60;left:8px;top:calc(var(--phone-top) - 47px);height:44px;padding:0 10px;display:flex;align-items:center;gap:3px;background:none;color:${backInk};font-family:${FONT};font-size:17px;line-height:22px;transition:color 220ms`)}>
+          <BackChevron />홈
+        </button>
+      )}
+      <button className="pr-96" onClick={() => setFull(f => !f)} aria-label={full ? '전체화면 풀기' : '전체화면'} title={full ? '전체화면 풀기' : '전체화면'} style={css(`position:absolute;z-index:60;right:14px;top:calc(var(--phone-top) - 43px);height:36px;min-width:36px;padding:0 ${full ? 14 : 0}px;border-radius:18px;display:flex;align-items:center;justify-content:center;gap:6px;background:${light ? 'rgba(120,120,128,0.2)' : 'rgba(255,255,255,0.26)'};-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);color:${btnInk};font-family:${FONT};font-size:15px;font-weight:600;line-height:20px;transition:background 220ms,color 220ms`)}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          {full ? <path d="M20 10h-6V4M4 14h6v6M14 10l7-7M10 14l-7 7" /> : <path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />}
+        </svg>
+        {full && '전체화면 풀기'}
+      </button>
+      {!full && <span aria-hidden="true" style={css('position:absolute;z-index:70;top:11px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;pointer-events:none')} />}
+
+      {/* home indicator: tap or swipe up to go home (full screen has no bar at the bottom) */}
+      {!full && (
+        <button aria-label="홈으로" onClick={goHome}
+          onPointerDown={e => { swipe.current = e.clientY }}
+          onPointerUp={e => { if (swipe.current - e.clientY > 24 * (full ? 1 : scale)) goHome() }}
+          style={css('position:absolute;z-index:80;left:50%;bottom:0;margin-left:-110px;width:220px;height:var(--phone-bottom);background:none;touch-action:none;display:flex;align-items:flex-end;justify-content:center;padding-bottom:calc(var(--phone-bottom) - 26px);box-sizing:border-box')}>
+          <span style={css(`width:134px;height:5px;border-radius:3px;background:${indicator};opacity:0.9;transition:background 220ms`)} />
+        </button>
+      )}
+    </div>
+  )
 
   return (
     <div ref={box} style={css('height:100%;min-height:0;display:flex;align-items:center;justify-content:center;background:#f2f4f6;overflow:hidden')}>
       <div style={{ width: DW * scale, height: DH * scale, flex: 'none' }}>
-        <div data-phone style={{ ...css(`position:relative;width:${DW}px;height:${DH}px;box-sizing:border-box;padding:${full ? 0 : BEZEL}px;border-radius:${full ? 0 : 64}px;background:${full ? 'transparent' : '#0b0b0d'};box-shadow:${full ? 'none' : 'inset 0 0 0 1.5px #44444a,0 8px 24px rgba(0,0,0,0.16)'};transform-origin:0 0;font-family:${FONT}`), transform: full ? 'none' : `scale(${scale})` }}>
+        <div data-phone style={{ ...css(`position:relative;width:${DW}px;height:${DH}px;box-sizing:border-box;padding:${full ? 0 : BEZEL}px;border-radius:${full ? 0 : 64}px;background:${full ? 'transparent' : '#0b0b0d'};box-shadow:${full ? 'none' : 'inset 0 0 0 1.5px #44444a'};transform-origin:0 0;font-family:${FONT}`), transform: full ? 'none' : `scale(${scale})` }}>
           {!full && <>
             {side('left:-3px;top:120px;height:26px;border-radius:2px 0 0 2px')}
             {side('left:-3px;top:178px;height:52px;border-radius:2px 0 0 2px')}
             {side('left:-3px;top:244px;height:52px;border-radius:2px 0 0 2px')}
             {side('right:-3px;top:210px;height:84px;border-radius:0 2px 2px 0')}
           </>}
-          <div ref={screen} onContextMenu={e => e.preventDefault()} style={css(`${screenBox};overflow:hidden;isolation:isolate;background:${WALL};color:#fff;${vars}`)}>
-            {/* home screen */}
-            <div style={css('position:absolute;inset:0;display:flex;flex-direction:column;padding-top:var(--phone-top);box-sizing:border-box')}>
-              <div style={css('flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,72px);justify-content:space-between;align-content:start;row-gap:24px;padding:30px 21px 0;box-sizing:border-box')}>
-                {grid.map(a => <AppTile key={a} app={a} badge={a === 'admin' ? adminUnread : 0} onOpen={el => launch(a, el)} />)}
-              </div>
-              <button className="pr-96" onClick={() => setView('search')} aria-label="검색" style={css(`flex:none;align-self:center;height:40px;margin:0 0 14px;padding:0 24px;display:flex;align-items:center;gap:6px;border-radius:20px;${GLASS};color:#fff;font-family:${FONT};font-size:17px;line-height:22px`)}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
-                검색
-              </button>
-              <div style={css(`flex:none;margin:0 12px calc(var(--phone-bottom) - 8px);padding:17px 12px;border-radius:38px;${GLASS};display:flex;justify-content:space-around;box-sizing:border-box`)}>
-                {[...dock, 'store' as AppId].map(a => (
-                  <button key={a} className="pr-96" onClick={e => launch(a, e.currentTarget)} aria-label={APP_NAME[a]} style={css('background:none;padding:0;display:flex')}>
-                    <AppIcon app={a} />
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {view === 'store' && <AppStore db={db} uid={uid} phone={phone} onOpen={a => launch(a)} onLogin={onLogin} onToast={onToast} />}
-            {view === 'search' && <SearchView phone={phone} isAdmin={isAdmin} onOpen={a => launch(a)} onClose={() => setView('home')} />}
-
-            {/* the open app */}
-            {shown && (
-              <div className="phone-app" data-phone-app style={css(`position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;padding-top:var(--phone-top);box-sizing:border-box;background:#ffffff;border-radius:${full ? 0 : 53}px;overflow:hidden;color:#191f28;font-family:${APP_FONT};word-break:keep-all;transform-origin:${origin.x}px ${origin.y}px;animation:${closing ? 'appClose' : 'appOpen'} ${closing ? 280 : 420}ms cubic-bezier(0.32,0.72,0,1) both`)}>
-                <div data-phone-scroll style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;padding-bottom:var(--phone-bottom)')}>
-                  {renderApp(shown)}
-                </div>
-              </div>
-            )}
-
-            {/* top corners: ‹ 홈 on the left, full screen on the right (no clock, Wi-Fi or battery) */}
-            {away && (
-              <button className="pr-96" onClick={goHome} aria-label="뒤로 가기" style={css(`position:absolute;z-index:60;left:8px;top:calc(var(--phone-top) - 47px);height:44px;padding:0 10px;display:flex;align-items:center;gap:3px;background:none;color:${backInk};font-family:${FONT};font-size:17px;line-height:22px;transition:color 220ms`)}>
-                <BackChevron />홈
-              </button>
-            )}
-            <button className="pr-96" onClick={() => setFull(f => !f)} aria-label={full ? '전체화면 풀기' : '전체화면'} title={full ? '전체화면 풀기' : '전체화면'} style={css(`position:absolute;z-index:60;right:14px;top:calc(var(--phone-top) - 43px);height:36px;min-width:36px;padding:0 ${full ? 14 : 0}px;border-radius:18px;display:flex;align-items:center;justify-content:center;gap:6px;background:${light ? 'rgba(120,120,128,0.2)' : 'rgba(255,255,255,0.26)'};-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);color:${btnInk};font-family:${FONT};font-size:15px;font-weight:600;line-height:20px;transition:background 220ms,color 220ms`)}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                {full ? <path d="M20 10h-6V4M4 14h6v6M14 10l7-7M10 14l-7 7" /> : <path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />}
-              </svg>
-              {full && '전체화면 풀기'}
-            </button>
-            {!full && <span aria-hidden="true" style={css('position:absolute;z-index:70;top:11px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;pointer-events:none')} />}
-
-            {/* home indicator: tap or swipe up to go home */}
-            <button aria-label="홈으로" onClick={goHome}
-              onPointerDown={e => { swipe.current = e.clientY }}
-              onPointerUp={e => { if (swipe.current - e.clientY > 24 * (full ? 1 : scale)) goHome() }}
-              style={css('position:absolute;z-index:80;left:50%;bottom:0;margin-left:-110px;width:220px;height:var(--phone-bottom);background:none;touch-action:none;display:flex;align-items:flex-end;justify-content:center;padding-bottom:calc(var(--phone-bottom) - 26px);box-sizing:border-box')}>
-              <span style={css(`width:134px;height:5px;border-radius:3px;background:${indicator};opacity:0.9;transition:background 220ms`)} />
-            </button>
-          </div>
+          {full ? createPortal(screenEl, document.getElementById('overlay-root') ?? document.body) : screenEl}
+          {/* The bezel's inner corners drawn over the screen: whatever a busy layer paints outside the
+              screen's rounded corners (some browsers let animated layers out of the clip) is covered. */}
+          {!full && (
+            <>
+              <span aria-hidden="true" style={css('position:absolute;inset:0;border-radius:64px;overflow:hidden;pointer-events:none;z-index:90')}>
+                <span style={css(`position:absolute;inset:${BEZEL}px;border-radius:53px;box-shadow:0 0 0 40px #0b0b0d`)} />
+              </span>
+              {/* and outside the device: the page colour, over anything that got past the corners */}
+              <span aria-hidden="true" style={css('position:absolute;inset:0;border-radius:64px;box-shadow:0 0 0 40px #f2f4f6;pointer-events:none;z-index:91')} />
+            </>
+          )}
         </div>
       </div>
     </div>

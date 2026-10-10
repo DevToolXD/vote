@@ -330,12 +330,16 @@
         ".write": false
       }
     }
+    ,"stocks": {
+      ".read": "auth != null",
+      ".write": false
+    }
     ,"phone": {
       "catalog": {
         ".read": "auth != null",
         "$app": {
           ".write": "auth != null && (auth.token.email === 'admin@vote.local' || auth.token.admin === true)",
-          ".validate": "newData.isBoolean() && ($app === 'shop' || $app === 'market' || $app === 'coin')"
+          ".validate": "newData.isBoolean() && ($app === 'shop' || $app === 'market' || $app === 'coin' || $app === 'stock')"
         }
       },
       "$uid": {
@@ -343,7 +347,7 @@
         "apps": {
           "$app": {
             ".write": "auth != null && auth.uid === $uid",
-            ".validate": "newData.isBoolean() && ($app === 'shop' || $app === 'market' || $app === 'coin')"
+            ".validate": "newData.isBoolean() && ($app === 'shop' || $app === 'market' || $app === 'coin' || $app === 'stock')"
           }
         }
       }

@@ -7,22 +7,23 @@ import { R } from './messages'
 //   phone/{uid}/apps/{app}  true | false — set from 앱스토어; missing = installed (the default)
 // 관리 (admin only) and 앱스토어 are always there, so they are never stored.
 
-export type StoreApp = 'shop' | 'market' | 'coin'
+export type StoreApp = 'shop' | 'market' | 'coin' | 'stock'
 export type AppId = StoreApp | 'admin' | 'store'
 /** Apps that open a screen (앱스토어 opens inside 폰 itself). */
 export type OpenableApp = Exclude<AppId, 'store'>
 
-export const STORE_APPS: StoreApp[] = ['shop', 'market', 'coin']
-export const APP_NAME: Record<AppId, string> = { admin: '관리', store: '앱스토어', shop: '상점', market: '당근마켓', coin: '코인' }
+export const STORE_APPS: StoreApp[] = ['shop', 'market', 'coin', 'stock']
+export const APP_NAME: Record<AppId, string> = { admin: '관리', store: '앱스토어', shop: '상점', market: '당근마켓', coin: '코인', stock: '주식' }
 /** 앱스토어 sections: 당근마켓 is filed under 상점. */
 export const APP_GROUPS: { title: string; apps: StoreApp[] }[] = [
   { title: '상점', apps: ['shop', 'market'] },
-  { title: '투자', apps: ['coin'] },
+  { title: '투자', apps: ['coin', 'stock'] },
 ]
 export const APP_DESC: Record<StoreApp, string> = {
   shop: '포인트로 프레임, 이름표, 막대 스킨을 사요',
   market: '가진 아이템을 사람들과 사고팔아요',
   coin: '실제 시세로 코인을 사고팔아요',
+  stock: '국내·해외 주식을 실제 시세로 사고팔아요',
 }
 
 export type PhoneState = { mine: Partial<Record<StoreApp, boolean>>; catalog: Partial<Record<StoreApp, boolean>> }

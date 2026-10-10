@@ -494,6 +494,7 @@ import { execFile } from 'node:child_process'
 import { cert, initializeApp } from 'firebase-admin/app'
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore'
 import { getDatabase, ServerValue } from 'firebase-admin/database'
+import { INDICES, KR, STOCKS_VER, US } from './stocks-list.mjs'
 
 if (LOCAL) process.env.FIRESTORE_EMULATOR_HOST = new URL(FS).host
 if (LOCAL) process.env.FIREBASE_DATABASE_EMULATOR_HOST ??= '127.0.0.1:9000'
@@ -850,6 +851,188 @@ async function coinTick() {
   }
   await rdb.ref().update(up)
 }
+
+// ---- 주식: domestic and foreign stocks (Yahoo Finance), traded with points — 1P = 1원 ----
+// Prices come from Yahoo's quote endpoint (one answer for the whole list; a cookie + crumb are
+// needed) every STOCK_TICK_MS. A US stock's dollar price is turned into won with the live USD/KRW
+// rate (Yahoo's KRW=X), so the price shown IS the number of points one share costs. If the batch
+// answer fails, a rotating slice is priced one by one with the chart endpoint instead.
+// The list (meta/stocks, so the rules can check an order) is built once: Korean codes are tried as
+// .KS and then .KQ and anything Yahoo does not know is left out. Ids are `S_` + ticker or code
+// (never clashing with a coin) and `I_` + name for the indices (shown, not traded).
+//   stocks/list/{id}    { t: ticker, n: Korean name, m: 'KR' | 'US' | 'IX', r: order }
+//   stocks/live         { at, fx, st: { KR, US } market states, p: { id: points }, chg: { id: change since yesterday } }
+//   stocks/info/{id}    { o, h, l, pc, v, hi, lo, cap, st }   open, high, low, previous close, volume, 52 w high / low, market cap
+//   stocks/spark/{id}   [last 30 daily closes]
+//   stocks/d/{id}       { d: [days since 1970], v: [closes] }  5 years of daily closes
+//   stocks/h/{id}/{minute ms} = price                           24 h of changes (the 1-day chart)
+// Orders are the coin ones (coinOrders, wallets, coinTrades): fillCoinOrder prices a `S_` coin from
+// here, and only while the last good quote is recent.
+const YAHOO = process.env.YAHOO_BASE || 'https://query1.finance.yahoo.com'
+const YAHOO_COOKIE = process.env.YAHOO_COOKIE_URL || 'https://fc.yahoo.com'
+const STOCK_TICK_MS = Number(process.env.STOCK_TICK_MS ?? 30_000)
+const STOCK_STALE_MS = 15 * 60_000
+const STOCK_MIN_LIST = Number(process.env.STOCK_MIN_LIST ?? 20) // fewer than this in the answer: not a real list
+const STOCK_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+let stockList = null // [{ sym, y: Yahoo symbol, t, n, m }]
+let stockTradable = new Set()
+const stockPrices = {}, stockChg = {}, stockInfo = {}, stockLastSample = {}
+let stockFx = 0, stockOkAt = 0, stockAt = 0, stockSlot = 0, stockInitAt = 0, stockWarned = 0, stockRot = 0, stockInfoSig = ''
+let stockState = {}
+let stockDailyBusy = false, stockDailyAt = 0, stockDailyTry = 0
+let ySession = null
+const num = v => (Number.isFinite(v) ? sig(v) : 0)
+async function yahooSession() {
+  if (ySession) return ySession
+  const r = await fetch(YAHOO_COOKIE, { redirect: 'manual', headers: { 'User-Agent': STOCK_UA } })
+  const cookie = (r.headers.getSetCookie?.() ?? []).map(c => c.split(';')[0]).join('; ')
+  const c = await fetch(`${YAHOO}/v1/test/getcrumb`, { headers: { 'User-Agent': STOCK_UA, Cookie: cookie } })
+  const crumb = (await c.text()).trim()
+  if (!c.ok || !crumb || crumb.length > 60 || crumb.includes('<')) throw new Error(`Yahoo crumb → ${c.status}`)
+  return (ySession = { cookie, crumb })
+}
+async function yahoo(path, again = true) {
+  const ses = await yahooSession()
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 10_000)
+  try {
+    const r = await fetch(`${YAHOO}${path}${path.includes('?') ? '&' : '?'}crumb=${encodeURIComponent(ses.crumb)}`, { signal: ctl.signal, headers: { 'User-Agent': STOCK_UA, Accept: 'application/json', Cookie: ses.cookie } })
+    if ((r.status === 401 || r.status === 403 || r.status === 429) && again) { ySession = null; await new Promise(res => setTimeout(res, 1500)); return yahoo(path, false) }
+    if (!r.ok) throw new Error(`Yahoo ${path.slice(0, 40)} → ${r.status}`)
+    return await r.json()
+  } finally { clearTimeout(t) }
+}
+async function yahooQuotes(symbols) {
+  const out = new Map()
+  for (let i = 0; i < symbols.length; i += 100) {
+    const j = await yahoo(`/v7/finance/quote?symbols=${encodeURIComponent(symbols.slice(i, i + 100).join(','))}`)
+    for (const q of j?.quoteResponse?.result ?? []) out.set(q.symbol, q)
+  }
+  return out
+}
+const quoteOk = q => q && q.regularMarketPrice > 0
+/** The chart endpoint's meta as a quote (the fallback when the batch answer fails). */
+async function chartQuote(y) {
+  const m = (await yahoo(`/v8/finance/chart/${encodeURIComponent(y)}?range=1d&interval=1d`))?.chart?.result?.[0]?.meta
+  if (!m) return null
+  const prev = m.chartPreviousClose ?? m.previousClose
+  return { symbol: y, currency: m.currency, regularMarketPrice: m.regularMarketPrice, regularMarketPreviousClose: prev, regularMarketChangePercent: prev > 0 ? ((m.regularMarketPrice - prev) / prev) * 100 : 0, regularMarketDayHigh: m.regularMarketDayHigh, regularMarketDayLow: m.regularMarketDayLow, regularMarketVolume: m.regularMarketVolume, fiftyTwoWeekHigh: m.fiftyTwoWeekHigh, fiftyTwoWeekLow: m.fiftyTwoWeekLow }
+}
+/** The stock list: from meta/stocks if it is the current version, else built from Yahoo (and saved). */
+async function loadStockList() {
+  const doc = await fdb.doc('meta/stocks').get()
+  if (doc.exists && doc.get('ver') === STOCKS_VER && doc.get('list')?.length) stockList = doc.get('list')
+  else {
+    const q = await yahooQuotes([...KR.map(([c]) => c + '.KS'), ...US.map(([t]) => t), ...INDICES.map(([t]) => t), 'KRW=X'])
+    const kq = KR.filter(([c]) => !quoteOk(q.get(c + '.KS'))).map(([c]) => c + '.KQ')
+    if (kq.length) for (const [k, v] of await yahooQuotes(kq)) q.set(k, v)
+    if (!quoteOk(q.get('KRW=X'))) throw new Error('No USD/KRW rate yet')
+    stockList = []
+    for (const [c, n] of KR) { const y = quoteOk(q.get(c + '.KS')) ? c + '.KS' : c + '.KQ'; if (quoteOk(q.get(y))) stockList.push({ sym: 'S_' + c, y, t: c, n, m: 'KR' }) }
+    for (const [t, n] of US) if (quoteOk(q.get(t))) stockList.push({ sym: 'S_' + t, y: t, t, n, m: 'US' })
+    for (const [y, t, n] of INDICES) if (quoteOk(q.get(y))) stockList.push({ sym: 'I_' + y.replace(/[^A-Za-z0-9]/g, ''), y, t, n, m: 'IX' })
+    if (stockList.length < STOCK_MIN_LIST) { stockList = null; throw new Error('Too few stock quotes to build the list') }
+    await fdb.doc('meta/stocks').set({ ver: STOCKS_VER, list: stockList, syms: stockList.filter(s => s.m !== 'IX').map(s => s.sym), at: FieldValue.serverTimestamp() })
+  }
+  stockTradable = new Set(stockList.filter(s => s.m !== 'IX').map(s => s.sym))
+  notice(`Stocks: ${stockList.filter(s => s.m === 'KR').length} Korean, ${stockList.filter(s => s.m === 'US').length} US, ${stockList.filter(s => s.m === 'IX').length} indices listed.`)
+  await rdb.ref('stocks/list').set(Object.fromEntries(stockList.map((s, i) => [s.sym, { t: s.t, n: s.n, m: s.m, r: i + 1 }])))
+}
+/** One quote → price (points), change and the small facts; `rate` is won per unit of its currency. */
+function applyStock(s, x) {
+  const rate = s.m === 'IX' ? 1 : x.currency === 'KRW' ? 1 : x.currency === 'USD' ? stockFx : 0
+  if (!quoteOk(x) || !rate) return false
+  stockPrices[s.sym] = sig(x.regularMarketPrice * rate)
+  stockChg[s.sym] = Number(((x.regularMarketChangePercent ?? 0) / 100).toFixed(5))
+  stockInfo[s.sym] = { o: num(x.regularMarketOpen * rate), h: num(x.regularMarketDayHigh * rate), l: num(x.regularMarketDayLow * rate), pc: num(x.regularMarketPreviousClose * rate), v: Math.round(x.regularMarketVolume ?? 0) || 0, hi: num(x.fiftyTwoWeekHigh * rate), lo: num(x.fiftyTwoWeekLow * rate), cap: x.marketCap ? Math.round(x.marketCap * rate) : 0, st: x.marketState ?? '' }
+  if (x.marketState && s.m !== 'IX') stockState[s.m] = x.marketState
+  return true
+}
+async function fetchStockPrices() {
+  const q = await yahooQuotes([...stockList.map(s => s.y), 'KRW=X'])
+  if (quoteOk(q.get('KRW=X'))) stockFx = q.get('KRW=X').regularMarketPrice
+  let n = 0
+  for (const s of stockList) if (applyStock(s, q.get(s.y))) n++
+  if (!n) throw new Error('No stock prices in the answer')
+  stockOkAt = Date.now()
+}
+/** The batch answer failed: price a rotating slice of the list one by one. */
+async function fetchStockSlice() {
+  if (!stockFx) { const fx = await chartQuote('KRW=X'); if (quoteOk(fx)) stockFx = fx.regularMarketPrice; else throw new Error('No USD/KRW rate') }
+  const slice = stockList.slice(stockRot, stockRot + 40)
+  stockRot = stockRot + 40 >= stockList.length ? 0 : stockRot + 40
+  let n = 0
+  for (const s of slice) { const x = await chartQuote(s.y).catch(() => null); if (x && applyStock(s, x)) n++ }
+  if (n) stockOkAt = Date.now()
+}
+/** 5 years of daily closes per stock (and the small lines for the list): refreshed about daily. */
+async function stockDaily() {
+  if (stockDailyBusy || !stockList || !stockFx) return
+  stockDailyBusy = true
+  try {
+    const spark = {}
+    let i = 0, ok = 0
+    const work = async () => {
+      while (i < stockList.length) {
+        const s = stockList[i++]
+        try {
+          const r = (await yahoo(`/v8/finance/chart/${encodeURIComponent(s.y)}?range=5y&interval=1d`))?.chart?.result?.[0]
+          const rate = s.m === 'IX' ? 1 : r?.meta?.currency === 'KRW' ? 1 : r?.meta?.currency === 'USD' ? stockFx : 0
+          const close = r?.indicators?.quote?.[0]?.close ?? []
+          const d = [], v = []
+          ;(r?.timestamp ?? []).forEach((t, k) => { if (close[k] > 0 && rate) { d.push(Math.floor(t / 86400)); v.push(num(close[k] * rate)) } })
+          if (v.length < 2) continue
+          await rdb.ref(`stocks/d/${s.sym}`).set({ d, v })
+          spark[s.sym] = v.slice(-30)
+          ok++
+        } catch (e) { /* one stock's history failing leaves it as it was */ }
+      }
+    }
+    await Promise.all([work(), work(), work(), work()])
+    if (ok) { await rdb.ref('stocks/spark').update(spark); stockDailyAt = Date.now(); await rdb.ref('stocks/dmeta').set({ at: stockDailyAt }) }
+  } finally { stockDailyBusy = false }
+}
+async function stockInit() {
+  await loadStockList()
+  await fetchStockPrices()
+  stockDailyAt = (await rdb.ref('stocks/dmeta/at').once('value')).val() ?? 0
+  if (Date.now() - stockDailyAt > 20 * 3600_000) { stockDailyTry = Date.now(); stockDaily().catch(e => warn('Stock history failed: ' + e.message)) }
+}
+async function stockTick() {
+  if (!stockList) {
+    // the start-up didn't finish (Yahoo unreachable?): try again every 30 seconds
+    if (Date.now() - stockInitAt > 30_000) {
+      stockInitAt = Date.now()
+      await stockInit().catch(e => { if (stockInitAt - stockWarned > 5 * 60_000) { stockWarned = stockInitAt; warn('Stock start failed (retrying every 30 s): ' + e.message) } })
+    }
+    return
+  }
+  const now = Date.now()
+  if (now - stockAt < STOCK_TICK_MS) return
+  stockAt = now
+  await fetchStockPrices().catch(async e => {
+    if (now - stockWarned > 5 * 60_000) { stockWarned = now; warn('Fetching stock prices failed (trying them one by one): ' + e.message) }
+    await fetchStockSlice().catch(() => {})
+  })
+  if (!stockOkAt) return
+  // the daily history again after 20 hours (a failed try waits an hour)
+  if (now - stockDailyAt > 20 * 3600_000 && now - stockDailyTry > 3600_000) { stockDailyTry = now; stockDaily().catch(e => warn('Stock history failed: ' + e.message)) }
+  const p = {}, chg = {}
+  for (const s of stockList) if (stockPrices[s.sym]) { p[s.sym] = stockPrices[s.sym]; chg[s.sym] = stockChg[s.sym] ?? 0 }
+  const up = { 'stocks/live': { at: stockOkAt, fx: Math.round(stockFx * 100) / 100, st: stockState, p, chg } }
+  const infoSig = JSON.stringify(stockInfo)
+  if (infoSig !== stockInfoSig) { stockInfoSig = infoSig; up['stocks/info'] = stockInfo }
+  // the 1-day chart: a price is stored (one a minute) only when it changed
+  const slot = Math.floor(now / 60_000) * 60_000
+  if (slot !== stockSlot) {
+    for (const s of stockList) {
+      const v = p[s.sym]
+      if (v && stockLastSample[s.sym] !== v) { up[`stocks/h/${s.sym}/${slot}`] = v; stockLastSample[s.sym] = v }
+      for (let k = 0; k < (stockSlot ? Math.min(40, (slot - stockSlot) / 60_000) : 1); k++) up[`stocks/h/${s.sym}/${slot - COIN_KEEP_MS - k * 60_000}`] = null
+    }
+    stockSlot = slot
+  }
+  await rdb.ref().update(up)
+}
 // 거래 내역 for everyone (coinTrades/{coin}/{id} = who, side, points, qty, price): the newest 200
 // per coin are kept; the app shows the latest ones on each coin's page.
 const tradeWrites = new Map()
@@ -867,10 +1050,13 @@ async function recordTrade(id, o, price, qty, points) {
   }
 }
 async function fillCoinOrder(id, o) {
-  const price = coinPrices?.[o.coin]
+  const isStock = o.coin.startsWith('S_')
+  // a stock is priced from the last good quote, and only while that is recent
+  const price = isStock ? (Date.now() - stockOkAt < STOCK_STALE_MS ? stockPrices[o.coin] : undefined) : coinPrices?.[o.coin]
   const fail = reason => fdb.doc(`coinOrders/${id}`).update({ status: 'failed', reason, doneAt: FieldValue.serverTimestamp() })
+  if (isStock && o.side !== 'buy' && o.side !== 'sell') return fail('no-leverage') // liquidation only watches coins
   if (o.side === 'close') return fillClose(id, o, fail)
-  if (!price) return
+  if (!price) return 'retry'
   const filled = (await rdb.ref(`coinFills/${id}`).once('value')).val()
   if (o.side === 'long') {
     // 레버리지: the margin is already paid (coinBuy rules); the position is size = margin × lev
@@ -931,9 +1117,11 @@ async function fillClose(id, o, fail) {
   await recordTrade(id, { uid: o.uid, coin: pos.sym, side: 'sell' }, price, pos.qty, points).catch(e => warn('Recording a trade failed: ' + e.message))
 }
 async function fillCoinOrders() {
-  for (const [id, o] of coinOrders) {
+  for (const [id, o] of [...coinOrders]) {
     coinOrders.delete(id)
-    await fillCoinOrder(id, o).catch(e => warn(`Coin order ${id} failed: ${e.message}`))
+    // no price yet (the first quotes haven't arrived): the order waits for the next round
+    const r = await fillCoinOrder(id, o).catch(e => { warn(`Coin order ${id} failed: ${e.message}`) })
+    if (r === 'retry') coinOrders.set(id, o)
   }
 }
 
@@ -953,6 +1141,8 @@ const rulesCheck = () => new Promise(res => execFile('node', ['.github/scripts/d
 
 coinInitAt = Date.now()
 await coinInit().catch(e => warn('Coin start failed (retrying): ' + e.message))
+stockInitAt = Date.now()
+await stockInit().catch(e => warn('Stock start failed (retrying): ' + e.message))
 let migrated = await migrateChats().catch(e => { warn('Moving chats to the Realtime Database failed (will retry): ' + e.message); return false })
 let nextMigration = Date.now() + 30 * 60_000
 let rounds = 0
@@ -991,6 +1181,7 @@ while (true) {
   await pruneLedger().catch(e => warn('Ledger prune failed: ' + e.message))
   await deliverScheduled().catch(e => warn('Scheduled messages failed: ' + e.message))
   await coinTick().catch(e => warn('Coin prices failed: ' + e.message))
+  await stockTick().catch(e => warn('Stock prices failed: ' + e.message))
   await fillCoinOrders()
   await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
   if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })
