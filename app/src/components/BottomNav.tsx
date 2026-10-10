@@ -1,6 +1,6 @@
 import { css, sx } from '../css'
 import type { Tab } from '../data'
-import { PhoneTabIcon } from './PhoneScreen'
+import { PhoneTabIcon } from './PhoneIcons'
 
 // 폰 holds 상점, 코인 and (for the admin) 관리 as its apps, so the bar is 폰 · 계정 · 랭킹 · 메시지.
 const TABS: [Tab, string][] = [['phone', '폰'], ['acct', '계정'], ['rank', '랭킹'], ['msg', '메시지']]

@@ -305,3 +305,6 @@ main[data-scroll="page"]{overflow-x:hidden}
 [data-phone-scroll]{overscroll-behavior:contain;-webkit-overflow-scrolling:touch;overflow-x:hidden}
 [data-phone-scroll]>*{flex-shrink:0}
 @media (prefers-reduced-motion: reduce){.phone-app{animation-name:fade !important}}
+/* 폰: nothing on the phone selects (no blue highlight, no callout on a long press), except text fields. */
+[data-phone],[data-phone] *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+[data-phone] input,[data-phone] textarea{-webkit-user-select:text;user-select:text}
