@@ -15,8 +15,8 @@ import { AdminProgressOverlay } from './components/AdminProgress'
 // only the admin ever opens it: loaded on demand
 const AdminScreen = lazy(() => import('./components/AdminScreen').then(m => ({ default: m.AdminScreen })))
 import { BottomNav } from './components/BottomNav'
-import { PhoneAppBar, PhoneScreen } from './components/PhoneScreen'
-import { APP_NAME, type OpenableApp } from './backend/phone'
+import { PhoneScreen } from './components/PhoneScreen'
+import type { OpenableApp } from './backend/phone'
 import { EditProfile } from './components/EditProfile'
 import { ShopScreen, type ShopTab } from './components/ShopScreen'
 import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScreen'
@@ -83,13 +83,14 @@ function loadTheme() {
 }
 
 /** Real backend: Firebase Auth for accounts, Firestore for the live leaderboard/votes/shop. See app/README.md. */
-/** The tab each 폰 app shows (앱스토어 has no tab: it lives inside 폰). */
-const APP_TAB: Record<OpenableApp, Tab> = { shop: 'shop', market: 'shop', coin: 'coin', admin: 'admin' }
+/** 상점, 코인 and 관리 are apps inside 폰: asking for their tab opens 폰 with that app. */
+const APP_OF_TAB: Partial<Record<Tab, OpenableApp>> = { shop: 'shop', coin: 'coin', admin: 'admin' }
+const navTab = (t: Tab): Tab => (APP_OF_TAB[t] ? 'phone' : t)
 
 export function App({ startTab = 'rank', startChat = null, startSupport = null, swapPalette = false }: AppProps) {
-  const [tab, setTab] = useState<Tab>(startTab)
+  const [tab, setTab] = useState<Tab>(navTab(startTab))
   /** The 폰 app on screen (its bar shows while that app's tab is up). */
-  const [phoneApp, setPhoneApp] = useState<OpenableApp | null>(null)
+  const [phoneApp, setPhoneApp] = useState<OpenableApp | null>(APP_OF_TAB[startTab] ?? null)
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const [sheet, setSheet] = useState<string | null>(null)
@@ -178,7 +179,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     showToast(code ? `${msg} (${code})` : msg)
   }
 
-  useEffect(() => { setTab(startTab) }, [startTab])
+  useEffect(() => { setTab(navTab(startTab)); setPhoneApp(APP_OF_TAB[startTab] ?? null) }, [startTab])
 
   // An anonymous login is only for 상담 (forgot password); the app treats it as signed out.
   // 중복 가입 방지 / IP 차단 (backend/ip.ts): undefined = not looked up yet
@@ -420,7 +421,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chats])
-  useEffect(() => { if (tab === 'admin' && !isAdmin && authReady) setTab('rank') }, [tab, isAdmin, authReady])
+  useEffect(() => { if (phoneApp === 'admin' && !isAdmin && authReady) setPhoneApp(null) }, [phoneApp, isAdmin, authReady])
   useEffect(() => (isAdmin && db ? subscribeTickets(db, setTickets) : setTickets([])), [isAdmin])
   const openTicket = tickets.find(t => t.id === ticketId)
   const ticketAccount = openTicket ? all.find(p => p.loginId && p.loginId === openTicket.loginId) : undefined
@@ -502,13 +503,12 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     : { up: BLUE, down: RED, downWeak: 'rgba(244,67,54,0.16)', downWeakFg: '#d22030' }
 
   const go = (t: Tab) => {
-    setTab(t); setSheet(null); setProfile(null); setEditOpen(false); setPhoneApp(null)
+    setTab(navTab(t)); setPhoneApp(APP_OF_TAB[t] ?? null); setSheet(null); setProfile(null); setEditOpen(false)
     scrollPageTop()
   }
-  /** Opens an app from 폰 (its screen, with 폰's bar on top). */
+  /** Opens an app on the phone screen (the 당근마켓 app is the shop's market). */
   const openApp = (app: OpenableApp) => {
     if (app === 'shop' || app === 'market') setShopTab(app === 'market' ? 'market' : 'set')
-    go(APP_TAB[app])
     setPhoneApp(app)
   }
 
@@ -672,9 +672,9 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
 
   // 🥕 당근마켓: listings are watched only while its tab is open
   useEffect(() => {
-    if (!db || tab !== 'shop' || shopTab !== 'market') return
+    if (!db || !(phoneApp === 'shop' || phoneApp === 'market') || shopTab !== 'market') return
     return subscribeMarket(db, setMarketRows)
-  }, [tab, shopTab])
+  }, [phoneApp, shopTab])
   const marketBuy = async (l: Listing) => {
     if (!me) return
     if (tradeBanned(me)) { showToast(banText(me)); return }
@@ -742,19 +742,10 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   // 접속 차단 (the account or an address it used): the app never finishes loading (never the admin)
   if ((ipDoc?.blocked || access?.blocked) && !isAdmin) return <EndlessLoading />
 
-  const phoneBar = phoneApp && tab === APP_TAB[phoneApp] ? phoneApp : null
-
-  return (
-    <div data-theme={theme} style={css("height:100vh;height:100dvh;display:flex;justify-content:center;overflow:hidden;font-family:'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;color:#191f28;word-break:keep-all")}>
-      {/* The page never scrolls: <main> scrolls inside the screen and the tab bar sits below it.
-          (A fixed/sticky bar floated mid-screen on iPhone while the page moved.) */}
-      <div data-g="app" style={css('width:100%;max-width:var(--app-w);height:100%;min-height:0;background:#ffffff;position:relative;display:flex;flex-direction:column')}>
-        {phoneBar && <PhoneAppBar title={phoneBar === 'market' ? APP_NAME.market : APP_NAME[phoneBar]} onBack={() => go('phone')} />}
-        <main data-scroll="page" style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch')}>
-          {tab === 'phone' && (
-            <PhoneScreen db={db} uid={authUser?.uid ?? null} isAdmin={isAdmin} adminUnread={unreadTickets} onOpen={openApp} onLogin={() => go('acct')} onToast={showToast} />
-          )}
-          {tab === 'shop' && (
+  /** What an app shows on the phone screen. */
+  const appView = (app: OpenableApp) => (
+    <>
+          {(app === 'shop' || app === 'market') && (
             <ShopScreen
               loggedIn={loggedIn} name={me?.name ?? '내 이름'} bio={me ? bioDraft : ''} photoCss={me?.photoCss ?? 'none'}
               equipped={me ? { frame: me.frame, plate: me.plate, skin: me.skin } : { frame: 'none', plate: 'none', skin: 'none' }}
@@ -764,69 +755,10 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               passes={{ pass2x: passActive, passFake: hasFakePass(me) }} onBuyPass={setPassAsk} onLogin={() => go('acct')}
             />
           )}
-          {tab === 'rank' && (
-            <RankScreen
-              all={all} query={query} onQuery={q => { setQuery(q); setPage(0) }}
-              page={page} onPage={setPage} onOpenProfile={setProfile}
-              seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()} points={me ? points : undefined}
-              onPoints={() => setEarnOpen(true)} onInstall={() => setInstallOpen(true)}
-              secretName={INVITE_ADMIN} onSecret={openCasino}
-            />
-          )}
-          {tab === 'acct' && (
-            <AccountScreen
-              openLedger={() => setLedgerOpen(true)}
-              loggedIn={loggedIn}
-              view={acctView}
-              onView={setAcctView}
-              login={login}
-              onLoginField={patch => setLogin(s => ({ ...s, ...patch }))}
-              onLogin={doLogin}
-              onLogout={doLogout}
-              signup={signup}
-              onSignup={patch => setSignup(s => ({ ...s, ...patch }))}
-              nameAck={nameAck}
-              nameRef={nameRef}
-              onNameFocus={el => { if (!nameAck) { el.blur(); setRuleOpen(true); setRuleCheck(false) } }}
-              onSubmitSignup={doSignup}
-              authBusy={authBusy}
-              isAdmin={isAdmin}
-              goAdmin={() => openApp('admin')}
-              me={me ? { ...me, bio: bioDraft, loginId: me.loginId ?? myLoginId } : undefined}
-              onPhoto={onPhoto}
-              onRemovePhoto={onRemovePhoto}
-              onBio={v => setBioDraft(v.slice(0, 60))}
-              onGender={g => authUser && updateMyProfile(db!, authUser.uid, { gender: g }).catch(e => failToast('저장하지 못했어요', e))}
-              points={points}
-              mine={mine}
-              others={all.filter(d => !d.isMe && !mine.includes(d))}
-              onOpenVote={d => setSheet(d.id)}
-              openEdit={() => setEditOpen(true)}
-              openEarn={() => setEarnOpen(true)}
-              openTheme={() => setThemeOpen(true)}
-              goHome={() => go('rank')}
-              onForgot={() => setSupportOpen('new')}
-              supportSlot={supportCard}
-              notifySlot={
-                <NotifySettings
-                  support={pushSupport()} on={pushOn && notify.notify} busy={pushBusy} settings={notify}
-                  onToggle={togglePush}
-                  onChange={patch => authUser && saveNotifySettings(db!, authUser.uid, patch).catch(e => failToast('저장하지 못했어요', e))}
-                />
-              }
-            />
-          )}
-          {tab === 'coin' && (
+          {app === 'coin' && (
             <CoinScreen db={db} uid={authUser?.uid ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />
           )}
-          {tab === 'msg' && (
-            <MessagesScreen
-              loggedIn={loggedIn} me={me} chats={chats} byId={byId}
-              onLogin={() => go('acct')} onOpen={setChatId} onNew={() => setNewChatOpen(true)} onToggleOff={toggleMsgOff}
-              db={db}
-            />
-          )}
-          {tab === 'admin' && isAdmin && authUser && (
+          {app === 'admin' && isAdmin && authUser && (
             <Suspense fallback={null}>
             <AdminScreen
               all={all}
@@ -860,9 +792,84 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             />
             </Suspense>
           )}
+    </>
+  )
+
+  return (
+    <div data-theme={theme} style={css("height:100vh;height:100dvh;display:flex;justify-content:center;overflow:hidden;font-family:'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;color:#191f28;word-break:keep-all")}>
+      {/* The page never scrolls: <main> scrolls inside the screen and the tab bar sits below it.
+          (A fixed/sticky bar floated mid-screen on iPhone while the page moved.) */}
+      <div data-g="app" style={css('width:100%;max-width:var(--app-w);height:100%;min-height:0;background:#ffffff;position:relative;display:flex;flex-direction:column')}>
+        <main data-scroll="page" style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch')}>
+          {tab === 'phone' && (
+            <PhoneScreen
+              db={db} uid={authUser?.uid ?? null} isAdmin={isAdmin} adminUnread={unreadTickets}
+              app={phoneApp} onOpen={openApp} onClose={() => setPhoneApp(null)} renderApp={appView}
+              onLogin={() => go('acct')} onToast={showToast}
+            />
+          )}
+          {tab === 'rank' && (
+            <RankScreen
+              all={all} query={query} onQuery={q => { setQuery(q); setPage(0) }}
+              page={page} onPage={setPage} onOpenProfile={setProfile}
+              seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()} points={me ? points : undefined}
+              onPoints={() => setEarnOpen(true)} onInstall={() => setInstallOpen(true)}
+              secretName={INVITE_ADMIN} onSecret={openCasino}
+            />
+          )}
+          {tab === 'acct' && (
+            <AccountScreen
+              openLedger={() => setLedgerOpen(true)}
+              loggedIn={loggedIn}
+              view={acctView}
+              onView={setAcctView}
+              login={login}
+              onLoginField={patch => setLogin(s => ({ ...s, ...patch }))}
+              onLogin={doLogin}
+              onLogout={doLogout}
+              signup={signup}
+              onSignup={patch => setSignup(s => ({ ...s, ...patch }))}
+              nameAck={nameAck}
+              nameRef={nameRef}
+              onNameFocus={el => { if (!nameAck) { el.blur(); setRuleOpen(true); setRuleCheck(false) } }}
+              onSubmitSignup={doSignup}
+              authBusy={authBusy}
+              isAdmin={isAdmin}
+              goAdmin={() => go('admin')}
+              me={me ? { ...me, bio: bioDraft, loginId: me.loginId ?? myLoginId } : undefined}
+              onPhoto={onPhoto}
+              onRemovePhoto={onRemovePhoto}
+              onBio={v => setBioDraft(v.slice(0, 60))}
+              onGender={g => authUser && updateMyProfile(db!, authUser.uid, { gender: g }).catch(e => failToast('저장하지 못했어요', e))}
+              points={points}
+              mine={mine}
+              others={all.filter(d => !d.isMe && !mine.includes(d))}
+              onOpenVote={d => setSheet(d.id)}
+              openEdit={() => setEditOpen(true)}
+              openEarn={() => setEarnOpen(true)}
+              openTheme={() => setThemeOpen(true)}
+              goHome={() => go('rank')}
+              onForgot={() => setSupportOpen('new')}
+              supportSlot={supportCard}
+              notifySlot={
+                <NotifySettings
+                  support={pushSupport()} on={pushOn && notify.notify} busy={pushBusy} settings={notify}
+                  onToggle={togglePush}
+                  onChange={patch => authUser && saveNotifySettings(db!, authUser.uid, patch).catch(e => failToast('저장하지 못했어요', e))}
+                />
+              }
+            />
+          )}
+          {tab === 'msg' && (
+            <MessagesScreen
+              loggedIn={loggedIn} me={me} chats={chats} byId={byId}
+              onLogin={() => go('acct')} onOpen={setChatId} onNew={() => setNewChatOpen(true)} onToggleOff={toggleMsgOff}
+              db={db}
+            />
+          )}
         </main>
 
-        <BottomNav tab={tab === 'admin' && !isAdmin ? 'rank' : tab === 'shop' || tab === 'coin' || tab === 'admin' ? 'phone' : tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} adminUnread={unreadTickets} />
+        <BottomNav tab={tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} adminUnread={unreadTickets} />
 
         {sheetPerson && (
           <VoteSheet d={sheetPerson} loggedIn={loggedIn} colors={colors} onVote={(kind, n) => vote(sheetPerson.id, kind, n)} onClose={() => setSheet(null)} onLogin={() => go('acct')} pass={passActive} onShop={() => { setShopTab('pass'); go('shop') }} />
