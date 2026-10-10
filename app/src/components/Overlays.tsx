@@ -147,8 +147,8 @@ export function ProfileSheet({ d, onClose, onCta, onMessage, canMessage, db }: {
         <div style={css('display:flex;justify-content:flex-end;align-items:center;gap:8px;padding-top:12px;min-height:52px')}>
           <span style={css('margin-right:auto;margin-left:110px;min-width:0;display:flex;flex-direction:column;gap:4px')}>
             <Badges person={d} />
-            <span style={css('min-width:0;display:flex;align-items:center;gap:6px')}>
-              {d.loginId && <span style={css('min-width:0;font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>@{d.loginId}</span>}
+            <span style={css('min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px')}>
+              {d.loginId && <span style={css('flex:0 1 auto;min-width:0;font-size:15px;line-height:22.5px;font-weight:500;color:#6b7684;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>@{d.loginId}</span>}
               {db && <PresenceText db={db} uid={d.id} sep={!!d.loginId} />}
             </span>
           </span>
