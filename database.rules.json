@@ -330,5 +330,23 @@
         ".write": false
       }
     }
+    ,"phone": {
+      "catalog": {
+        ".read": "auth != null",
+        "$app": {
+          ".write": "auth != null && (auth.token.email === 'admin@vote.local' || auth.token.admin === true)",
+          ".validate": "newData.isBoolean() && ($app === 'shop' || $app === 'market' || $app === 'coin')"
+        }
+      },
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "apps": {
+          "$app": {
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "newData.isBoolean() && ($app === 'shop' || $app === 'market' || $app === 'coin')"
+          }
+        }
+      }
+    }
   }
 }

@@ -20,6 +20,8 @@ import type { Firestore } from 'firebase/firestore'
 import { SearchIcon } from './icons'
 import { Dialog } from './Overlays'
 import { shortPoints } from './PointsChip'
+import { APP_NAME, STORE_APPS, setCatalog, watchPhone, type PhoneState, type StoreApp } from '../backend/phone'
+import { Switch } from './MessagesScreen'
 
 type Props = {
   all: Person[]
@@ -107,6 +109,7 @@ export function AdminScreen({ all, db, boostCoin, tickets, onOpenTicket, postNot
       <AdminLedger all={all} />
       {gap}
       <CoinBoost db={db} boost={boostCoin} setConfirm={setConfirm} />
+      <AppCatalog db={db} setConfirm={setConfirm} />
       {all.some(p => (p.tradeBan ?? 0) > Date.now()) && (
         <>
           {gap}
@@ -481,6 +484,38 @@ const PCT_CHIPS = [-90, -50, -30, -10, 10, 20, 30, 50]
 const MIN_CHIPS = [1, 3, 5, 10, 30]
 
 /** 코인 상승 (관리자): make one coin rise or fall over a few minutes. The worker spreads the move. */
+/** 앱 관리: switch an app off for everyone (it leaves every 폰 and 앱스토어) or back on. */
+function AppCatalog({ db, setConfirm }: { db: Firestore | null; setConfirm: (c: Confirm) => void }) {
+  const [phone, setPhone] = useState<PhoneState>({ mine: {}, catalog: {} })
+  useEffect(() => (db ? watchPhone(db, null, setPhone) : undefined), [db])
+  const flip = (app: StoreApp, on: boolean) => {
+    if (!db) return
+    if (on) { setCatalog(db, app, true).catch(() => {}); return }
+    setConfirm({
+      title: `${APP_NAME[app]} 끌까요?`,
+      desc: '모든 사람의 폰과 앱스토어에서 사라져요. 다시 켜면 돌아와요',
+      cta: '끄기',
+      danger: true,
+      go: () => { setCatalog(db, app, false).catch(() => {}) },
+    })
+  }
+  return (
+    <section style={css('padding:24px 24px 12px;display:flex;flex-direction:column;gap:12px')}>
+      <span style={css(sectionTitle)}>앱 관리</span>
+      <span style={css(hint)}>끄면 모든 사람의 폰에서 사라지고, 앱스토어에서도 안 보여요</span>
+      {STORE_APPS.map(app => {
+        const on = phone.catalog[app] !== false
+        return (
+          <div key={app} style={css('display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-radius:16px;background:#f9fafb')}>
+            <span style={css('font-size:16px;font-weight:600;color:#191f28')}>{APP_NAME[app]}</span>
+            <Switch on={on} label={`${APP_NAME[app]} 보이기`} onToggle={() => flip(app, !on)} />
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
 function CoinBoost({ db, boost, setConfirm }: { db: Firestore | null; boost: (sym: CoinSym, pct: number, minutes: number) => Promise<void>; setConfirm: (c: Confirm) => void }) {
   const [sym, setSym] = useState<CoinSym>('BTC')
   const [coins, setCoins] = useState<CoinInfo[]>([])

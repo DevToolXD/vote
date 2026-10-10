@@ -295,3 +295,7 @@ html,body{overscroll-behavior:none}
 main[data-scroll="page"]>*{flex-shrink:0}
 
 main[data-scroll="page"]{overflow-x:hidden}
+
+/* 폰 tab (iOS look): system colours as tokens, light and dark (the device's setting). */
+[data-phone]{--ios-bg:#f2f2f7;--ios-card:#ffffff;--ios-label:#000000;--ios-sec:rgba(60,60,67,0.6);--ios-sep:rgba(60,60,67,0.29);--ios-blue:#007aff;--ios-red:#ff3b30;--ios-fill:rgba(120,120,128,0.2)}
+@media (prefers-color-scheme: dark){[data-phone]{--ios-bg:#000000;--ios-card:#1c1c1e;--ios-label:#ffffff;--ios-sec:rgba(235,235,245,0.6);--ios-sep:rgba(84,84,88,0.6);--ios-blue:#0a84ff;--ios-red:#ff453a;--ios-fill:rgba(120,120,128,0.36)}}

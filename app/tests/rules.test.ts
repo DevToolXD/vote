@@ -1710,3 +1710,31 @@ describe('profile photos', () => {
     await updateMyProfile(a, 'a', { photoURL: '' })
   })
 })
+
+describe('폰 (홈 화면 앱)', () => {
+  const R = (db: Firestore) => rtdbOf.get(db)!
+  test('I can install and remove my own apps, not someone else\'s, and only the known ones', async () => {
+    const a = await signUp('a'), b = await signUp('b')
+    await rtSet(rtRef(R(a), 'phone/a/apps/shop'), false)
+    assert.equal(await rt(a, 'phone/a/apps/shop'), false)
+    await rtSet(rtRef(R(a), 'phone/a/apps/shop'), true)
+    await denied(rtSet(rtRef(R(b), 'phone/a/apps/shop'), false))
+    await denied(rtSet(rtRef(R(a), 'phone/a/apps/evil'), true))
+    await denied(rtSet(rtRef(R(a), 'phone/a/apps/coin'), 'yes')) // a flag, not text
+    await denied(rtSet(rtRef(R(a), 'phone/a/apps/admin'), true)) // 관리 and 앱스토어 are never stored
+  })
+  test('everyone signed in can read the catalog; only the admin can switch an app off for everyone', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    await denied(rtSet(rtRef(R(a), 'phone/catalog/shop'), false))
+    await rtSet(rtRef(R(admin), 'phone/catalog/coin'), false)
+    assert.equal(await rt(a, 'phone/catalog/coin'), false)
+    await rtSet(rtRef(R(admin), 'phone/catalog/coin'), true)
+    await denied(rtSet(rtRef(R(admin), 'phone/catalog/evil'), false))
+  })
+  test('nobody else reads my installs', async () => {
+    const a = await signUp('a'), b = await signUp('b')
+    await rtSet(rtRef(R(a), 'phone/a/apps/market'), false)
+    await denied(rtGet(rtRef(R(b), 'phone/a/apps')))
+    assert.equal(await rt(a, 'phone/a/apps/market'), false)
+  })
+})
