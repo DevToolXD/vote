@@ -1036,7 +1036,7 @@ function GiftSheet({ points, group, to, fake, onClose, onSend }: { points: numbe
         <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{fake ? '진짜 선물이랑 똑같이 보여요 · 포인트는 안 나가고, 받기를 누르면 "페이크입니다!"가 떠요' : <>{group ? '단톡방에서는 먼저 받는 한 명이 가져가요' : `${to ?? '상대'}님에게 보내요`} · 받기 전에는 취소할 수 있어요</>}</span>
       </div>
       <div style={css('padding:16px 24px 0;display:flex;align-items:baseline;gap:6px')}>
-        <input autoFocus inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 13))} placeholder="0"
+        <input inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 13))} placeholder="0"
           style={sx('flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:34px;line-height:44px;font-weight:700;font-variant-numeric:tabular-nums', { color: amount && !ok ? '#f04452' : '#191f28' })} />
         <span style={css('font-size:26px;font-weight:700;color:#191f28')}>P</span>
       </div>

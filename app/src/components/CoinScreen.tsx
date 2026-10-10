@@ -334,7 +334,7 @@ function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast,
           )}
           <span style={css('font-size:15px;font-weight:600;color:#191f28')}>{mode === 'buy' ? `몇 포인트어치 살까요? (쓸 수 있는 포인트 ${points.toLocaleString()}P)` : '얼마나 팔까요?'}</span>
           <div style={css('display:flex;align-items:center;gap:8px;height:52px;padding:0 16px;border-radius:14px;background:#f2f4f6')}>
-            <input inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 15))} placeholder={mode === 'buy' ? `${MIN_BUY}P 이상` : '0'} autoFocus
+            <input inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 15))} placeholder={mode === 'buy' ? `${MIN_BUY}P 이상` : '0'}
               style={css('flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:20px;font-weight:700;color:#191f28;font-variant-numeric:tabular-nums')} />
             <span style={css('font-size:17px;font-weight:600;color:#6b7684')}>{mode === 'buy' ? 'P' : '%'}</span>
           </div>
