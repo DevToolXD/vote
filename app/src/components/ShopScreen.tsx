@@ -257,7 +257,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
   const TAB_LABEL = { feat: '추천', set: '장신구', pass: '패스', inv: '보관함' }
 
   return (
-    <div data-g="clear" style={css('flex:1;display:flex;flex-direction:column;min-height:100%;background:#f2f2f7;padding-bottom:6px')}>
+    <div data-g="clear" style={css('flex:1 1 0;min-height:0;height:100%;overflow-y:auto;display:flex;flex-direction:column;background:#f2f2f7;padding-bottom:6px')}>
       <header data-g="head" style={css('padding:16px 20px 6px;display:flex;align-items:center;justify-content:space-between;gap:8px')}>
         <span style={css('font-size:34px;line-height:41px;font-weight:700;letter-spacing:-0.5px;color:#1d1d1f')}>{title}</span>
         {loggedIn && <PointsChip points={points} onClick={onPoints} />}
@@ -271,7 +271,7 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
       </div>
 
       {/* the floating bar: the sections and the search (it only searches 장신구) */}
-      <nav aria-label="상점 메뉴" style={css('position:sticky;bottom:12px;z-index:20;margin:0 16px;display:flex;align-items:center;gap:10px')}>
+      <nav aria-label="상점 메뉴" style={css('position:sticky;bottom:calc(var(--phone-bottom,34px) - 14px);z-index:20;margin:12px 16px 0;display:flex;align-items:center;gap:10px')}>
         <div style={css('flex:1;display:flex;justify-content:space-around;align-items:center;height:64px;padding:0 6px;border-radius:9999px;background:rgba(250,250,252,0.78);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);box-shadow:0 8px 28px rgba(0,0,0,0.12),inset 0 0 0 0.5px rgba(0,0,0,0.06)')}>
           {TABS.map(t => {
             const on = section === t
