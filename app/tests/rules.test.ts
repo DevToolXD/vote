@@ -28,7 +28,7 @@ import { accessOf, blockedUsers, readIp, recordIp, setAccess } from '../src/back
 import { presenceLabel, watchPresence, type Presence } from '../src/backend/presence'
 import { buyCoin, closePosition, floor8, sellCoin } from '../src/backend/coins'
 import { bankMove, openBank, watchBank, watchBankLog } from '../src/backend/bank'
-import { collection as fsCollection, doc as fsDoc, getDoc as fsGetDoc, increment as fsIncrement, setDoc as fsSetDoc, updateDoc as fsUpdateDoc } from 'firebase/firestore'
+import { collection as fsCollection, doc as fsDoc, getDoc as fsGetDoc, increment as fsIncrement, setDoc as fsSetDoc, updateDoc as fsUpdateDoc, serverTimestamp as fsServerTimestamp } from 'firebase/firestore'
 import { buyListing, cancelListing, listItem, subscribeMarket, type Listing } from '../src/backend/market'
 
 const PROJECT = 'demo-vote'
@@ -311,6 +311,16 @@ describe('profile and shop', () => {
     await buySeries(a, 'a', 'gargantua', c.owned)
     c = await read(a, 'candidates/a')
     assert.equal(pointsOf(c), 0); assert.deepEqual([c.frame, c.plate, c.skin], ['gargantua', 'gargantua', 'gargantua'])
+  })
+  test('인스타그램 posts: you post a photo as yourself; only you (or the admin) delete it', async () => {
+    const a = await signUp('a'), b = await signUp('b')
+    const photo = 'data:image/jpeg;base64,/9j/4AAQ'
+    await fsSetDoc(fsDoc(a, 'posts', 'p1'), { uid: 'a', name: 'a', photo, caption: '안녕', at: fsServerTimestamp() })
+    await denied(fsSetDoc(fsDoc(a, 'posts', 'p2'), { uid: 'b', name: 'b', photo, caption: '', at: fsServerTimestamp() }))
+    await denied(fsSetDoc(fsDoc(a, 'posts', 'p3'), { uid: 'a', name: 'a', photo: 'https://example.com/x.jpg', caption: '', at: fsServerTimestamp() }))
+    await denied(fsSetDoc(fsDoc(a, 'posts', 'p4'), { uid: 'a', name: 'a', photo, caption: '', at: 1 }))
+    await denied(deleteDoc(fsDoc(b, 'posts', 'p1')))
+    await deleteDoc(fsDoc(a, 'posts', 'p1'))
   })
   test('리미티드: the landmark 막대 스킨 are no longer sold; the 관리자샵 sells anything one by one', async () => {
     const a = await signUp('a'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 5000)

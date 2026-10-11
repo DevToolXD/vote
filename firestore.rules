@@ -1387,5 +1387,18 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/candidates/$(uid)).data.get('lastBank', '') == id;
       allow update, delete: if false;
     }
+    // ---- 인스타그램 (사진 게시물): signed-in people see every post; you post as yourself and delete your own
+    match /posts/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.keys().hasOnly(['uid', 'name', 'photo', 'caption', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 30
+        && request.resource.data.photo is string && request.resource.data.photo.size() < 300000
+        && request.resource.data.photo.matches('data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+')
+        && request.resource.data.caption is string && request.resource.data.caption.size() <= 300
+        && request.resource.data.at == request.time;
+      allow update: if false;
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+    }
   }
 }
