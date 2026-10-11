@@ -29,6 +29,7 @@ function Comments({ db, post, uid, name, isAdmin, onToast }: { db: Firestore; po
     try { await addComment(db, post.id, { uid, name: name.slice(0, 30), text: t.slice(0, 300) }); setText('') } catch { onToast('댓글을 달지 못했어요') }
   }
   const drop = async (c: Comment) => {
+    if (!window.confirm('이 댓글을 지울까요?')) return
     try { await removeComment(db, post.id, c.id) } catch { onToast('지우지 못했어요') }
   }
   return (
@@ -56,6 +57,7 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
   const [caption, setCaption] = useState('')
   const [photo, setPhoto] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [viewing, setViewing] = useState<Doc | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => (db && uid ? watchDocs(db, setDocs) : undefined), [db, uid])
@@ -80,6 +82,7 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
   }
   const remove = async (d: Doc) => {
     if (!db) return
+    if (!window.confirm(`“${d.title}” 숙제를 지울까요?\n지우면 다시 볼 수 없어요.`)) return
     try { await removeDoc(db, d.id) } catch { onToast('지우지 못했어요') }
   }
 
@@ -117,7 +120,9 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
                 {(d.uid === uid || isAdmin) && <button aria-label="이 숙제 지우기" onClick={() => remove(d)} style={css('font-size:14px;color:#8e8e93;padding:0 4px')}>✕</button>}
               </div>
               <div style={css('padding:0 14px 8px;font-size:17px;font-weight:800;line-height:24px;word-break:break-word')}>{d.title}</div>
-              <img src={d.photo} alt="" style={css('display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:#f2f2f2')} />
+              <button aria-label="사진 크게 보기" onClick={() => setViewing(d)} style={css('display:block;width:100%;padding:0')}>
+                <img src={d.photo} alt="" style={css('display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:#f2f2f2')} />
+              </button>
               {d.caption && <p style={css('margin:10px 14px 0;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}>{d.caption}</p>}
               <div style={css('display:flex;align-items:center;gap:14px;padding:10px 12px 8px')}>
                 <button aria-label={liked ? '하트 취소' : '하트'} aria-pressed={liked} className="pr-96" onClick={() => toggleLike(d)} style={css('display:flex;align-items:center;gap:5px;font-size:14px;font-weight:600')}>
@@ -130,6 +135,19 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
           )
         })}
       </div>
+
+      {viewing && (
+        <div onClick={() => setViewing(null)} style={css('position:absolute;inset:0;z-index:20;background:rgba(0,0,0,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;box-sizing:border-box')}>
+          <div onClick={e => e.stopPropagation()} style={css('width:100%;display:flex;flex-direction:column;gap:12px;align-items:center')}>
+            <img src={viewing.photo} alt={viewing.title} style={css('max-width:100%;max-height:72vh;object-fit:contain;border-radius:8px')} />
+            <span style={css('font-size:16px;font-weight:700;color:#fff;text-align:center;word-break:break-word')}>{viewing.title}</span>
+            <div style={css('display:flex;gap:10px')}>
+              <a href={viewing.photo} download={`숙제-${viewing.id}.${viewing.photo.startsWith('data:image/png') ? 'png' : viewing.photo.startsWith('data:image/webp') ? 'webp' : 'jpg'}`} style={css('height:42px;padding:0 18px;border-radius:21px;background:#0a84ff;color:#fff;font-size:15px;font-weight:700;display:flex;align-items:center;text-decoration:none')}>다운로드</a>
+              <button onClick={() => setViewing(null)} style={css('height:42px;padding:0 18px;border-radius:21px;background:rgba(255,255,255,0.18);color:#fff;font-size:15px;font-weight:600')}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {sheet && (
         <div onClick={() => !busy && setSheet(false)} style={css('position:absolute;inset:0;z-index:10;background:rgba(0,0,0,0.35);display:flex;align-items:flex-end')}>
