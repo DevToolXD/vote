@@ -9,7 +9,7 @@ import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app'
 import { connectDatabaseEmulator, get as rtGet, getDatabase, ref as rtRef, set as rtSet, update as rtUpdate, type Database } from 'firebase/database'
 import {
   collection, connectFirestoreEmulator, deleteDoc, deleteField, doc, getDoc, getDocs, getFirestore,
-  arrayUnion, increment, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Firestore,
+  arrayRemove, arrayUnion, increment, query, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Firestore,
 } from 'firebase/firestore'
 import { revokeItem, setTradeBan, TRADE_BAN_FOREVER, deleteAccount, grantPoints, renameUser, resetPassword, resetSeason, runAdminOp, setSeasonConfig, setSeasonName, type AdminProgress } from '../src/backend/admin'
 import { newCandidateDoc } from '../src/backend/candidateDoc'
@@ -336,6 +336,25 @@ describe('profile and shop', () => {
     await deleteDoc(fsDoc(a, 'homework', 'h1', 'comments', 'c1'))
     await denied(deleteDoc(fsDoc(b, 'homework', 'h1')))
     await deleteDoc(fsDoc(a, 'homework', 'h1'))
+  })
+  test('문서: a heart from someone else pays the author 1 point, once per person; your own heart pays nothing', async () => {
+    const a = await signUp('a'), b = await signUp('b'), c = await signUp('c')
+    const photo = 'data:image/jpeg;base64,/9j/4AAQ'
+    const bonusOf = async () => (await read(a, 'candidates/a')).bonus ?? 0
+    const start = await bonusOf()
+    await fsSetDoc(fsDoc(a, 'homework', 'h9'), { uid: 'a', name: 'a', title: '숙제', photo, caption: '', likes: [], at: fsServerTimestamp() })
+    await fsUpdateDoc(fsDoc(a, 'homework', 'h9'), { likes: arrayUnion('a') })
+    await fsUpdateDoc(fsDoc(b, 'homework', 'h9'), { likes: arrayUnion('b') })
+    await fsUpdateDoc(fsDoc(c, 'homework', 'h9'), { likes: arrayUnion('c') })
+    await kickWorker(40000)
+    // the worker pays the hearts it finds (it works in the background: wait for it, up to 40 s)
+    for (let i = 0; i < 80 && (await bonusOf()) < start + 2; i++) await new Promise(r => setTimeout(r, 500))
+    assert.equal(await bonusOf(), start + 2, 'two others hearted: two points, not three')
+    // taken back and given again: nothing more (give the worker time to look, then check)
+    await fsUpdateDoc(fsDoc(b, 'homework', 'h9'), { likes: arrayRemove('b') })
+    await fsUpdateDoc(fsDoc(b, 'homework', 'h9'), { likes: arrayUnion('b') })
+    await new Promise(r => setTimeout(r, 8000))
+    assert.equal(await bonusOf(), start + 2)
   })
   test('리미티드: the landmark 막대 스킨 are no longer sold; the 관리자샵 sells anything one by one', async () => {
     const a = await signUp('a'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 5000)

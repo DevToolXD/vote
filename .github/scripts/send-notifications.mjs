@@ -522,8 +522,10 @@ let seasonEndsAt = null
 const listeners = []
 // accounts that changed (a new account, or a move): their grade is worked out at once, not at the next sweep
 const bankQueue = new Set(), bankSeen = new Map()
+// 문서 posts whose hearts changed: each new heart (from someone else) pays the author 1 point, once per person
+const homeQueue = new Set()
 const firstDone = new Promise(resolve => {
-  const seen = new Set(), total = 10
+  const seen = new Set(), total = 11
   const done = name => { if (!seen.has(name)) { seen.add(name); if (seen.size === total) resolve() } }
   const listen = (name, ref, onSnap) => ref.onSnapshot(snap => { onSnap(snap); done(name) }, err => { warn(`Listener ${name} failed: ${err.message}`); done(name) })
   listeners.push(
@@ -542,6 +544,9 @@ const firstDone = new Promise(resolve => {
         // a new account, or one whose savings or loan moved (the worker's own grade and interest writes don't count)
         if (!prev || prev.dep !== v.dep || prev.loan !== v.loan || prev.depBase !== v.depBase || prev.loanBase !== v.loanBase) bankQueue.add(c.doc.id)
       }
+    }),
+    listen('homework', fdb.collection('homework'), snap => {
+      for (const c of snap.docChanges()) if (c.type !== 'removed') homeQueue.add(c.doc.id)
     }),
     listen('settings', fdb.collection('settings'), snap => snap.docChanges().forEach(c => c.type === 'removed' ? settings.delete(c.doc.id) : settings.set(c.doc.id, c.doc.data()))),
     listen('tokens', fdb.collection('pushTokens'), snap => {
@@ -1079,6 +1084,29 @@ function creditOf(netWorth) {
   const g = BANK.grades.find(x => netWorth >= x.min) ?? BANK.grades.at(-1)
   return { grade: g.grade, limit: Math.max(0, Math.min(BANK.loan.cap, Math.floor(netWorth * g.ratio))) }
 }
+// 문서: a heart from someone else pays the author 1 point. The post remembers who has been paid (`paid`),
+// so a heart taken back and given again pays nothing more, and your own hearts pay nothing.
+async function homeTick() {
+  const ids = [...homeQueue]
+  homeQueue.clear()
+  for (const id of ids) {
+    const ref = fdb.doc(`homework/${id}`)
+    await fdb.runTransaction(async tx => {
+      const post = await tx.get(ref)
+      if (!post.exists) return
+      const v = post.data(), author = v.uid, paid = Array.isArray(v.paid) ? v.paid : []
+      const likers = Array.isArray(v.likes) ? v.likes : []
+      const fresh = [...new Set(likers)].filter(u => u && u !== author && !paid.includes(u))
+      if (!fresh.length || !author) return
+      const cand = fdb.doc(`candidates/${author}`)
+      const c = await tx.get(cand)
+      if (!c.exists) return
+      tx.update(cand, { bonus: FieldValue.increment(fresh.length) })
+      tx.update(ref, { paid: [...paid, ...fresh] })
+    }).catch(e => warn(`Hearts for ${id} failed: ${e.message}`))
+  }
+}
+
 async function bankTick() {
   const now = Date.now()
   const sweep = now - bankAt >= BANK_EVERY_MS
@@ -1318,6 +1346,7 @@ while (true) {
   await coinTick().catch(e => warn('Coin prices failed: ' + e.message))
   await stockTick().catch(e => warn('Stock prices failed: ' + e.message))
   await bankTick().catch(e => warn('Bank failed: ' + e.message))
+  await homeTick().catch(e => warn('Hearts failed: ' + e.message))
   await fillCoinOrders()
   await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
   if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })
