@@ -13,18 +13,20 @@ import { fileToChatImage, fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
 import { AdminProgressOverlay } from './components/AdminProgress'
 // only the admin ever opens it: loaded on demand
+// Phone apps load only when opened, so the first screen stays small
+const StockApp = lazy(() => import('./components/StockApp').then(m => ({ default: m.StockApp })))
+const BlockBlast = lazy(() => import('./components/BlockBlast').then(m => ({ default: m.BlockBlast })))
+const FlappyBird = lazy(() => import('./components/FlappyBird').then(m => ({ default: m.FlappyBird })))
+const CoinScreen = lazy(() => import('./components/CoinScreen').then(m => ({ default: m.CoinScreen })))
+const MarketApp = lazy(() => import('./components/Market').then(m => ({ default: m.MarketApp })))
 const AdminScreen = lazy(() => import('./components/AdminScreen').then(m => ({ default: m.AdminScreen })))
 import { BottomNav } from './components/BottomNav'
 import { PhoneScreen } from './components/PhoneScreen'
-import { StockApp } from './components/StockApp'
-import { BlockBlast } from './components/BlockBlast'
-import { FlappyBird } from './components/FlappyBird'
 import type { OpenableApp } from './backend/phone'
 import { EditProfile } from './components/EditProfile'
 import { ShopScreen, type ShopTab } from './components/ShopScreen'
 import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScreen'
 import { NotifySettings } from './components/NotifySettings'
-import { CoinScreen } from './components/CoinScreen'
 import { boostCoin } from './backend/coinBoost'
 import { CallScreen } from './components/CallScreen'
 import { CallSession, canCall, declineCall, talkLabel, watchIncoming, type CallPhase, type EndReason, type Incoming } from './backend/calls'
@@ -49,7 +51,6 @@ import { DEFAULT_REWARDS } from './backend/rewards'
 import { placeBet, settleLastBet } from './backend/gamble'
 import { Casino } from './components/Casino'
 import { AdminShop } from './components/AdminShop'
-import { MarketApp } from './components/Market'
 import { buyListing, cancelListing, listItem, subscribeMarket, type Listing } from './backend/market'
 import { shortPoints } from './components/PointsChip'
 import { leftLabel } from './components/Duration'
@@ -748,6 +749,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   /** What an app shows on the phone screen. */
   const appView = (app: OpenableApp) => (
     <>
+          <Suspense fallback={null}>
           {app === 'block' && <BlockBlast />}
           {app === 'flappy' && <FlappyBird />}
           {app === 'stock' && <StockApp db={db} uid={authUser?.uid ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />}
@@ -767,6 +769,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           {app === 'coin' && (
             <CoinScreen db={db} uid={authUser?.uid ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />
           )}
+          </Suspense>
           {app === 'admin' && isAdmin && authUser && (
             <Suspense fallback={null}>
             <AdminScreen
