@@ -152,13 +152,13 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
   }
   const off = !!me.msgOff
   return (
-    <div data-g="clear" style={css('flex:1;background:#ffffff;padding-bottom:24px')}>
+    <div data-g="clear" style={{ ...css('flex:1;padding-bottom:24px;min-height:100%;color:#fff'), background: 'linear-gradient(180deg,#c9a7e4 0%,#9fb7e6 34%,#a9d4d6 58%,#eba4b4 84%,#e9868f 100%)' }}>
       <div style={css('padding:24px 16px 20px 24px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;animation:listIn 420ms ' + EASE + ' both')}>
         <span style={css('display:flex;flex-direction:column;gap:4px')}>
-          <h1 style={css('margin:0;font-size:22px;line-height:31px;font-weight:700;color:#191f28')}>메시지</h1>
-          <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>{off ? '메시지 받기가 꺼져 있어요' : '1:1이나 단톡방에서 이야기해요'}</span>
+          <h1 style={css('margin:0;font-size:34px;line-height:40px;font-weight:800;color:#fff;text-shadow:0 2px 10px rgba(80,40,110,0.25)')}>메시지</h1>
+          <span style={css('font-size:15px;line-height:22.5px;color:rgba(255,255,255,0.9);text-shadow:0 1px 6px rgba(80,40,110,0.25)')}>{off ? '메시지 받기가 꺼져 있어요' : '1:1이나 단톡방에서 이야기해요'}</span>
         </span>
-        <button className="pr-94" onClick={onNew} disabled={off} aria-label="새 채팅" style={sx('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#4e5968;flex:none;transition:opacity 200ms', { opacity: off ? 0.3 : 1 })}><ComposeIcon /></button>
+        <button className="pr-94" onClick={onNew} disabled={off} aria-label="새 채팅" style={sx('width:44px;height:44px;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;flex:none;transition:opacity 200ms;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)', { opacity: off ? 0.3 : 1 })}><ComposeIcon /></button>
       </div>
 
       {chats.length === 0 ? (
@@ -177,20 +177,20 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
             const lastText = c.last ? (c.last.text || '사진') : ''
             const who = c.last ? (c.last.uid === me.id ? '나: ' : c.type === 'group' ? `${nameIn(byId, c.last.uid)}: ` : '') : ''
             return (
-              <button key={c.id} className="pr-dim" onClick={() => onOpen(c.id)} style={css(`display:flex;align-items:center;gap:14px;padding:12px 20px 12px 24px;border-radius:12px;text-align:left;margin:0 4px;transition:background 200ms ${EASE}`)}>
+              <button key={c.id} className="pr-dim" onClick={() => onOpen(c.id)} style={css(`display:flex;align-items:center;gap:14px;padding:12px 16px;border-radius:24px;text-align:left;margin:0 12px 10px;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55);color:#fff;transition:background 200ms ${EASE}`)}>
                 <ChatAvatar people={v.people} size={48} photo={c.photo} />
                 <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
                   <span style={css('display:flex;align-items:center;gap:4px;min-width:0')}>
-                    <span style={sx(title17 + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis', { fontWeight: unread ? 600 : 500, color: unread ? '#191f28' : '#333d4b' })}>{v.title}</span>
+                    <span style={sx(title17 + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 6px rgba(80,40,110,0.25)', { fontWeight: unread ? 700 : 600, color: '#fff' })}>{v.title}</span>
                     {c.type === 'group' && <span style={css('flex:none;font-size:15px;color:#8b95a1')}>{c.members.length}</span>}
                     {c.type === 'dm' && v.people[0] && <PresenceText db={db} uid={v.people[0].id} size={13} sep />}
                     {muted && <BellOffIcon />}
                   </span>
-                  <span style={sx('font-size:15px;line-height:22.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis', { color: unread ? '#333d4b' : '#6b7684', fontWeight: unread ? 500 : 400 })}>{c.last ? who + lastText : '대화를 시작해보세요'}</span>
+                  <span style={sx('font-size:15px;line-height:22.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis', { color: 'rgba(255,255,255,0.88)', fontWeight: unread ? 600 : 400 })}>{c.last ? who + lastText : '대화를 시작해보세요'}</span>
                 </span>
                 <span style={css('flex:none;align-self:stretch;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:8px')}>
-                  <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1')}>{timeLabel(c.last?.at?.toMillis() ?? 0)}</span>
-                  {unread ? <span key="dot" style={css('width:8px;height:8px;border-radius:9999px;background:#3182f6;animation:dotPop 420ms ' + EASE + ' both')} /> : <span style={{ height: 8 }} />}
+                  <span style={css('font-size:13px;line-height:19.5px;color:rgba(255,255,255,0.85)')}>{timeLabel(c.last?.at?.toMillis() ?? 0)}</span>
+                  {unread ? <span key="dot" style={css('width:9px;height:9px;border-radius:9999px;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,0.35);animation:dotPop 420ms ' + EASE + ' both')} /> : <span style={{ height: 9 }} />}
                 </span>
               </button>
             )
@@ -199,7 +199,7 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
       )}
 
       {band}
-      <div style={css('padding:16px 16px 16px 24px;display:flex;align-items:center;gap:12px')}>
+      <div style={css(`margin:8px 12px 0;padding:16px;border-radius:24px;display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55);color:#fff`)}>
         <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
           <span style={css(title17)}>메시지 받기</span>
           <span style={css(caption)}>{off ? '꺼두면 아무도 메시지를 보내거나 초대할 수 없고, 나도 보낼 수 없어요' : '끄면 새 채팅 목록에서도 보이지 않아요'}</span>

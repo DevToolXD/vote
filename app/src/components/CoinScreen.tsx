@@ -129,46 +129,47 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
   }
 
   return (
-    <div className="anim-list" style={css('display:flex;flex-direction:column;width:100%;min-width:0;overflow-x:hidden')}>
-      <div style={css('padding:24px 24px 4px')}>
-        <h1 style={css('margin:0;font-size:22px;line-height:31px;font-weight:700;color:#191f28')}>코인</h1>
-        <div style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>업비트 원화 시세 그대로예요 · 1P = 1원</div>
+    <div className="anim-list" style={css('display:flex;flex-direction:column;width:100%;min-width:0;min-height:100%;box-sizing:border-box;overflow-x:hidden;background:#000;color:#fff;padding-bottom:var(--phone-bottom)')}>
+      {/* iOS Stocks-style header: big title, the date under it, and the market line */}
+      <div style={css('padding:14px 20px 4px')}>
+        <h1 style={css('margin:0;font-size:34px;line-height:40px;font-weight:800;letter-spacing:0.3px;color:#fff')}>코인</h1>
+        <div style={css('font-size:17px;line-height:22px;font-weight:700;color:rgba(235,235,245,0.6)')}>{new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })} · 업비트 시세 · 1P = 1원</div>
       </div>
 
-      <button data-g="l1" className="pr-96" onClick={() => setMineOpen(true)} aria-label="내 코인 보기" style={css('margin:16px 20px 8px;padding:20px;border-radius:20px;background:#f9fafb;display:flex;flex-direction:column;gap:12px;text-align:left;width:calc(100% - 40px)')}>
+      <button data-g="l1" className="pr-96" onClick={() => setMineOpen(true)} aria-label="내 코인 보기" style={css('margin:16px 20px 8px;padding:20px;border-radius:20px;background:#1c1c1e;display:flex;flex-direction:column;gap:12px;text-align:left;width:calc(100% - 40px)')}>
         <div style={css('display:flex;flex-direction:column;gap:2px')}>
-          <span style={css('display:flex;align-items:center;gap:4px;font-size:14px;color:#6b7684')}>내 코인 평가금액 <span aria-hidden="true">›</span></span>
-          <span style={css('font-size:26px;line-height:34px;font-weight:700;color:#191f28;font-variant-numeric:tabular-nums')}>{Math.round(evalSum).toLocaleString()}P</span>
+          <span style={css('display:flex;align-items:center;gap:4px;font-size:14px;color:rgba(235,235,245,0.6)')}>내 코인 평가금액 <span aria-hidden="true">›</span></span>
+          <span style={css('font-size:26px;line-height:34px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums')}>{Math.round(evalSum).toLocaleString()}P</span>
           {costSum > 0 && <span style={sx('font-size:15px;font-weight:600;font-variant-numeric:tabular-nums', { color: tone(pl) })}>{signed(pl)}P ({pct(pl / costSum)})</span>}
         </div>
-        <div style={css('height:1px;background:#eef0f3')} />
+        <div style={css('height:1px;background:rgba(84,84,88,0.6)')} />
         <div style={css('display:flex;justify-content:space-between;font-size:15px')}>
           <span style={{ color: '#6b7684' }}>쓸 수 있는 포인트</span>
-          <span style={css('font-weight:700;color:#191f28;font-variant-numeric:tabular-nums')}>{points.toLocaleString()}P</span>
+          <span style={css('font-weight:700;color:#fff;font-variant-numeric:tabular-nums')}>{points.toLocaleString()}P</span>
         </div>
       </button>
 
-      <div style={css('padding:16px 24px 4px;font-size:17px;font-weight:700;color:#191f28')}>코인 시세</div>
+      <div style={css('padding:16px 20px 4px;font-size:22px;line-height:28px;font-weight:700;color:#fff')}>코인 시세</div>
       {/* highest price first */}
-      {list.length === 0 && <div style={css('padding:24px;font-size:15px;color:#8b95a1;text-align:center')}>코인 시세를 불러오는 중이에요</div>}
+      {list.length === 0 && <div style={css('padding:24px;font-size:15px;color:rgba(235,235,245,0.6);text-align:center')}>코인 시세를 불러오는 중이에요</div>}
       {[...list].sort((x, y) => (price(y.sym) ?? 0) - (price(x.sym) ?? 0)).map(c => {
         const p = price(c.sym), ch = dayChange(c.sym), h = wallet[c.sym]
         return (
-          <button key={c.sym} className="pr-dim" onClick={() => setOpen(c.sym)} style={css(`display:flex;align-items:center;gap:14px;padding:12px 20px 12px 24px;margin:0 4px;border-radius:12px;text-align:left;transition:background 200ms ${EASE}`)}>
+          <button key={c.sym} className="pr-dim" onClick={() => setOpen(c.sym)} style={css(`display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:0.5px solid rgba(84,84,88,0.65);background:none;color:#fff;text-align:left;transition:background 200ms ${EASE}`)}>
             <CoinIcon sym={c.sym} />
             <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
-              <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#191f28')}>{c.name}</span>
-              <span style={css('font-size:13px;line-height:19.5px;color:#8b95a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h ? `${fmtQty(h.q)} ${c.sym} 보유` : c.sym}</span>
+              <span style={css('font-size:19px;line-height:24px;font-weight:700;color:#fff')}>{c.name}</span>
+              <span style={css('font-size:15px;line-height:20px;font-weight:600;color:rgba(235,235,245,0.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h ? `${fmtQty(h.q)} ${c.sym} 보유` : c.sym}</span>
             </span>
             <Spark data={[...(spark[c.sym] ?? []), ...(p != null ? [p] : [])]} color={tone(ch)} />
-            <span style={css('flex:none;min-width:88px;display:flex;flex-direction:column;align-items:flex-end;font-variant-numeric:tabular-nums')}>
-              <span style={css('font-size:16px;line-height:24px;font-weight:600;color:#191f28')}>{fmtPrice(p)}P</span>
-              <span style={sx('font-size:13px;line-height:19.5px;font-weight:600', { color: tone(ch) })}>{pct(ch)}</span>
+            <span style={css('flex:none;min-width:96px;display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-variant-numeric:tabular-nums')}>
+              <span style={css('font-size:19px;line-height:24px;font-weight:600;color:#fff')}>{fmtPrice(p)}</span>
+              <span style={sx('min-width:84px;height:30px;padding:0 8px;box-sizing:border-box;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:700', { background: ch < 0 ? '#ff453a' : '#30d158' })}>{pct(ch)}</span>
             </span>
           </button>
         )
       })}
-      <div style={css('padding:16px 24px 24px;font-size:13px;line-height:19.5px;color:#8b95a1')}>
+      <div style={css('padding:16px 20px 24px;font-size:13px;line-height:19.5px;color:rgba(235,235,245,0.6)')}>
         가격은 업비트 원화 시세예요 (1P = 1원). 사고팔 때는 그 순간의 가격으로 체결돼요. 포인트로 하는 가상 게임이라 실제 돈은 오가지 않아요.
       </div>
 

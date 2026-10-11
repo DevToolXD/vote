@@ -141,9 +141,9 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
   const swipe = useRef(0)
 
   const dock: AppId[] = (['shop', 'coin', 'stock'] as StoreApp[]).filter(a => onHome(phone, a))
-  const grid: AppId[] = [...(isAdmin ? ['admin' as const] : []), ...(['market', 'block'] as StoreApp[]).filter(a => onHome(phone, a))]
+  const grid: AppId[] = [...(isAdmin ? ['admin' as const] : []), ...(['market', 'block', 'flappy'] as StoreApp[]).filter(a => onHome(phone, a))]
   const inApp = !!shown
-  const dark = shown === 'stock' || shown === 'block' // 주식 and the game are black apps
+  const dark = shown === 'stock' || shown === 'block' || shown === 'coin' // 주식, 코인 and the game are black apps
   const away = inApp || view !== 'home'
   const backInk = dark ? '#0a84ff' : inApp ? '#007aff' : view === 'store' ? 'var(--ios-blue)' : '#fff'
   const btnInk = dark ? '#fff' : inApp ? '#191f28' : view === 'store' ? 'var(--ios-label)' : '#fff'
@@ -182,7 +182,7 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
 
       {/* the open app */}
       {shown && (
-        <div className="phone-app" data-phone-app style={css(`position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;padding-top:var(--phone-top);box-sizing:border-box;background:${dark ? '#000000' : '#ffffff'};border-radius:${full ? 0 : 53}px;overflow:hidden;color:${dark ? '#ffffff' : '#191f28'};font-family:${APP_FONT};word-break:keep-all;transform-origin:${origin.x}px ${origin.y}px;animation:${closing ? 'appClose' : 'appOpen'} ${closing ? 280 : 420}ms cubic-bezier(0.32,0.72,0,1) both`)}>
+        <div className="phone-app" data-phone-app style={css(`position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;padding-top:var(--phone-top);box-sizing:border-box;background:${dark ? '#000000' : shown === 'flappy' ? '#ded895' : '#ffffff'};border-radius:${full ? 0 : 53}px;overflow:hidden;color:${dark ? '#ffffff' : '#191f28'};font-family:${APP_FONT};word-break:keep-all;transform-origin:${origin.x}px ${origin.y}px;animation:${closing ? 'appClose' : 'appOpen'} ${closing ? 280 : 420}ms cubic-bezier(0.32,0.72,0,1) both`)}>
           <div data-phone-scroll style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;padding-bottom:var(--phone-bottom)')}>
             {renderApp(shown)}
           </div>
