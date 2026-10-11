@@ -46,7 +46,7 @@ function Get({ app, ctx, glass = false }: { app: StoreApp; ctx: Ctx; glass?: boo
   const tap = () => {
     if (!uid) ctx.onLogin()
     else if (have) ctx.onOpen(app)
-    else if (db) setInstalled(db, uid, app, true).catch(() => ctx.onToast('받지 못했어요'))
+    else if (db) setInstalled(db, uid, app, true).catch(e => { console.warn('install', app, e); ctx.onToast(`받지 못했어요 (${e?.code ?? e?.message ?? '오류'})`) })
   }
   return (
     <button className="pr-96" onClick={e => { e.stopPropagation(); tap() }} style={css(`flex:none;height:30px;min-width:72px;padding:0 18px;border-radius:15px;font-family:${FONT};font-size:15px;font-weight:700;background:${glass ? 'rgba(255,255,255,0.3)' : 'rgba(120,120,128,0.14)'};color:${glass ? '#fff' : 'var(--ios-blue)'};${glass ? '-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)' : ''}`)}>{label}</button>
