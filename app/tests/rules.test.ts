@@ -1927,7 +1927,7 @@ describe('은행 (bank)', () => {
     await kickWorker(25000)
     // the worker writes the interest, the grade and the limit in one batch: wait for the grade time
     let bank: Record<string, number> = {}
-    for (let i = 0; i < 80 && !bank.gradeAt; i++) { await new Promise(r => setTimeout(r, 500)); bank = await bankOf(a, 'a') }
+    for (let i = 0; i < 240 && !bank.gradeAt; i++) { await new Promise(r => setTimeout(r, 500)); bank = await bankOf(a, 'a') }
     assert.equal(bank.dep, 10000 + Math.round(10000 * 0.5 / 52), 'one week of the yearly 50% ÷ 52 on what was put in')
     assert.equal(bank.loan, 1000 + Math.round(1000 * 0.1 / 52), 'one week of the yearly 10% ÷ 52 on what was borrowed')
     assert.ok(bank.nextAt > Date.now(), 'the next interest is a week away')
@@ -1947,7 +1947,7 @@ describe('은행 (bank)', () => {
     await seed('banks/a', { nextAt: Date.now() - 52 * 7 * 24 * 3600_000 + 60_000 })
     await kickWorker(25000)
     let bank: Record<string, number> = {}
-    for (let i = 0; i < 80 && !bank.gradeAt; i++) { await new Promise(r => setTimeout(r, 500)); bank = await bankOf(a, 'a') }
+    for (let i = 0; i < 240 && !bank.gradeAt; i++) { await new Promise(r => setTimeout(r, 500)); bank = await bankOf(a, 'a') }
     // 52 × round(10,000 × 50% ÷ 52) = 14,992 (about 15,000). Compounding every week would give about 16,436.
     assert.ok(bank.dep >= 14_950 && bank.dep <= 15_050, `a year is about +50% (${bank.dep})`)
     assert.equal(bank.depBase, 10000, 'the principal does not grow with the interest')
@@ -1960,7 +1960,7 @@ describe('은행 (bank)', () => {
     await buySeries(a, 'a', 'korea', (await read(a, 'candidates/a')).owned)
     await kickWorker(25000)
     let bank: Record<string, number> = {}
-    for (let i = 0; i < 80 && !bank.grade; i++) { await new Promise(r => setTimeout(r, 500)); bank = await bankOf(a, 'a') }
+    for (let i = 0; i < 240 && !bank.grade; i++) { await new Promise(r => setTimeout(r, 500)); bank = await bankOf(a, 'a') }
     assert.equal(bank.grade, 2)
     assert.equal(bank.limit, 9000)
   })

@@ -122,7 +122,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [, setPhotoBusy] = useState(false)
   const [bioDraft, setBioDraft] = useState('')
   const [editOpen, setEditOpen] = useState(false)
-  const [shopTab, setShopTab] = useState<ShopTab>('set')
+  const [shopTab, setShopTab] = useState<ShopTab>('feat')
   const [passAsk, setPassAsk] = useState<PassKind | null>(null)
   const [ledgerOpen, setLedgerOpen] = useState(false)
   const [earnOpen, setEarnOpen] = useState(false)
@@ -529,7 +529,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   }
   /** Opens an app on the phone screen (the 당근마켓 app is the shop's market). */
   const openApp = (app: OpenableApp) => {
-    if (app === 'shop') setShopTab('set')
+    if (app === 'shop') setShopTab('feat')
     setPhoneApp(app)
   }
 
