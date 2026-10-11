@@ -103,7 +103,7 @@ export function FlappyBird() {
   const onTap = () => { if (phase === 'over') { reset(); return } flap() }
 
   return (
-    <div ref={box} style={css('position:relative;width:100%;height:100%;min-height:0;display:flex;align-items:center;justify-content:center;background:#ded895;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none')}>
+    <div ref={box} style={css('position:relative;width:100%;height:100%;min-height:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#4ec0ca 50%,#ded895 50%);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none')}>
       <div style={{ position: 'relative', width: W * scale, height: H * scale, flex: 'none' }} onPointerDown={onTap}>
         <canvas ref={canvas} aria-label="플래피 버드 게임 화면" style={{ width: W * scale, height: H * scale, display: 'block' }} />
         {phase !== 'over' && (

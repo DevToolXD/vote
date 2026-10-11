@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { playSound } from '../sound'
 import { css } from '../css'
 
 // 블록 블라스트: drop the three pieces on an 8 × 8 board. A full row or column clears. Drag a piece
@@ -109,6 +110,7 @@ export function BlockBlast() {
     const d = { i, x: e.clientX, y: e.clientY }
     dragRef.current = d
     setDrag(d)
+    playSound('pick')
     const move = (ev: PointerEvent) => {
       const cur = { ...dragRef.current!, x: ev.clientX, y: ev.clientY }
       dragRef.current = cur
@@ -134,6 +136,8 @@ export function BlockBlast() {
     const t = target(d, p)
     if (!t || !fits(board, p, t.r, t.c)) return
     const res = place(board, p, t.r, t.c)
+    // a clear adds more than the piece's own cells (see place)
+    playSound(res.points > p.cells.length ? 'clear' : 'place')
     const nextTray = tray.map((x, k) => (k === d.i ? null : x))
     const refilled = nextTray.every(x => x === null) ? freshTray() : nextTray
     const total = score + res.points
@@ -141,7 +145,7 @@ export function BlockBlast() {
     setTray(refilled)
     setScore(total)
     if (total > best) { setBest(total); saveBest(total) }
-    if (!anyFits(res.board, refilled)) setOver(true)
+    if (!anyFits(res.board, refilled)) { setOver(true); playSound('over') }
   }
 
   const restart = () => { setBoard(emptyBoard()); setTray(freshTray()); setScore(0); setOver(false) }

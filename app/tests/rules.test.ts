@@ -1757,6 +1757,7 @@ describe('폰 (홈 화면 앱)', () => {
     await rtSet(rtRef(R(a), 'phone/a/apps/shop'), true)
     await denied(rtSet(rtRef(R(b), 'phone/a/apps/shop'), false))
     await rtSet(rtRef(R(a), 'phone/a/apps/block'), false) // the game is an app too
+    await rtSet(rtRef(R(a), 'phone/a/apps/dino'), false) // and the dino game
     await denied(rtSet(rtRef(R(a), 'phone/a/apps/evil'), true))
     await denied(rtSet(rtRef(R(a), 'phone/a/apps/coin'), 'yes')) // a flag, not text
     await denied(rtSet(rtRef(R(a), 'phone/a/apps/admin'), true)) // 관리 and 앱스토어 are never stored

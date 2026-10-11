@@ -339,7 +339,7 @@
         ".read": "auth != null",
         "$app": {
           ".write": "auth != null && (auth.token.email === 'admin@vote.local' || auth.token.admin === true)",
-          ".validate": "newData.isBoolean() && ($app === 'shop' || $app === 'market' || $app === 'coin' || $app === 'stock' || $app === 'block' || $app === 'flappy')"
+          ".validate": "newData.isBoolean() && ($app === 'shop' || $app === 'market' || $app === 'coin' || $app === 'stock' || $app === 'block' || $app === 'flappy' || $app === 'dino')"
         }
       },
       "$uid": {
@@ -347,7 +347,7 @@
         "apps": {
           "$app": {
             ".write": "auth != null && auth.uid === $uid",
-            ".validate": "newData.isBoolean() && ($app === 'shop' || $app === 'market' || $app === 'coin' || $app === 'stock' || $app === 'block' || $app === 'flappy')"
+            ".validate": "newData.isBoolean() && ($app === 'shop' || $app === 'market' || $app === 'coin' || $app === 'stock' || $app === 'block' || $app === 'flappy' || $app === 'dino')"
           }
         }
       }

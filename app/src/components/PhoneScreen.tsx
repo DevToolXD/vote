@@ -19,6 +19,8 @@ const APP_FONT = "'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto San
 const SW = 393, SH = 852, BEZEL = 11
 const DW = SW + BEZEL * 2, DH = SH + BEZEL * 2
 const WALL = 'radial-gradient(120% 16% at 50% 0%,#8faee0 0%,rgba(143,174,224,0) 100%),radial-gradient(90% 48% at 18% 12%,#9dbcec 0%,rgba(157,188,236,0) 72%),radial-gradient(80% 50% at 92% 34%,#4f84cf 0%,rgba(79,132,207,0) 70%),radial-gradient(90% 42% at 22% 74%,#2c3d33 0%,rgba(44,61,51,0) 72%),radial-gradient(80% 40% at 80% 96%,#6f8b45 0%,rgba(111,139,69,0) 70%),#28344a'
+const WALL_TOP = '#8faee0' // the wallpaper's top colour (the status bar in full screen)
+const FLAPPY_SKY = '#4ec0ca' // 플래피 버드 starts with the sky at the top, not the sand
 const GLASS = 'background:rgba(255,255,255,0.26);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%)'
 
 const BackChevron = () => (
@@ -26,8 +28,8 @@ const BackChevron = () => (
 )
 
 const DEFAULT_LAYOUT = { grid: ['admin', 'market', 'block', 'flappy'] as AppId[], dock: ['shop', 'coin', 'stock'] as AppId[] }
-const REMOVABLE: AppId[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy']
-const ALL_HOME: AppId[] = ['admin', 'market', 'block', 'flappy', 'shop', 'coin', 'stock']
+const REMOVABLE: AppId[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino']
+const ALL_HOME: AppId[] = ['admin', 'market', 'block', 'flappy', 'dino', 'shop', 'coin', 'stock']
 type Layout = { grid: AppId[]; dock: AppId[] }
 function loadLayout(): Layout {
   try {
@@ -223,9 +225,17 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
     commit({ grid: layout.grid.filter(a => a !== app), dock: layout.dock.filter(a => a !== app) })
   }
   const inApp = !!shown
-  const dark = shown === 'stock' || shown === 'block' || shown === 'coin' // 주식, 코인 and the game are black apps
+  const dark = shown === 'stock' || shown === 'block' // 주식 and the game are black apps (코인 is white)
   // the whole screen takes the open app's colour, so the strip above it is not the wallpaper
-  const appBg = shown ? (dark ? '#000000' : shown === 'flappy' ? '#ded895' : '#ffffff') : WALL
+  const appBg = shown ? (dark ? '#000000' : shown === 'flappy' ? FLAPPY_SKY : '#ffffff') : WALL
+  // In full screen the phone covers the page, so the browser tints the status bar from the screen's top colour
+  const topColour = shown ? appBg : WALL_TOP
+  useEffect(() => {
+    if (!full) return
+    const meta = document.querySelector('meta[name="theme-color"]')
+    meta?.setAttribute('content', topColour)
+    return () => { meta?.setAttribute('content', '#ffffff') }
+  }, [full, topColour])
   const away = inApp || view !== 'home'
   const backInk = dark ? '#0a84ff' : inApp ? '#007aff' : view === 'store' ? 'var(--ios-blue)' : '#fff'
   const btnInk = dark ? '#fff' : inApp ? '#191f28' : view === 'store' ? 'var(--ios-label)' : '#fff'
@@ -292,7 +302,7 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
 
       {/* the open app */}
       {shown && (
-        <div className="phone-app" data-phone-app style={css(`position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;padding-top:var(--phone-top);box-sizing:border-box;background:${dark ? '#000000' : shown === 'flappy' ? '#ded895' : '#ffffff'};border-radius:${full ? 0 : 53}px;overflow:hidden;color:${dark ? '#ffffff' : '#191f28'};font-family:${APP_FONT};word-break:keep-all;transform-origin:${origin.x}px ${origin.y}px;animation:${closing ? 'appClose' : 'appOpen'} ${closing ? 280 : 420}ms cubic-bezier(0.32,0.72,0,1) both`)}>
+        <div className="phone-app" data-phone-app style={css(`position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;padding-top:var(--phone-top);box-sizing:border-box;background:${dark ? '#000000' : shown === 'flappy' ? FLAPPY_SKY : '#ffffff'};border-radius:${full ? 0 : 53}px;overflow:hidden;color:${dark ? '#ffffff' : '#191f28'};font-family:${APP_FONT};word-break:keep-all;transform-origin:${origin.x}px ${origin.y}px;animation:${closing ? 'appClose' : 'appOpen'} ${closing ? 280 : 420}ms cubic-bezier(0.32,0.72,0,1) both`)}>
           <div data-phone-scroll style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;padding-bottom:var(--phone-bottom)')}>
             {renderApp(shown)}
           </div>

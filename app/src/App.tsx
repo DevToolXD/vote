@@ -19,6 +19,7 @@ const BlockBlast = lazy(() => import('./components/BlockBlast').then(m => ({ def
 const FlappyBird = lazy(() => import('./components/FlappyBird').then(m => ({ default: m.FlappyBird })))
 const CoinScreen = lazy(() => import('./components/CoinScreen').then(m => ({ default: m.CoinScreen })))
 const MarketApp = lazy(() => import('./components/Market').then(m => ({ default: m.MarketApp })))
+const DinoGame = lazy(() => import('./components/DinoGame').then(m => ({ default: m.DinoGame })))
 const AdminScreen = lazy(() => import('./components/AdminScreen').then(m => ({ default: m.AdminScreen })))
 import { BottomNav } from './components/BottomNav'
 import { PhoneScreen } from './components/PhoneScreen'
@@ -767,6 +768,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           <Suspense fallback={null}>
           {app === 'block' && <BlockBlast />}
           {app === 'flappy' && <FlappyBird />}
+          {app === 'dino' && <DinoGame />}
           {app === 'stock' && <StockApp db={db} uid={authUser?.uid ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />}
           {app === 'shop' && (
             <ShopScreen
