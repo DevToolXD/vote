@@ -520,8 +520,10 @@ let resetsPending = false
 let seasonEndsAt = null
 
 const listeners = []
+// accounts that changed (a new account, or a move): their grade is worked out at once, not at the next sweep
+const bankQueue = new Set(), bankSeen = new Map()
 const firstDone = new Promise(resolve => {
-  const seen = new Set(), total = 9
+  const seen = new Set(), total = 10
   const done = name => { if (!seen.has(name)) { seen.add(name); if (seen.size === total) resolve() } }
   const listen = (name, ref, onSnap) => ref.onSnapshot(snap => { onSnap(snap); done(name) }, err => { warn(`Listener ${name} failed: ${err.message}`); done(name) })
   listeners.push(
@@ -531,6 +533,15 @@ const firstDone = new Promise(resolve => {
         c.type === 'removed' ? candidates.delete(c.doc.id) : candidates.set(c.doc.id, c.doc.data())
       }
       if (snap.docChanges().length) boardDirty = rtDirty = true
+    }),
+    listen('banks', fdb.collection('banks'), snap => {
+      for (const c of snap.docChanges()) {
+        if (c.type === 'removed') { bankSeen.delete(c.doc.id); continue }
+        const v = c.doc.data(), prev = bankSeen.get(c.doc.id)
+        bankSeen.set(c.doc.id, v)
+        // a new account, or one whose savings or loan moved (the worker's own grade and interest writes don't count)
+        if (!prev || prev.dep !== v.dep || prev.loan !== v.loan || prev.depBase !== v.depBase || prev.loanBase !== v.loanBase) bankQueue.add(c.doc.id)
+      }
     }),
     listen('settings', fdb.collection('settings'), snap => snap.docChanges().forEach(c => c.type === 'removed' ? settings.delete(c.doc.id) : settings.set(c.doc.id, c.doc.data()))),
     listen('tokens', fdb.collection('pushTokens'), snap => {
@@ -1070,9 +1081,14 @@ function creditOf(netWorth) {
 }
 async function bankTick() {
   const now = Date.now()
-  if (now - bankAt < BANK_EVERY_MS) return
-  bankAt = now
-  for (const d of (await fdb.collection('banks').limit(1000).get()).docs) {
+  const sweep = now - bankAt >= BANK_EVERY_MS
+  if (!sweep && !bankQueue.size) return
+  const queued = sweep ? null : [...bankQueue]
+  bankQueue.clear()
+  if (sweep) bankAt = now
+  const docs = queued ? await Promise.all(queued.map(uid => fdb.doc(`banks/${uid}`).get())) : (await fdb.collection('banks').limit(1000).get()).docs
+  for (const d of docs) {
+    if (!d.exists) continue
     try {
       const b = d.data(), uid = d.id
       const cand = await fdb.doc(`candidates/${uid}`).get()
