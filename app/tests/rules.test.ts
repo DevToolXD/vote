@@ -325,9 +325,9 @@ describe('profile and shop', () => {
   test('문서 (숙제 공유): a post has a title; a heart is only yours; comments by anyone signed in; the author deletes', async () => {
     const a = await signUp('a'), b = await signUp('b')
     const photo = 'data:image/jpeg;base64,/9j/4AAQ'
-    await fsSetDoc(fsDoc(a, 'homework', 'h1'), { uid: 'a', name: 'a', title: '수학 숙제', photo, caption: '', likes: [], at: fsServerTimestamp() })
-    await denied(fsSetDoc(fsDoc(a, 'homework', 'h2'), { uid: 'a', name: 'a', title: '', photo, caption: '', likes: [], at: fsServerTimestamp() }))
-    await denied(fsSetDoc(fsDoc(a, 'homework', 'h3'), { uid: 'a', name: 'a', title: 'x', photo, caption: '', likes: ['b'], at: fsServerTimestamp() }))
+    await fsSetDoc(fsDoc(a, 'homework', 'h1'), { uid: 'a', title: '수학 숙제', photo, caption: '', likes: [], at: fsServerTimestamp() })
+    await denied(fsSetDoc(fsDoc(a, 'homework', 'h2'), { uid: 'a', title: '', photo, caption: '', likes: [], at: fsServerTimestamp() }))
+    await denied(fsSetDoc(fsDoc(a, 'homework', 'h3'), { uid: 'a', title: 'x', photo, caption: '', likes: ['b'], at: fsServerTimestamp() }))
     await fsUpdateDoc(fsDoc(b, 'homework', 'h1'), { likes: arrayUnion('b') })
     await denied(fsUpdateDoc(fsDoc(b, 'homework', 'h1'), { likes: arrayUnion('a') }))
     await denied(fsUpdateDoc(fsDoc(a, 'homework', 'h1'), { title: '바뀐 제목' }))
@@ -342,7 +342,7 @@ describe('profile and shop', () => {
     const photo = 'data:image/jpeg;base64,/9j/4AAQ'
     const bonusOf = async () => (await read(a, 'candidates/a')).bonus ?? 0
     const start = await bonusOf()
-    await fsSetDoc(fsDoc(a, 'homework', 'h9'), { uid: 'a', name: 'a', title: '숙제', photo, caption: '', likes: [], at: fsServerTimestamp() })
+    await fsSetDoc(fsDoc(a, 'homework', 'h9'), { uid: 'a', title: '숙제', photo, caption: '', likes: [], at: fsServerTimestamp() })
     await fsUpdateDoc(fsDoc(a, 'homework', 'h9'), { likes: arrayUnion('a') })
     await fsUpdateDoc(fsDoc(b, 'homework', 'h9'), { likes: arrayUnion('b') })
     await fsUpdateDoc(fsDoc(c, 'homework', 'h9'), { likes: arrayUnion('c') })

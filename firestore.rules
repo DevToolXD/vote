@@ -1404,9 +1404,8 @@ service cloud.firestore {
     // author list changes by your own uid only) and comment; the author, or the admin, deletes a post
     match /homework/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.keys().hasOnly(['uid', 'name', 'title', 'photo', 'caption', 'likes', 'at'])
+      allow create: if signedIn() && request.resource.data.keys().hasOnly(['uid', 'title', 'photo', 'caption', 'likes', 'at'])
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.name is string && request.resource.data.name.size() <= 30
         && request.resource.data.title is string && request.resource.data.title.size() >= 1 && request.resource.data.title.size() <= 60
         && request.resource.data.photo is string && request.resource.data.photo.size() < 300000
         && request.resource.data.photo.matches('data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+')

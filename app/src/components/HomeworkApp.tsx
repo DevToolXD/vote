@@ -68,7 +68,7 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
     if (!db || !uid || !photo || !title.trim()) return
     setBusy(true)
     try {
-      await addDocPost(db, { uid, name: name.slice(0, 30), title: title.trim().slice(0, 60), photo, caption: caption.trim().slice(0, 300) })
+      await addDocPost(db, { uid, title: title.trim().slice(0, 60), photo, caption: caption.trim().slice(0, 300) })
       setSheet(false); setPhoto(null); setTitle(''); setCaption('')
       onToast('올렸어요')
     } catch { onToast('올리지 못했어요') } finally { setBusy(false) }
@@ -109,9 +109,9 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
           return (
             <article key={d.id} style={css('background:#ffffff;border-radius:16px;overflow:hidden')}>
               <div style={css('display:flex;align-items:center;gap:10px;padding:12px 14px 8px')}>
-                <span style={css('width:30px;height:30px;border-radius:9999px;background:#dbdbdb;color:#333;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center')}>{d.name.slice(0, 1) || '?'}</span>
+                <span style={css('width:30px;height:30px;border-radius:9999px;background:#dbdbdb;color:#333;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center')}>?</span>
                 <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
-                  <span style={css('font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{d.name}</span>
+                  <span style={css('font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>익명</span>
                   <span style={css('font-size:12px;color:#8e8e93')}>{ago(d.at)}</span>
                 </span>
                 {(d.uid === uid || isAdmin) && <button aria-label="이 숙제 지우기" onClick={() => remove(d)} style={css('font-size:14px;color:#8e8e93;padding:0 4px')}>✕</button>}
