@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type R
 import type { Firestore } from 'firebase/firestore'
 import { css, imageCss, sx } from '../css'
 import { MEDALS } from '../data'
-import { HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, postFooled, sendFakeGift, cancelScheduled, subscribeScheduled, type Scheduled, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
+import { setChatMuted, HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, postFooled, sendFakeGift, cancelScheduled, subscribeScheduled, type Scheduled, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, giftPrice, hasGift, itemLabel, subscribeGift, type Gift, type GiftKind } from '../backend/gifts'
 import { PASSES } from './ShopScreen'
 import { FRAMES, LEGENDARY, SKIN_SERIES, skinGeom } from '../data'
@@ -72,6 +72,26 @@ function timeLabel(ms: number) {
 }
 const clock = (ms: number) => (ms ? new Date(ms).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }) : '')
 const dayLabel = (ms: number) => new Date(ms).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })
+/** iOS time stamp: the time today, (어제) for yesterday, the date for older days. */
+const stamp = (ms: number) => {
+  const d = new Date(ms)
+  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(ms).setHours(0, 0, 0, 0)) / 86_400_000)
+  const time = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
+  if (days === 0) return time
+  if (days === 1) return `(어제) ${time}`
+  return `${dayLabel(ms)} ${time}`
+}
+// iOS glass: the shared look of the round and pill buttons in both screens.
+const GLASS_BG = 'background:rgba(255,255,255,0.78);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);box-shadow:0 6px 20px rgba(0,0,0,0.10),inset 0 0 0 0.5px rgba(0,0,0,0.06)'
+const GLASS_CIRCLE = `width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#000;${GLASS_BG}`
+/** The little tail on the last bubble of a run, as iMessage draws it. */
+function Tail({ mine, color }: { mine: boolean; color: string }) {
+  return (
+    <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true" style={css(`position:absolute;bottom:0;${mine ? 'right:-6px' : 'left:-6px;transform:scaleX(-1)'};display:block`)}>
+      <path d="M0 0C1 7 5 12 12 14H0Z" fill={color} />
+    </svg>
+  )
+}
 
 export type ChatView = { title: string; people: Person[]; others: string[]; canSend: boolean; blockedReason: string }
 
@@ -152,15 +172,24 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
   }
   const off = !!me.msgOff
   const [q, setQ] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [onlyUnread, setOnlyUnread] = useState(false)
   const needle = q.trim()
-  const shown = needle ? chats.filter(c => describeChat(c, me.id, byId, off).title.includes(needle)) : chats
-  const pinned = chats.slice(0, 4)
+  const shown = chats.filter(c => (!onlyUnread || isUnread(c, me.id)) && (!needle || describeChat(c, me.id, byId, off).title.includes(needle)))
+  const pinned = chats.slice(0, 3)
   return (
     <div data-g="clear" style={css('flex:1;display:flex;flex-direction:column;min-height:100%;background:#ffffff;color:#000;padding-bottom:calc(var(--phone-bottom,0px))')}>
-      {/* iOS Messages: large title, compose on the right */}
-      <div style={css('padding:14px 16px 6px 20px;display:flex;align-items:center;justify-content:space-between;animation:listIn 420ms ' + EASE + ' both')}>
-        <h1 style={css('margin:0;font-size:34px;line-height:41px;font-weight:700;letter-spacing:0.37px;color:#000')}>메시지</h1>
-        <button className="pr-94" onClick={onNew} disabled={off} aria-label="새 채팅" style={sx('width:36px;height:36px;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:#f2f2f7;color:#007aff;flex:none;transition:opacity 200ms', { opacity: off ? 0.3 : 1 })}><ComposeIcon /></button>
+      {/* iOS Messages: glass 편집 · centred title · glass filter */}
+      <div style={css('position:sticky;top:0;z-index:5;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 16px 10px;background:rgba(255,255,255,0.82);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%)')}>
+        <span style={css('justify-self:start')}>
+          <button className="pr-94" onClick={() => setEditing(e => !e)} disabled={chats.length === 0} aria-pressed={editing} style={css(`height:44px;padding:0 18px;border-radius:9999px;font-size:17px;font-weight:600;color:#000;${GLASS_BG}`)}>{editing ? '완료' : '편집'}</button>
+        </span>
+        <h1 style={css('margin:0;font-size:17px;line-height:22px;font-weight:600;color:#000;text-align:center')}>메시지</h1>
+        <span style={css('justify-self:end;display:flex;gap:8px')}>
+          <button className="pr-94" onClick={() => setOnlyUnread(u => !u)} aria-pressed={onlyUnread} aria-label="안 읽은 대화만 보기" style={css(`${GLASS_CIRCLE};color:${onlyUnread ? '#007aff' : '#000'}`)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+          </button>
+        </span>
       </div>
       {off && <div style={css('padding:0 20px 6px;font-size:13px;line-height:18px;color:#8e8e93')}>메시지 받기가 꺼져 있어요</div>}
 
@@ -173,14 +202,14 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
       ) : (
         <>
           {/* the pinned people: round avatars in a row, names below */}
-          {!needle && (
-            <div style={css('display:flex;gap:18px;overflow-x:auto;padding:10px 20px 16px;scrollbar-width:none')}>
+          {!needle && pinned.length > 0 && (
+            <div style={css('display:flex;justify-content:space-evenly;padding:8px 12px 18px')}>
               {pinned.map(c => {
                 const v = describeChat(c, me.id, byId, off)
                 return (
-                  <button key={c.id} className="pr-96" onClick={() => onOpen(c.id)} style={css('flex:none;width:72px;display:flex;flex-direction:column;align-items:center;gap:6px;background:none;color:#000;font-family:inherit')}>
-                    <ChatAvatar people={v.people} size={64} photo={c.photo} />
-                    <span style={css('max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:17px;color:#000')}>{v.title}</span>
+                  <button key={c.id} className="pr-96" onClick={() => onOpen(c.id)} style={css('width:104px;display:flex;flex-direction:column;align-items:center;gap:8px;background:none;color:#000;font-family:inherit')}>
+                    <ChatAvatar people={v.people} size={92} photo={c.photo} />
+                    <span style={css('max-width:104px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;line-height:20px;color:#000')}>{v.title}</span>
                   </button>
                 )
               })}
@@ -193,24 +222,25 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
               const muted = !!c.mutes?.[me.id]
               const lastText = c.last ? (c.last.text || '사진') : ''
               const who = c.last ? (c.last.uid === me.id ? '나: ' : c.type === 'group' ? `${nameIn(byId, c.last.uid)}: ` : '') : ''
+              // 편집: a tap turns that chat's 알림 on or off instead of opening it
+              const tap = () => { if (editing) { if (db) setChatMuted(db, me.id, c.id, !muted).catch(() => {}) } else onOpen(c.id) }
               return (
-                <button key={c.id} className="pr-dim" onClick={() => onOpen(c.id)} style={css('position:relative;display:flex;align-items:center;gap:12px;padding:10px 16px 10px 12px;text-align:left;background:#fff;width:100%')}>
-                  <span aria-hidden="true" style={sx('flex:none;width:10px;height:10px;border-radius:9999px;background:#007aff;margin-left:4px', { opacity: unread ? 1 : 0 })} />
-                  <ChatAvatar people={v.people} size={52} photo={c.photo} />
-                  <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
+                <button key={c.id} className="pr-dim" onClick={tap} aria-pressed={editing ? !muted : undefined} style={css('position:relative;display:flex;align-items:center;gap:6px;padding:12px 16px 12px 20px;text-align:left;background:#fff;color:#000;width:100%')}>
+                  <span aria-hidden="true" style={sx('flex:none;width:10px;height:10px;border-radius:9999px;background:#007aff', { opacity: unread ? 1 : 0 })} />
+                  <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:3px')}>
                     <span style={css('display:flex;align-items:center;gap:6px;min-width:0')}>
-                      <span style={sx('flex:1;min-width:0;font-size:17px;line-height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000', { fontWeight: unread ? 600 : 500 })}>{v.title}</span>
+                      <span style={sx('flex:1;min-width:0;font-size:17px;line-height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis', { fontWeight: unread ? 700 : 600 })}>{v.title}</span>
                       {c.type === 'group' && <span style={css('flex:none;font-size:15px;color:#8e8e93')}>{c.members.length}</span>}
                       {muted && <BellOffIcon />}
                       <span style={css('flex:none;font-size:15px;line-height:20px;color:#8e8e93')}>{timeLabel(c.last?.at?.toMillis() ?? 0)}</span>
-                      <svg width="8" height="13" viewBox="0 0 8 13" fill="none" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={css('flex:none')}><path d="m1.5 1.5 5 5-5 5" /></svg>
+                      {!editing && <svg width="8" height="13" viewBox="0 0 8 13" fill="none" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={css('flex:none')}><path d="m1.5 1.5 5 5-5 5" /></svg>}
                     </span>
                     <span style={css('display:flex;align-items:center;gap:6px;min-width:0')}>
                       {c.type === 'dm' && v.people[0] && <PresenceText db={db} uid={v.people[0].id} size={13} />}
-                      <span style={sx('flex:1;min-width:0;font-size:15px;line-height:20px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;color:#8e8e93', { fontWeight: unread ? 500 : 400, color: unread ? '#000' : '#8e8e93' })}>{c.last ? who + lastText : '대화를 시작해보세요'}</span>
+                      <span style={sx('flex:1;min-width:0;font-size:15px;line-height:20px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical', { fontWeight: unread ? 500 : 400, color: unread ? '#000' : '#8e8e93' })}>{c.last ? who + lastText : '대화를 시작해보세요'}</span>
                     </span>
                   </span>
-                  {i < shown.length - 1 && <span aria-hidden="true" style={css('position:absolute;left:80px;right:0;bottom:0;height:0.5px;background:#e5e5ea')} />}
+                  {i < shown.length - 1 && <span aria-hidden="true" style={css('position:absolute;left:32px;right:0;bottom:0;height:0.5px;background:#e5e5ea')} />}
                 </button>
               )
             })}
@@ -544,34 +574,42 @@ export function ChatRoom(p: RoomProps) {
     setSending(false); setPhotoSending(false)
   }
 
+  const lastMine = msgs?.slice().reverse().find(x => x.uid === me.id && x.kind !== 'system')?.id
+
   return (
     <>
     <KeyboardUnderlay z={199} />
     <div style={sx('position:fixed;left:0;right:0;z-index:200;display:flex;justify-content:center', { top: box.top, height: box.height })}>
-      <div data-g="app" className="no-select" style={{ ...css(`width:100%;max-width:var(--app-w);height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;color:#fff;animation:roomIn 360ms ${EASE} backwards`), background: tinted ? '#ffffff' : 'linear-gradient(180deg,#c9a7e4 0%,#9fb7e6 34%,#a9d4d6 58%,#eba4b4 84%,#e9868f 100%)' }}>
-        <div style={{ ...css('flex:none;display:flex;align-items:center;gap:8px;padding:4px 10px;position:relative;z-index:2'), paddingTop: box.top ? 4 : 'calc(4px + env(safe-area-inset-top))', background: tinted ? 'rgba(255,255,255,0.72)' : 'transparent', backdropFilter: tinted ? 'blur(12px)' : undefined }}>
-          <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css('width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)')}><BackIcon /></button>
-          <button className="pr-dim" onClick={() => (chat.type === 'dm' && v.people[0] ? onOpenProfile(v.people[0].id) : setMenu(true))} style={css('flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:4px 14px 4px 5px;height:48px;border-radius:9999px;text-align:left;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)')}>
-            <ChatAvatar people={v.people} size={38} photo={chat.photo} />
-            <span style={css('min-width:0;display:flex;align-items:baseline;gap:6px')}>
-              <span style={css('font-size:17px;line-height:25.5px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 6px rgba(80,40,110,0.3)')}>{v.title}</span>
-              {chat.type === 'group' && <span style={css('flex:none;font-size:15px;color:rgba(255,255,255,0.85)')}>{chat.members.length}</span>}
-              {chat.type === 'dm' && v.people[0] && <PresenceText db={db} uid={v.people[0].id} size={14} sep />}
-              {chat.type === 'group' && <GroupPresence db={db} uids={chat.members.filter(m => m !== me.id)} sep />}
+        <div data-g="app" className="no-select" style={css(`width:100%;max-width:var(--app-w);height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;color:#000;background:#ffffff;animation:roomIn 360ms ${EASE} backwards`)}>
+          {/* iOS Messages: round glass back, the contact centred with a name pill, glass call/menu */}
+          <div style={{ ...css('flex:none;position:relative;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:start;gap:8px;padding:0 12px 6px'), paddingTop: box.top ? 8 : 'calc(8px + env(safe-area-inset-top))' }}>
+            <span style={css('justify-self:start;display:flex')}>
+              <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css(GLASS_CIRCLE)}><BackIcon /></button>
             </span>
-          </button>
-          {chat.type === 'dm' && p.onCall && v.people[0] && <>
-            <button className="pr-dim" onClick={() => p.onCall?.(true)} aria-label="영상 통화" style={css('width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)')}>
-              <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="2.5" y="6" width="13" height="12" rx="2.5" /><path d="m15.5 10.5 6-3.5v10l-6-3.5" /></svg>
+            <button className="pr-dim" onClick={() => (chat.type === 'dm' && v.people[0] ? onOpenProfile(v.people[0].id) : setMenu(true))} style={css('min-width:0;max-width:220px;display:flex;flex-direction:column;align-items:center;gap:6px;color:#000')}>
+              <ChatAvatar people={v.people} size={76} photo={chat.photo} />
+              <span style={css(`display:flex;align-items:center;gap:4px;max-width:100%;height:30px;padding:0 12px 0 14px;border-radius:9999px;font-size:17px;font-weight:600;color:#000;${GLASS_BG}`)}>
+                <span style={css('min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{v.title}</span>
+                {chat.type === 'group' && <span style={css('flex:none;font-size:14px;color:#8e8e93')}>{chat.members.length}</span>}
+                <svg width="7" height="12" viewBox="0 0 8 13" fill="none" stroke="#8e8e93" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={css('flex:none')}><path d="m1.5 1.5 5 5-5 5" /></svg>
+              </span>
+              {chat.type === 'dm' && v.people[0] && <PresenceText db={db} uid={v.people[0].id} size={12} />}
+              {chat.type === 'group' && <GroupPresence db={db} uids={chat.members.filter(m => m !== me.id)} />}
             </button>
-            <button className="pr-dim" onClick={() => p.onCall?.(false)} aria-label="음성 통화" style={css('width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)')}>
-              <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M6.6 10.8a15.2 15.2 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z" /></svg>
-            </button>
-          </>}
-          <button className="pr-dim" onClick={() => setMenu(true)} aria-label="채팅방 메뉴" style={css('width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)')}><MenuIcon /></button>
-        </div>
+            <span style={css('justify-self:end;display:flex;gap:8px')}>
+              {chat.type === 'dm' && p.onCall && v.people[0] && <>
+                <button className="pr-dim" onClick={() => p.onCall?.(true)} aria-label="영상 통화" style={css(GLASS_CIRCLE)}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="2.5" y="6" width="13" height="12" rx="2.5" /><path d="m15.5 10.5 6-3.5v10l-6-3.5" /></svg>
+                </button>
+                <button className="pr-dim" onClick={() => p.onCall?.(false)} aria-label="음성 통화" style={css(GLASS_CIRCLE)}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M6.6 10.8a15.2 15.2 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z" /></svg>
+                </button>
+              </>}
+              <button className="pr-dim" onClick={() => setMenu(true)} aria-label="채팅방 메뉴" style={css(GLASS_CIRCLE)}><MenuIcon /></button>
+            </span>
+          </div>
 
-        <div ref={listRef} onScroll={onListScroll} style={sx('flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;transition:background 400ms ease', { background: bgCss })}>
+        <div ref={listRef} onScroll={onListScroll} style={sx('flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 36px);mask-image:linear-gradient(180deg,transparent 0,#000 36px)', { background: bgCss })}>
           {msgs === null ? null : msgs.length === 0 ? (
             <div className="anim-list" style={css('margin:auto;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center')}>
               <ChatAvatar people={v.people} size={72} photo={chat.photo} />
@@ -584,7 +622,8 @@ export function ChatRoom(p: RoomProps) {
             const at = m.at?.toMillis() ?? 0
             const newDay = !prev || new Date(prev.at?.toMillis() ?? 0).toDateString() !== new Date(at).toDateString()
             const isNew = !!firstIds.current && !firstIds.current.has(m.id)
-            const dayRow = newDay && at > 0 && <div style={css('align-self:center;margin:16px 0 8px;font-size:13px;line-height:19.5px;color:#8b95a1')}>{dayLabel(at)}</div>
+            const longGap = !!prev && at - (prev.at?.toMillis() ?? 0) > 3_600_000
+            const dayRow = (newDay || longGap) && at > 0 && <div style={css('align-self:center;margin:16px 0 8px;font-size:13px;line-height:18px;color:#8e8e93')}>{stamp(at)}</div>
             if (m.kind === 'system') {
               return (
                 <Fragment key={m.id}>
@@ -606,7 +645,7 @@ export function ChatRoom(p: RoomProps) {
                 }} />
               : m.kind === 'image'
               ? <ImageBubble db={db} chatId={chat.id} msgId={m.mediaId ?? m.id} onOpen={setViewer} onLoaded={keepBottom} />
-              : <span style={sx('padding:10px 14px;border-radius:20px;font-size:15px;line-height:22px;white-space:pre-wrap;word-break:break-word;display:flex;flex-direction:column;gap:6px', { background: mine ? 'rgba(46,96,170,0.55)' : tinted ? '#ffffff' : 'rgba(60,62,84,0.4)', color: '#ffffff', fontWeight: mine ? 500 : 400, WebkitBackdropFilter: tinted ? undefined : 'blur(16px) saturate(160%)', backdropFilter: tinted ? undefined : 'blur(16px) saturate(160%)', border: tinted ? undefined : '1px solid rgba(255,255,255,0.28)', boxShadow: tinted ? undefined : '0 6px 18px rgba(40,30,70,0.14)', textShadow: tinted ? undefined : '0 1px 3px rgba(40,30,70,0.25)' })}>
+              : <span style={sx('position:relative;padding:8px 14px 9px;border-radius:20px;font-size:17px;line-height:22px;white-space:pre-wrap;word-break:break-word;display:flex;flex-direction:column;gap:6px', { background: mine ? 'linear-gradient(180deg,#72d26f,#5fc75f)' : '#e9e9eb', color: mine ? '#ffffff' : '#000000', fontWeight: 400 })}>
                   {m.replyTo && (
                     <button onClick={() => jumpTo(m.replyTo!.id)} style={sx('display:flex;flex-direction:column;gap:1px;padding:6px 10px;border-radius:12px;text-align:left;max-width:100%;border-left:3px solid', { background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(0,23,51,0.05)', borderLeftColor: mine ? 'rgba(255,255,255,0.7)' : '#3182f6' })}>
                       <span style={sx('font-size:12px;line-height:16px;font-weight:700', { color: mine ? 'rgba(255,255,255,0.9)' : '#1b64da' })}>{m.replyTo.uid === me.id ? '나' : nameIn(byId, m.replyTo.uid)}에게 답장</span>
@@ -614,6 +653,7 @@ export function ChatRoom(p: RoomProps) {
                     </button>
                   )}
                   <span>{m.text}</span>
+                  {lastOfRun && <Tail mine={mine} color={mine ? '#66cb66' : '#e9e9eb'} />}
                 </span>
             return (
               <Fragment key={m.id}>
@@ -638,12 +678,8 @@ export function ChatRoom(p: RoomProps) {
                     )}
                     <span style={sx('display:flex;align-items:flex-end;gap:6px', { flexDirection: mine ? 'row-reverse' : 'row' })}>
                       {bubble}
-                      {lastOfRun && (
-                        <span style={sx('flex:none;display:flex;flex-direction:column;gap:0', { alignItems: mine ? 'flex-end' : 'flex-start' })}>
-                          {lastOfRun && <span style={css('font-size:11px;line-height:16px;color:#8b95a1;white-space:nowrap')}>{clock(at)}</span>}
-                        </span>
-                      )}
                     </span>
+                    {m.id === lastMine && <span style={css('font-size:13px;line-height:18px;color:#8e8e93;margin-top:2px')}>전송됨</span>}
                   </span>
                 </div>
               </Fragment>
@@ -689,22 +725,24 @@ export function ChatRoom(p: RoomProps) {
             </div>
           )}
           {v.canSend ? (
-            <div style={css('display:flex;align-items:flex-end;gap:6px')}>
-              <button className="pr-94" onClick={() => setAttach(a => (a ? null : 'menu'))} disabled={sending} aria-label="사진·포인트 선물" aria-expanded={!!attach} style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55);transition:transform 260ms ${EASE}`, { transform: attach ? 'rotate(45deg)' : 'none' })}><PlusIcon /></button>
+            <div style={css('display:flex;align-items:center;gap:8px')}>
+              <button className="pr-94" onClick={() => setAttach(a => (a ? null : 'menu'))} disabled={sending} aria-label="사진·포인트 선물" aria-expanded={!!attach} style={sx(`width:36px;height:36px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#000;background:#ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.12);transition:transform 260ms ${EASE}`, { transform: attach ? 'rotate(45deg)' : 'none' })}><PlusIcon /></button>
               <input ref={fileRef} type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) pickPhoto(f); e.target.value = '' }} style={css('display:none')} />
-              <textarea
-                ref={inputRef} className="box-focus" rows={1} value={draft} maxLength={MAX_TEXT} placeholder="메시지 보내기"
-                onChange={e => setDraft(e.target.value)}
-                onFocus={() => setTimeout(() => toBottom(true), 300)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }}
-                style={css(`flex:1;min-width:0;min-height:44px;max-height:120px;resize:none;outline:none;border-radius:22px;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55);background-color:${tinted ? '#f2f4f6' : 'rgba(255,255,255,0.22)'};padding:11px 16px;font-size:17px;line-height:22px;color:${tinted ? '#191f28' : '#fff'};font-family:inherit;transition:background-color 200ms ${EASE}`)}
-              />
-              <button className="pr-94" title="꾹 누르면 예약 전송"
-                onPointerDown={e => { e.preventDefault(); pressStart() }} onPointerUp={pressEnd} onPointerLeave={pressEnd} onPointerCancel={pressEnd}
-                onMouseDown={e => e.preventDefault()} onContextMenu={e => e.preventDefault()} onClick={send} disabled={!canSendNow} aria-label="보내기 (꾹 누르면 예약)"
-                style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;background:${tinted ? '#3182f6' : 'rgba(46,96,170,0.6)'};${tinted ? '' : GLASS_CSS};display:flex;align-items:center;justify-content:center;transition:opacity 200ms ${EASE},transform 200ms ${EASE};-webkit-touch-callout:none;user-select:none`, { opacity: canSendNow ? 1 : 0.3, transform: canSendNow ? 'scale(1)' : 'scale(0.92)' })}>
-                <PlaneIcon size={20} stroke="#ffffff" width={2.2} />
-              </button>
+              <span style={css('flex:1;min-width:0;display:flex;align-items:flex-end;gap:6px;min-height:36px;padding:2px 3px 2px 14px;border-radius:18px;background:#ffffff;box-shadow:inset 0 0 0 1px #d1d1d6')}>
+                <textarea
+                  ref={inputRef} className="box-focus" rows={1} value={draft} maxLength={MAX_TEXT} placeholder="메시지 보내기"
+                  onChange={e => setDraft(e.target.value)}
+                  onFocus={() => setTimeout(() => toBottom(true), 300)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }}
+                  style={css('flex:1;min-width:0;min-height:32px;max-height:120px;resize:none;outline:none;border:0;background:transparent;padding:6px 0;font-size:17px;line-height:22px;color:#000;font-family:inherit')}
+                />
+                <button className="pr-94" title="꾹 누르면 예약 전송"
+                  onPointerDown={e => { e.preventDefault(); pressStart() }} onPointerUp={pressEnd} onPointerLeave={pressEnd} onPointerCancel={pressEnd}
+                  onMouseDown={e => e.preventDefault()} onContextMenu={e => e.preventDefault()} onClick={send} disabled={!canSendNow} aria-label="보내기 (꾹 누르면 예약)"
+                  style={sx(`width:30px;height:30px;flex:none;border-radius:9999px;background:#34c759;display:flex;align-items:center;justify-content:center;transition:opacity 200ms ${EASE},transform 200ms ${EASE};-webkit-touch-callout:none;user-select:none`, { opacity: canSendNow ? 1 : 0.35, transform: canSendNow ? 'scale(1)' : 'scale(0.92)' })}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" /></svg>
+                </button>
+              </span>
             </div>
           ) : (
             <div style={css('min-height:44px;display:flex;align-items:center;justify-content:center;padding:0 16px;border-radius:22px;background:#f2f4f6;font-size:15px;color:#6b7684;text-align:center')}>{v.blockedReason}</div>
@@ -874,7 +912,6 @@ function GiftBubble({ db, giftId, me, mine: meP, byId, onClaim, onCancel, onLoad
 }
 
 // 페이크 선물: whoever taps 받기 is told it once per message (remembered on the device).
-const GLASS_CSS = 'backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)'
 
 function wasFooled(id: string) { try { return localStorage.getItem('pv-fooled-' + id) === '1' } catch { return false } }
 function markFooled(id: string) { if (wasFooled(id)) return false; try { localStorage.setItem('pv-fooled-' + id, '1') } catch { /* private mode */ } return true }
