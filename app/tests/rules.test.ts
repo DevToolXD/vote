@@ -1847,6 +1847,15 @@ describe('주식', () => {
 })
 
 describe('은행 (bank)', () => {
+  /** A move written straight to the rules (no app checks), with the given changes to the bank and the points. */
+  async function rawMove(db: Firestore, uid: string, kind: string, amount: number, bank: Record<string, unknown>, cand: Record<string, unknown>) {
+    const logRef = doc(collection(db, 'banks', uid, 'log'))
+    const b = writeBatch(db)
+    b.update(doc(db, 'banks', uid), bank)
+    b.update(doc(db, 'candidates', uid), { ...cand, lastBank: logRef.id })
+    b.set(logRef, { uid, kind, amount, at: serverTimestamp() })
+    await b.commit()
+  }
   const bankOf = (db: Firestore, uid: string) => fsGetDoc(fsDoc(db, 'banks', uid)).then(x => x.data() as Record<string, number>)
   const logOf = async (db: Firestore, uid: string) => (await getDocs(fsCollection(db, 'banks', uid, 'log'))).docs.map(d => d.data() as { kind: string; amount: number })
   test('opening, depositing, withdrawing, borrowing within the limit and repaying move the points with the bank', async () => {
@@ -1859,17 +1868,18 @@ describe('은행 (bank)', () => {
     assert.equal((await bankOf(a, 'a')).dep, 1000)
     await bankMove(a, 'a', 'out', 400)
     assert.equal((await bankOf(a, 'a')).dep, 600)
+    assert.equal((await bankOf(a, 'a')).depBase, 600, 'the principal drops to the balance once the balance is below it')
     assert.equal(pointsOf(await read(a, 'candidates/a')), 5000 + 400 - 1000) // 5,000 given, 400 out, 1,000 in
     // a loan needs a limit (the worker sets it): none yet
-    await denied(bankMove(a, 'a', 'borrow', 500))
+    await denied(rawMove(a, 'a', 'borrow', 500, { loan: fsIncrement(500), loanBase: fsIncrement(500) }, { bonus: fsIncrement(500) }))
     await seed('banks/a', { limit: 2000 }) // what the worker writes
     await bankMove(a, 'a', 'borrow', 500)
     assert.equal((await bankOf(a, 'a')).loan, 500)
     await bankMove(a, 'a', 'repay', 200)
     assert.equal((await bankOf(a, 'a')).loan, 300)
-    // over the limit, and more than the savings, are refused
-    await denied(bankMove(a, 'a', 'borrow', 2000))
-    await denied(bankMove(a, 'a', 'out', 700))
+    // over the limit, and more than the savings, are refused by the rules even when the app's own checks are skipped
+    await denied(rawMove(a, 'a', 'borrow', 2000, { loan: fsIncrement(2000), loanBase: fsIncrement(2000) }, { bonus: fsIncrement(2000) }))
+    await denied(rawMove(a, 'a', 'out', 700, { dep: fsIncrement(-700) }, { bonus: fsIncrement(700) }))
     // the log has one line per move
     assert.deepEqual((await logOf(a, 'a')).map(l => l.kind).sort(), ['borrow', 'in', 'out', 'repay'])
     await denied(bankMove(a, 'a', 'in', 999999)) // more points than I have
@@ -1901,13 +1911,13 @@ describe('은행 (bank)', () => {
     await grantPoints(admin, ADMIN.uid, 'a', 30000)
     await openBank(a, 'a')
     await bankMove(a, 'a', 'in', 10000)
-    await seed('banks/a', { nextAt: Date.now() - 60_000, loan: 1000, limit: 2000 })
+    await seed('banks/a', { nextAt: Date.now() - 60_000, loan: 1000, loanBase: 1000, limit: 2000 })
     await kickWorker(25000)
     // the worker writes the interest, the grade and the limit in one batch: wait for the grade time
     let bank: Record<string, number> = {}
     for (let i = 0; i < 80 && !bank.gradeAt; i++) { await new Promise(r => setTimeout(r, 500)); bank = await bankOf(a, 'a') }
-    assert.equal(bank.dep, 10000 + Math.round(10000 * 0.5 / 52), 'one week of 50% on the savings')
-    assert.equal(bank.loan, 1000 + Math.round(1000 * 0.1 / 52), 'one week of 10% on the loan')
+    assert.equal(bank.dep, 10000 + Math.round(10000 * 0.5 / 52), 'one week of the yearly 50% ÷ 52 on what was put in')
+    assert.equal(bank.loan, 1000 + Math.round(1000 * 0.1 / 52), 'one week of the yearly 10% ÷ 52 on what was borrowed')
     assert.ok(bank.nextAt > Date.now(), 'the next interest is a week away')
     // net worth: points 20000 + savings + items − loan; 15000+ is grade 2, which allows 60%
     const net = 20000 + bank.dep - bank.loan
@@ -1915,6 +1925,20 @@ describe('은행 (bank)', () => {
     assert.equal(bank.limit, Math.floor(net * 0.6))
     const logs = (await logOf(a, 'a')).map(l => l.kind)
     assert.ok(logs.includes('int-dep') && logs.includes('int-loan'), 'the interest is in the log')
+  })
+  test('a year at 50% is +50% on what was put in (simple, not compounded)', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 20000)
+    await openBank(a, 'a')
+    await bankMove(a, 'a', 'in', 10000)
+    // 52 weeks are due at once: the worker pays them all in this run
+    await seed('banks/a', { nextAt: Date.now() - 52 * 7 * 24 * 3600_000 + 60_000 })
+    await kickWorker(25000)
+    let bank: Record<string, number> = {}
+    for (let i = 0; i < 80 && !bank.gradeAt; i++) { await new Promise(r => setTimeout(r, 500)); bank = await bankOf(a, 'a') }
+    // 52 × round(10,000 × 50% ÷ 52) = 14,992 (about 15,000). Compounding every week would give about 16,436.
+    assert.ok(bank.dep >= 14_950 && bank.dep <= 15_050, `a year is about +50% (${bank.dep})`)
+    assert.equal(bank.depBase, 10000, 'the principal does not grow with the interest')
   })
   test('items count towards the credit grade (what the person has now, at the shop prices)', async () => {
     const a = await signUp('a'), admin = dbAs(ADMIN)

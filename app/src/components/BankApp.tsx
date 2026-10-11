@@ -73,7 +73,8 @@ export function BankApp({ db, uid, owned, points, onLogin, onToast }: Props) {
 
   const loan = bank.loan, dep = bank.dep
   const available = Math.max(0, bank.limit - loan)
-  const weekly = Math.round(dep * BANK.deposit.annual / BANK.deposit.weeks)
+  // simple interest: a week is the yearly rate ÷ 52 of what was put in, not of the interest
+  const weekly = Math.round(bank.depBase * BANK.deposit.annual / BANK.deposit.weeks)
   const itemValue = owned ? itemsValue(owned) : 0
   const netWorth = points + dep + itemValue - loan
   const left = bank.nextAt - now
@@ -86,7 +87,7 @@ export function BankApp({ db, uid, owned, points, onLogin, onToast }: Props) {
       <section style={css(`border-radius:20px;background:${CARD};padding:22px 22px 20px;display:flex;flex-direction:column;gap:6px`)}>
         <span style={css(`font-size:15px;font-weight:600;color:${SUB}`)}>내 통장</span>
         <span style={css(`font-size:36px;line-height:44px;font-weight:700;letter-spacing:-0.6px;font-variant-numeric:tabular-nums`)}>{fmt(dep)}<span style={css('font-size:22px;margin-left:3px;color:' + SUB)}>P</span></span>
-        <span style={css(`font-size:14px;line-height:20px;color:${MUTE}`)}>연 50% · 매주 이자가 붙어요{nextLabel && ` · 다음 이자 ${nextLabel}`}</span>
+        <span style={css(`font-size:14px;line-height:20px;color:${MUTE}`)}>연 50% · 넣은 돈에 매주 이자가 붙어요{nextLabel && ` · 다음 이자 ${nextLabel}`}</span>
         {dep > 0 && <span style={css(`font-size:14px;color:${BLUE};font-weight:600`)}>이번 주 예상 이자 +{fmt(weekly)}P</span>}
         <div style={css('display:flex;gap:8px;margin-top:14px')}>
           <Btn primary onClick={() => setSheet('in')}>넣기</Btn>
@@ -194,7 +195,7 @@ function MoveSheet({ kind, max, points, available, loan, onClose, onGo }: { kind
   const title = { in: '넣을 금액', out: '뺄 금액', borrow: '빌릴 금액', repay: '갚을 금액' }[kind]
   const desc = {
     in: `내 포인트 ${fmt(points)}P에서 통장으로 넣어요`,
-    out: `통장에서 내 포인트로 돌려받아요`,
+    out: `통장에서 내 포인트로 돌려받아요 (이자부터 먼저 빠져요)`,
     borrow: `한도 안에서 빌리면 포인트로 바로 들어와요 (남은 한도 ${fmt(available)}P)`,
     repay: `내 포인트로 대출을 갚아요 (대출 ${fmt(loan)}P)`,
   }[kind]

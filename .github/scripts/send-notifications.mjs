@@ -1077,13 +1077,16 @@ async function bankTick() {
       const b = d.data(), uid = d.id
       const cand = await fdb.doc(`candidates/${uid}`).get()
       if (!cand.exists) continue
-      // the weekly interest for every week that is due (a worker that was down catches up)
+      // the weekly interest for every week that is due (a worker that was down catches up). It is simple:
+      // each week is the yearly rate ÷ 52 of the principal (what was put in / borrowed), never of the interest,
+      // so a year at 50% is +50%.
       let dep = b.dep ?? 0, loan = b.loan ?? 0, nextAt = b.nextAt ?? now + WEEK_MS
+      const depBase = b.depBase ?? dep, loanBase = b.loanBase ?? loan
       const logs = []
       let weeks = 0
       while (nextAt <= now && weeks < 52) {
-        const di = Math.round(dep * BANK.deposit.annual / BANK.deposit.weeks)
-        const li = Math.round(loan * BANK.loan.annual / BANK.loan.weeks)
+        const di = Math.round(depBase * BANK.deposit.annual / BANK.deposit.weeks)
+        const li = Math.round(loanBase * BANK.loan.annual / BANK.loan.weeks)
         dep += di
         loan += li
         if (di) logs.push({ kind: 'int-dep', amount: di })
@@ -1094,7 +1097,7 @@ async function bankTick() {
       const net = pointsOfDoc(cand.data()) + dep + itemsValue(cand.data()) - loan
       const credit = creditOf(net)
       const batch = fdb.batch()
-      batch.update(d.ref, { dep, loan, nextAt, grade: credit.grade, limit: credit.limit, gradeAt: now })
+      batch.update(d.ref, { dep, depBase, loan, loanBase, nextAt, grade: credit.grade, limit: credit.limit, gradeAt: now })
       for (const l of logs) batch.set(d.ref.collection('log').doc(), { uid, ...l, at: FieldValue.serverTimestamp() })
       await batch.commit()
     } catch (e) { warn(`Bank account ${d.id} failed: ${e.message}`) }

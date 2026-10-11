@@ -1336,9 +1336,11 @@ service cloud.firestore {
     match /banks/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
       allow create: if request.auth != null && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['ownerUid', 'dep', 'loan', 'limit', 'grade', 'gradeAt', 'nextAt', 'opened'])
+        && request.resource.data.keys().hasOnly(['ownerUid', 'dep', 'depBase', 'loan', 'loanBase', 'limit', 'grade', 'gradeAt', 'nextAt', 'opened'])
         && request.resource.data.ownerUid == uid
-        && request.resource.data.dep == 0 && request.resource.data.loan == 0 && request.resource.data.limit == 0
+        && request.resource.data.dep == 0 && request.resource.data.depBase == 0
+        && request.resource.data.loan == 0 && request.resource.data.loanBase == 0
+        && request.resource.data.limit == 0
         && request.resource.data.grade == 0 && request.resource.data.gradeAt == 0
         // the first weekly interest is due a week from now (a few minutes of slack for the client's clock)
         && request.resource.data.nextAt is int
@@ -1346,22 +1348,32 @@ service cloud.firestore {
         && request.resource.data.opened == request.time
         && exists(/databases/$(database)/documents/candidates/$(uid));
       allow update: if request.auth != null && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dep', 'loan'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dep', 'depBase', 'loan', 'loanBase'])
         && request.resource.data.dep >= 0 && request.resource.data.loan >= 0
+        && request.resource.data.depBase >= 0 && request.resource.data.loanBase >= 0
         && existsAfter(bankLogPath(uid, getAfter(/databases/$(database)/documents/candidates/$(uid)).data.get('lastBank', '')))
         && bankOpMatches(uid);
       allow delete: if false;
     }
+    // The interest is simple (on the principal only, so a year at 50% is +50%): depBase is the money put
+    // in, loanBase the money borrowed. A withdrawal takes the interest first, so the base only drops once
+    // the balance is below it; repaying does the same for the loan.
     function bankOpMatches(uid) {
       let id = getAfter(/databases/$(database)/documents/candidates/$(uid)).data.get('lastBank', '');
       let lg = getAfter(bankLogPath(uid, id)).data;
-      let dDep = request.resource.data.dep - resource.data.dep;
-      let dLoan = request.resource.data.loan - resource.data.loan;
+      let b0 = resource.data;
+      let b1 = request.resource.data;
+      let dDep = b1.dep - b0.dep;
+      let dLoan = b1.loan - b0.loan;
       return lg.amount is int && lg.amount > 0
-        && ((lg.kind == 'in' && dDep == lg.amount && dLoan == 0)
-          || (lg.kind == 'out' && dDep == -lg.amount && dLoan == 0)
-          || (lg.kind == 'borrow' && dLoan == lg.amount && dDep == 0 && request.resource.data.loan <= resource.data.limit)
-          || (lg.kind == 'repay' && dLoan == -lg.amount && dDep == 0));
+        && ((lg.kind == 'in' && dDep == lg.amount && dLoan == 0
+            && b1.depBase == b0.depBase + lg.amount && b1.loanBase == b0.loanBase)
+          || (lg.kind == 'out' && dDep == -lg.amount && dLoan == 0
+            && b1.depBase == (b1.dep < b0.depBase ? b1.dep : b0.depBase) && b1.loanBase == b0.loanBase)
+          || (lg.kind == 'borrow' && dLoan == lg.amount && dDep == 0 && b1.loan <= b0.limit
+            && b1.loanBase == b0.loanBase + lg.amount && b1.depBase == b0.depBase)
+          || (lg.kind == 'repay' && dLoan == -lg.amount && dDep == 0
+            && b1.loanBase == (b1.loan < b0.loanBase ? b1.loan : b0.loanBase) && b1.depBase == b0.depBase));
     }
     match /banks/{uid}/log/{id} {
       allow read: if request.auth != null && request.auth.uid == uid;
