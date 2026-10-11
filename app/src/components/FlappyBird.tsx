@@ -6,7 +6,7 @@ import { css } from '../css'
 // scales to the screen.
 
 const W = 288, H = 512, GROUND = 84
-const GRAVITY = 0.36, FLAP = -6.3, SPEED = 2.5, GAP = 128, SPACING = 176, PIPE_W = 52, BIRD_R = 12
+const GRAVITY = 0.36, FLAP = -6.3, SPEED = 2.5, GAP = 108, SPACING = 176, PIPE_W = 52, BIRD_R = 12
 
 type Pipe = { x: number; gapY: number; passed: boolean }
 type Phase = 'ready' | 'play' | 'over'
@@ -106,24 +106,42 @@ export function FlappyBird() {
     <div ref={box} style={css('position:relative;width:100%;height:100%;min-height:0;display:flex;align-items:center;justify-content:center;background:#ded895;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none')}>
       <div style={{ position: 'relative', width: W * scale, height: H * scale, flex: 'none' }} onPointerDown={onTap}>
         <canvas ref={canvas} aria-label="플래피 버드 게임 화면" style={{ width: W * scale, height: H * scale, display: 'block' }} />
-        <div style={css(`position:absolute;left:0;right:0;top:${28 * scale}px;text-align:center;color:#fff;font-family:"Arial Black",Arial,sans-serif;font-size:${13 * scale}px;text-shadow:0 2px 0 #3d2b1f;pointer-events:none`)}>Highest Score: {best}</div>
         {phase !== 'over' && (
           <div style={css(`position:absolute;left:0;right:0;top:${70 * scale}px;text-align:center;color:#fff;font-family:"Arial Black",Arial,sans-serif;font-size:${50 * scale}px;line-height:1;text-shadow:0 4px 0 #3d2b1f,0 0 0 #3d2b1f;pointer-events:none`)}>{score}</div>
         )}
         {phase === 'over' && (
-          <div style={css(`position:absolute;left:50%;top:${200 * scale}px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:${14 * scale}px;animation:fade 220ms ease both`)}>
-            <div style={css(`width:${200 * scale}px;padding:${14 * scale}px 0;border-radius:${10 * scale}px;background:#ded895;border:${3 * scale}px solid #533a1f;text-align:center;font-family:"Arial Black",Arial,sans-serif;color:#533a1f;font-size:${15 * scale}px`)}>
-              GAME OVER<br /><span style={css(`font-size:${28 * scale}px`)}>{score}</span><br /><span style={css(`font-size:${11 * scale}px`)}>BEST {best}</span>
+          <div style={css(`position:absolute;left:50%;top:${180 * scale}px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:${14 * scale}px;animation:fade 220ms ease both`)}>
+            <div style={css(`width:${212 * scale}px;padding:${12 * scale}px ${16 * scale}px;border-radius:${10 * scale}px;background:#ded895;border:${3 * scale}px solid #533a1f;box-shadow:0 ${4 * scale}px 0 #533a1f;display:flex;align-items:center;justify-content:space-between;font-family:"Arial Black",Arial,sans-serif;color:#533a1f`)}>
+              <span style={css(`display:flex;flex-direction:column;gap:${10 * scale}px;font-size:${10 * scale}px;line-height:1`)}>
+                <span>SCORE</span>
+                <span style={css(`font-size:${22 * scale}px;color:#fff;text-shadow:0 ${2 * scale}px 0 #533a1f`)}>{score}</span>
+              </span>
+              <span style={css(`width:${56 * scale}px;height:${56 * scale}px;border-radius:9999px;border:${2 * scale}px solid #533a1f;background:${medalColor(score)};display:flex;align-items:center;justify-content:center;font-size:${22 * scale}px;color:#533a1f;opacity:${score >= 10 ? 1 : 0.18}`)}>★</span>
+              <span style={css(`display:flex;flex-direction:column;align-items:flex-end;gap:${10 * scale}px;font-size:${10 * scale}px;line-height:1`)}>
+                <span>BEST</span>
+                <span style={css(`font-size:${22 * scale}px;color:#fff;text-shadow:0 ${2 * scale}px 0 #533a1f`)}>{best}</span>
+              </span>
             </div>
             <button onClick={e => { e.stopPropagation(); reset() }} style={css(`padding:${10 * scale}px ${26 * scale}px;border-radius:${8 * scale}px;background:#f7a22c;border:${3 * scale}px solid #533a1f;color:#fff;font-family:"Arial Black",Arial,sans-serif;font-size:${16 * scale}px;box-shadow:0 ${4 * scale}px 0 #533a1f`)}>RESTART</button>
           </div>
         )}
         {phase === 'ready' && (
-          <div style={css(`position:absolute;left:0;right:0;top:${330 * scale}px;text-align:center;color:#fff;font-family:"Arial Black",Arial,sans-serif;font-size:${13 * scale}px;text-shadow:0 2px 0 #3d2b1f;pointer-events:none`)}>TAP TO FLY</div>
+          <div style={css(`position:absolute;left:50%;top:${150 * scale}px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:${12 * scale}px;pointer-events:none`)}>
+            <div style={css(`padding:${10 * scale}px ${22 * scale}px;border-radius:${8 * scale}px;background:#ded895;border:${3 * scale}px solid #533a1f;box-shadow:0 ${4 * scale}px 0 #533a1f;font-family:"Arial Black",Arial,sans-serif;color:#533a1f;font-size:${15 * scale}px`)}>GET READY</div>
+            <div style={css(`font-family:"Arial Black",Arial,sans-serif;color:#fff;font-size:${12 * scale}px;text-shadow:0 2px 0 #3d2b1f`)}>TAP OR SPACE</div>
+          </div>
         )}
       </div>
     </div>
   )
+}
+
+/** The medal colour for a score, as in the original: bronze, silver, gold, then platinum. */
+function medalColor(score: number) {
+  if (score >= 40) return 'radial-gradient(circle at 35% 30%,#f4f7ff,#9fb3c8 60%,#6e7f93)'
+  if (score >= 30) return 'radial-gradient(circle at 35% 30%,#fff3a6,#f5b400 60%,#b07a00)'
+  if (score >= 20) return 'radial-gradient(circle at 35% 30%,#ffffff,#c4c9d0 60%,#8a9099)'
+  return 'radial-gradient(circle at 35% 30%,#ffd2a1,#cd7f32 60%,#8a4f1c)'
 }
 
 function draw(ctx: CanvasRenderingContext2D, s: { y: number; vy: number; pipes: Pipe[] }, t: number) {
@@ -135,6 +153,12 @@ function draw(ctx: CanvasRenderingContext2D, s: { y: number; vy: number; pipes: 
   for (let i = 0; i < 4; i++) {
     const x = ((i * 110 - (t * 0.25) % 440) + 440) % 440 - 60
     ctx.beginPath(); ctx.ellipse(x, H - GROUND - 110 + (i % 2) * 18, 46, 18, 0, 0, Math.PI * 2); ctx.fill()
+  }
+  // bushes along the horizon
+  ctx.fillStyle = '#5fae2c'
+  for (let i = -1; i < 4; i++) {
+    const x = ((i * 120 - (t * 0.6) % 120) + 120) % 120 - 60
+    ctx.beginPath(); ctx.arc(x, H - GROUND + 6, 34, Math.PI, 0); ctx.fill()
   }
   // pipes
   for (const p of s.pipes) {
@@ -160,6 +184,11 @@ function draw(ctx: CanvasRenderingContext2D, s: { y: number; vy: number; pipes: 
   ctx.beginPath(); ctx.ellipse(0, 0, BIRD_R + 2, BIRD_R, 0, 0, Math.PI * 2); ctx.fill()
   ctx.fillStyle = '#f7d130'
   ctx.beginPath(); ctx.ellipse(0, 0, BIRD_R, BIRD_R - 1, 0, 0, Math.PI * 2); ctx.fill()
+  // the wing beats: up while rising, down while falling
+  const wing = Math.sin(t / 2.2) * 2.5 - (s.vy < 0 ? 2 : 0)
+  ctx.fillStyle = '#ffe98a'
+  ctx.beginPath(); ctx.ellipse(-3, 2 + wing, 7, 4.5, -0.2, 0, Math.PI * 2); ctx.fill()
+  ctx.strokeStyle = '#533a1f'; ctx.lineWidth = 1.2; ctx.stroke()
   ctx.fillStyle = '#fff'
   ctx.beginPath(); ctx.ellipse(4, -4, 6, 6, 0, 0, Math.PI * 2); ctx.fill()
   ctx.fillStyle = '#533a1f'

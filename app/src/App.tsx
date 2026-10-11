@@ -148,6 +148,21 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [sound, setSound] = useState(true)
   const [chats, setChats] = useState<ChatRow[]>([])
   const [chatId, setChatId] = useState<string | null>(startChat)
+  // 메시지 (the list, no chat open) is full screen: the tab bar and the search bar slide away.
+  // A drag or scroll in the list brings them back for a few seconds, then they hide again.
+  const msgFull = tab === 'msg' && !chatId
+  const [chromeOn, setChromeOn] = useState(true)
+  const chromeT = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const revealChrome = () => {
+    setChromeOn(true)
+    clearTimeout(chromeT.current)
+    chromeT.current = setTimeout(() => setChromeOn(false), 3500)
+  }
+  useEffect(() => {
+    clearTimeout(chromeT.current)
+    setChromeOn(!msgFull)
+  }, [msgFull])
+  useEffect(() => () => clearTimeout(chromeT.current), [])
   const [notify, setNotify] = useState<NotifyPrefs>(DEFAULT_NOTIFY)
   const [pushOn, setPushOn] = useState(deviceRegistered)
   const [pushBusy, setPushBusy] = useState(false)
@@ -876,12 +891,17 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             <MessagesScreen
               loggedIn={loggedIn} me={me} chats={chats} byId={byId}
               onLogin={() => go('acct')} onOpen={setChatId} onNew={() => setNewChatOpen(true)} onToggleOff={toggleMsgOff}
-              db={db}
+              db={db} chromeOn={chromeOn} onChrome={revealChrome}
             />
           )}
         </main>
 
-        <BottomNav tab={tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} adminUnread={unreadTickets} />
+        {/* The row collapses to nothing (not just hidden) so the screen above gets the space */}
+        <div style={css(`flex:none;display:grid;grid-template-rows:${chromeOn ? '1fr' : '0fr'};transition:grid-template-rows 360ms cubic-bezier(0.16,1,0.3,1)`)}>
+          <div style={css('min-height:0;overflow:hidden')}>
+            <BottomNav tab={tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} adminUnread={unreadTickets} />
+          </div>
+        </div>
 
         {sheetPerson && (
           <VoteSheet d={sheetPerson} loggedIn={loggedIn} colors={colors} onVote={(kind, n) => vote(sheetPerson.id, kind, n)} onClose={() => setSheet(null)} onLogin={() => go('acct')} pass={passActive} onShop={() => { setShopTab('pass'); go('shop') }} />

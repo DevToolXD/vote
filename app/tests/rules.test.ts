@@ -1322,11 +1322,11 @@ async function seedCoins(reset = true) {
 }
 /** The worker in the background for a while (it fills orders as they come; order calls wait for their fill). */
 const workers: ChildProcess[] = []
-async function kickWorker(ms = 8000) {
+async function kickWorker(ms = 8000, yahooUrl?: string) {
   // one worker at a time, like the real thing (the workflow's concurrency group): two filling the same order would race
   for (const old of workers.splice(0)) old.kill()
   const base = await fakeUpbit()
-  const yahoo = await fakeYahoo()
+  const yahoo = yahooUrl ?? await fakeYahoo()
   const w = execFile('node', ['../.github/scripts/send-notifications.mjs'], {
     env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, UPBIT_BASE: base, YAHOO_BASE: yahoo, YAHOO_COOKIE_URL: yahoo + '/', STOCK_TICK_MS: '1000', STOCK_MIN_LIST: '3', RUN_FOR_MS: String(ms), SETTLE_MS: '0', COIN_TICK_MS: '1000' },
   })
@@ -1823,6 +1823,18 @@ describe('주식', () => {
     const trades = await rt(a, 'coinTrades/S_AAPL')
     assert.equal(Object.keys(trades).length, 2)
   })
+  test('the stock list still shows when Yahoo refuses the start (the built-in list, prices later)', async () => {
+    const a = await signUp('a')
+    // no saved list, and Yahoo is shut out (a closed port): the built-in list must still be published
+    await fetch(`http://${HOST}:${PORT}/v1/projects/${PROJECT}/databases/(default)/documents/meta/stocks`, { method: 'DELETE', headers: { Authorization: 'Bearer owner' } })
+    await kickWorker(25000, 'http://127.0.0.1:9')
+    // the earlier test left a 4-stock list behind: wait until the built-in one (much longer) replaces it
+    let list: Record<string, { t: string; n: string; m: string }> | null = null
+    for (let i = 0; i < 80 && Object.keys(list ?? {}).length <= 4; i++) { await new Promise(r => setTimeout(r, 500)); list = await rt(a, 'stocks/list').catch(() => null) }
+    assert.ok(list && Object.keys(list).length > 20, 'the built-in list is published')
+    assert.ok(Object.keys(list!).some(k => k.startsWith('S_')), 'Korean and US stocks are in it')
+  })
+
   test('the stock data is read-only for everyone', async () => {
     const a = await signUp('a'), admin = dbAs(ADMIN)
     await denied(rtSet(rtRef(R(a), 'stocks/live'), { p: { S_AAPL: 1 } }))

@@ -177,7 +177,7 @@ function Detail({ s, price, chg, facts, live, holding, strip, onPick, onClose, c
           <div style={css(`font-size:17px;line-height:22px;font-weight:600;color:${SEC}`)}>{subOf(s)}</div>
           <div style={css(`height:0.5px;background:${SEP};margin:14px 0`)} />
           <div style={css('display:flex;align-items:baseline;gap:12px;flex-wrap:wrap')}>
-            <span style={css('font-size:28px;line-height:34px;font-weight:800;font-variant-numeric:tabular-nums')}>{fmtStock(shown, index)}{index ? '' : <span style={css(`font-size:17px;font-weight:700;color:${SEC}`)}> P</span>}</span>
+            <span style={css('font-size:28px;line-height:34px;font-weight:800;font-variant-numeric:tabular-nums')}>{shown == null ? '—' : fmtStock(shown, index)}{index ? '' : <span style={css(`font-size:17px;font-weight:700;color:${SEC}`)}> P</span>}</span>
             <span style={css(`font-size:19px;font-weight:700;color:${tone(change)};font-variant-numeric:tabular-nums`)}>{fmtPct(change)}</span>
           </div>
           <div style={css(`font-size:15px;line-height:20px;color:${SEC};margin-top:2px`)}>{hov != null && data[hov] ? fmtTime(data[hov].t, range) : `${state}${index ? '' : ' · 1P = 1원'}`}</div>
@@ -274,7 +274,7 @@ export function StockApp({ db, uid, points, onLogin, onToast }: Ctx) {
   const lineOf = (sym: string) => { const s = spark[sym] ?? []; const p = price(sym); return p ? [...s, p] : s }
   const mine = (sym: string) => (wallet[sym]?.q ?? 0) > 0
   const rows = useMemo(() => {
-    let r = list.filter(s => (filter === 'all' || (filter === 'mine' ? mine(s.sym) : s.market === filter)) && price(s.sym) != null)
+    let r = list.filter(s => (filter === 'all' || (filter === 'mine' ? mine(s.sym) : s.market === filter)))
     const t = q.trim().toLowerCase()
     if (t) r = r.filter(s => s.name.toLowerCase().includes(t) || s.ticker.toLowerCase().includes(t))
     const by = (f: (s: StockMeta) => number) => [...r].sort((a, b) => f(b) - f(a))
@@ -337,6 +337,11 @@ export function StockApp({ db, uid, points, onLogin, onToast }: Ctx) {
         <div style={css('display:flex;gap:4px;margin:14px -8px 6px;overflow-x:auto;scrollbar-width:none')}>
           {FILTERS.map(([k, label]) => btn(label, filter === k, () => setFilter(k)))}
         </div>
+        {list.length > 0 && !live && (
+          <div style={css(`padding:4px 0 8px;font-size:14px;line-height:19px;color:${SEC}`)}>
+            {status && !status.ok ? `시세를 가져오지 못했어요 · ${status.msg}` : '시세를 받아오는 중이에요'} · 자동으로 계속 다시 시도해요
+          </div>
+        )}
         {!rows.length ? (
           <div style={css(`padding:64px 0;text-align:center;font-size:16px;line-height:24px;color:${SEC}`)}>
             {list.length && live ? (filter === 'mine' ? '가진 주식이 없어요' : '찾는 종목이 없어요')
@@ -354,7 +359,7 @@ export function StockApp({ db, uid, points, onLogin, onToast }: Ctx) {
               </span>
               <Spark values={lineOf(s.sym)} up={c >= 0} />
               <span style={css('flex:none;width:104px;display:flex;flex-direction:column;align-items:flex-end;gap:4px')}>
-                <span style={css('font-size:20px;line-height:24px;font-weight:700;font-variant-numeric:tabular-nums')}>{fmtStock(p, ix)}</span>
+                <span style={css('font-size:20px;line-height:24px;font-weight:700;font-variant-numeric:tabular-nums')}>{p == null ? '—' : fmtStock(p, ix)}</span>
                 <span onClick={e => { e.stopPropagation(); setMode(m => (m === 'pct' ? 'won' : m === 'won' ? 'cap' : 'pct')) }} role="button" aria-label="표시 바꾸기" style={css(`min-width:84px;height:30px;padding:0 8px;box-sizing:border-box;border-radius:8px;display:flex;align-items:center;justify-content:center;background:${mode === 'cap' ? '#48484a' : tone(c)};font-size:16px;font-weight:700;font-variant-numeric:tabular-nums`)}>{pillText(s)}</span>
               </span>
             </button>

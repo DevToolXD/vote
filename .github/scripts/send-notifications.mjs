@@ -876,6 +876,8 @@ const STOCK_MIN_LIST = Number(process.env.STOCK_MIN_LIST ?? 20) // fewer than th
 const STOCK_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 let stockList = null // [{ sym, y: Yahoo symbol, t, n, m }]
 let stockTradable = new Set()
+// The built-in list (stocks-list.mjs) is shown while Yahoo refuses the real build; the real one is retried every 2 minutes.
+let stockProvisional = false, stockBuildAt = 0
 const stockPrices = {}, stockChg = {}, stockInfo = {}, stockLastSample = {}
 let stockFx = 0, stockOkAt = 0, stockAt = 0, stockSlot = 0, stockInitAt = 0, stockWarned = 0, stockRot = 0, stockInfoSig = ''
 let stockState = {}
@@ -954,21 +956,44 @@ async function chartQuote(y) {
 /** The stock list: from meta/stocks if it is the current version, else built from Yahoo (and saved). */
 async function loadStockList() {
   const doc = await fdb.doc('meta/stocks').get()
-  if (doc.exists && doc.get('ver') === STOCKS_VER && doc.get('list')?.length) stockList = doc.get('list')
+  if (doc.exists && doc.get('ver') === STOCKS_VER && doc.get('list')?.length) { stockList = doc.get('list'); stockProvisional = false }
   else {
-    const q = await yahooQuotes([...KR.map(([c]) => c + '.KS'), ...US.map(([t]) => t), ...INDICES.map(([t]) => t), 'KRW=X'])
-    const kq = KR.filter(([c]) => !quoteOk(q.get(c + '.KS'))).map(([c]) => c + '.KQ')
-    if (kq.length) for (const [k, v] of await yahooQuotes(kq)) q.set(k, v)
-    if (!quoteOk(q.get('KRW=X'))) throw new Error('No USD/KRW rate yet')
-    stockList = []
-    for (const [c, n] of KR) { const y = quoteOk(q.get(c + '.KS')) ? c + '.KS' : c + '.KQ'; if (quoteOk(q.get(y))) stockList.push({ sym: 'S_' + c, y, t: c, n, m: 'KR' }) }
-    for (const [t, n] of US) if (quoteOk(q.get(t))) stockList.push({ sym: 'S_' + t, y: t, t, n, m: 'US' })
-    for (const [y, t, n] of INDICES) if (quoteOk(q.get(y))) stockList.push({ sym: 'I_' + y.replace(/[^A-Za-z0-9]/g, ''), y, t, n, m: 'IX' })
-    if (stockList.length < STOCK_MIN_LIST) { stockList = null; throw new Error('Too few stock quotes to build the list') }
-    await fdb.doc('meta/stocks').set({ ver: STOCKS_VER, list: stockList, syms: stockList.filter(s => s.m !== 'IX').map(s => s.sym), at: FieldValue.serverTimestamp() })
+    try { stockList = await buildStockList(); stockProvisional = false }
+    catch (e) {
+      // Yahoo refused the start (rate limit or outage): publish the built-in list so the app can show the stocks.
+      // It is not saved, so the next start (or the retry in stockTick) builds the real one.
+      stockList = provisionalStockList(); stockProvisional = true; stockBuildAt = Date.now()
+      warn('Stock list: Yahoo refused the start, showing the built-in list until it answers: ' + e.message)
+    }
   }
-  stockTradable = new Set(stockList.filter(s => s.m !== 'IX').map(s => s.sym))
-  notice(`Stocks: ${stockList.filter(s => s.m === 'KR').length} Korean, ${stockList.filter(s => s.m === 'US').length} US, ${stockList.filter(s => s.m === 'IX').length} indices listed.`)
+  await publishStockList()
+}
+/** Builds the list from Yahoo quotes and saves it to meta/stocks. Throws when Yahoo does not answer enough. */
+async function buildStockList() {
+  const q = await yahooQuotes([...KR.map(([c]) => c + '.KS'), ...US.map(([t]) => t), ...INDICES.map(([t]) => t), 'KRW=X'])
+  const kq = KR.filter(([c]) => !quoteOk(q.get(c + '.KS'))).map(([c]) => c + '.KQ')
+  if (kq.length) for (const [k, v] of await yahooQuotes(kq)) q.set(k, v)
+  if (!quoteOk(q.get('KRW=X'))) throw new Error('No USD/KRW rate yet')
+  const list = []
+  for (const [c, n] of KR) { const y = quoteOk(q.get(c + '.KS')) ? c + '.KS' : c + '.KQ'; if (quoteOk(q.get(y))) list.push({ sym: 'S_' + c, y, t: c, n, m: 'KR' }) }
+  for (const [t, n] of US) if (quoteOk(q.get(t))) list.push({ sym: 'S_' + t, y: t, t, n, m: 'US' })
+  for (const [y, t, n] of INDICES) if (quoteOk(q.get(y))) list.push({ sym: 'I_' + y.replace(/[^A-Za-z0-9]/g, ''), y, t, n, m: 'IX' })
+  if (list.length < STOCK_MIN_LIST) throw new Error('Too few stock quotes to build the list')
+  await fdb.doc('meta/stocks').set({ ver: STOCKS_VER, list, syms: list.filter(s => s.m !== 'IX').map(s => s.sym), at: FieldValue.serverTimestamp() })
+  return list
+}
+/** The built-in list: every listed code, priced once Yahoo answers (Korean codes as .KS; the real list finds .KQ ones). */
+function provisionalStockList() {
+  return [
+    ...KR.map(([c, n]) => ({ sym: 'S_' + c, y: c + '.KS', t: c, n, m: 'KR' })),
+    ...US.map(([t, n]) => ({ sym: 'S_' + t, y: t, t, n, m: 'US' })),
+    ...INDICES.map(([y, t, n]) => ({ sym: 'I_' + y.replace(/[^A-Za-z0-9]/g, ''), y, t, n, m: 'IX' })),
+  ]
+}
+/** Publishes the list to the app. While provisional nothing is tradable (no prices to trade at yet). */
+async function publishStockList() {
+  stockTradable = new Set(stockProvisional ? [] : stockList.filter(s => s.m !== 'IX').map(s => s.sym))
+  notice(`Stocks: ${stockList.filter(s => s.m === 'KR').length} Korean, ${stockList.filter(s => s.m === 'US').length} US, ${stockList.filter(s => s.m === 'IX').length} indices listed${stockProvisional ? ' (built-in, prices pending)' : ''}.`)
   await rdb.ref('stocks/list').set(Object.fromEntries(stockList.map((s, i) => [s.sym, { t: s.t, n: s.n, m: s.m, r: i + 1 }])))
 }
 /** One quote → price (points), change and the small facts; `rate` is won per unit of its currency. */
@@ -1027,8 +1052,8 @@ async function stockDaily() {
 }
 async function stockInit() {
   await loadStockList()
-  await fetchStockPrices()
-  setStockStatus(true, 'ok')
+  // a failed first price fetch must not skip the history: the regular ticks retry the prices
+  await fetchStockPrices().then(() => setStockStatus(true, 'ok'), e => setStockStatus(false, '시세 가져오기 실패: ' + e.message))
   stockDailyAt = (await rdb.ref('stocks/dmeta/at').once('value')).val() ?? 0
   if (Date.now() - stockDailyAt > 20 * 3600_000) { stockDailyTry = Date.now(); stockDaily().catch(e => warn('Stock history failed: ' + e.message)) }
 }
@@ -1042,6 +1067,10 @@ async function stockTick() {
     return
   }
   const now = Date.now()
+  if (stockProvisional && now - stockBuildAt > 120_000) {
+    stockBuildAt = now
+    await buildStockList().then(async list => { stockList = list; stockProvisional = false; await publishStockList() }).catch(() => {})
+  }
   if (now - stockAt < STOCK_TICK_MS) return
   stockAt = now
   await fetchStockPrices().then(() => setStockStatus(true, 'ok'), async e => {

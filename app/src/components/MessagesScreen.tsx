@@ -157,9 +157,14 @@ type ScreenProps = {
   onToggleOff: (off: boolean) => void
   /** for 온라인 표시 next to 1:1 chats */
   db?: Firestore | null
+  /** The bottom search bar shows (the app shows the tab bar too). */
+  chromeOn?: boolean
+  /** A drag, tap or scroll in the list: brings the bars back for a while. */
+  onChrome?: () => void
 }
 
-export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onNew, onToggleOff, db = null }: ScreenProps) {
+export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onNew, onToggleOff, db = null, chromeOn = true, onChrome }: ScreenProps) {
+  const drag = useRef<{ x: number; y: number } | null>(null)
   if (!loggedIn || !me) {
     return (
       <div className="anim-list" style={css('flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:48px 24px;text-align:center')}>
@@ -178,7 +183,12 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
   const shown = chats.filter(c => (!onlyUnread || isUnread(c, me.id)) && (!needle || describeChat(c, me.id, byId, off).title.includes(needle)))
   const pinned = chats.slice(0, 3)
   return (
-    <div data-g="clear" style={css('flex:1;display:flex;flex-direction:column;min-height:100%;background:#ffffff;color:#000;padding-bottom:calc(var(--phone-bottom,0px))')}>
+    <div data-g="clear"
+      onPointerDown={e => { drag.current = { x: e.clientX, y: e.clientY }; onChrome?.() }}
+      onPointerMove={e => { const d = drag.current; if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8) { drag.current = null; onChrome?.() } }}
+      onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }}
+      onWheel={e => { if (Math.abs(e.deltaY) > 4) onChrome?.() }}
+      style={css('position:relative;flex:1;display:flex;flex-direction:column;min-height:100%;background:#ffffff;color:#000;padding-bottom:calc(var(--phone-bottom,0px))')}>
       {/* iOS Messages: glass 편집 · centred title · glass filter */}
       <div style={css('position:sticky;top:0;z-index:5;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 16px 10px;background:rgba(255,255,255,0.82);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%)')}>
         <span style={css('justify-self:start')}>
@@ -260,7 +270,9 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
       </div>
 
       {/* iOS 26 bottom bar: a glass search field and the compose button */}
-      <div style={css('position:sticky;bottom:0;z-index:4;margin-top:auto;padding:8px 16px calc(8px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,rgba(255,255,255,0),#fff 40%)')}>
+      <div style={sx('z-index:4;padding:8px 16px calc(8px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,rgba(255,255,255,0),#fff 40%);transition:transform 360ms ' + EASE + ',opacity 300ms ease', chromeOn
+        ? { position: 'sticky', bottom: 0, marginTop: 'auto', transform: 'none', opacity: 1 }
+        : { position: 'absolute', left: 0, right: 0, bottom: 0, transform: 'translateY(100%)', opacity: 0, pointerEvents: 'none' })}>
         <label style={css('flex:1;min-width:0;height:44px;display:flex;align-items:center;gap:8px;padding:0 14px;border-radius:9999px;background:rgba(255,255,255,0.72);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);box-shadow:0 6px 20px rgba(0,0,0,0.12),inset 0 0 0 0.5px rgba(0,0,0,0.06);color:#8e8e93')}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
           <input value={q} onChange={e => setQ(e.target.value.slice(0, 20))} placeholder="검색" aria-label="대화 검색" style={css('flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:17px;color:#000;font-family:inherit')} />
@@ -582,31 +594,30 @@ export function ChatRoom(p: RoomProps) {
     <div style={sx('position:fixed;left:0;right:0;z-index:200;display:flex;justify-content:center', { top: box.top, height: box.height })}>
         <div data-g="app" className="no-select" style={css(`width:100%;max-width:var(--app-w);height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;color:#000;background:#ffffff;animation:roomIn 360ms ${EASE} backwards`)}>
           {/* iOS Messages: round glass back, the contact centred with a name pill, glass call/menu */}
-          <div style={{ ...css('flex:none;position:relative;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:start;gap:8px;padding:0 12px 6px'), paddingTop: box.top ? 8 : 'calc(8px + env(safe-area-inset-top))' }}>
-            <span style={css('justify-self:start;display:flex')}>
-              <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css(GLASS_CIRCLE)}><BackIcon /></button>
-            </span>
-            <button className="pr-dim" onClick={() => (chat.type === 'dm' && v.people[0] ? onOpenProfile(v.people[0].id) : setMenu(true))} style={css('min-width:0;max-width:220px;display:flex;flex-direction:column;align-items:center;gap:6px;color:#000')}>
-              <ChatAvatar people={v.people} size={76} photo={chat.photo} />
-              <span style={css(`display:flex;align-items:center;gap:4px;max-width:100%;height:30px;padding:0 12px 0 14px;border-radius:9999px;font-size:17px;font-weight:600;color:#000;${GLASS_BG}`)}>
-                <span style={css('min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{v.title}</span>
-                {chat.type === 'group' && <span style={css('flex:none;font-size:14px;color:#8e8e93')}>{chat.members.length}</span>}
-                <svg width="7" height="12" viewBox="0 0 8 13" fill="none" stroke="#8e8e93" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={css('flex:none')}><path d="m1.5 1.5 5 5-5 5" /></svg>
+          {/* A slim bar: round glass back, a small name pill in the middle, glass call/menu */}
+          <div style={{ ...css('flex:none;position:relative;z-index:2;display:flex;align-items:center;gap:8px;padding:0 12px 6px'), paddingTop: box.top ? 6 : 'calc(6px + env(safe-area-inset-top))' }}>
+            <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css(GLASS_CIRCLE)}><BackIcon /></button>
+            <button className="pr-dim" onClick={() => (chat.type === 'dm' && v.people[0] ? onOpenProfile(v.people[0].id) : setMenu(true))} style={css(`flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 14px 0 6px;border-radius:9999px;color:#000;${GLASS_BG}`)}>
+              <ChatAvatar people={v.people} size={36} photo={chat.photo} />
+              <span style={css('min-width:0;display:flex;flex-direction:column;align-items:flex-start')}>
+                <span style={css('max-width:100%;display:flex;align-items:center;gap:4px;font-size:15px;line-height:19px;font-weight:600;color:#000')}>
+                  <span style={css('min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{v.title}</span>
+                  {chat.type === 'group' && <span style={css('flex:none;font-size:13px;color:#8e8e93')}>{chat.members.length}</span>}
+                  <svg width="6" height="10" viewBox="0 0 8 13" fill="none" stroke="#8e8e93" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={css('flex:none')}><path d="m1.5 1.5 5 5-5 5" /></svg>
+                </span>
+                {chat.type === 'dm' && v.people[0] && <PresenceText db={db} uid={v.people[0].id} size={11} />}
+                {chat.type === 'group' && <GroupPresence db={db} uids={chat.members.filter(m => m !== me.id)} />}
               </span>
-              {chat.type === 'dm' && v.people[0] && <PresenceText db={db} uid={v.people[0].id} size={12} />}
-              {chat.type === 'group' && <GroupPresence db={db} uids={chat.members.filter(m => m !== me.id)} />}
             </button>
-            <span style={css('justify-self:end;display:flex;gap:8px')}>
-              {chat.type === 'dm' && p.onCall && v.people[0] && <>
-                <button className="pr-dim" onClick={() => p.onCall?.(true)} aria-label="영상 통화" style={css(GLASS_CIRCLE)}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="2.5" y="6" width="13" height="12" rx="2.5" /><path d="m15.5 10.5 6-3.5v10l-6-3.5" /></svg>
-                </button>
-                <button className="pr-dim" onClick={() => p.onCall?.(false)} aria-label="음성 통화" style={css(GLASS_CIRCLE)}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M6.6 10.8a15.2 15.2 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z" /></svg>
-                </button>
-              </>}
-              <button className="pr-dim" onClick={() => setMenu(true)} aria-label="채팅방 메뉴" style={css(GLASS_CIRCLE)}><MenuIcon /></button>
-            </span>
+            {chat.type === 'dm' && p.onCall && v.people[0] && <>
+              <button className="pr-dim" onClick={() => p.onCall?.(true)} aria-label="영상 통화" style={css(GLASS_CIRCLE)}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="2.5" y="6" width="13" height="12" rx="2.5" /><path d="m15.5 10.5 6-3.5v10l-6-3.5" /></svg>
+              </button>
+              <button className="pr-dim" onClick={() => p.onCall?.(false)} aria-label="음성 통화" style={css(GLASS_CIRCLE)}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M6.6 10.8a15.2 15.2 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z" /></svg>
+              </button>
+            </>}
+            <button className="pr-dim" onClick={() => setMenu(true)} aria-label="채팅방 메뉴" style={css(GLASS_CIRCLE)}><MenuIcon /></button>
           </div>
 
         <div ref={listRef} onScroll={onListScroll} style={sx('flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 36px);mask-image:linear-gradient(180deg,transparent 0,#000 36px)', { background: bgCss })}>
