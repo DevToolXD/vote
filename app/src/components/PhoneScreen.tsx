@@ -113,7 +113,7 @@ type Props = {
 export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClose, renderApp, onLogin, onToast }: Props) {
   const [phone, setPhone] = useState<PhoneState>({ mine: {}, catalog: {} })
   const [view, setView] = useState<'home' | 'store' | 'search'>('home')
-  const full = false
+  const [full, setFull] = useState(false)
   // Before installs existed, every app was on the phone. The apps on a phone's saved home screen
   // are marked installed once (so nobody loses them); after that the 앱스토어 is the only way in.
   useEffect(() => (db && uid ? watchPhone(db, uid, s => {
@@ -126,6 +126,12 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
       for (const a of apps) if (STORE_APPS.includes(a as StoreApp) && s.mine[a as StoreApp] === undefined) setInstalled(db, uid, a as StoreApp, true).catch(() => {})
     } catch { /* no storage: nothing to migrate */ }
   }) : undefined), [db, uid])
+  useEffect(() => {
+    if (!full) return
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setFull(false) }
+    window.addEventListener('keydown', esc)
+    return () => window.removeEventListener('keydown', esc)
+  }, [full])
 
   // The device is drawn at its real size and scaled down to fit the space (never up).
   const box = useRef<HTMLDivElement>(null)
@@ -258,6 +264,7 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
   }, [full, topColour])
   const away = inApp || view !== 'home'
   const backInk = shown === 'block' ? '#ffffff' : dark ? '#0a84ff' : inApp ? '#007aff' : view === 'store' ? 'var(--ios-blue)' : '#fff'
+  const btnInk = dark ? '#fff' : inApp ? '#191f28' : view === 'store' ? 'var(--ios-label)' : '#fff'
   const indicator = dark ? '#fff' : inApp ? '#000' : view === 'store' ? 'var(--ios-label)' : '#fff'
 
   const side = (pos: string) => <span aria-hidden="true" style={css(`position:absolute;z-index:95;width:3px;border-radius:2px;background:#2b2b30;${pos}`)} />
@@ -334,6 +341,12 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
           <BackChevron />홈
         </button>
       )}
+      <button className="pr-96" onClick={() => setFull(f => !f)} aria-label={full ? '전체화면 풀기' : '전체화면'} title={full ? '전체화면 풀기' : '전체화면'} style={css(`position:absolute;z-index:60;right:12px;top:calc(var(--phone-top) - 46px);width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:none;color:${btnInk};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45));transition:color 220ms`)}>
+              {/* YouTube's full-screen mark: four corner brackets (out to enter, in to leave) */}
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                {full ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
+              </svg>
+            </button>
       {!full && <span aria-hidden="true" style={css('position:absolute;z-index:70;top:11px;left:50%;margin-left:-63px;width:126px;height:37px;border-radius:19px;background:#000;pointer-events:none')} />}
 
       {/* home indicator: tap or swipe up to go home (full screen has no bar at the bottom) */}
