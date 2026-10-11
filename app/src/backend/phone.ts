@@ -43,7 +43,8 @@ export function watchPhone(db: Firestore, uid: string | null, cb: (s: PhoneState
 }
 
 /** Installed on my phone (the default is installed). */
-export const isInstalled = (s: PhoneState, app: StoreApp) => s.mine[app] ?? true
+// Apps are not on the phone until they're 받기 in the 앱스토어 (an app with no record is not installed).
+export const isInstalled = (s: PhoneState, app: StoreApp) => s.mine[app] === true
 /** On the home screen: installed, and not switched off for everyone. */
 export const onHome = (s: PhoneState, app: StoreApp) => isInstalled(s, app) && s.catalog[app] !== false
 

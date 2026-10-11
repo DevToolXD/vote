@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { createPortal } from 'react-dom'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
-import { APP_NAME, onHome, setInstalled, watchPhone, type AppId, type OpenableApp, type PhoneState, type StoreApp } from '../backend/phone'
+import { APP_NAME, STORE_APPS, onHome, setInstalled, watchPhone, type AppId, type OpenableApp, type PhoneState, type StoreApp } from '../backend/phone'
 import { AppStore } from './AppStore'
 import { AppIcon } from './PhoneIcons'
 
@@ -30,11 +30,9 @@ const BackChevron = () => (
   <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 2 2 10l8 8" /></svg>
 )
 
-const DEFAULT_LAYOUT = { grid: ['admin', 'market', 'block', 'flappy'] as AppId[], dock: ['shop', 'coin', 'stock'] as AppId[] }
+// A new phone has nothing but the 앱스토어: apps come from the store (받기), and 관리 only for the admin.
+const DEFAULT_LAYOUT = { grid: ['admin'] as AppId[], dock: [] as AppId[] }
 const REMOVABLE: AppId[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino', 'bank']
-const ALL_HOME: AppId[] = ['admin', 'market', 'block', 'flappy', 'dino', 'shop', 'coin', 'stock', 'bank']
-// the apps that were on the home screen before 은행 (a saved layout from then doesn't know about the newer ones)
-const BEFORE_BANK: AppId[] = ['admin', 'market', 'block', 'flappy', 'dino', 'shop', 'coin', 'stock']
 type Layout = { grid: AppId[]; dock: AppId[] }
 function loadLayout(): Layout {
   let l: Layout = DEFAULT_LAYOUT
@@ -42,13 +40,6 @@ function loadLayout(): Layout {
     const v = JSON.parse(localStorage.getItem('phone-home') ?? 'null')
     if (v && Array.isArray(v.grid) && Array.isArray(v.dock)) l = { grid: v.grid, dock: v.dock }
   } catch { /* private window: the default */ }
-  // an app added since the layout was saved joins the home screen once (an app removed on purpose stays removed)
-  try {
-    const known: AppId[] = JSON.parse(localStorage.getItem('phone-known') ?? 'null') ?? BEFORE_BANK
-    const fresh = ALL_HOME.filter(a => !known.includes(a) && !l.grid.includes(a) && !l.dock.includes(a))
-    localStorage.setItem('phone-known', JSON.stringify(ALL_HOME))
-    if (fresh.length) l = { ...l, grid: [...l.grid, ...fresh] }
-  } catch { /* no storage: nothing new to add */ }
   return l
 }
 function saveLayout(l: Layout) { try { localStorage.setItem('phone-home', JSON.stringify(l)) } catch { /* private window */ } }
@@ -70,7 +61,7 @@ function AppTile({ app, badge = 0, editing, wiggle, removable, slot, idx, draggi
         <span style={css('max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:14px;text-shadow:0 1px 3px rgba(0,0,0,0.4)')}>{APP_NAME[app]}</span>
       </button>
       {editing && removable && (
-        <button aria-label={`${APP_NAME[app]} 삭제`} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onDelete(app) }} style={css('position:absolute;top:-8px;left:-6px;z-index:4;width:24px;height:24px;border-radius:9999px;background:#8e8e93;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff')}>
+        <button aria-label={`${APP_NAME[app]} 삭제`} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onDelete(app) }} style={css('position:absolute;top:-10px;left:-10px;z-index:4;width:32px;height:32px;border-radius:9999px;background:#8e8e93;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff')}>
           <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M2 2l8 8M10 2 2 10" /></svg>
         </button>
       )}
@@ -123,7 +114,18 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
   const [phone, setPhone] = useState<PhoneState>({ mine: {}, catalog: {} })
   const [view, setView] = useState<'home' | 'store' | 'search'>('home')
   const [full, setFull] = useState(false)
-  useEffect(() => (db ? watchPhone(db, uid, setPhone) : undefined), [db, uid])
+  // Before installs existed, every app was on the phone. The apps on a phone's saved home screen
+  // are marked installed once (so nobody loses them); after that the 앱스토어 is the only way in.
+  useEffect(() => (db && uid ? watchPhone(db, uid, s => {
+    setPhone(s)
+    try {
+      if (localStorage.getItem('phone-install-migrated')) return
+      localStorage.setItem('phone-install-migrated', '1')
+      const saved = JSON.parse(localStorage.getItem('phone-home') ?? 'null')
+      const apps: AppId[] = [...(saved?.grid ?? []), ...(saved?.dock ?? [])]
+      for (const a of apps) if (STORE_APPS.includes(a as StoreApp) && s.mine[a as StoreApp] === undefined) setInstalled(db, uid, a as StoreApp, true).catch(() => {})
+    } catch { /* no storage: nothing to migrate */ }
+  }) : undefined), [db, uid])
   useEffect(() => {
     if (!full) return
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setFull(false) }
@@ -195,9 +197,10 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
   const [drag, setDrag] = useState<{ app: AppId; x: number; y: number } | null>(null)
   const [askDelete, setAskDelete] = useState<AppId | null>(null)
   const visibleApp = (a: AppId) => (a === 'admin' ? isAdmin : onHome(phone, a as StoreApp))
+  // an app installed from the 앱스토어 joins the end of the home screen
   const seen = new Set([...layout.grid, ...layout.dock])
-  const missing = ALL_HOME.filter(a => !seen.has(a))
-  const grid = [...layout.grid, ...missing].filter((a, i, arr) => arr.indexOf(a) === i && visibleApp(a))
+  const installedNew = (STORE_APPS as AppId[]).filter(a => !seen.has(a) && visibleApp(a))
+  const grid = [...layout.grid, ...installedNew].filter((a, i, arr) => arr.indexOf(a) === i && visibleApp(a))
   const dock = layout.dock.filter((a, i, arr) => arr.indexOf(a) === i && visibleApp(a)).slice(0, 3)
   const commit = (l: Layout) => { setLayout(l); saveLayout(l) }
 
