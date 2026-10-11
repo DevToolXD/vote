@@ -34,8 +34,10 @@ const ago = (ms: number) => {
 const hasItem = (me: Mine | undefined, kind: TradeKind, key: string) => !!me && (kind === 'pass' ? !!me[key as 'pass2x' | 'passFake'] : me.owned[kind].includes(key))
 
 /** 🥕 당근마켓: everyone's listings, 사기 / 내리기, and 팔기 (pick something of mine, set a price). */
-export function MarketView({ loggedIn, rows, me, byId, points, onLogin, onBuy, onList, onCancel }: Props) {
-  const [sell, setSell] = useState(false)
+export function MarketView({ loggedIn, rows, me, byId, points, onLogin, onBuy, onList, onCancel, carrot = false, sellOpen, onSellClose }: Props & { carrot?: boolean; sellOpen?: boolean; onSellClose?: () => void }) {
+  const [sellLocal, setSellLocal] = useState(false)
+  const sell = sellOpen ?? sellLocal
+  const setSell = (v: boolean) => { setSellLocal(v); if (!v) onSellClose?.() }
   const [mineOnly, setMineOnly] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   // the intro can be closed for good (✕)
@@ -46,8 +48,8 @@ export function MarketView({ loggedIn, rows, me, byId, points, onLogin, onBuy, o
   const act = async (id: string, f: () => Promise<void>) => { setBusy(id); try { await f() } finally { setBusy(null) } }
 
   return (
-    <div style={css('padding:0 24px 32px;display:flex;flex-direction:column;gap:12px')}>
-      <div style={css('position:relative;border-radius:18px;padding:16px;background:linear-gradient(135deg,#fff4ea,#ffe3cc);display:flex;align-items:center;gap:12px')}>
+    <div style={css(carrot ? 'padding:0 16px 24px;display:flex;flex-direction:column;gap:12px;background:#ffffff' : 'padding:0 24px 32px;display:flex;flex-direction:column;gap:12px')}>
+      {!carrot && <div style={css('position:relative;border-radius:18px;padding:16px;background:linear-gradient(135deg,#fff4ea,#ffe3cc);display:flex;align-items:center;gap:12px')}>
         <span aria-hidden="true" style={css('font-size:34px')}>🥕</span>
         <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
           <span style={css('font-size:17px;font-weight:800;color:#7a3300')}>당근마켓</span>
@@ -55,7 +57,7 @@ export function MarketView({ loggedIn, rows, me, byId, points, onLogin, onBuy, o
         </span>
         {intro && <button className="pr-dim" onClick={closeIntro} aria-label="안내 닫기" style={css('position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:9999px;color:#b07a52;font-size:13px;display:flex;align-items:center;justify-content:center')}>✕</button>}
         <button data-g="primary" className="pr-96" onClick={loggedIn ? () => setSell(true) : onLogin} style={sx('flex:none;height:40px;padding:0 16px;border-radius:12px;color:#fff;font-size:15px;font-weight:800', { background: CARROT })}>{loggedIn ? '팔기' : '로그인'}</button>
-      </div>
+      </div>}
 
       <div style={css('display:flex;gap:6px')}>
         {([[false, '전체'], [true, '내 판매글']] as [boolean, string][]).map(([v, l]) => (
@@ -67,8 +69,8 @@ export function MarketView({ loggedIn, rows, me, byId, points, onLogin, onBuy, o
       {live.map(l => {
         const seller = byId.get(l.seller)!, mine = l.seller === me?.id, have = hasItem(me, l.kind, l.key), short = points < l.price
         return (
-          <div key={l.id} data-g="l1" style={css('border-radius:18px;padding:14px;background:#f9fafb;display:flex;align-items:center;gap:12px')}>
-            <span style={css('width:56px;height:56px;flex:none;border-radius:14px;background:#ffffff;display:flex;align-items:center;justify-content:center;overflow:visible')}><GiftThumb kind={l.kind} k={l.key} /></span>
+          <div key={l.id} data-g="l1" style={css(carrot ? 'padding:12px 0;border-bottom:0.5px solid #e5e5ea;display:flex;align-items:center;gap:12px' : 'border-radius:18px;padding:14px;background:#f9fafb;display:flex;align-items:center;gap:12px')}>
+            <span style={css(carrot ? 'width:84px;height:84px;flex:none;border-radius:16px;background:#fff4ea;display:flex;align-items:center;justify-content:center;overflow:hidden' : 'width:56px;height:56px;flex:none;border-radius:14px;background:#ffffff;display:flex;align-items:center;justify-content:center;overflow:visible')}><GiftThumb kind={l.kind} k={l.key} /></span>
             <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
               <span style={css('font-size:16px;line-height:22px;font-weight:700;color:#191f28;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{itemLabel(l.kind, l.key)}</span>
               <span style={css('display:flex;align-items:center;gap:6px;font-size:13px;color:#8b95a1;min-width:0')}>
@@ -143,5 +145,27 @@ function SellSheet({ me, onClose, onList }: { me: Mine; onClose: () => void; onL
         </button>
       </div>
     </BottomSheet>
+  )
+}
+
+/** 당근마켓 as its own app: the orange title bar, the list of things for sale, and 팔기 at the bottom. */
+export function MarketApp(props: Props) {
+  const [sell, setSell] = useState(false)
+  return (
+    <div style={css('position:relative;min-height:100%;display:flex;flex-direction:column;background:#ffffff;color:#000')}>
+      <div style={css('position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;padding:12px 16px 10px;background:#ffffff;box-shadow:0 0.5px 0 #e5e5ea')}>
+        <span style={css('display:flex;align-items:center;gap:8px;font-size:22px;font-weight:800;color:#ff6f0f')}>🥕 당근마켓</span>
+        <span style={css('font-size:14px;color:#8e8e93;font-variant-numeric:tabular-nums')}>{props.points.toLocaleString()}P</span>
+      </div>
+      <MarketView {...props} carrot sellOpen={sell} onSellClose={() => setSell(false)} />
+      {props.loggedIn && (
+        <div style={css('position:sticky;bottom:12px;display:flex;justify-content:flex-end;padding:0 16px 16px;pointer-events:none')}>
+          <button className="pr-96" onClick={() => setSell(true)} style={css('pointer-events:auto;height:48px;padding:0 18px;border-radius:24px;background:#ff6f0f;color:#fff;font-size:16px;font-weight:700;box-shadow:0 8px 20px rgba(255,111,15,0.35);display:flex;align-items:center;gap:6px')}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M8 2v12M2 8h12" /></svg>
+            팔기
+          </button>
+        </div>
+      )}
+    </div>
   )
 }

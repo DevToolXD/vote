@@ -49,7 +49,7 @@ import { DEFAULT_REWARDS } from './backend/rewards'
 import { placeBet, settleLastBet } from './backend/gamble'
 import { Casino } from './components/Casino'
 import { AdminShop } from './components/AdminShop'
-import { MarketView } from './components/Market'
+import { MarketApp } from './components/Market'
 import { buyListing, cancelListing, listItem, subscribeMarket, type Listing } from './backend/market'
 import { shortPoints } from './components/PointsChip'
 import { leftLabel } from './components/Duration'
@@ -511,7 +511,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   }
   /** Opens an app on the phone screen (the 당근마켓 app is the shop's market). */
   const openApp = (app: OpenableApp) => {
-    if (app === 'shop' || app === 'market') setShopTab(app === 'market' ? 'market' : 'set')
+    if (app === 'shop') setShopTab('set')
     setPhoneApp(app)
   }
 
@@ -675,9 +675,9 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
 
   // 🥕 당근마켓: listings are watched only while its tab is open
   useEffect(() => {
-    if (!db || !(phoneApp === 'shop' || phoneApp === 'market') || shopTab !== 'market') return
+    if (!db || phoneApp !== 'market') return
     return subscribeMarket(db, setMarketRows)
-  }, [phoneApp, shopTab])
+  }, [phoneApp])
   const marketBuy = async (l: Listing) => {
     if (!me) return
     if (tradeBanned(me)) { showToast(banText(me)); return }
@@ -751,15 +751,18 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           {app === 'block' && <BlockBlast />}
           {app === 'flappy' && <FlappyBird />}
           {app === 'stock' && <StockApp db={db} uid={authUser?.uid ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />}
-          {(app === 'shop' || app === 'market') && (
+          {app === 'shop' && (
             <ShopScreen
               loggedIn={loggedIn} name={me?.name ?? '내 이름'} bio={me ? bioDraft : ''} photoCss={me?.photoCss ?? 'none'}
               equipped={me ? { frame: me.frame, plate: me.plate, skin: me.skin } : { frame: 'none', plate: 'none', skin: 'none' }}
               owned={me?.owned ?? DEFAULT_OWNED} points={points} onPoints={() => setEarnOpen(true)} tab={shopTab} onPickSet={pickSet}
-              market={<MarketView loggedIn={loggedIn} rows={marketRows} me={me} byId={byId} points={points} onLogin={() => go('acct')} onBuy={marketBuy} onList={marketList} onCancel={marketCancel} />} onTab={setShopTab}
+              onTab={setShopTab}
               onPick={(k, key, l) => (me ? pickItem(k, key, l) : go('acct'))}
               passes={{ pass2x: passActive, passFake: hasFakePass(me) }} onBuyPass={setPassAsk} onLogin={() => go('acct')}
             />
+          )}
+          {app === 'market' && (
+            <MarketApp loggedIn={loggedIn} rows={marketRows} me={me} byId={byId} points={points} onLogin={() => go('acct')} onBuy={marketBuy} onList={marketList} onCancel={marketCancel} />
           )}
           {app === 'coin' && (
             <CoinScreen db={db} uid={authUser?.uid ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />

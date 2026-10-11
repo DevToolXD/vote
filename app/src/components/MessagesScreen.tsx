@@ -153,65 +153,90 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
   const off = !!me.msgOff
   const [q, setQ] = useState('')
   const needle = q.trim()
+  const shown = needle ? chats.filter(c => describeChat(c, me.id, byId, off).title.includes(needle)) : chats
+  const pinned = chats.slice(0, 4)
   return (
-    <div data-g="clear" style={{ ...css('flex:1;padding-bottom:24px;min-height:100%;color:#fff'), background: 'linear-gradient(180deg,#c9a7e4 0%,#9fb7e6 34%,#a9d4d6 58%,#eba4b4 84%,#e9868f 100%)' }}>
-      <div style={css('padding:24px 16px 20px 24px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;animation:listIn 420ms ' + EASE + ' both')}>
-        <span style={css('display:flex;flex-direction:column;gap:4px')}>
-          <h1 style={css('margin:0;font-size:34px;line-height:40px;font-weight:800;color:#fff;text-shadow:0 2px 10px rgba(80,40,110,0.25)')}>메시지</h1>
-          <span style={css('font-size:15px;line-height:22.5px;color:rgba(255,255,255,0.9);text-shadow:0 1px 6px rgba(80,40,110,0.25)')}>{off ? '메시지 받기가 꺼져 있어요' : '1:1이나 단톡방에서 이야기해요'}</span>
-        </span>
-        <button className="pr-94" onClick={onNew} disabled={off} aria-label="새 채팅" style={sx('width:44px;height:44px;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;flex:none;transition:opacity 200ms;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)', { opacity: off ? 0.3 : 1 })}><ComposeIcon /></button>
+    <div data-g="clear" style={css('flex:1;display:flex;flex-direction:column;min-height:100%;background:#ffffff;color:#000;padding-bottom:calc(var(--phone-bottom,0px))')}>
+      {/* iOS Messages: large title, compose on the right */}
+      <div style={css('padding:14px 16px 6px 20px;display:flex;align-items:center;justify-content:space-between;animation:listIn 420ms ' + EASE + ' both')}>
+        <h1 style={css('margin:0;font-size:34px;line-height:41px;font-weight:700;letter-spacing:0.37px;color:#000')}>메시지</h1>
+        <button className="pr-94" onClick={onNew} disabled={off} aria-label="새 채팅" style={sx('width:36px;height:36px;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:#f2f2f7;color:#007aff;flex:none;transition:opacity 200ms', { opacity: off ? 0.3 : 1 })}><ComposeIcon /></button>
       </div>
+      {off && <div style={css('padding:0 20px 6px;font-size:13px;line-height:18px;color:#8e8e93')}>메시지 받기가 꺼져 있어요</div>}
 
       {chats.length === 0 ? (
-        <div className="anim-list" style={css('padding:40px 24px 48px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center')}>
-          <span style={css('font-size:40px;line-height:1;margin-bottom:12px')}>✉️</span>
-          <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#333d4b')}>아직 대화가 없어요</span>
-          <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>랭킹에서 프로필을 눌러 메시지를 보내보세요</span>
-          {!off && <button className="pr-96" onClick={onNew} style={css('margin-top:16px;height:38px;padding:0 16px;border-radius:10px;background:#e8f3ff;color:#1b64da;font-size:15px;font-weight:600')}>새 채팅 시작하기</button>}
+        <div className="anim-list" style={css('padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center')}>
+          <span style={css('font-size:17px;line-height:22px;font-weight:600;color:#000')}>아직 대화가 없어요</span>
+          <span style={css('font-size:15px;line-height:20px;color:#8e8e93')}>랭킹에서 프로필을 눌러 메시지를 보내보세요</span>
+          {!off && <button className="pr-96" onClick={onNew} style={css('margin-top:14px;height:36px;padding:0 16px;border-radius:18px;background:#007aff;color:#fff;font-size:15px;font-weight:600')}>새 채팅 시작하기</button>}
         </div>
       ) : (
-        <div className="anim-list" style={css('display:flex;flex-direction:column')}>
-          {chats.map(c => {
-            const v = describeChat(c, me.id, byId, off)
-            if (needle && !v.title.includes(needle)) return null
-            const unread = isUnread(c, me.id)
-            const muted = !!c.mutes?.[me.id]
-            const lastText = c.last ? (c.last.text || '사진') : ''
-            const who = c.last ? (c.last.uid === me.id ? '나: ' : c.type === 'group' ? `${nameIn(byId, c.last.uid)}: ` : '') : ''
-            return (
-              <button key={c.id} className="pr-dim" onClick={() => onOpen(c.id)} style={css(`display:flex;align-items:center;gap:14px;padding:12px 16px;border-radius:24px;text-align:left;margin:0 12px 10px;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55);color:#fff;transition:background 200ms ${EASE}`)}>
-                <ChatAvatar people={v.people} size={48} photo={c.photo} />
-                <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
-                  <span style={css('display:flex;align-items:center;gap:4px;min-width:0')}>
-                    <span style={sx(title17 + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 6px rgba(80,40,110,0.25)', { fontWeight: unread ? 700 : 600, color: '#fff' })}>{v.title}</span>
-                    {c.type === 'group' && <span style={css('flex:none;font-size:15px;color:#8b95a1')}>{c.members.length}</span>}
-                    {c.type === 'dm' && v.people[0] && <PresenceText db={db} uid={v.people[0].id} size={13} sep />}
-                    {muted && <BellOffIcon />}
+        <>
+          {/* the pinned people: round avatars in a row, names below */}
+          {!needle && (
+            <div style={css('display:flex;gap:18px;overflow-x:auto;padding:10px 20px 16px;scrollbar-width:none')}>
+              {pinned.map(c => {
+                const v = describeChat(c, me.id, byId, off)
+                return (
+                  <button key={c.id} className="pr-96" onClick={() => onOpen(c.id)} style={css('flex:none;width:72px;display:flex;flex-direction:column;align-items:center;gap:6px;background:none;color:#000;font-family:inherit')}>
+                    <ChatAvatar people={v.people} size={64} photo={c.photo} />
+                    <span style={css('max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:17px;color:#000')}>{v.title}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          <div className="anim-list" style={css('display:flex;flex-direction:column')}>
+            {shown.map((c, i) => {
+              const v = describeChat(c, me.id, byId, off)
+              const unread = isUnread(c, me.id)
+              const muted = !!c.mutes?.[me.id]
+              const lastText = c.last ? (c.last.text || '사진') : ''
+              const who = c.last ? (c.last.uid === me.id ? '나: ' : c.type === 'group' ? `${nameIn(byId, c.last.uid)}: ` : '') : ''
+              return (
+                <button key={c.id} className="pr-dim" onClick={() => onOpen(c.id)} style={css('position:relative;display:flex;align-items:center;gap:12px;padding:10px 16px 10px 12px;text-align:left;background:#fff;width:100%')}>
+                  <span aria-hidden="true" style={sx('flex:none;width:10px;height:10px;border-radius:9999px;background:#007aff;margin-left:4px', { opacity: unread ? 1 : 0 })} />
+                  <ChatAvatar people={v.people} size={52} photo={c.photo} />
+                  <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
+                    <span style={css('display:flex;align-items:center;gap:6px;min-width:0')}>
+                      <span style={sx('flex:1;min-width:0;font-size:17px;line-height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#000', { fontWeight: unread ? 600 : 500 })}>{v.title}</span>
+                      {c.type === 'group' && <span style={css('flex:none;font-size:15px;color:#8e8e93')}>{c.members.length}</span>}
+                      {muted && <BellOffIcon />}
+                      <span style={css('flex:none;font-size:15px;line-height:20px;color:#8e8e93')}>{timeLabel(c.last?.at?.toMillis() ?? 0)}</span>
+                      <svg width="8" height="13" viewBox="0 0 8 13" fill="none" stroke="#c7c7cc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={css('flex:none')}><path d="m1.5 1.5 5 5-5 5" /></svg>
+                    </span>
+                    <span style={css('display:flex;align-items:center;gap:6px;min-width:0')}>
+                      {c.type === 'dm' && v.people[0] && <PresenceText db={db} uid={v.people[0].id} size={13} />}
+                      <span style={sx('flex:1;min-width:0;font-size:15px;line-height:20px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;color:#8e8e93', { fontWeight: unread ? 500 : 400, color: unread ? '#000' : '#8e8e93' })}>{c.last ? who + lastText : '대화를 시작해보세요'}</span>
+                    </span>
                   </span>
-                  <span style={sx('font-size:15px;line-height:22.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis', { color: 'rgba(255,255,255,0.88)', fontWeight: unread ? 600 : 400 })}>{c.last ? who + lastText : '대화를 시작해보세요'}</span>
-                </span>
-                <span style={css('flex:none;align-self:stretch;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:8px')}>
-                  <span style={css('font-size:13px;line-height:19.5px;color:rgba(255,255,255,0.85)')}>{timeLabel(c.last?.at?.toMillis() ?? 0)}</span>
-                  {unread ? <span key="dot" style={css('width:9px;height:9px;border-radius:9999px;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,0.35);animation:dotPop 420ms ' + EASE + ' both')} /> : <span style={{ height: 9 }} />}
-                </span>
-              </button>
-            )
-          })}
-        </div>
+                  {i < shown.length - 1 && <span aria-hidden="true" style={css('position:absolute;left:80px;right:0;bottom:0;height:0.5px;background:#e5e5ea')} />}
+                </button>
+              )
+            })}
+            {needle && shown.length === 0 && <span style={css('padding:32px;text-align:center;font-size:15px;color:#8e8e93')}>검색 결과가 없어요</span>}
+          </div>
+        </>
       )}
 
-      <label style={css('position:sticky;bottom:12px;z-index:3;margin:12px 12px 4px;height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;border-radius:9999px;color:#fff;background:rgba(255,255,255,0.22);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)')}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
-        <input value={q} onChange={e => setQ(e.target.value.slice(0, 20))} placeholder="검색" aria-label="대화 검색" style={css('flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:17px;color:#fff;font-family:inherit')} />
-      </label>
-      {band}
-      <div style={css(`margin:8px 12px 0;padding:16px;border-radius:24px;display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55);color:#fff`)}>
+      <div style={css('height:16px')} />
+      {/* settings row, grouped like iOS */}
+      <div style={css('margin:0 16px 96px;padding:12px 16px;border-radius:12px;background:#f2f2f7;display:flex;align-items:center;gap:12px')}>
         <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
-          <span style={css(title17)}>메시지 받기</span>
-          <span style={css(caption)}>{off ? '꺼두면 아무도 메시지를 보내거나 초대할 수 없고, 나도 보낼 수 없어요' : '끄면 새 채팅 목록에서도 보이지 않아요'}</span>
+          <span style={css('font-size:17px;line-height:22px;color:#000')}>메시지 받기</span>
+          <span style={css('font-size:13px;line-height:18px;color:#8e8e93')}>{off ? '꺼두면 아무도 메시지를 보내거나 초대할 수 없고, 나도 보낼 수 없어요' : '끄면 새 채팅 목록에서도 보이지 않아요'}</span>
         </span>
         <Switch on={!off} onToggle={() => onToggleOff(!off)} label="메시지 받기" />
+      </div>
+
+      {/* iOS 26 bottom bar: a glass search field and the compose button */}
+      <div style={css('position:sticky;bottom:0;z-index:4;margin-top:auto;padding:8px 16px calc(8px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,rgba(255,255,255,0),#fff 40%)')}>
+        <label style={css('flex:1;min-width:0;height:44px;display:flex;align-items:center;gap:8px;padding:0 14px;border-radius:9999px;background:rgba(255,255,255,0.72);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);box-shadow:0 6px 20px rgba(0,0,0,0.12),inset 0 0 0 0.5px rgba(0,0,0,0.06);color:#8e8e93')}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+          <input value={q} onChange={e => setQ(e.target.value.slice(0, 20))} placeholder="검색" aria-label="대화 검색" style={css('flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:17px;color:#000;font-family:inherit')} />
+          <svg width="18" height="20" viewBox="0 0 18 22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="5.5" y="1.5" width="7" height="12" rx="3.5" fill="currentColor" stroke="none" /><path d="M2 10.5a7 7 0 0 0 14 0M9 17.5v3" /></svg>
+        </label>
+        <button className="pr-94" onClick={onNew} disabled={off} aria-label="새 채팅 쓰기" style={sx('width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.72);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);box-shadow:0 6px 20px rgba(0,0,0,0.12);color:#007aff;transition:opacity 200ms', { opacity: off ? 0.3 : 1 })}><ComposeIcon /></button>
       </div>
     </div>
   )

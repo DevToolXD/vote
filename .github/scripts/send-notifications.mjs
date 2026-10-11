@@ -882,17 +882,28 @@ let stockState = {}
 let stockDailyBusy = false, stockDailyAt = 0, stockDailyTry = 0
 let ySession = null
 const num = v => (Number.isFinite(v) ? sig(v) : 0)
+// Yahoo answers 429 ("too many requests") to a server that asks too often. Then the worker stops asking
+// for a while, and each new refusal waits longer (2, 4, 8 … 30 minutes), instead of retrying at once.
+let yCooldownUntil = 0, yCooldownStep = 0
+const yWait = () => Math.max(0, Math.ceil((yCooldownUntil - Date.now()) / 60_000))
+function yLimited(what) {
+  yCooldownStep = Math.min(yCooldownStep ? yCooldownStep * 2 : 120_000, 30 * 60_000)
+  yCooldownUntil = Date.now() + yCooldownStep
+  ySession = null
+  return new Error(`${what} (야후가 요청을 잠시 제한했어요 · ${Math.round(yCooldownStep / 60_000)}분 뒤 다시 시도)`)
+}
 async function yahooSession() {
+  if (Date.now() < yCooldownUntil) throw new Error(`야후가 요청을 잠시 제한했어요 · ${yWait()}분 뒤 다시 시도`)
   if (ySession) return ySession
   const r = await fetch(YAHOO_COOKIE, { redirect: 'manual', headers: { 'User-Agent': STOCK_UA } })
   const cookie = (r.headers.getSetCookie?.() ?? []).map(c => c.split(';')[0]).join('; ')
   const c = await fetch(`${YAHOO}/v1/test/getcrumb`, { headers: { 'User-Agent': STOCK_UA, Cookie: cookie } })
+  if (c.status === 429) throw yLimited('Yahoo crumb → 429')
   const crumb = (await c.text()).trim()
   if (!c.ok || !crumb || crumb.length > 60 || crumb.includes('<')) throw new Error(`Yahoo crumb → ${c.status}`)
+  yCooldownStep = 0
   return (ySession = { cookie, crumb })
 }
-// The same answers come from a second Yahoo host: if the first one refuses or fails, that one is asked.
-const YAHOO_HOSTS = [YAHOO, process.env.YAHOO_ALT_BASE || 'https://query2.finance.yahoo.com'].filter((h, i, a) => a.indexOf(h) === i)
 async function yahoo(path, again = true) {
   const ses = await yahooSession()
   let last = null
@@ -900,13 +911,17 @@ async function yahoo(path, again = true) {
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 10_000)
     try {
       const r = await fetch(`${host}${path}${path.includes('?') ? '&' : '?'}crumb=${encodeURIComponent(ses.crumb)}`, { signal: ctl.signal, headers: { 'User-Agent': STOCK_UA, Accept: 'application/json', Cookie: ses.cookie } })
-      if ((r.status === 401 || r.status === 403 || r.status === 429) && again) { ySession = null; await new Promise(res => setTimeout(res, 1500)); return yahoo(path, false) }
+      if (r.status === 429) throw yLimited(`Yahoo ${path.slice(0, 40)} → 429`)
+      if ((r.status === 401 || r.status === 403) && again) { ySession = null; return yahoo(path, false) }
       if (!r.ok) throw new Error(`Yahoo ${host.replace(/^https:\/\//, '')} ${path.slice(0, 40)} → ${r.status}`)
+      yCooldownStep = 0
       return await r.json()
-    } catch (e) { last = e } finally { clearTimeout(t) }
+    } catch (e) { last = e; if (String(e.message).includes('제한했어요')) break } finally { clearTimeout(t) }
   }
   throw last
 }
+// The same answers come from a second Yahoo host: if the first one refuses or fails, that one is asked.
+const YAHOO_HOSTS = [YAHOO, process.env.YAHOO_ALT_BASE || 'https://query2.finance.yahoo.com'].filter((h, i, a) => a.indexOf(h) === i)
 /** Quotes for many symbols, in batches. A batch that fails leaves its symbols out; only all failing is an error. */
 async function yahooQuotes(symbols) {
   const out = new Map()

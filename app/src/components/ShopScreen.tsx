@@ -1,15 +1,14 @@
-import type { ReactNode } from 'react'
+import { useState } from 'react'
 import { css, sx } from '../css'
 import { FRAMES, LEGENDARY, SKINS, isLimited, seriesItems, seriesMissing, seriesPrice, skinGeom, type ItemKind } from '../data'
 import { FAKE_PASS_PRICE, PASS_PRICE, type PassKind } from '../backend/types'
-import { Segmented } from './AccountScreen'
 import { Avatar } from './Avatar'
 import { BackIcon, LockIcon } from './icons'
 import { Nameplate } from './Nameplate'
 import { PointsChip } from './PointsChip'
 import { TowerSkin } from './TowerSkin'
 
-export type ShopTab = ItemKind | 'set' | 'pass' | 'inv' | 'market'
+export type ShopTab = ItemKind | 'set' | 'pass' | 'inv'
 
 type Props = {
   loggedIn: boolean
@@ -30,8 +29,6 @@ type Props = {
   passes: Record<PassKind, boolean>
   onBuyPass: (kind: PassKind) => void
   onLogin: () => void
-  /** The 당근마켓 tab's content. */
-  market?: ReactNode
 }
 
 const check = (size: number, style: string) => (
@@ -55,15 +52,16 @@ export const PASSES: { key: PassKind; title: string; desc: string; icon: string;
   { key: 'passFake', title: '페이크 선물 패스', desc: '채팅에서 페이크 선물을 보낼 수 있어요', icon: '🤡', bg: 'linear-gradient(135deg,#8b5cf6,#c026d3)', price: FAKE_PASS_PRICE },
 ]
 
-export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, onPoints, tab, onTab, onPick, passes, onBuyPass, onLogin, market, onPickSet }: Props) {
+export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, onPoints, tab, onTab, onPick, passes, onBuyPass, onLogin, onPickSet }: Props) {
+  const [q, setQ] = useState('')
   const item = (kind: ItemKind, k: string) => ({ on: equipped[kind] === k, locked: !owned[kind].includes(k), price: `세트 ${seriesMissing(k, owned).price.toLocaleString()}P` })
-  // 악세사리 sells 세트 only: pieces are never sold one by one (보관함 lists them to wear; 당근마켓 trades them)
-  const top = tab === 'pass' ? 'pass' : tab === 'market' ? 'market' : 'acc'
+  // 악세사리 sells 세트 only: pieces are never sold one by one (보관함 lists them to wear; 당근마켓 is its own app)
+  const top = tab === 'pass' ? 'pass' : 'acc'
   const view: ShopTab = top === 'acc' && tab !== 'inv' ? 'set' : tab
   const priceTag = (price: string) => (
     <span style={css('position:absolute;top:8px;left:8px;z-index:3;height:20px;padding:0 7px;border-radius:9999px;background:#191f28;color:#ffffff;font-size:11px;font-weight:700;display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums')}><LockIcon size={9} />{price}</span>
   )
-  const tileColors = (on: boolean) => ({ background: on ? '#e8f3ff' : '#f9fafb', boxShadow: on ? 'inset 0 0 0 1.5px #3182f6' : 'none' })
+  const tileColors = (on: boolean) => ({ background: '#ffffff', boxShadow: on ? 'inset 0 0 0 1.5px #0071e3' : '0 1px 2px rgba(0,0,0,0.04)' })
   const tileFg = (on: boolean) => (on ? '#1b64da' : '#4e5968')
   // The 레전드 set gets a night-sky tile, a spinning spectrum edge and a tag.
   const legendTile = (on: boolean, k: string) => k === 'silver'
@@ -80,11 +78,11 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
   const mineOr = (list: [string, string][], kind: ItemKind) => (inv ? list.filter(([k]) => owned[kind].includes(k)) : list)
 
   return (
-    <div data-g="clear" style={css('flex:1;background:#ffffff;padding-bottom:24px')}>
-      <header data-g="head" style={css('position:sticky;top:0;z-index:20;height:56px;padding:0 16px 0 24px;display:flex;align-items:center;justify-content:space-between;background:#ffffff')}>
+    <div data-g="clear" style={css('flex:1;background:#f5f5f7;padding-bottom:8px')}>
+      <header data-g="head" style={css('padding:14px 20px 4px;display:flex;align-items:center;justify-content:space-between;background:#f5f5f7')}>
         <span style={css('display:flex;align-items:center;gap:2px')}>
-          {inv && <button className="pr-dim" onClick={() => onTab('frame')} aria-label="상점으로" style={css('width:40px;height:40px;margin-left:-12px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28')}><BackIcon /></button>}
-          <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{inv ? '보관함' : '상점'}</span>
+          {inv && <button className="pr-dim" onClick={() => onTab('frame')} aria-label="상점으로" style={css('width:40px;height:40px;margin-left:-12px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#1d1d1f')}><BackIcon /></button>}
+          <span style={css('font-size:34px;line-height:41px;font-weight:700;letter-spacing:-0.4px;color:#1d1d1f')}>{inv ? '보관함' : '상점'}</span>
         </span>
         <span style={css('display:flex;align-items:center;gap:6px')}>
           {loggedIn && !inv && (
@@ -102,15 +100,19 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
         <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>{inv ? '내가 가진 아이템이에요. 누르면 바로 바꿔 껴요' : loggedIn ? '추천이든 비추천이든 투표를 1개 받을 때마다 10P예요. 산 아이템은 보관함에서도 바꿔 낄 수 있어요' : '로그인하면 포인트로 아이템을 살 수 있어요'}</span>
       </div>
       {!inv && (
-        <div style={css('position:sticky;top:56px;z-index:19;padding:8px 24px 16px;background:#ffffff')}>
-          <Segmented<'acc' | 'pass' | 'market'> options={['acc', 'pass', 'market']} labels={['악세사리', '패스', '🥕 당근마켓']} value={top} onPick={v => onTab(v === 'acc' ? 'set' : v)} />
+        <div style={css('position:sticky;top:0;z-index:19;padding:8px 20px 12px;background:#f5f5f7')}>
+          <div style={css('display:flex;padding:3px;border-radius:9999px;background:#e3e3e8')}>
+            {([['acc', '악세사리'], ['pass', '패스']] as const).map(([v, l]) => (
+              <button key={v} onClick={() => onTab(v === 'acc' ? 'set' : 'pass')} style={sx('flex:1;height:32px;border-radius:9999px;font-size:14px;font-weight:600;color:#1d1d1f;transition:background 200ms', { background: top === v ? '#ffffff' : 'transparent', boxShadow: top === v ? '0 1px 3px rgba(0,0,0,0.14)' : 'none' })}>{l}</button>
+            ))}
+          </div>
         </div>
       )}
 
         {view === 'set' && (
-          <div className="anim-list" style={css('display:flex;flex-direction:column;gap:10px;padding:0 24px 32px')}>
+          <div className="anim-list" style={css('display:flex;flex-direction:column;gap:10px;padding:0 20px 16px')}>
             <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>사면 그 시리즈가 전부 들어와요 · 프레임 + 이름표 (레전드는 막대 스킨까지)</span>
-            {FRAMES.filter(([k]) => k !== 'none').map(([k, l]) => {
+            {FRAMES.filter(([k, l]) => k !== 'none' && (!q.trim() || l.includes(q.trim()))).map(([k, l]) => {
               const miss = seriesMissing(k, owned), all = miss.items.length === 0
               const wearing = seriesItems(k).every(([kind, x]) => equipped[kind] === x)
               const g = seriesItems(k).some(([kind]) => kind === 'skin') ? skinGeom(k, 56, false) : null
@@ -216,8 +218,6 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
           </>
         )}
 
-        {tab === 'market' && market}
-
         {tab === 'pass' && (
           <div className="anim-list" style={css('padding:0 24px 32px;display:flex;flex-direction:column;gap:8px')}>
             {PASSES.map(x => (
@@ -245,6 +245,15 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
             ))}
           </div>
         )}
+
+      {view === 'set' && (
+        <div style={css('position:sticky;bottom:0;z-index:20;margin-top:auto;padding:10px 16px 14px;background:rgba(245,245,247,0.72);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);box-shadow:inset 0 0.5px 0 rgba(0,0,0,0.12)')}>
+          <label style={css('display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:12px;background:rgba(118,118,128,0.14)')}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8e8e93" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="검색" aria-label="상점 검색" style={css('flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:17px;color:#1d1d1f')} />
+          </label>
+        </div>
+      )}
     </div>
   )
 }
