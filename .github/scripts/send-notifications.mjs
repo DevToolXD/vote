@@ -1268,7 +1268,7 @@ async function newerCodeOnMain() {
     const r = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/compare/${process.env.GITHUB_SHA}...main`, { headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json' } })
     if (!r.ok) return false
     const files = (await r.json()).files ?? []
-    return files.some(f => /^\.github\/(scripts\/(?!node_modules\/)|workflows\/notify\.yml$)/.test(f.filename))
+    return files.some(f => /^(\.github\/(scripts\/(?!node_modules\/)|workflows\/notify\.yml$)|app\/src\/shared\/)/.test(f.filename))
   } catch { return false }
 }
 // Firestore rules: re-deployed hourly if they differ from this checkout (no Firestore reads).
