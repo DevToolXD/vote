@@ -356,6 +356,23 @@ describe('profile and shop', () => {
     await new Promise(r => setTimeout(r, 8000))
     assert.equal(await bonusOf(), start + 2)
   })
+  test('문서 조회수: a view counts once per person (with their view record, in one batch); not on your own post', async () => {
+    const a = await signUp('a'), b = await signUp('b'), c = await signUp('c')
+    const photo = 'data:image/jpeg;base64,/9j/4AAQ'
+    await fsSetDoc(fsDoc(a, 'homework', 'h10'), { uid: 'a', title: '과학', photo, caption: '', likes: [], views: 0, at: fsServerTimestamp() })
+    const view = (who: typeof a, uid: string) => {
+      const w = writeBatch(who)
+      w.set(fsDoc(who, 'homework', 'h10', 'views', uid), { at: fsServerTimestamp() })
+      w.update(fsDoc(who, 'homework', 'h10'), { views: increment(1) })
+      return w.commit()
+    }
+    await view(b, 'b')
+    await denied(view(b, 'b'))                                        // the second time: no
+    await denied(view(a, 'a'))                                        // your own post: no
+    await denied(fsUpdateDoc(fsDoc(c, 'homework', 'h10'), { views: increment(1) }))  // a count without a record: no
+    assert.equal((await read(a, 'homework/h10')).views, 1)
+    await deleteDoc(fsDoc(a, 'homework', 'h10'))
+  })
   test('리미티드: the landmark 막대 스킨 are no longer sold; the 관리자샵 sells anything one by one', async () => {
     const a = await signUp('a'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 5000)
     for (const k of ['namsan', 'eiffel', 'bigben', 'victory']) await denied(buyItem(a, 'a', 'skin', k, priceOf('skin', k)))

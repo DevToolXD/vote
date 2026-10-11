@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
-import { addComment, addDocPost, removeComment, removeDoc, setLiked, watchComments, watchDocs, type Comment, type Doc } from '../backend/homework'
+import { addComment, addDocPost, countView, removeComment, removeDoc, setLiked, watchComments, watchDocs, type Comment, type Doc } from '../backend/homework'
 import { shrinkPhoto } from '../backend/posts'
 
 // 문서: a class's homework room. Each post is a photo with a title and a caption; hearts and comments
@@ -61,6 +61,13 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => (db && uid ? watchDocs(db, setDocs) : undefined), [db, uid])
+
+  // a view counts when the photo stays open for 5 seconds (not your own post; once per person, the rules say so)
+  useEffect(() => {
+    if (!viewing || !db || !uid || viewing.uid === uid) return
+    const t = setTimeout(() => { countView(db, viewing.id, uid).catch(() => { /* already counted, or offline: no change */ }) }, 5000)
+    return () => clearTimeout(t)
+  }, [viewing?.id, db, uid])
 
   const pick = async (f: File | undefined) => {
     if (!f) return
@@ -128,6 +135,7 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
                 <button aria-label={liked ? '하트 취소' : '하트'} aria-pressed={liked} className="pr-96" onClick={() => toggleLike(d)} style={css('display:flex;align-items:center;gap:5px;font-size:14px;font-weight:600')}>
                   <Heart on={liked} />{d.likes.length}
                 </button>
+                <span style={css('display:flex;align-items:center;gap:5px;font-size:14px;font-weight:600;color:#8e8e93')}>조회 {d.views}</span>
                 <button aria-expanded={expanded} className="pr-96" onClick={() => setOpen(expanded ? null : d.id)} style={css('font-size:14px;font-weight:600;color:#1d1d1f')}>댓글 {expanded ? '접기' : '보기'}</button>
               </div>
               {expanded && db && <Comments db={db} post={d} uid={uid} name={name} isAdmin={isAdmin} onToast={onToast} />}
@@ -141,6 +149,7 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
           <div onClick={e => e.stopPropagation()} style={css('width:100%;display:flex;flex-direction:column;gap:12px;align-items:center')}>
             <img src={viewing.photo} alt={viewing.title} style={css('max-width:100%;max-height:72vh;object-fit:contain;border-radius:8px')} />
             <span style={css('font-size:16px;font-weight:700;color:#fff;text-align:center;word-break:break-word')}>{viewing.title}</span>
+            <span style={css('font-size:13px;color:rgba(255,255,255,0.7)')}>조회 {viewing.views}</span>
             <div style={css('display:flex;gap:10px')}>
               <a href={viewing.photo} download={`숙제-${viewing.id}.${viewing.photo.startsWith('data:image/png') ? 'png' : viewing.photo.startsWith('data:image/webp') ? 'webp' : 'jpg'}`} style={css('height:42px;padding:0 18px;border-radius:21px;background:#0a84ff;color:#fff;font-size:15px;font-weight:700;display:flex;align-items:center;text-decoration:none')}>다운로드</a>
               <button onClick={() => setViewing(null)} style={css('height:42px;padding:0 18px;border-radius:21px;background:rgba(255,255,255,0.18);color:#fff;font-size:15px;font-weight:600')}>닫기</button>
