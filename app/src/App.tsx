@@ -21,6 +21,7 @@ const CoinScreen = lazy(() => import('./components/CoinScreen').then(m => ({ def
 const MarketApp = lazy(() => import('./components/Market').then(m => ({ default: m.MarketApp })))
 const DinoGame = lazy(() => import('./components/DinoGame').then(m => ({ default: m.DinoGame })))
 const InstaApp = lazy(() => import('./components/InstaApp').then(m => ({ default: m.InstaApp })))
+const HomeworkApp = lazy(() => import('./components/HomeworkApp').then(m => ({ default: m.HomeworkApp })))
 const BankApp = lazy(() => import('./components/BankApp').then(m => ({ default: m.BankApp })))
 const AdminScreen = lazy(() => import('./components/AdminScreen').then(m => ({ default: m.AdminScreen })))
 import { BottomNav } from './components/BottomNav'
@@ -774,6 +775,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           {app === 'bank' && db && (
             <BankApp db={db} uid={authUser?.uid ?? null} owned={me?.owned ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />
           )}
+          {app === 'homework' && <HomeworkApp db={db} uid={authUser?.uid ?? null} name={me?.name ?? ''} isAdmin={isAdmin} onLogin={() => go('acct')} onToast={showToast} />}
           {app === 'insta' && <InstaApp db={db} uid={authUser?.uid ?? null} name={me?.name ?? ''} onLogin={() => go('acct')} onToast={showToast} onMessages={() => go('msg')} />}
           {app === 'stock' && <StockApp db={db} uid={authUser?.uid ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />}
           {app === 'shop' && (

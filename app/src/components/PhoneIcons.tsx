@@ -19,6 +19,7 @@ const TILE: Record<Exclude<AppId, 'store' | 'market' | 'coin' | 'stock' | 'block
   // 공룡 점프: the dino silhouette on white, as the offline game shows it
   dino: { top: '#ffffff', bottom: '#e4e4e4', ink: '#535353', scale: 0.62, glyph: <><rect x="6" y="9" width="10" height="7" rx="2" fill="#535353" /><rect x="10" y="4" width="8" height="6" rx="1.5" fill="#535353" /><rect x="8" y="16" width="2" height="4" fill="#535353" /><rect x="13" y="16" width="2" height="4" fill="#535353" /></> },
   admin: { top: '#7f7de8', bottom: '#5856d6', scale: 0.54, glyph: <path d="M12 3.6 5.5 6v5.4c0 4 2.7 7.2 6.5 8.6 3.8-1.4 6.5-4.6 6.5-8.6V6zM9 12l2.2 2.2L15 10.4" /> },
+  homework: { top: '#5ac8fa', bottom: '#0a84ff', scale: 0.54, glyph: <><path d="M7 3.5h7.5L18 7v13.5H7z" /><path d="M14.5 3.5V7H18" /><path d="M9.5 11.5h5M9.5 14.5h5M9.5 17.5h3" /></> },
   insta: { top: '#833ab4', bottom: '#e1306c', scale: 0.56, glyph: <><rect x="4.5" y="4.5" width="15" height="15" rx="4.5" /><circle cx="12" cy="12" r="3.4" /><circle cx="16.6" cy="7.4" r="0.9" fill="currentColor" stroke="none" /></> },
   shop: { top: '#ff6a86', bottom: '#ff2d55', scale: 0.54, glyph: <><path d="M5.5 8.5h13l-1 11.5h-11z" /><path d="M9 8.5V7a3 3 0 0 1 6 0v1.5" /></> },
 }

@@ -32,7 +32,7 @@ const BackChevron = () => (
 
 // A new phone has nothing but the 앱스토어: apps come from the store (받기), and 관리 only for the admin.
 const DEFAULT_LAYOUT = { grid: ['admin'] as AppId[], dock: [] as AppId[] }
-const REMOVABLE: AppId[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino', 'bank', 'insta']
+const REMOVABLE: AppId[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino', 'bank', 'insta', 'homework']
 type Layout = { grid: AppId[]; dock: AppId[] }
 function loadLayout(): Layout {
   let l: Layout = DEFAULT_LAYOUT

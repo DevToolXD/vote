@@ -12,7 +12,7 @@ const FONT = "-apple-system,BlinkMacSystemFont,system-ui,sans-serif"
 
 type StoreTab = 'today' | 'game' | 'app' | 'search'
 
-const META: Record<StoreApp, { sub: string; caption: string; headline: string; art: [string, string]; cat: '상점' | '투자' | '게임' | '소셜'; game?: boolean }> = {
+const META: Record<StoreApp, { sub: string; caption: string; headline: string; art: [string, string]; cat: '상점' | '투자' | '게임' | '소셜' | '생산성'; game?: boolean }> = {
   shop: { sub: '프레임, 이름표, 막대 스킨', caption: '꾸미기', headline: '나만의 이름표를 골라보세요', art: ['#ff7a93', '#e8234f'], cat: '상점' },
   market: { sub: '우리 동네 아이템 직거래', caption: '새로운 앱', headline: '가진 아이템을 사고팔아요', art: ['#ffb347', '#ff6f0f'], cat: '상점' },
   coin: { sub: '실제 시세로 즐기는 코인 거래', caption: '오늘의 게임', headline: '포인트로 코인에 투자해요', art: ['#4f86f0', '#1b3fa8'], cat: '투자', game: true },
@@ -22,6 +22,7 @@ const META: Record<StoreApp, { sub: string; caption: string; headline: string; a
   dino: { sub: '선인장과 새를 뛰어넘어요', caption: '새로운 게임', headline: '와이파이가 없으면 뛰던 그 공룡', art: ['#f7f7f7', '#d9d9d9'], cat: '게임', game: true },
   bank: { sub: '이자 받는 통장과 대출', caption: '새로운 앱', headline: '포인트를 넣으면 매주 이자가 붙어요', art: ['#ffffff', '#e5e5ea'], cat: '투자' },
   insta: { sub: '사진을 올리고 친구와 이야기해요', caption: '새로운 앱', headline: '사진으로 나를 보여주세요', art: ['#fd7e49', '#c13584'], cat: '소셜' },
+  homework: { sub: '숙제를 사진으로 올리고 같이 봐요', caption: '새로운 앱', headline: '숙제 사진을 올리고 하트와 댓글을 남겨요', art: ['#5ac8fa', '#0a84ff'], cat: '생산성' },
 }
 
 type Ctx = {
@@ -212,7 +213,7 @@ export function AppStore({ db, uid, phone, onOpen, onLogin, onToast }: Omit<Ctx,
           <>
             <Title title="투데이" caption={date} />
             {!visible.length && empty}
-            {(['flappy', 'dino', 'block', 'stock', 'market', 'coin', 'shop', 'bank', 'insta'] as StoreApp[]).filter(a => visible.includes(a)).map(a => <Feature key={a} app={a} ctx={ctx} />)}
+            {(['flappy', 'dino', 'block', 'stock', 'market', 'coin', 'shop', 'bank', 'insta', 'homework'] as StoreApp[]).filter(a => visible.includes(a)).map(a => <Feature key={a} app={a} ctx={ctx} />)}
             <Section title="지금 써봐야 할 앱" apps={visible} ctx={ctx} />
           </>
         )}
