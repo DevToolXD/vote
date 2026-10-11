@@ -300,6 +300,18 @@ describe('profile and shop', () => {
     const c = await read(a, 'candidates/a')
     assert.equal(pointsOf(c), 100); assert.deepEqual([c.frame, c.plate, c.skin], ['silver', 'silver', 'silver'])
   })
+  test('크로마틱 삼겹살 / 가르강튀아: each a 세트 of frame + 이름표 + 막대 스킨 (3000P each in the rules, as in prices.json)', async () => {
+    const a = await signUp('a'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 6000)
+    assert.equal(seriesPrice('chroma'), 1200 + 900 + 900); assert.equal(seriesPrice('gargantua'), 1400 + 800 + 800)
+    await denied(buyItem(a, 'a', 'frame', 'chroma', priceOf('frame', 'chroma')))
+    await denied(buyItem(a, 'a', 'skin', 'gargantua', priceOf('skin', 'gargantua')))
+    await buySeries(a, 'a', 'chroma', (await read(a, 'candidates/a')).owned)
+    let c = await read(a, 'candidates/a')
+    assert.equal(pointsOf(c), 6000 - 3000); assert.deepEqual([c.frame, c.plate, c.skin], ['chroma', 'chroma', 'chroma'])
+    await buySeries(a, 'a', 'gargantua', c.owned)
+    c = await read(a, 'candidates/a')
+    assert.equal(pointsOf(c), 0); assert.deepEqual([c.frame, c.plate, c.skin], ['gargantua', 'gargantua', 'gargantua'])
+  })
   test('리미티드: the landmark 막대 스킨 are no longer sold; the 관리자샵 sells anything one by one', async () => {
     const a = await signUp('a'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 5000)
     for (const k of ['namsan', 'eiffel', 'bigben', 'victory']) await denied(buyItem(a, 'a', 'skin', k, priceOf('skin', k)))

@@ -175,7 +175,7 @@ html,body{overscroll-behavior:none}
 .legend-tag{position:relative;overflow:hidden;isolation:isolate;background:#ffe27a;box-shadow:0 0 8px rgba(255,156,240,0.7)}
 /* the colours slide by (a wide strip moved by transform: the GPU runs it, a moving background repaints every frame) */
 .legend-tag::before{content:'';position:absolute;left:0;top:0;bottom:0;width:900%;z-index:-1;pointer-events:none;background:linear-gradient(90deg,#ffe27a,#ff9cf0,#9ff3ff,#ffe27a) 0 0/33.3333% 100% repeat-x;animation:auraFlowX 3s linear infinite}
-.legend-tag:is(.mx-tag,.kr-tag,.sl-tag)::before{display:none}
+.legend-tag:is(.mx-tag,.kr-tag,.sl-tag,.ch-tag,.ga-tag)::before{display:none}
 @keyframes auraFlowX{from{transform:translateX(0)}to{transform:translateX(-66.6667%)}}
 @keyframes auraBreath{0%,100%{transform:scale(0.92);opacity:0.7}50%{transform:scale(1.08);opacity:1}}
 
@@ -285,10 +285,19 @@ html,body{overscroll-behavior:none}
 @keyframes slNameGlow{0%{opacity:0}100%{opacity:1}}
 @keyframes slNameFloat{0%{transform:translateY(0)}100%{transform:translateY(-1.5px)}}
 .sl-name{background:linear-gradient(180deg,#ffffff 0%,#f4f6f9 36%,#a4aab3 50%,#e2e6eb 66%,#ffffff 100%);-webkit-background-clip:text;background-clip:text;color:transparent !important;text-shadow:none !important;filter:drop-shadow(0 0 5px rgba(220,228,245,0.45)) drop-shadow(0 1px 1px rgba(0,0,0,0.9))}
-@media (prefers-reduced-motion:reduce){[class^="sl-"],[class*=" sl-"]{animation:none !important}}
+@media (prefers-reduced-motion:reduce){[class^="sl-"],[class*=" sl-"],[class^="ch-"],[class*=" ch-"],[class^="ga-"],[class*=" ga-"]{animation:none !important}}
 /* tiny avatars (the ranking's): the stardust rings, the second dust layer and the pulses are too small to see there, so they aren't drawn */
 .av-host[data-small] :is(.sl-orbit,.sl-iGB,.sl-zip,.sl-wave){display:none}
 .legend-tag.sl-tag{background:linear-gradient(90deg,#7d7d7d 0%,#2a2a2a 52%,#0a0a0a 100%);color:#f2f2f2;animation:none;box-shadow:0 0 0 1px rgba(198,198,198,0.55),0 0 8px rgba(200,210,230,0.35)}
+/* 크로마틱 삼겹살 (chromaArt.ts): the rainbow fades in and out, sways, the white specks twinkle */
+@keyframes chGlow{from{opacity:.35}to{opacity:.8}}
+@keyframes chSway{from{transform:translateX(-12%)}to{transform:translateX(12%)}}
+@keyframes chTw{0%,100%{opacity:0;transform:scale(.4)}50%{opacity:1;transform:scale(1)}}
+.legend-tag.ch-tag{background:linear-gradient(90deg,#ffffff,#ffd6f5,#cfeaff,#fff8c4,#d6ffe6,#ffffff);color:#1a1a1f;animation:none;box-shadow:0 0 0 1px rgba(255,255,255,0.6),0 0 8px rgba(255,190,240,0.5)}
+/* 가르강튀아 (gargantuaArt.ts): the black hole's glow breathes, the lines fall in, the photon ring pulses */
+@keyframes gaPulse{0%,100%{opacity:.65}50%{opacity:1}}
+@keyframes gaFall{0%{transform:scale(1.06);opacity:0}12%{opacity:1}100%{transform:scale(.7);opacity:0}}
+.legend-tag.ga-tag{background:linear-gradient(90deg,#1a0a00,#4a1c00 50%,#0c0500);color:#ffd9a6;animation:none;box-shadow:inset 0 0 0 1px rgba(255,170,90,0.7),0 0 8px rgba(255,140,50,0.5)}
 @keyframes callPulse{0%{transform:scale(0.9);opacity:0.9}100%{transform:scale(1.35);opacity:0}}
 .call-pulse{animation:callPulse 1.6s cubic-bezier(0.22,1,0.36,1) infinite}
 /* The page scrolls inside <main>: its screens keep their natural height instead of shrinking to fit. */

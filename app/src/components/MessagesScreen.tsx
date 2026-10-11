@@ -1006,7 +1006,7 @@ function ItemGiftSheet({ points, group, to, onClose, onSend }: { points: number;
           const on = pick === k, owned = has(k), legend = LEGENDARY.has(k)
           return (
             <button key={k} className="pr-96" disabled={owned} onClick={() => setPick(k)}
-              style={sx('position:relative;border-radius:16px;padding:10px 8px 8px;display:flex;flex-direction:column;align-items:center;gap:6px;transition:box-shadow 150ms', { background: legend ? (k === 'matrix' ? '#021a0b' : k === 'korea' ? '#0d1b3d' : '#160538') : '#f9fafb', boxShadow: on ? 'inset 0 0 0 2px #3182f6' : 'none', opacity: owned ? 0.45 : 1 })}>
+              style={sx('position:relative;border-radius:16px;padding:10px 8px 8px;display:flex;flex-direction:column;align-items:center;gap:6px;transition:box-shadow 150ms', { background: legend ? (k === 'matrix' ? '#021a0b' : k === 'korea' ? '#0d1b3d' : k === 'chroma' ? '#111117' : k === 'gargantua' ? '#1a0c00' : '#160538') : '#f9fafb', boxShadow: on ? 'inset 0 0 0 2px #3182f6' : 'none', opacity: owned ? 0.45 : 1 })}>
               {kind === 'set' && <ItemPreview kind="set" k={k} name={to?.name ?? l} />}
               {kind === 'pass' && <ItemPreview kind="pass" k={k} name="" />}
               <span style={sx('font-size:12px;font-weight:700', { color: legend ? '#fff' : '#333d4b' })}>{kind === 'set' ? `${l} 세트 · ${SKIN_SERIES.has(k) ? '프레임 + 이름표 + 막대 스킨' : '프레임 + 이름표'}` : l} {owned ? '· 이미 다 있음' : `· ${giftPrice(kind, k).toLocaleString()}P`}</span>
