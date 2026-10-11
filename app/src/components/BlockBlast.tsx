@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { playSound } from '../sound'
 import { css } from '../css'
 
@@ -81,61 +81,111 @@ function Preview({ p, cell }: { p: Piece; cell: number }) {
   )
 }
 
+const SQUARE = { position: 'relative' as const, borderRadius: 6, background: '#2a4a94', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.35)' }
+/** One board square. Memoised, so while a piece is dragged only the squares under it re-render. */
+const Square = memo(function Square({ color, faded }: { color: number | null; faded: boolean }) {
+  return (
+    <span style={SQUARE}>
+      {color !== null && <span style={{ ...blockStyle(color, '100%'), top: 0, left: 0, opacity: faded ? 0.45 : 1 }} />}
+    </span>
+  )
+})
+
+/** The lifted piece's place in the phone's own coordinates (the phone may be scaled). */
+type Geo = { s: number; left: number; top: number; gridLeft: number; gridTop: number; cell: number }
+const liftAt = (d: Drag, g: Geo, p: Piece) => {
+  const { h, w } = size(p)
+  return { left: (d.x - g.left) / g.s - (w * g.cell) / 2, top: (d.y - LIFT - g.top) / g.s - (h * g.cell) / 2 }
+}
+/** The top-left cell the piece would land on: its centre sits over the lifted point. */
+const aimAt = (d: Drag, g: Geo, p: Piece) => {
+  const { h, w } = size(p)
+  return { r: Math.round((d.y - LIFT - g.gridTop) / g.s / g.cell - h / 2), c: Math.round((d.x - g.gridLeft) / g.s / g.cell - w / 2) }
+}
+
 export function BlockBlast() {
   const [board, setBoard] = useState<Board>(emptyBoard)
   const [tray, setTray] = useState<(Piece | null)[]>(freshTray)
   const [score, setScore] = useState(0)
   const [best, setBest] = useState(loadBest)
   const [over, setOver] = useState(false)
-  const [drag, setDrag] = useState<Drag | null>(null)
+  // while dragging: the tray slot and the lifted piece, and the square it would land on (React state
+  // changes only when that square changes; the lifted piece itself moves through its transform)
+  const [drag, setDrag] = useState<{ i: number; piece: Piece } | null>(null)
+  const [aim, setAim] = useState<{ r: number; c: number } | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const grid = useRef<HTMLDivElement>(null)
+  const lift = useRef<HTMLDivElement>(null)
   const dragRef = useRef<Drag | null>(null)
+  const geo = useRef<Geo | null>(null)
+  const piece = useRef<Piece | null>(null) // the lifted piece, for the frame loop (set when the drag starts)
+  const raf = useRef(0)
+  const stop = useRef<(() => void) | null>(null)
+  // the latest state, for the pointer-up handler (it is set up when the drag starts)
+  const latest = useRef({ board, tray, score, best })
+  latest.current = { board, tray, score, best }
 
-  /** The top-left cell where the dragged piece would land (its centre sits over the lifted point). */
-  const target = (d: Drag, p: Piece) => {
-    const rootEl = root.current, g = grid.current
-    if (!rootEl || !g) return null
-    const rr = rootEl.getBoundingClientRect(), gr = g.getBoundingClientRect()
-    const s = rr.width / rootEl.offsetWidth || 1
-    const cell = gr.width / s / N
-    const fx = (d.x - gr.left) / s / cell, fy = (d.y - LIFT - gr.top) / s / cell
-    const { h, w } = size(p)
-    return { r: Math.round(fy - h / 2), c: Math.round(fx - w / 2) }
+  useEffect(() => () => { cancelAnimationFrame(raf.current); stop.current?.() }, [])
+
+  /** Moves the lifted piece with the finger (one frame at a time) and re-aims it. */
+  const paint = () => {
+    raf.current = 0
+    const d = dragRef.current, g = geo.current, p = piece.current
+    if (!d || !g || !p) return
+    const l = liftAt(d, g, p)
+    if (lift.current) lift.current.style.transform = `translate3d(${l.left}px, ${l.top}px, 0)`
+    const a = aimAt(d, g, p)
+    setAim(prev => (prev && prev.r === a.r && prev.c === a.c ? prev : a))
   }
 
   const startDrag = (e: React.PointerEvent, i: number) => {
-    if (!tray[i] || over) return
+    const p = tray[i]
+    if (!p || over) return
     e.preventDefault()
+    const rootEl = root.current, gridEl = grid.current
+    if (!rootEl || !gridEl) return
+    const rr = rootEl.getBoundingClientRect(), gr = gridEl.getBoundingClientRect()
+    const s = rr.width / rootEl.offsetWidth || 1
+    geo.current = { s, left: rr.left, top: rr.top, gridLeft: gr.left, gridTop: gr.top, cell: gr.width / s / N }
     const d = { i, x: e.clientX, y: e.clientY }
     dragRef.current = d
-    setDrag(d)
+    piece.current = p
+    setDrag({ i, piece: p })
+    setAim(aimAt(d, geo.current, p))
     playSound('pick')
     const move = (ev: PointerEvent) => {
-      const cur = { ...dragRef.current!, x: ev.clientX, y: ev.clientY }
-      dragRef.current = cur
-      setDrag(cur)
+      const cur = dragRef.current
+      if (!cur) return
+      dragRef.current = { ...cur, x: ev.clientX, y: ev.clientY }
+      if (!raf.current) raf.current = requestAnimationFrame(paint)
     }
-    const up = () => {
+    const end = () => {
       window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      window.removeEventListener('pointercancel', up)
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+      stop.current = null
+      cancelAnimationFrame(raf.current)
+      raf.current = 0
       const cur = dragRef.current
       dragRef.current = null
+      piece.current = null
       setDrag(null)
-      if (cur) drop(cur)
+      setAim(null)
+      if (cur && geo.current) drop(cur, geo.current)
     }
+    stop.current = end
     window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-    window.addEventListener('pointercancel', up)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
   }
 
-  const drop = (d: Drag) => {
+  const drop = (d: Drag, g: Geo) => {
+    const { board, tray, score, best } = latest.current
     const p = tray[d.i]
     if (!p) return
-    const t = target(d, p)
-    if (!t || !fits(board, p, t.r, t.c)) return
-    const res = place(board, p, t.r, t.c)
+    const a = aimAt(d, g, p)
+    if (!fits(board, p, a.r, a.c)) return
+    const res = place(board, p, a.r, a.c)
     // a clear adds more than the piece's own cells (see place)
     playSound(res.points > p.cells.length ? 'clear' : 'place')
     const nextTray = tray.map((x, k) => (k === d.i ? null : x))
@@ -150,28 +200,14 @@ export function BlockBlast() {
 
   const restart = () => { setBoard(emptyBoard()); setTray(freshTray()); setScore(0); setOver(false) }
 
-  // the ghost: where the dragged piece would land right now
-  let ghost: { r: number; c: number; p: Piece; ok: boolean } | null = null
-  if (drag && tray[drag.i]) {
-    const p = tray[drag.i]!
-    const t = target(drag, p)
-    if (t) ghost = { r: t.r, c: t.c, p, ok: fits(board, p, t.r, t.c) }
-  }
-  const ghostOn = (r: number, c: number) => !!ghost && ghost.ok && ghost.p.cells.some(([pr, pc]) => ghost!.r + pr === r && ghost!.c + pc === c)
-
-  // the lifted piece, in the game's own coordinates (the phone may be scaled)
-  let lifted: { left: number; top: number; cell: number; p: Piece } | null = null
-  if (drag && tray[drag.i] && root.current && grid.current) {
-    const rr = root.current.getBoundingClientRect(), gr = grid.current.getBoundingClientRect()
-    const s = rr.width / root.current.offsetWidth || 1
-    const cell = gr.width / s / N
-    const p = tray[drag.i]!
-    const { h, w } = size(p)
-    lifted = { left: (drag.x - rr.left) / s - (w * cell) / 2, top: (drag.y - LIFT - rr.top) / s - (h * cell) / 2, cell, p }
-  }
+  // the ghost: the square the dragged piece would land on, and whether it fits there
+  // the lifted piece's first place (later moves are done by the frame loop, through the transform)
+  const start = dragRef.current && geo.current && drag ? liftAt(dragRef.current, geo.current, drag.piece) : { left: 0, top: 0 }
+  const ghost = drag && aim ? { r: aim.r, c: aim.c, p: drag.piece, ok: fits(board, drag.piece, aim.r, aim.c) } : null
+  const ghostColor = (r: number, c: number) => (ghost && ghost.ok && ghost.p.cells.some(([pr, pc]) => ghost.r + pr === r && ghost.c + pc === c) ? ghost.p.color : null)
 
   return (
-    <div ref={root} style={css('position:relative;min-height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;background:linear-gradient(180deg,#4a6fc4 0%,#2f4f9f 55%,#2a4790 100%);color:#fff;padding:24px 14px 36px;touch-action:none;user-select:none;-webkit-user-select:none;font-family:-apple-system,BlinkMacSystemFont,system-ui,"Apple SD Gothic Neo","Noto Sans KR",sans-serif')}>
+    <div ref={root} style={css('position:relative;min-height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;color:#fff;padding:24px 14px 36px;touch-action:none;user-select:none;-webkit-user-select:none;font-family:-apple-system,BlinkMacSystemFont,system-ui,"Apple SD Gothic Neo","Noto Sans KR",sans-serif')}>
       {/* the best score with a crown, and the score in big figures in the middle */}
       <div style={css('width:100%;max-width:360px;display:flex;align-items:center;justify-content:space-between;height:40px')}>
         <span style={css('display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:#ffb84a;text-shadow:0 1px 0 rgba(0,0,0,0.3)')}>
@@ -182,17 +218,9 @@ export function BlockBlast() {
       <div style={css('margin-top:4px;font-size:72px;line-height:78px;font-weight:800;letter-spacing:-1px;text-shadow:0 4px 0 rgba(20,30,70,0.45);font-variant-numeric:tabular-nums')}>{score.toLocaleString()}</div>
 
       <div ref={grid} style={css('margin-top:18px;width:100%;max-width:360px;aspect-ratio:1;position:relative;display:grid;grid-template-columns:repeat(8,1fr);gap:4px;padding:8px;box-sizing:border-box;border-radius:18px;background:#1d3a80;box-shadow:inset 0 3px 8px rgba(0,0,0,0.45),0 0 0 3px #3e62b8')}>
-        {board.map((row, r) => row.map((cell, c) => {
-          const g = ghostOn(r, c)
-          const color = cell ?? (g && ghost ? ghost.p.color : null)
-          return (
-            <span key={`${r}-${c}`} style={{ position: 'relative', borderRadius: 6, background: '#2a4a94', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.35)' }}>
-              {color !== null && (
-                <span style={{ ...blockStyle(color, '100%'), top: 0, left: 0, opacity: cell === null ? 0.45 : 1 }} />
-              )}
-            </span>
-          )
-        }))}
+        {board.map((row, r) => row.map((cell, c) => (
+          <Square key={`${r}-${c}`} color={cell ?? ghostColor(r, c)} faded={cell === null} />
+        )))}
       </div>
 
       <div style={css('margin-top:34px;width:100%;max-width:360px;display:grid;grid-template-columns:repeat(3,1fr);align-items:center;justify-items:center;min-height:120px')}>
@@ -203,10 +231,10 @@ export function BlockBlast() {
         ))}
       </div>
 
-      {lifted && (
-        <div style={{ position: 'absolute', left: lifted.left, top: lifted.top, pointerEvents: 'none', zIndex: 10, filter: 'drop-shadow(0 12px 14px rgba(0,0,0,0.4))' }}>
-          {lifted.p.cells.map(([r, c], k) => (
-            <span key={k} style={{ ...blockStyle(lifted!.p.color, lifted!.cell - 3), left: c * lifted!.cell, top: r * lifted!.cell }} />
+      {drag && geo.current && (
+        <div ref={lift} style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', zIndex: 10, willChange: 'transform', transform: `translate3d(${start.left}px, ${start.top}px, 0)` }}>
+          {drag.piece.cells.map(([r, c], k) => (
+            <span key={k} style={{ ...blockStyle(drag.piece.color, geo.current!.cell - 3), left: c * geo.current!.cell, top: r * geo.current!.cell, boxShadow: '0 10px 14px rgba(0,0,0,0.35), inset 0 2px 0 rgba(255,255,255,0.45), inset 0 -3px 0 rgba(0,0,0,0.28)' }} />
           ))}
         </div>
       )}

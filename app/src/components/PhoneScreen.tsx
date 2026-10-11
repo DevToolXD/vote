@@ -21,6 +21,9 @@ const DW = SW + BEZEL * 2, DH = SH + BEZEL * 2
 const WALL = 'radial-gradient(120% 16% at 50% 0%,#8faee0 0%,rgba(143,174,224,0) 100%),radial-gradient(90% 48% at 18% 12%,#9dbcec 0%,rgba(157,188,236,0) 72%),radial-gradient(80% 50% at 92% 34%,#4f84cf 0%,rgba(79,132,207,0) 70%),radial-gradient(90% 42% at 22% 74%,#2c3d33 0%,rgba(44,61,51,0) 72%),radial-gradient(80% 40% at 80% 96%,#6f8b45 0%,rgba(111,139,69,0) 70%),#28344a'
 const WALL_TOP = '#8faee0' // the wallpaper's top colour (the status bar in full screen)
 const FLAPPY_SKY = '#4ec0ca' // 플래피 버드 starts with the sky at the top, not the sand
+// 블록 블라스트: its blue fills the screen, the top and bottom bars included
+const BLOCK_BG = 'linear-gradient(180deg,#4a6fc4 0%,#2f4f9f 55%,#2a4790 100%)'
+const BLOCK_TOP = '#4a6fc4'
 const GLASS = 'background:rgba(255,255,255,0.26);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%)'
 
 const BackChevron = () => (
@@ -121,6 +124,16 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
   // The device is drawn at its real size and scaled down to fit the space (never up).
   const box = useRef<HTMLDivElement>(null)
   const screen = useRef<HTMLDivElement>(null)
+  // The screen is one element that is moved between the phone and the full-screen layer, never
+  // re-rendered there: React would otherwise remount the open app and lose its state (a game in progress).
+  const [host] = useState(() => document.createElement('div'))
+  const slot = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    host.style.display = 'contents'
+    const target = full ? document.getElementById('overlay-root') ?? document.body : slot.current
+    target?.appendChild(host)
+  }, [full, host])
+  useEffect(() => () => host.remove(), [host])
   const [scale, setScale] = useState(0.85)
   useLayoutEffect(() => {
     const el = box.current
@@ -227,9 +240,9 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
   const inApp = !!shown
   const dark = shown === 'stock' || shown === 'block' // 주식 and the game are black apps (코인 is white)
   // the whole screen takes the open app's colour, so the strip above it is not the wallpaper
-  const appBg = shown ? (dark ? '#000000' : shown === 'flappy' ? FLAPPY_SKY : '#ffffff') : WALL
+  const appBg = shown ? (shown === 'block' ? BLOCK_BG : dark ? '#000000' : shown === 'flappy' ? FLAPPY_SKY : '#ffffff') : WALL
   // In full screen the phone covers the page, so the browser tints the status bar from the screen's top colour
-  const topColour = shown ? appBg : WALL_TOP
+  const topColour = !shown ? WALL_TOP : shown === 'block' ? BLOCK_TOP : appBg
   useEffect(() => {
     if (!full) return
     const meta = document.querySelector('meta[name="theme-color"]')
@@ -237,7 +250,7 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
     return () => { meta?.setAttribute('content', '#ffffff') }
   }, [full, topColour])
   const away = inApp || view !== 'home'
-  const backInk = dark ? '#0a84ff' : inApp ? '#007aff' : view === 'store' ? 'var(--ios-blue)' : '#fff'
+  const backInk = shown === 'block' ? '#ffffff' : dark ? '#0a84ff' : inApp ? '#007aff' : view === 'store' ? 'var(--ios-blue)' : '#fff'
   const btnInk = dark ? '#fff' : inApp ? '#191f28' : view === 'store' ? 'var(--ios-label)' : '#fff'
   const indicator = dark ? '#fff' : inApp ? '#000' : view === 'store' ? 'var(--ios-label)' : '#fff'
 
@@ -302,7 +315,7 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
 
       {/* the open app */}
       {shown && (
-        <div className="phone-app" data-phone-app style={css(`position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;padding-top:var(--phone-top);box-sizing:border-box;background:${dark ? '#000000' : shown === 'flappy' ? FLAPPY_SKY : '#ffffff'};border-radius:${full ? 0 : 53}px;overflow:hidden;color:${dark ? '#ffffff' : '#191f28'};font-family:${APP_FONT};word-break:keep-all;transform-origin:${origin.x}px ${origin.y}px;animation:${closing ? 'appClose' : 'appOpen'} ${closing ? 280 : 420}ms cubic-bezier(0.32,0.72,0,1) both`)}>
+        <div className="phone-app" data-phone-app style={css(`position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;padding-top:var(--phone-top);box-sizing:border-box;background:${shown === 'block' ? BLOCK_BG : dark ? '#000000' : shown === 'flappy' ? FLAPPY_SKY : '#ffffff'};border-radius:${full ? 0 : 53}px;overflow:hidden;color:${dark ? '#ffffff' : '#191f28'};font-family:${APP_FONT};word-break:keep-all;transform-origin:${origin.x}px ${origin.y}px;animation:${closing ? 'appClose' : 'appOpen'} ${closing ? 280 : 420}ms cubic-bezier(0.32,0.72,0,1) both`)}>
           <div data-phone-scroll style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;padding-bottom:var(--phone-bottom)')}>
             {renderApp(shown)}
           </div>
@@ -345,7 +358,8 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
             {side('left:-3px;top:244px;height:52px;border-radius:2px 0 0 2px')}
             {side('right:-3px;top:210px;height:84px;border-radius:0 2px 2px 0')}
           </>}
-          {full ? createPortal(screenEl, document.getElementById('overlay-root') ?? document.body) : screenEl}
+          {createPortal(screenEl, host)}
+          <div ref={slot} style={{ display: 'contents' }} />
           {/* The bezel's inner corners drawn over the screen: whatever a busy layer paints outside the
               screen's rounded corners (some browsers let animated layers out of the clip) is covered. */}
           {!full && (
