@@ -432,6 +432,34 @@ service cloud.firestore {
         && d.spent <= d.get('earned', d.up) + d.get('bonus', 0);
     }
 
+    // ---- 은행 (bank): savings (dep, 연 50%, interest every week) and loans (loan, 연 10%, up to the
+    // limit the worker sets from the credit grade). Every move changes the bank doc, the log line and
+    // the points in one batch: the points leave with `spent` (in, repay) or arrive as `bonus` (out, borrow).
+    function bankPath(uid) { return /databases/$(database)/documents/banks/$(uid); }
+    function bankLogPath(uid, id) { return /databases/$(database)/documents/banks/$(uid)/log/$(id); }
+    function bankMove() {
+      let d = request.resource.data;
+      let o = resource.data;
+      let uid = request.auth.uid;
+      let id = d.lastBank;
+      let bk0 = get(bankPath(uid)).data;
+      let bk1 = getAfter(bankPath(uid)).data;
+      let lg = getAfter(bankLogPath(uid, id)).data;
+      let dDep = bk1.dep - bk0.dep;
+      let dLoan = bk1.loan - bk0.loan;
+      let spentNow = d.spent - o.spent;
+      let bonusNow = d.get('bonus', 0) - o.get('bonus', 0);
+      return request.auth.uid == o.ownerUid && canTrade(o)
+        && d.diff(o).affectedKeys().hasOnly(['spent', 'bonus', 'lastBank'])
+        && !exists(bankLogPath(uid, id)) && existsAfter(bankLogPath(uid, id))
+        && lg.uid == uid && lg.amount is int && lg.amount > 0
+        && ((lg.kind == 'in' && dDep == lg.amount && dLoan == 0 && spentNow == lg.amount && bonusNow == 0)
+          || (lg.kind == 'out' && dDep == -lg.amount && dLoan == 0 && bonusNow == lg.amount && spentNow == 0)
+          || (lg.kind == 'borrow' && dLoan == lg.amount && dDep == 0 && bonusNow == lg.amount && spentNow == 0)
+          || (lg.kind == 'repay' && dLoan == -lg.amount && dDep == 0 && spentNow == lg.amount && bonusNow == 0))
+        && d.spent <= d.get('earned', d.up) + d.get('bonus', 0);
+    }
+
     // ---- 당근마켓: sell something you own to someone else for a price you set ----
     // Listing puts the item in escrow (it leaves `owned`, or the pass is switched off) in the same
     // write that creates the listing (named in lastMarket). Buying: the buyer pays (spent), gets
@@ -646,6 +674,9 @@ service cloud.firestore {
           // 코인 buys (they name the order in lastCoin) only against coinBuy
           : request.resource.data.get('lastCoin', '') != resource.data.get('lastCoin', '')
             ? coinBuy()
+          // 은행 moves (they name the move in lastBank): the points follow the bank
+          : request.resource.data.get('lastBank', '') != resource.data.get('lastBank', '')
+            ? bankMove()
           : (request.resource.data.get('lastMarket', '') != resource.data.get('lastMarket', '') || request.resource.data.get('lastSale', '') != resource.data.get('lastSale', '') || request.resource.data.get('lastCancel', '') != resource.data.get('lastCancel', ''))
             ? (marketList() || marketBuy() || marketCancel() || marketPayout(candidateId))
             // 선물 writes (they name the gift in lastGift, or a cancel gives points back) likewise
@@ -1298,6 +1329,51 @@ service cloud.firestore {
           && hasIt(getAfter(me()).data, resource.data.kind, resource.data.key))
       );
       allow delete: if false;
+    }
+
+    // ---- 은행: see bankMove above. Opening makes the account (zero); the worker keeps the limit,
+    // the grade and the weekly interest, and only it changes those fields.
+    match /banks/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['ownerUid', 'dep', 'loan', 'limit', 'grade', 'gradeAt', 'nextAt', 'opened'])
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.dep == 0 && request.resource.data.loan == 0 && request.resource.data.limit == 0
+        && request.resource.data.grade == 0 && request.resource.data.gradeAt == 0
+        // the first weekly interest is due a week from now (a few minutes of slack for the client's clock)
+        && request.resource.data.nextAt is int
+        && request.resource.data.nextAt >= request.time.toMillis() + 604740000 && request.resource.data.nextAt <= request.time.toMillis() + 604860000
+        && request.resource.data.opened == request.time
+        && exists(/databases/$(database)/documents/candidates/$(uid));
+      allow update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dep', 'loan'])
+        && request.resource.data.dep >= 0 && request.resource.data.loan >= 0
+        && existsAfter(bankLogPath(uid, getAfter(/databases/$(database)/documents/candidates/$(uid)).data.get('lastBank', '')))
+        && bankOpMatches(uid);
+      allow delete: if false;
+    }
+    function bankOpMatches(uid) {
+      let id = getAfter(/databases/$(database)/documents/candidates/$(uid)).data.get('lastBank', '');
+      let lg = getAfter(bankLogPath(uid, id)).data;
+      let dDep = request.resource.data.dep - resource.data.dep;
+      let dLoan = request.resource.data.loan - resource.data.loan;
+      return lg.amount is int && lg.amount > 0
+        && ((lg.kind == 'in' && dDep == lg.amount && dLoan == 0)
+          || (lg.kind == 'out' && dDep == -lg.amount && dLoan == 0)
+          || (lg.kind == 'borrow' && dLoan == lg.amount && dDep == 0 && request.resource.data.loan <= resource.data.limit)
+          || (lg.kind == 'repay' && dLoan == -lg.amount && dDep == 0));
+    }
+    match /banks/{uid}/log/{id} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['uid', 'kind', 'amount', 'at'])
+        && request.resource.data.uid == uid
+        && request.resource.data.kind in ['in', 'out', 'borrow', 'repay']
+        && request.resource.data.amount is int && request.resource.data.amount > 0 && request.resource.data.amount <= 1000000000
+        && request.resource.data.at == request.time
+        // only in the same batch as the move it records
+        && getAfter(/databases/$(database)/documents/candidates/$(uid)).data.get('lastBank', '') == id;
+      allow update, delete: if false;
     }
   }
 }

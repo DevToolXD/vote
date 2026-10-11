@@ -7,17 +7,17 @@ import { R } from './messages'
 //   phone/{uid}/apps/{app}  true | false — set from 앱스토어; missing = installed (the default)
 // 관리 (admin only) and 앱스토어 are always there, so they are never stored.
 
-export type StoreApp = 'shop' | 'market' | 'coin' | 'stock' | 'block' | 'flappy' | 'dino'
+export type StoreApp = 'shop' | 'market' | 'coin' | 'stock' | 'block' | 'flappy' | 'dino' | 'bank'
 export type AppId = StoreApp | 'admin' | 'store'
 /** Apps that open a screen (앱스토어 opens inside 폰 itself). */
 export type OpenableApp = Exclude<AppId, 'store'>
 
-export const STORE_APPS: StoreApp[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino']
-export const APP_NAME: Record<AppId, string> = { admin: '관리', store: '앱스토어', shop: '상점', market: '당근마켓', coin: '코인', stock: '주식', block: '블록 블라스트', flappy: '플래피 버드', dino: '공룡 점프' }
+export const STORE_APPS: StoreApp[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino', 'bank']
+export const APP_NAME: Record<AppId, string> = { admin: '관리', store: '앱스토어', shop: '상점', market: '당근마켓', coin: '코인', stock: '주식', block: '블록 블라스트', flappy: '플래피 버드', dino: '공룡 점프', bank: '은행' }
 /** 앱스토어 sections: 당근마켓 is filed under 상점. */
 export const APP_GROUPS: { title: string; apps: StoreApp[] }[] = [
   { title: '상점', apps: ['shop', 'market'] },
-  { title: '투자', apps: ['coin', 'stock'] },
+  { title: '투자', apps: ['coin', 'stock', 'bank'] },
   { title: '게임', apps: ['block', 'flappy', 'dino'] },
 ]
 export const APP_DESC: Record<StoreApp, string> = {
@@ -28,6 +28,7 @@ export const APP_DESC: Record<StoreApp, string> = {
   block: '블록을 놓아 줄을 지워요. 가득 차면 끝나요',
   flappy: '탭해서 날아 파이프 사이를 지나가요',
   dino: '선인장과 새를 뛰어넘어요. 멀리 갈수록 빨라져요',
+  bank: '포인트를 넣으면 매주 이자가 붙어요. 신용등급에 따라 대출도 받아요',
 }
 
 export type PhoneState = { mine: Partial<Record<StoreApp, boolean>>; catalog: Partial<Record<StoreApp, boolean>> }

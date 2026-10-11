@@ -27,6 +27,8 @@ import { placeBet, settleLastBet } from '../src/backend/gamble'
 import { accessOf, blockedUsers, readIp, recordIp, setAccess } from '../src/backend/ip'
 import { presenceLabel, watchPresence, type Presence } from '../src/backend/presence'
 import { buyCoin, closePosition, floor8, sellCoin } from '../src/backend/coins'
+import { bankMove, openBank, watchBank, watchBankLog } from '../src/backend/bank'
+import { collection as fsCollection, doc as fsDoc, getDoc as fsGetDoc, increment as fsIncrement, setDoc as fsSetDoc, updateDoc as fsUpdateDoc } from 'firebase/firestore'
 import { buyListing, cancelListing, listItem, subscribeMarket, type Listing } from '../src/backend/market'
 
 const PROJECT = 'demo-vote'
@@ -1841,5 +1843,105 @@ describe('주식', () => {
     await denied(rtSet(rtRef(R(a), 'stocks/live'), { p: { S_AAPL: 1 } }))
     await denied(rtSet(rtRef(R(admin), 'stocks/live'), { p: { S_AAPL: 1 } }))
     assert.ok(await rt(a, 'stocks').then(() => true, () => false))
+  })
+})
+
+describe('은행 (bank)', () => {
+  const bankOf = (db: Firestore, uid: string) => fsGetDoc(fsDoc(db, 'banks', uid)).then(x => x.data() as Record<string, number>)
+  const logOf = async (db: Firestore, uid: string) => (await getDocs(fsCollection(db, 'banks', uid, 'log'))).docs.map(d => d.data() as { kind: string; amount: number })
+  test('opening, depositing, withdrawing, borrowing within the limit and repaying move the points with the bank', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 5000)
+    await openBank(a, 'a')
+    assert.equal((await bankOf(a, 'a')).dep, 0)
+    await bankMove(a, 'a', 'in', 1000)
+    assert.equal((await read(a, 'candidates/a')).spent, 1000)
+    assert.equal((await bankOf(a, 'a')).dep, 1000)
+    await bankMove(a, 'a', 'out', 400)
+    assert.equal((await bankOf(a, 'a')).dep, 600)
+    assert.equal(pointsOf(await read(a, 'candidates/a')), 5000 + 400 - 1000) // 5,000 given, 400 out, 1,000 in
+    // a loan needs a limit (the worker sets it): none yet
+    await denied(bankMove(a, 'a', 'borrow', 500))
+    await seed('banks/a', { limit: 2000 }) // what the worker writes
+    await bankMove(a, 'a', 'borrow', 500)
+    assert.equal((await bankOf(a, 'a')).loan, 500)
+    await bankMove(a, 'a', 'repay', 200)
+    assert.equal((await bankOf(a, 'a')).loan, 300)
+    // over the limit, and more than the savings, are refused
+    await denied(bankMove(a, 'a', 'borrow', 2000))
+    await denied(bankMove(a, 'a', 'out', 700))
+    // the log has one line per move
+    assert.deepEqual((await logOf(a, 'a')).map(l => l.kind).sort(), ['borrow', 'in', 'out', 'repay'])
+    await denied(bankMove(a, 'a', 'in', 999999)) // more points than I have
+  })
+  test('the points, the savings, the limit and the grade can only change through a move or the worker', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 3000)
+    await openBank(a, 'a')
+    await bankMove(a, 'a', 'in', 1000)
+    // the savings or the limit written directly
+    await denied(fsUpdateDoc(fsDoc(a, 'banks', 'a'), { dep: 999999 }))
+    await denied(fsUpdateDoc(fsDoc(a, 'banks', 'a'), { limit: 999999, grade: 1 }))
+    // points leaving or arriving without a bank move
+    await denied(fsUpdateDoc(fsDoc(a, 'candidates', 'a'), { spent: fsIncrement(10), lastBank: 'nope' }))
+    await denied(fsUpdateDoc(fsDoc(a, 'candidates', 'a'), { bonus: fsIncrement(10000) }))
+    // a log line with no move behind it
+    await denied(fsSetDoc(fsDoc(a, 'banks', 'a', 'log', 'orphan'), { uid: 'a', kind: 'in', amount: 5, at: serverTimestamp() }))
+    // my account is private
+    const b = await signUp('b')
+    await denied(fsGetDoc(fsDoc(b, 'banks', 'a')))
+    await denied(getDocs(fsCollection(b, 'banks', 'a', 'log')))
+    // opening with savings in it, or a made-up interest date, is refused
+    const c = await signUp('c')
+    await denied(fsSetDoc(fsDoc(c, 'banks', 'c'), { ownerUid: 'c', dep: 500, loan: 0, limit: 0, grade: 0, gradeAt: 0, nextAt: Date.now() + 604800000, opened: serverTimestamp() }))
+    await denied(fsSetDoc(fsDoc(c, 'banks', 'c'), { ownerUid: 'c', dep: 0, loan: 0, limit: 0, grade: 0, gradeAt: 0, nextAt: Date.now() + 86400000, opened: serverTimestamp() }))
+  })
+  test('the worker pays the weekly interest (savings 50%, loans 10%, a year = 52 weeks) and works out the grade and the limit', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 30000)
+    await openBank(a, 'a')
+    await bankMove(a, 'a', 'in', 10000)
+    await seed('banks/a', { nextAt: Date.now() - 60_000, loan: 1000, limit: 2000 })
+    await kickWorker(25000)
+    // the worker writes the interest, the grade and the limit in one batch: wait for the grade time
+    let bank: Record<string, number> = {}
+    for (let i = 0; i < 80 && !bank.gradeAt; i++) { await new Promise(r => setTimeout(r, 500)); bank = await bankOf(a, 'a') }
+    assert.equal(bank.dep, 10000 + Math.round(10000 * 0.5 / 52), 'one week of 50% on the savings')
+    assert.equal(bank.loan, 1000 + Math.round(1000 * 0.1 / 52), 'one week of 10% on the loan')
+    assert.ok(bank.nextAt > Date.now(), 'the next interest is a week away')
+    // net worth: points 20000 + savings + items − loan; 15000+ is grade 2, which allows 60%
+    const net = 20000 + bank.dep - bank.loan
+    assert.equal(bank.grade, 2)
+    assert.equal(bank.limit, Math.floor(net * 0.6))
+    const logs = (await logOf(a, 'a')).map(l => l.kind)
+    assert.ok(logs.includes('int-dep') && logs.includes('int-loan'), 'the interest is in the log')
+  })
+  test('items count towards the credit grade (what the person has now, at the shop prices)', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 15000)
+    await openBank(a, 'a')
+    // 13,700 points and 1,300 of items (the 코리아 set): net worth 15,000 is grade 2 only with the items
+    await buySeries(a, 'a', 'korea', (await read(a, 'candidates/a')).owned)
+    await kickWorker(25000)
+    let bank: Record<string, number> = {}
+    for (let i = 0; i < 80 && !bank.grade; i++) { await new Promise(r => setTimeout(r, 500)); bank = await bankOf(a, 'a') }
+    assert.equal(bank.grade, 2)
+    assert.equal(bank.limit, 9000)
+  })
+  test('the app reads my account live and the log newest first', async () => {
+    const a = await signUp('a'), admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 2000)
+    await openBank(a, 'a')
+    const seen: { dep: number }[] = []
+    const stop = watchBank(a, 'a', b => { if (b) seen.push({ dep: b.dep }) })
+    await bankMove(a, 'a', 'in', 700)
+    await new Promise(r => setTimeout(r, 800))
+    stop()
+    assert.equal(seen.at(-1)?.dep, 700)
+    let rows: { kind: string }[] = []
+    const stopLog = watchBankLog(a, 'a', r => { rows = r })
+    await new Promise(r => setTimeout(r, 800))
+    stopLog()
+    assert.equal(rows[0]?.kind, 'in')
   })
 })

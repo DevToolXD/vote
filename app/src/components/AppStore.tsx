@@ -20,6 +20,7 @@ const META: Record<StoreApp, { sub: string; caption: string; headline: string; a
   block: { sub: '블록을 놓아 줄을 지워요', caption: '오늘의 게임', headline: '블록을 맞춰 줄을 지워보세요', art: ['#3a4a86', '#161d3e'], cat: '게임', game: true },
   flappy: { sub: '탭해서 파이프 사이를 지나요', caption: '새로운 게임', headline: '탭 한 번으로 날아올라요', art: ['#4ec0ca', '#2a8f9a'], cat: '게임', game: true },
   dino: { sub: '선인장과 새를 뛰어넘어요', caption: '새로운 게임', headline: '와이파이가 없으면 뛰던 그 공룡', art: ['#f7f7f7', '#d9d9d9'], cat: '게임', game: true },
+  bank: { sub: '이자 받는 통장과 대출', caption: '새로운 앱', headline: '포인트를 넣으면 매주 이자가 붙어요', art: ['#ffffff', '#e5e5ea'], cat: '투자' },
 }
 
 type Ctx = {
@@ -210,7 +211,7 @@ export function AppStore({ db, uid, phone, onOpen, onLogin, onToast }: Omit<Ctx,
           <>
             <Title title="투데이" caption={date} />
             {!visible.length && empty}
-            {(['flappy', 'dino', 'block', 'stock', 'market', 'coin', 'shop'] as StoreApp[]).filter(a => visible.includes(a)).map(a => <Feature key={a} app={a} ctx={ctx} />)}
+            {(['flappy', 'dino', 'block', 'stock', 'market', 'coin', 'shop', 'bank'] as StoreApp[]).filter(a => visible.includes(a)).map(a => <Feature key={a} app={a} ctx={ctx} />)}
             <Section title="지금 써봐야 할 앱" apps={visible} ctx={ctx} />
           </>
         )}

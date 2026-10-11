@@ -31,15 +31,25 @@ const BackChevron = () => (
 )
 
 const DEFAULT_LAYOUT = { grid: ['admin', 'market', 'block', 'flappy'] as AppId[], dock: ['shop', 'coin', 'stock'] as AppId[] }
-const REMOVABLE: AppId[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino']
-const ALL_HOME: AppId[] = ['admin', 'market', 'block', 'flappy', 'dino', 'shop', 'coin', 'stock']
+const REMOVABLE: AppId[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino', 'bank']
+const ALL_HOME: AppId[] = ['admin', 'market', 'block', 'flappy', 'dino', 'shop', 'coin', 'stock', 'bank']
+// the apps that were on the home screen before 은행 (a saved layout from then doesn't know about the newer ones)
+const BEFORE_BANK: AppId[] = ['admin', 'market', 'block', 'flappy', 'dino', 'shop', 'coin', 'stock']
 type Layout = { grid: AppId[]; dock: AppId[] }
 function loadLayout(): Layout {
+  let l: Layout = DEFAULT_LAYOUT
   try {
     const v = JSON.parse(localStorage.getItem('phone-home') ?? 'null')
-    if (v && Array.isArray(v.grid) && Array.isArray(v.dock)) return { grid: v.grid, dock: v.dock }
+    if (v && Array.isArray(v.grid) && Array.isArray(v.dock)) l = { grid: v.grid, dock: v.dock }
   } catch { /* private window: the default */ }
-  return DEFAULT_LAYOUT
+  // an app added since the layout was saved joins the home screen once (an app removed on purpose stays removed)
+  try {
+    const known: AppId[] = JSON.parse(localStorage.getItem('phone-known') ?? 'null') ?? BEFORE_BANK
+    const fresh = ALL_HOME.filter(a => !known.includes(a) && !l.grid.includes(a) && !l.dock.includes(a))
+    localStorage.setItem('phone-known', JSON.stringify(ALL_HOME))
+    if (fresh.length) l = { ...l, grid: [...l.grid, ...fresh] }
+  } catch { /* no storage: nothing new to add */ }
+  return l
 }
 function saveLayout(l: Layout) { try { localStorage.setItem('phone-home', JSON.stringify(l)) } catch { /* private window */ } }
 

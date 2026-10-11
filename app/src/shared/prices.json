@@ -1,0 +1,38 @@
+{
+ "frame": {
+  "silver": 1000,
+  "korea": 500,
+  "matrix": 800,
+  "aura": 400,
+  "neon": 60,
+  "crown": 90,
+  "sakura": 50,
+  "cat": 50,
+  "stars": 70,
+  "flame": 80,
+  "ocean": 60,
+  "bunny": 50,
+  "halo": 75,
+  "devil": 75,
+  "butterfly": 60
+ },
+ "skin": {
+  "silver": 750,
+  "korea": 400,
+  "matrix": 600,
+  "aura": 300,
+  "namsan": 100,
+  "eiffel": 125,
+  "bigben": 125,
+  "victory": 110
+ },
+ "plate": {
+  "silver": 750,
+  "aura": 300,
+  "matrix": 600,
+  "korea": 400
+ },
+ "frameFallback": 60,
+ "plateExtra": 15,
+ "fallback": 75
+}

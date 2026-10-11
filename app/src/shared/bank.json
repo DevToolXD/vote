@@ -1,0 +1,65 @@
+{
+ "deposit": {
+  "annual": 0.5,
+  "weeks": 52,
+  "days": 7
+ },
+ "loan": {
+  "annual": 0.1,
+  "weeks": 52,
+  "days": 7,
+  "cap": 50000
+ },
+ "grades": [
+  {
+   "grade": 1,
+   "min": 30000,
+   "ratio": 0.8
+  },
+  {
+   "grade": 2,
+   "min": 15000,
+   "ratio": 0.6
+  },
+  {
+   "grade": 3,
+   "min": 8000,
+   "ratio": 0.5
+  },
+  {
+   "grade": 4,
+   "min": 4000,
+   "ratio": 0.4
+  },
+  {
+   "grade": 5,
+   "min": 2000,
+   "ratio": 0.3
+  },
+  {
+   "grade": 6,
+   "min": 1000,
+   "ratio": 0.25
+  },
+  {
+   "grade": 7,
+   "min": 500,
+   "ratio": 0.2
+  },
+  {
+   "grade": 8,
+   "min": 200,
+   "ratio": 0.1
+  },
+  {
+   "grade": 9,
+   "min": 50,
+   "ratio": 0.05
+  },
+  {
+   "grade": 10,
+   "min": 0,
+   "ratio": 0
+  }
+ ]
+}

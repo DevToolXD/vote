@@ -491,6 +491,7 @@ async function migrateChats() {
 
 // ---- main loop ----
 import { execFile } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { cert, initializeApp } from 'firebase-admin/app'
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore'
 import { getDatabase, ServerValue } from 'firebase-admin/database'
@@ -1050,6 +1051,56 @@ async function stockDaily() {
     if (ok) { await rdb.ref('stocks/spark').update(spark); stockDailyAt = Date.now(); await rdb.ref('stocks/dmeta').set({ at: stockDailyAt }) }
   } finally { stockDailyBusy = false }
 }
+// 은행 (bank): a savings account earns its interest every week, a loan owes its interest every week,
+// and every account's credit grade and loan limit are worked out from what the person has now: the
+// points, the savings and the items (their prices are in app/src/shared/prices.json, the rates and the
+// grades in app/src/shared/bank.json, the same files the app reads).
+const sharedJson = name => JSON.parse(readFileSync(new URL(`../../app/src/shared/${name}`, import.meta.url), 'utf8'))
+const BANK = sharedJson('bank.json'), PRICES = sharedJson('prices.json')
+const BANK_EVERY_MS = Number(process.env.BANK_EVERY_MS ?? 15 * 60_000)
+const WEEK_MS = 7 * 24 * 3600_000
+let bankAt = 0
+const itemPrice = (kind, k) => k === 'none' ? 0 : kind === 'plate' ? (PRICES.plate[k] ?? (PRICES.frame[k] || PRICES.frameFallback) + PRICES.plateExtra) : (PRICES[kind][k] || PRICES.fallback)
+const pointsOfDoc = c => (c.earned ?? c.up ?? 0) + (c.bonus ?? 0) - (c.spent ?? 0)
+const itemsValue = c => ['frame', 'plate', 'skin'].reduce((n, kind) => n + (c.owned?.[kind] ?? []).reduce((m, k) => m + itemPrice(kind, k), 0), 0)
+/** The grade from the net worth (the first grade it reaches) and the loan limit it allows. */
+function creditOf(netWorth) {
+  const g = BANK.grades.find(x => netWorth >= x.min) ?? BANK.grades.at(-1)
+  return { grade: g.grade, limit: Math.max(0, Math.min(BANK.loan.cap, Math.floor(netWorth * g.ratio))) }
+}
+async function bankTick() {
+  const now = Date.now()
+  if (now - bankAt < BANK_EVERY_MS) return
+  bankAt = now
+  for (const d of (await fdb.collection('banks').limit(1000).get()).docs) {
+    try {
+      const b = d.data(), uid = d.id
+      const cand = await fdb.doc(`candidates/${uid}`).get()
+      if (!cand.exists) continue
+      // the weekly interest for every week that is due (a worker that was down catches up)
+      let dep = b.dep ?? 0, loan = b.loan ?? 0, nextAt = b.nextAt ?? now + WEEK_MS
+      const logs = []
+      let weeks = 0
+      while (nextAt <= now && weeks < 52) {
+        const di = Math.round(dep * BANK.deposit.annual / BANK.deposit.weeks)
+        const li = Math.round(loan * BANK.loan.annual / BANK.loan.weeks)
+        dep += di
+        loan += li
+        if (di) logs.push({ kind: 'int-dep', amount: di })
+        if (li) logs.push({ kind: 'int-loan', amount: li })
+        nextAt += WEEK_MS
+        weeks++
+      }
+      const net = pointsOfDoc(cand.data()) + dep + itemsValue(cand.data()) - loan
+      const credit = creditOf(net)
+      const batch = fdb.batch()
+      batch.update(d.ref, { dep, loan, nextAt, grade: credit.grade, limit: credit.limit, gradeAt: now })
+      for (const l of logs) batch.set(d.ref.collection('log').doc(), { uid, ...l, at: FieldValue.serverTimestamp() })
+      await batch.commit()
+    } catch (e) { warn(`Bank account ${d.id} failed: ${e.message}`) }
+  }
+}
+
 async function stockInit() {
   await loadStockList()
   // a failed first price fetch must not skip the history: the regular ticks retry the prices
@@ -1247,6 +1298,7 @@ while (true) {
   await deliverScheduled().catch(e => warn('Scheduled messages failed: ' + e.message))
   await coinTick().catch(e => warn('Coin prices failed: ' + e.message))
   await stockTick().catch(e => warn('Stock prices failed: ' + e.message))
+  await bankTick().catch(e => warn('Bank failed: ' + e.message))
   await fillCoinOrders()
   await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
   if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })
