@@ -43,7 +43,7 @@ const BellOffIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b0b8c1" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-label="알림 꺼짐"><path d="M8.7 3.9A6 6 0 0 1 18 9c0 3.2.8 5.4 1.6 6.8M6.3 6.3A6 6 0 0 0 6 9c0 5-2 7-2 7h12M10.3 20a2 2 0 0 0 3.4 0M3 3l18 18" /></svg>
 )
 
-const band = <div data-g="gap" style={css('height:16px;background:#f2f4f6')} />
+const band = <div data-g="gap" style={css('height:16px;background:transparent')} />
 const title17 = 'font-size:17px;line-height:25.5px;font-weight:500;color:#333d4b'
 const caption = 'font-size:13px;line-height:19.5px;color:#6b7684'
 
@@ -151,6 +151,8 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
     )
   }
   const off = !!me.msgOff
+  const [q, setQ] = useState('')
+  const needle = q.trim()
   return (
     <div data-g="clear" style={{ ...css('flex:1;padding-bottom:24px;min-height:100%;color:#fff'), background: 'linear-gradient(180deg,#c9a7e4 0%,#9fb7e6 34%,#a9d4d6 58%,#eba4b4 84%,#e9868f 100%)' }}>
       <div style={css('padding:24px 16px 20px 24px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;animation:listIn 420ms ' + EASE + ' both')}>
@@ -172,6 +174,7 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
         <div className="anim-list" style={css('display:flex;flex-direction:column')}>
           {chats.map(c => {
             const v = describeChat(c, me.id, byId, off)
+            if (needle && !v.title.includes(needle)) return null
             const unread = isUnread(c, me.id)
             const muted = !!c.mutes?.[me.id]
             const lastText = c.last ? (c.last.text || '사진') : ''
@@ -198,6 +201,10 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
         </div>
       )}
 
+      <label style={css('position:sticky;bottom:12px;z-index:3;margin:12px 12px 4px;height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;border-radius:9999px;color:#fff;background:rgba(255,255,255,0.22);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)')}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+        <input value={q} onChange={e => setQ(e.target.value.slice(0, 20))} placeholder="검색" aria-label="대화 검색" style={css('flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:17px;color:#fff;font-family:inherit')} />
+      </label>
       {band}
       <div style={css(`margin:8px 12px 0;padding:16px;border-radius:24px;display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55);color:#fff`)}>
         <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
@@ -516,27 +523,27 @@ export function ChatRoom(p: RoomProps) {
     <>
     <KeyboardUnderlay z={199} />
     <div style={sx('position:fixed;left:0;right:0;z-index:200;display:flex;justify-content:center', { top: box.top, height: box.height })}>
-      <div data-g="app" className="no-select" style={css(`width:100%;max-width:var(--app-w);height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;background:#ffffff;animation:roomIn 360ms ${EASE} backwards`)}>
-        <div style={sx('flex:none;display:flex;align-items:center;gap:4px;padding:4px 8px;position:relative;z-index:2', { paddingTop: box.top ? 4 : 'calc(4px + env(safe-area-inset-top))', background: tinted ? 'rgba(255,255,255,0.72)' : '#ffffff', backdropFilter: tinted ? 'blur(12px)' : undefined })}>
-          <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28')}><BackIcon /></button>
-          <button className="pr-dim" onClick={() => (chat.type === 'dm' && v.people[0] ? onOpenProfile(v.people[0].id) : setMenu(true))} style={css('flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:4px;border-radius:12px;text-align:left')}>
-            <ChatAvatar people={v.people} size={32} photo={chat.photo} />
+      <div data-g="app" className="no-select" style={{ ...css(`width:100%;max-width:var(--app-w);height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;color:#fff;animation:roomIn 360ms ${EASE} backwards`), background: tinted ? '#ffffff' : 'linear-gradient(180deg,#c9a7e4 0%,#9fb7e6 34%,#a9d4d6 58%,#eba4b4 84%,#e9868f 100%)' }}>
+        <div style={{ ...css('flex:none;display:flex;align-items:center;gap:8px;padding:4px 10px;position:relative;z-index:2'), paddingTop: box.top ? 4 : 'calc(4px + env(safe-area-inset-top))', background: tinted ? 'rgba(255,255,255,0.72)' : 'transparent', backdropFilter: tinted ? 'blur(12px)' : undefined }}>
+          <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css('width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)')}><BackIcon /></button>
+          <button className="pr-dim" onClick={() => (chat.type === 'dm' && v.people[0] ? onOpenProfile(v.people[0].id) : setMenu(true))} style={css('flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:4px 14px 4px 5px;height:48px;border-radius:9999px;text-align:left;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)')}>
+            <ChatAvatar people={v.people} size={38} photo={chat.photo} />
             <span style={css('min-width:0;display:flex;align-items:baseline;gap:6px')}>
-              <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#191f28;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{v.title}</span>
-              {chat.type === 'group' && <span style={css('flex:none;font-size:15px;color:#8b95a1')}>{chat.members.length}</span>}
+              <span style={css('font-size:17px;line-height:25.5px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 6px rgba(80,40,110,0.3)')}>{v.title}</span>
+              {chat.type === 'group' && <span style={css('flex:none;font-size:15px;color:rgba(255,255,255,0.85)')}>{chat.members.length}</span>}
               {chat.type === 'dm' && v.people[0] && <PresenceText db={db} uid={v.people[0].id} size={14} sep />}
               {chat.type === 'group' && <GroupPresence db={db} uids={chat.members.filter(m => m !== me.id)} sep />}
             </span>
           </button>
           {chat.type === 'dm' && p.onCall && v.people[0] && <>
-            <button className="pr-dim" onClick={() => p.onCall?.(true)} aria-label="영상 통화" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#4e5968')}>
+            <button className="pr-dim" onClick={() => p.onCall?.(true)} aria-label="영상 통화" style={css('width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)')}>
               <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="2.5" y="6" width="13" height="12" rx="2.5" /><path d="m15.5 10.5 6-3.5v10l-6-3.5" /></svg>
             </button>
-            <button className="pr-dim" onClick={() => p.onCall?.(false)} aria-label="음성 통화" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#4e5968')}>
+            <button className="pr-dim" onClick={() => p.onCall?.(false)} aria-label="음성 통화" style={css('width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)')}>
               <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M6.6 10.8a15.2 15.2 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z" /></svg>
             </button>
           </>}
-          <button className="pr-dim" onClick={() => setMenu(true)} aria-label="채팅방 메뉴" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#4e5968')}><MenuIcon /></button>
+          <button className="pr-dim" onClick={() => setMenu(true)} aria-label="채팅방 메뉴" style={css('width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)')}><MenuIcon /></button>
         </div>
 
         <div ref={listRef} onScroll={onListScroll} style={sx('flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;transition:background 400ms ease', { background: bgCss })}>
@@ -574,7 +581,7 @@ export function ChatRoom(p: RoomProps) {
                 }} />
               : m.kind === 'image'
               ? <ImageBubble db={db} chatId={chat.id} msgId={m.mediaId ?? m.id} onOpen={setViewer} onLoaded={keepBottom} />
-              : <span style={sx('padding:10px 14px;border-radius:20px;font-size:15px;line-height:22px;white-space:pre-wrap;word-break:break-word;display:flex;flex-direction:column;gap:6px', { background: mine ? '#3182f6' : tinted ? '#ffffff' : '#f2f4f6', color: mine ? '#ffffff' : '#191f28', fontWeight: mine ? 500 : 400 })}>
+              : <span style={sx('padding:10px 14px;border-radius:20px;font-size:15px;line-height:22px;white-space:pre-wrap;word-break:break-word;display:flex;flex-direction:column;gap:6px', { background: mine ? 'rgba(46,96,170,0.55)' : tinted ? '#ffffff' : 'rgba(60,62,84,0.4)', color: '#ffffff', fontWeight: mine ? 500 : 400, WebkitBackdropFilter: tinted ? undefined : 'blur(16px) saturate(160%)', backdropFilter: tinted ? undefined : 'blur(16px) saturate(160%)', border: tinted ? undefined : '1px solid rgba(255,255,255,0.28)', boxShadow: tinted ? undefined : '0 6px 18px rgba(40,30,70,0.14)', textShadow: tinted ? undefined : '0 1px 3px rgba(40,30,70,0.25)' })}>
                   {m.replyTo && (
                     <button onClick={() => jumpTo(m.replyTo!.id)} style={sx('display:flex;flex-direction:column;gap:1px;padding:6px 10px;border-radius:12px;text-align:left;max-width:100%;border-left:3px solid', { background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(0,23,51,0.05)', borderLeftColor: mine ? 'rgba(255,255,255,0.7)' : '#3182f6' })}>
                       <span style={sx('font-size:12px;line-height:16px;font-weight:700', { color: mine ? 'rgba(255,255,255,0.9)' : '#1b64da' })}>{m.replyTo.uid === me.id ? '나' : nameIn(byId, m.replyTo.uid)}에게 답장</span>
@@ -630,7 +637,7 @@ export function ChatRoom(p: RoomProps) {
           </button>
         )}
 
-        <div style={sx('flex:none;padding:8px 12px', { paddingBottom: box.top || box.height < window.innerHeight - 80 ? 8 : 'calc(8px + env(safe-area-inset-bottom))', background: '#ffffff' })}>
+        <div style={sx('flex:none;padding:8px 12px', { paddingBottom: box.top || box.height < window.innerHeight - 80 ? 8 : 'calc(8px + env(safe-area-inset-bottom))', background: tinted ? '#ffffff' : 'transparent' })}>
           {reply && v.canSend && (
             <div style={css('display:flex;align-items:center;gap:10px;padding:8px 6px 10px 12px;margin-bottom:6px;border-radius:14px;background:#f9fafb;animation:toastDown 220ms cubic-bezier(0.16,1,0.3,1) both')}>
               <span style={css('width:3px;align-self:stretch;border-radius:2px;background:#3182f6;flex:none')} />
@@ -658,19 +665,19 @@ export function ChatRoom(p: RoomProps) {
           )}
           {v.canSend ? (
             <div style={css('display:flex;align-items:flex-end;gap:6px')}>
-              <button className="pr-94" onClick={() => setAttach(a => (a ? null : 'menu'))} disabled={sending} aria-label="사진·포인트 선물" aria-expanded={!!attach} style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#4e5968;background:#f2f4f6;transition:transform 260ms ${EASE}`, { transform: attach ? 'rotate(45deg)' : 'none' })}><PlusIcon /></button>
+              <button className="pr-94" onClick={() => setAttach(a => (a ? null : 'menu'))} disabled={sending} aria-label="사진·포인트 선물" aria-expanded={!!attach} style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55);transition:transform 260ms ${EASE}`, { transform: attach ? 'rotate(45deg)' : 'none' })}><PlusIcon /></button>
               <input ref={fileRef} type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) pickPhoto(f); e.target.value = '' }} style={css('display:none')} />
               <textarea
                 ref={inputRef} className="box-focus" rows={1} value={draft} maxLength={MAX_TEXT} placeholder="메시지 보내기"
                 onChange={e => setDraft(e.target.value)}
                 onFocus={() => setTimeout(() => toBottom(true), 300)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }}
-                style={css(`flex:1;min-width:0;min-height:44px;max-height:120px;resize:none;border:0;outline:none;border-radius:22px;background-color:#f2f4f6;padding:11px 16px;font-size:17px;line-height:22px;color:#191f28;font-family:inherit;transition:background-color 200ms ${EASE}`)}
+                style={css(`flex:1;min-width:0;min-height:44px;max-height:120px;resize:none;outline:none;border-radius:22px;background:rgba(255,255,255,0.2);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55);background-color:${tinted ? '#f2f4f6' : 'rgba(255,255,255,0.22)'};padding:11px 16px;font-size:17px;line-height:22px;color:${tinted ? '#191f28' : '#fff'};font-family:inherit;transition:background-color 200ms ${EASE}`)}
               />
               <button className="pr-94" title="꾹 누르면 예약 전송"
                 onPointerDown={e => { e.preventDefault(); pressStart() }} onPointerUp={pressEnd} onPointerLeave={pressEnd} onPointerCancel={pressEnd}
                 onMouseDown={e => e.preventDefault()} onContextMenu={e => e.preventDefault()} onClick={send} disabled={!canSendNow} aria-label="보내기 (꾹 누르면 예약)"
-                style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;background:#3182f6;display:flex;align-items:center;justify-content:center;transition:opacity 200ms ${EASE},transform 200ms ${EASE};-webkit-touch-callout:none;user-select:none`, { opacity: canSendNow ? 1 : 0.3, transform: canSendNow ? 'scale(1)' : 'scale(0.92)' })}>
+                style={sx(`width:44px;height:44px;flex:none;border-radius:9999px;background:${tinted ? '#3182f6' : 'rgba(46,96,170,0.6)'};${tinted ? '' : GLASS_CSS};display:flex;align-items:center;justify-content:center;transition:opacity 200ms ${EASE},transform 200ms ${EASE};-webkit-touch-callout:none;user-select:none`, { opacity: canSendNow ? 1 : 0.3, transform: canSendNow ? 'scale(1)' : 'scale(0.92)' })}>
                 <PlaneIcon size={20} stroke="#ffffff" width={2.2} />
               </button>
             </div>
@@ -842,6 +849,8 @@ function GiftBubble({ db, giftId, me, mine: meP, byId, onClaim, onCancel, onLoad
 }
 
 // 페이크 선물: whoever taps 받기 is told it once per message (remembered on the device).
+const GLASS_CSS = 'backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);box-shadow:0 8px 24px rgba(60,40,90,0.16),inset 0 1px 0 rgba(255,255,255,0.55)'
+
 function wasFooled(id: string) { try { return localStorage.getItem('pv-fooled-' + id) === '1' } catch { return false } }
 function markFooled(id: string) { if (wasFooled(id)) return false; try { localStorage.setItem('pv-fooled-' + id, '1') } catch { /* private mode */ } return true }
 
