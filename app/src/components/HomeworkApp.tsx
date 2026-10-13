@@ -117,7 +117,7 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
           const liked = d.likes.includes(uid)
           const expanded = open === d.id
           return (
-            <article key={d.id} style={css('background:#ffffff;border-radius:16px;overflow:hidden')}>
+            <article key={d.id} style={css('flex:none;background:#ffffff;border-radius:16px;overflow:hidden')}>
               <div style={css('display:flex;align-items:center;gap:10px;padding:12px 14px 8px')}>
                 <span style={css('width:30px;height:30px;border-radius:9999px;background:#dbdbdb;color:#333;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center')}>?</span>
                 <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>

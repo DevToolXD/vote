@@ -373,6 +373,28 @@ describe('profile and shop', () => {
     assert.equal((await read(a, 'homework/h10')).views, 1)
     await deleteDoc(fsDoc(a, 'homework', 'h10'))
   })
+  test('인스타그램: a heart is only yours; a view counts once and never on your own post; anyone signed in comments', async () => {
+    const a = await signUp('a'), b = await signUp('b')
+    const photo = 'data:image/jpeg;base64,/9j/4AAQ'
+    await fsSetDoc(fsDoc(a, 'posts', 'q1'), { uid: 'a', name: 'a', photo, caption: '', likes: [], views: 0, at: fsServerTimestamp() })
+    await fsUpdateDoc(fsDoc(b, 'posts', 'q1'), { likes: arrayUnion('b') })
+    await denied(fsUpdateDoc(fsDoc(b, 'posts', 'q1'), { likes: arrayUnion('a') }))
+    await denied(fsUpdateDoc(fsDoc(b, 'posts', 'q1'), { caption: '바꿈' }))
+    const view = (who: typeof a, uid: string) => {
+      const w = writeBatch(who)
+      w.set(fsDoc(who, 'posts', 'q1', 'views', uid), { at: fsServerTimestamp() })
+      w.update(fsDoc(who, 'posts', 'q1'), { views: increment(1) })
+      return w.commit()
+    }
+    await view(b, 'b')
+    await denied(view(b, 'b'))
+    await denied(view(a, 'a'))
+    assert.equal((await read(a, 'posts/q1')).views, 1)
+    await fsSetDoc(fsDoc(b, 'posts', 'q1', 'comments', 'c1'), { uid: 'b', name: 'b', text: '멋져요', at: fsServerTimestamp() })
+    await denied(fsSetDoc(fsDoc(b, 'posts', 'q1', 'comments', 'c2'), { uid: 'a', name: 'a', text: 'x', at: fsServerTimestamp() }))
+    await deleteDoc(fsDoc(a, 'posts', 'q1', 'comments', 'c1'))
+    await deleteDoc(fsDoc(a, 'posts', 'q1'))
+  })
   test('리미티드: the landmark 막대 스킨 are no longer sold; the 관리자샵 sells anything one by one', async () => {
     const a = await signUp('a'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 5000)
     for (const k of ['namsan', 'eiffel', 'bigben', 'victory']) await denied(buyItem(a, 'a', 'skin', k, priceOf('skin', k)))

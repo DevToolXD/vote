@@ -776,7 +776,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             <BankApp db={db} uid={authUser?.uid ?? null} owned={me?.owned ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />
           )}
           {app === 'homework' && <HomeworkApp db={db} uid={authUser?.uid ?? null} name={me?.name ?? ''} isAdmin={isAdmin} onLogin={() => go('acct')} onToast={showToast} />}
-          {app === 'insta' && <InstaApp db={db} uid={authUser?.uid ?? null} name={me?.name ?? ''} onLogin={() => go('acct')} onToast={showToast} onMessages={() => go('msg')} />}
+          {app === 'insta' && <InstaApp db={db} uid={authUser?.uid ?? null} name={me?.name ?? ''} isAdmin={isAdmin} onLogin={() => go('acct')} onToast={showToast} onMessages={() => go('msg')} onProfile={() => go('acct')} />}
           {app === 'stock' && <StockApp db={db} uid={authUser?.uid ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />}
           {app === 'shop' && (
             <ShopScreen
