@@ -395,6 +395,12 @@ describe('profile and shop', () => {
     await deleteDoc(fsDoc(a, 'posts', 'q1', 'comments', 'c1'))
     await deleteDoc(fsDoc(a, 'posts', 'q1'))
   })
+  test('인스타그램: a full-size photo (about 280 KB of text) can be posted', async () => {
+    const a = await signUp('a')
+    const photo = 'data:image/jpeg;base64,' + 'A'.repeat(279_000)
+    await fsSetDoc(fsDoc(a, 'posts', 'big1'), { uid: 'a', name: 'a', photo, caption: '큰 사진', likes: [], views: 0, at: fsServerTimestamp() })
+    await deleteDoc(fsDoc(a, 'posts', 'big1'))
+  })
   test('리미티드: the landmark 막대 스킨 are no longer sold; the 관리자샵 sells anything one by one', async () => {
     const a = await signUp('a'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 5000)
     for (const k of ['namsan', 'eiffel', 'bigben', 'victory']) await denied(buyItem(a, 'a', 'skin', k, priceOf('skin', k)))

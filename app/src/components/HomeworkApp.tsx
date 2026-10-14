@@ -80,7 +80,7 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
       await addDocPost(db, { uid, title: title.trim().slice(0, 60), photo, caption: caption.trim().slice(0, 300) })
       setSheet(false); setPhoto(null); setTitle(''); setCaption('')
       onToast('올렸어요')
-    } catch { onToast('올리지 못했어요') } finally { setBusy(false) }
+    } catch (e) { console.warn('post', e); onToast(`올리지 못했어요 (${(e as { code?: string })?.code ?? (e instanceof Error ? e.message : '오류')})`) } finally { setBusy(false) }
   }
   const toggleLike = async (d: Doc) => {
     if (!db || !uid) return

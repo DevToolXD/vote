@@ -19,7 +19,9 @@ const PIC_W = 481, PIC_H = 360, PHOTO_PX = 55
 /** The frame's picture: its width and height in frame sizes (--av), so the photo's edge is at 0.5. */
 const PIC_W_S = (PIC_W / PHOTO_PX) * 0.5, PIC_H_S = (PIC_H / PHOTO_PX) * 0.5
 const cutBox = `position:absolute;left:50%;top:50%;width:calc(var(--av,52px) * ${PIC_W_S.toFixed(3)});height:calc(var(--av,52px) * ${PIC_H_S.toFixed(3)});margin:calc(var(--av,52px) * ${(-PIC_H_S / 2).toFixed(3)}) 0 0 calc(var(--av,52px) * ${(-PIC_W_S / 2).toFixed(3)});pointer-events:none`
-const cutFrame = `${cutBox};background-image:${CUT_IMG};background-size:100% 100%;background-repeat:no-repeat`
+// the edges fade out (an elliptical mask), so no hard border shows where the picture ends
+const FADE = '-webkit-mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 62%,rgba(0,0,0,0) 100%);mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 62%,rgba(0,0,0,0) 100%)'
+const cutFrame = `${cutBox};background-image:${CUT_IMG};background-size:100% 100%;background-repeat:no-repeat;${FADE}`
 export const GARG_AVATAR: { before: string; after: string } = {
   // the black hole's dark body behind the photo, a little wider than the photo
   before: `<div style="position:absolute;left:50%;top:50%;width:calc(var(--av,52px) * 1.2);height:calc(var(--av,52px) * 1.2);margin:calc(var(--av,52px) * -0.6) 0 0 calc(var(--av,52px) * -0.6);border-radius:50%;background:#000"></div>`,
@@ -33,7 +35,7 @@ const PLATE_PX_CQH = 40
 const plateW = (PIC_W / 68) * PLATE_PX_CQH, plateH = (PIC_H / 68) * PLATE_PX_CQH
 const PLATE_HOLE =
   `<div style="position:absolute;top:50%;left:calc(100% - 40cqh);width:0;height:0">` +
-  `<div style="position:absolute;left:${(-plateW / 2).toFixed(2)}cqh;top:${(-plateH / 2).toFixed(2)}cqh;width:${plateW.toFixed(2)}cqh;height:${plateH.toFixed(2)}cqh;background-image:${CUT_IMG};background-size:100% 100%;background-repeat:no-repeat"></div></div>`
+  `<div style="position:absolute;left:${(-plateW / 2).toFixed(2)}cqh;top:${(-plateH / 2).toFixed(2)}cqh;width:${plateW.toFixed(2)}cqh;height:${plateH.toFixed(2)}cqh;background-image:${CUT_IMG};background-size:100% 100%;background-repeat:no-repeat;${FADE}"></div></div>`
 const PLATE_SPECKS = (() => {
   let seed = 29
   const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647

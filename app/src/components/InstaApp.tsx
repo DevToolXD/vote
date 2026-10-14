@@ -115,7 +115,7 @@ export function InstaApp({ db, uid, name, isAdmin = false, onLogin, onToast, onM
       await addPost(db, { uid, name: name.slice(0, 30), photo, caption: caption.trim().slice(0, 300) })
       setUpload(false); setPhoto(null); setCaption('')
       onToast('올렸어요')
-    } catch { onToast('올리지 못했어요') } finally { setBusy(false) }
+    } catch (e) { console.warn('post', e); onToast(`올리지 못했어요 (${(e as { code?: string })?.code ?? (e instanceof Error ? e.message : '오류')})`) } finally { setBusy(false) }
   }
   const remove = async (p: Post) => {
     if (!db) return

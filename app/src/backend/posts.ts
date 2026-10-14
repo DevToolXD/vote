@@ -52,15 +52,19 @@ export async function shrinkPhoto(file: File): Promise<string> {
   const url = URL.createObjectURL(file)
   try {
     const img = await new Promise<HTMLImageElement>((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('사진을 읽지 못했어요')); i.src = url })
-    const scale = Math.min(1, 1080 / Math.max(img.width, img.height))
-    const c = document.createElement('canvas')
-    c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale)
-    const ctx = c.getContext('2d')
-    if (!ctx) throw new Error('사진을 만들지 못했어요')
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height)
-    for (const q of [0.85, 0.7, 0.55, 0.4]) {
-      const data = c.toDataURL('image/jpeg', q)
-      if (data.length < 280_000) return data
+    // up to 1080 px; if the JPEG is still over ~150 KB of text, the picture is made smaller and tried again
+    let side = Math.min(1, 1080 / Math.max(img.width, img.height))
+    for (let round = 0; round < 5; round++) {
+      const c = document.createElement('canvas')
+      c.width = Math.max(1, Math.round(img.width * side)); c.height = Math.max(1, Math.round(img.height * side))
+      const ctx = c.getContext('2d')
+      if (!ctx) throw new Error('사진을 만들지 못했어요')
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height)
+      for (const q of [0.8, 0.65, 0.5, 0.4]) {
+        const data = c.toDataURL('image/jpeg', q)
+        if (data.length < 150_000) return data
+      }
+      side *= 0.8
     }
     throw new Error('사진이 너무 커요. 더 작은 사진을 골라 주세요')
   } finally { URL.revokeObjectURL(url) }
