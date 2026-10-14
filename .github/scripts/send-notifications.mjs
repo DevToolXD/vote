@@ -869,14 +869,14 @@ async function coinTick() {
   await rdb.ref().update(up)
 }
 
-// ---- 주식: domestic and foreign stocks (Yahoo Finance), traded with points — 1P = 1원 ----
-// Prices come from Yahoo's quote endpoint (one answer for the whole list; a cookie + crumb are
-// needed) every STOCK_TICK_MS. A US stock's dollar price is turned into won with the live USD/KRW
-// rate (Yahoo's KRW=X), so the price shown IS the number of points one share costs. If the batch
-// answer fails, a rotating slice is priced one by one with the chart endpoint instead.
-// The list (meta/stocks, so the rules can check an order) is built once: Korean codes are tried as
-// .KS and then .KQ and anything Yahoo does not know is left out. Ids are `S_` + ticker or code
-// (never clashing with a coin) and `I_` + name for the indices (shown, not traded).
+// ---- 주식: domestic and foreign stocks (네이버 증권), traded with points — 1P = 1원 ----
+// Prices come from Naver Finance: the Korean stocks in one batch (polling.finance.naver.com), the foreign
+// stocks and the indices one by one (api.stock.naver.com, a few at a time), every STOCK_TICK_MS. A US
+// stock's dollar price is turned into won with the live USD/KRW rate (a free rate API), so the price shown
+// IS the number of points one share costs. The list keeps the symbols the app already knows (`y`:
+// 005930.KS, AAPL, ^GSPC); the worker turns one into Naver's own code (005930, AAPL.O, .INX) when it asks.
+// The list (meta/stocks, so the rules can check an order) is built once: anything Naver does not know is
+// left out. Ids are `S_` + ticker or code (never clashing with a coin) and `I_` + name for the indices.
 //   stocks/list/{id}    { t: ticker, n: Korean name, m: 'KR' | 'US' | 'IX', r: order }
 //   stocks/live         { at, fx, st: { KR, US } market states, p: { id: points }, chg: { id: change since yesterday } }
 //   stocks/info/{id}    { o, h, l, pc, v, hi, lo, cap, st }   open, high, low, previous close, volume, 52 w high / low, market cap
@@ -885,74 +885,111 @@ async function coinTick() {
 //   stocks/h/{id}/{minute ms} = price                           24 h of changes (the 1-day chart)
 // Orders are the coin ones (coinOrders, wallets, coinTrades): fillCoinOrder prices a `S_` coin from
 // here, and only while the last good quote is recent.
-const YAHOO = process.env.YAHOO_BASE || 'https://query1.finance.yahoo.com'
-const YAHOO_COOKIE = process.env.YAHOO_COOKIE_URL || 'https://fc.yahoo.com'
+const NAVER_API = process.env.NAVER_API_BASE || 'https://api.stock.naver.com'
+const NAVER_M = process.env.NAVER_M_BASE || 'https://m.stock.naver.com'
+const NAVER_POLL = process.env.NAVER_POLL_BASE || 'https://polling.finance.naver.com'
+const NAVER_SISE = process.env.NAVER_SISE_BASE || 'https://api.finance.naver.com'
+const FX_URLS = process.env.FX_URL ? [process.env.FX_URL] : ['https://open.er-api.com/v6/latest/USD', 'https://api.frankfurter.app/latest?from=USD&to=KRW']
 const STOCK_TICK_MS = Number(process.env.STOCK_TICK_MS ?? 30_000)
 const STOCK_STALE_MS = 15 * 60_000
 const STOCK_MIN_LIST = Number(process.env.STOCK_MIN_LIST ?? 20) // fewer than this in the answer: not a real list
 const STOCK_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
-let stockList = null // [{ sym, y: Yahoo symbol, t, n, m }]
+let stockList = null // [{ sym, y: symbol, t, n, m, nc?: Naver's code }]
 let stockTradable = new Set()
-// The built-in list (stocks-list.mjs) is shown while Yahoo refuses the real build; the real one is retried every 2 minutes.
+// The built-in list (stocks-list.mjs) is shown while Naver refuses the real build; the real one is retried every 2 minutes.
 let stockProvisional = false, stockBuildAt = 0
-const stockPrices = {}, stockChg = {}, stockInfo = {}, stockLastSample = {}
-let stockFx = 0, stockOkAt = 0, stockAt = 0, stockSlot = 0, stockInitAt = 0, stockWarned = 0, stockRot = 0, stockInfoSig = ''
+const stockPrices = {}, stockChg = {}, stockInfo = {}, stockLastSample = {}, stockHiLo = {}
+let stockFx = 0, stockOkAt = 0, stockAt = 0, stockSlot = 0, stockInitAt = 0, stockWarned = 0, stockInfoSig = ''
 let stockState = {}
 let stockDailyBusy = false, stockDailyAt = 0, stockDailyTry = 0
-let ySession = null
 const num = v => (Number.isFinite(v) ? sig(v) : 0)
-// Yahoo answers 429 ("too many requests") to a server that asks too often. Then the worker stops asking
-// for a while, and each new refusal waits longer (2, 4, 8 … 30 minutes), instead of retrying at once.
-let yCooldownUntil = 0, yCooldownStep = 0
-const yWait = () => Math.max(0, Math.ceil((yCooldownUntil - Date.now()) / 60_000))
-function yLimited(what) {
-  yCooldownStep = Math.min(yCooldownStep ? yCooldownStep * 2 : 120_000, 30 * 60_000)
-  yCooldownUntil = Date.now() + yCooldownStep
-  ySession = null
-  return new Error(`${what} (야후가 요청을 잠시 제한했어요 · ${Math.round(yCooldownStep / 60_000)}분 뒤 다시 시도)`)
+const nv = v => { const x = Number(String(v ?? '').replace(/[, ]/g, '')); return Number.isFinite(x) ? x : 0 }
+async function naverGet(url, text = false) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 10_000)
+  try {
+    const r = await fetch(url, { signal: ctl.signal, headers: { 'User-Agent': STOCK_UA, Accept: 'application/json, text/plain, */*', Referer: 'https://m.stock.naver.com/' } })
+    if (!r.ok) throw new Error(`Naver ${url.replace(/^https?:\/\//, '').slice(0, 60)} → ${r.status}`)
+    return text ? await r.text() : await r.json()
+  } finally { clearTimeout(t) }
 }
-async function yahooSession() {
-  if (Date.now() < yCooldownUntil) throw new Error(`야후가 요청을 잠시 제한했어요 · ${yWait()}분 뒤 다시 시도`)
-  if (ySession) return ySession
-  const r = await fetch(YAHOO_COOKIE, { redirect: 'manual', headers: { 'User-Agent': STOCK_UA } })
-  const cookie = (r.headers.getSetCookie?.() ?? []).map(c => c.split(';')[0]).join('; ')
-  const c = await fetch(`${YAHOO}/v1/test/getcrumb`, { headers: { 'User-Agent': STOCK_UA, Cookie: cookie } })
-  if (c.status === 429) throw yLimited('Yahoo crumb → 429')
-  const crumb = (await c.text()).trim()
-  if (!c.ok || !crumb || crumb.length > 60 || crumb.includes('<')) throw new Error(`Yahoo crumb → ${c.status}`)
-  yCooldownStep = 0
-  return (ySession = { cookie, crumb })
-}
-async function yahoo(path, again = true) {
-  const ses = await yahooSession()
+/** The first of these addresses that answers. */
+async function naverFirst(urls, text = false) {
   let last = null
-  for (const host of YAHOO_HOSTS) {
-    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 10_000)
-    try {
-      const r = await fetch(`${host}${path}${path.includes('?') ? '&' : '?'}crumb=${encodeURIComponent(ses.crumb)}`, { signal: ctl.signal, headers: { 'User-Agent': STOCK_UA, Accept: 'application/json', Cookie: ses.cookie } })
-      if (r.status === 429) throw yLimited(`Yahoo ${path.slice(0, 40)} → 429`)
-      if ((r.status === 401 || r.status === 403) && again) { ySession = null; return yahoo(path, false) }
-      if (!r.ok) throw new Error(`Yahoo ${host.replace(/^https:\/\//, '')} ${path.slice(0, 40)} → ${r.status}`)
-      yCooldownStep = 0
-      return await r.json()
-    } catch (e) { last = e; if (String(e.message).includes('제한했어요')) break } finally { clearTimeout(t) }
-  }
+  for (const u of urls) { try { return await naverGet(u, text) } catch (e) { last = e } }
   throw last
 }
-// The same answers come from a second Yahoo host: if the first one refuses or fails, that one is asked.
-const YAHOO_HOSTS = [YAHOO, process.env.YAHOO_ALT_BASE || 'https://query2.finance.yahoo.com'].filter((h, i, a) => a.indexOf(h) === i)
-/** Quotes for many symbols, in batches. A batch that fails leaves its symbols out; only all failing is an error. */
-async function yahooQuotes(symbols) {
+// Naver's code for an index (the Korean ones by name, the world ones with a dot) and where its pages live.
+const NAVER_INDEX = { '^KS11': ['KOSPI', 'domestic'], '^KQ11': ['KOSDAQ', 'domestic'], '^GSPC': ['.INX', 'foreign'], '^DJI': ['.DJI', 'foreign'], '^IXIC': ['.IXIC', 'foreign'] }
+const kindOf = s => s.m === 'KR' ? 'domestic' : s.m === 'IX' ? (NAVER_INDEX[s.y]?.[1] ?? 'foreign') : 'foreign'
+const usGuesses = t => { const b = t.replace('-', ''); return [`${b}.O`, b, `${b}.N`, `${b}.K`, `${b}.A`] }
+/** One answer of Naver's `basic` as a quote (price, change %, state). */
+function basicQuote(j, symbol, m) {
+  const price = nv(j?.closePrice)
+  if (!(price > 0)) return null
+  const dir = String(j?.compareToPreviousPrice?.name ?? j?.compareToPreviousPrice?.code ?? '')
+  let pct = nv(j?.fluctuationsRatio)
+  if (/FALL|LOWER|^4$|^5$/.test(dir)) pct = -Math.abs(pct); else if (/RIS|UPPER|^1$|^2$/.test(dir)) pct = Math.abs(pct)
+  const cur = String(j?.currencyType?.code ?? '') || (m === 'US' ? 'USD' : 'KRW')
+  return { symbol, currency: cur, regularMarketPrice: price, regularMarketChangePercent: pct, regularMarketPreviousClose: price / (1 + pct / 100), marketState: String(j?.marketStatus ?? '').toUpperCase() === 'OPEN' ? 'REGULAR' : 'CLOSED' }
+}
+/** The Korean stocks, a hundred a batch (polling.finance.naver.com). Returns Map(code → quote). */
+async function pollKorean(codes) {
+  const out = new Map()
+  for (let i = 0; i < codes.length; i += 100) {
+    const j = await naverGet(`${NAVER_POLL}/api/realtime?query=SERVICE_ITEM:${codes.slice(i, i + 100).join(',')}`)
+    for (const area of j?.result?.areas ?? []) for (const d of area?.datas ?? []) {
+      const price = nv(d.nv), prev = nv(d.pcv)
+      if (!(price > 0) || !d.cd) continue
+      out.set(String(d.cd), { symbol: String(d.cd), currency: 'KRW', regularMarketPrice: price, regularMarketPreviousClose: prev || price, regularMarketChangePercent: prev > 0 ? ((price - prev) / prev) * 100 : 0, regularMarketOpen: nv(d.ov) || price, regularMarketDayHigh: nv(d.hv) || price, regularMarketDayLow: nv(d.lv) || price, regularMarketVolume: nv(d.aq), marketState: String(d.ms ?? '').toUpperCase() === 'OPEN' ? 'REGULAR' : 'CLOSED' })
+    }
+  }
+  return out
+}
+/** One stock or index by its Naver code: Naver's `basic`, from either host. */
+async function naverBasic(s, nc) {
+  const base = s.m === 'IX' ? `index/${nc}` : `stock/${nc}`
+  return basicQuote(await naverFirst([`${NAVER_API}/${base}/basic`, `${NAVER_M}/api/${base}/basic`]), s.y, s.m)
+}
+/** Naver's code for a stock or index: for a foreign stock the first guess Naver answers to (kept on the entry). */
+async function resolveNaver(s) {
+  if (s.nc) return s.nc
+  if (s.m === 'KR') return (s.nc = s.t) // a Korean stock's ticker IS its six-digit code
+  if (s.m === 'IX') return (s.nc = NAVER_INDEX[s.y]?.[0] ?? s.t)
+  for (const g of usGuesses(s.t)) { const q = await naverBasic(s, g).catch(() => null); if (q) { s.nc = g; s.q0 = q; return g } }
+  return null
+}
+/** Runs `fn` over `items`, a few at a time. */
+async function pool(items, n, fn) {
+  let i = 0
+  await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const it = items[i++]; await fn(it).catch(() => {}) } }))
+}
+/** Quotes for a list of stocks: Map(sym → quote). Only all of them failing is an error. */
+async function naverQuotes(list) {
   const out = new Map()
   let failed = null
-  for (let i = 0; i < symbols.length; i += 100) {
-    try {
-      const j = await yahoo(`/v7/finance/quote?symbols=${encodeURIComponent(symbols.slice(i, i + 100).join(','))}`)
-      for (const q of j?.quoteResponse?.result ?? []) out.set(q.symbol, q)
-    } catch (e) { failed = e }
+  const kr = list.filter(s => s.m === 'KR')
+  if (kr.length) {
+    try { const q = await pollKorean(kr.map(s => s.t)); for (const s of kr) if (q.has(s.t)) out.set(s.sym, q.get(s.t)) } catch (e) { failed = e }
+    // the ones the batch missed (all of them, if the batch failed) one by one
+    await pool(kr.filter(s => !out.has(s.sym)).slice(0, 60), 6, async s => { const q = await naverBasic(s, s.t); if (q) out.set(s.sym, q) })
   }
-  if (!out.size && failed) throw failed
+  await pool(list.filter(s => s.m !== 'KR'), 8, async s => {
+    const nc = await resolveNaver(s)
+    if (!nc) return
+    const q = s.q0 ?? await naverBasic(s, nc)
+    s.q0 = null
+    if (q) out.set(s.sym, q)
+  })
+  if (!out.size) throw failed ?? new Error('네이버 증권이 시세를 주지 않았어요')
   return out
+}
+/** The USD/KRW rate from a free rate API (the first that answers). */
+async function fetchFx() {
+  let last = null
+  for (const u of FX_URLS) {
+    try { const r = nv((await naverGet(u))?.rates?.KRW); if (r > 100 && r < 100000) return r } catch (e) { last = e }
+  }
+  throw last ?? new Error('No USD/KRW rate')
 }
 // What the app shows when the prices don't come: the last outcome, written to stocks/status.
 let stockStatusSig = '', stockStatusAt = 0
@@ -963,43 +1000,33 @@ function setStockStatus(ok, msg) {
   rdb.ref('stocks/status').set({ at: Date.now(), ok, msg: String(msg).slice(0, 200) }).catch(() => {})
 }
 const quoteOk = q => q && q.regularMarketPrice > 0
-/** The chart endpoint's meta as a quote (the fallback when the batch answer fails). */
-async function chartQuote(y) {
-  const m = (await yahoo(`/v8/finance/chart/${encodeURIComponent(y)}?range=1d&interval=1d`))?.chart?.result?.[0]?.meta
-  if (!m) return null
-  const prev = m.chartPreviousClose ?? m.previousClose
-  return { symbol: y, currency: m.currency, regularMarketPrice: m.regularMarketPrice, regularMarketPreviousClose: prev, regularMarketChangePercent: prev > 0 ? ((m.regularMarketPrice - prev) / prev) * 100 : 0, regularMarketDayHigh: m.regularMarketDayHigh, regularMarketDayLow: m.regularMarketDayLow, regularMarketVolume: m.regularMarketVolume, fiftyTwoWeekHigh: m.fiftyTwoWeekHigh, fiftyTwoWeekLow: m.fiftyTwoWeekLow }
-}
-/** The stock list: from meta/stocks if it is the current version, else built from Yahoo (and saved). */
+/** The stock list: from meta/stocks if it is the current version, else built from Naver (and saved). */
 async function loadStockList() {
   const doc = await fdb.doc('meta/stocks').get()
   if (doc.exists && doc.get('ver') === STOCKS_VER && doc.get('list')?.length) { stockList = doc.get('list'); stockProvisional = false }
   else {
     try { stockList = await buildStockList(); stockProvisional = false }
     catch (e) {
-      // Yahoo refused the start (rate limit or outage): publish the built-in list so the app can show the stocks.
+      // Naver refused the start (outage): publish the built-in list so the app can show the stocks.
       // It is not saved, so the next start (or the retry in stockTick) builds the real one.
       stockList = provisionalStockList(); stockProvisional = true; stockBuildAt = Date.now()
-      warn('Stock list: Yahoo refused the start, showing the built-in list until it answers: ' + e.message)
+      warn('Stock list: Naver refused the start, showing the built-in list until it answers: ' + e.message)
     }
   }
   await publishStockList()
 }
-/** Builds the list from Yahoo quotes and saves it to meta/stocks. Throws when Yahoo does not answer enough. */
+/** Builds the list from Naver quotes and saves it to meta/stocks. Throws when Naver does not answer enough. */
 async function buildStockList() {
-  const q = await yahooQuotes([...KR.map(([c]) => c + '.KS'), ...US.map(([t]) => t), ...INDICES.map(([t]) => t), 'KRW=X'])
-  const kq = KR.filter(([c]) => !quoteOk(q.get(c + '.KS'))).map(([c]) => c + '.KQ')
-  if (kq.length) for (const [k, v] of await yahooQuotes(kq)) q.set(k, v)
-  if (!quoteOk(q.get('KRW=X'))) throw new Error('No USD/KRW rate yet')
-  const list = []
-  for (const [c, n] of KR) { const y = quoteOk(q.get(c + '.KS')) ? c + '.KS' : c + '.KQ'; if (quoteOk(q.get(y))) list.push({ sym: 'S_' + c, y, t: c, n, m: 'KR' }) }
-  for (const [t, n] of US) if (quoteOk(q.get(t))) list.push({ sym: 'S_' + t, y: t, t, n, m: 'US' })
-  for (const [y, t, n] of INDICES) if (quoteOk(q.get(y))) list.push({ sym: 'I_' + y.replace(/[^A-Za-z0-9]/g, ''), y, t, n, m: 'IX' })
+  const all = provisionalStockList()
+  const q = await naverQuotes(all)
+  stockFx = await fetchFx().catch(() => stockFx)
+  if (!stockFx) throw new Error('No USD/KRW rate yet')
+  const list = all.filter(s => quoteOk(q.get(s.sym))).map(({ q0, ...s }) => s)
   if (list.length < STOCK_MIN_LIST) throw new Error('Too few stock quotes to build the list')
   await fdb.doc('meta/stocks').set({ ver: STOCKS_VER, list, syms: list.filter(s => s.m !== 'IX').map(s => s.sym), at: FieldValue.serverTimestamp() })
   return list
 }
-/** The built-in list: every listed code, priced once Yahoo answers (Korean codes as .KS; the real list finds .KQ ones). */
+/** The built-in list: every listed code, priced once Naver answers. */
 function provisionalStockList() {
   return [
     ...KR.map(([c, n]) => ({ sym: 'S_' + c, y: c + '.KS', t: c, n, m: 'KR' })),
@@ -1013,32 +1040,49 @@ async function publishStockList() {
   notice(`Stocks: ${stockList.filter(s => s.m === 'KR').length} Korean, ${stockList.filter(s => s.m === 'US').length} US, ${stockList.filter(s => s.m === 'IX').length} indices listed${stockProvisional ? ' (built-in, prices pending)' : ''}.`)
   await rdb.ref('stocks/list').set(Object.fromEntries(stockList.map((s, i) => [s.sym, { t: s.t, n: s.n, m: s.m, r: i + 1 }])))
 }
-/** One quote → price (points), change and the small facts; `rate` is won per unit of its currency. */
+/** Won per unit of a stock's price: a US stock in dollars is turned into won, the rest are in won (or points). */
+const stockRate = (s, x) => s.m !== 'US' || x.currency === 'KRW' ? 1 : x.currency === 'USD' ? stockFx : 0
+/** One quote → price (points), change and the small facts. */
 function applyStock(s, x) {
-  const rate = s.m === 'IX' ? 1 : x.currency === 'KRW' ? 1 : x.currency === 'USD' ? stockFx : 0
+  const rate = stockRate(s, x)
   if (!quoteOk(x) || !rate) return false
   stockPrices[s.sym] = sig(x.regularMarketPrice * rate)
   stockChg[s.sym] = Number(((x.regularMarketChangePercent ?? 0) / 100).toFixed(5))
-  stockInfo[s.sym] = { o: num(x.regularMarketOpen * rate), h: num(x.regularMarketDayHigh * rate), l: num(x.regularMarketDayLow * rate), pc: num(x.regularMarketPreviousClose * rate), v: Math.round(x.regularMarketVolume ?? 0) || 0, hi: num(x.fiftyTwoWeekHigh * rate), lo: num(x.fiftyTwoWeekLow * rate), cap: x.marketCap ? Math.round(x.marketCap * rate) : 0, st: x.marketState ?? '' }
+  const hl = stockHiLo[s.sym] ?? [0, 0]
+  stockInfo[s.sym] = { o: num(x.regularMarketOpen * rate), h: num(x.regularMarketDayHigh * rate), l: num(x.regularMarketDayLow * rate), pc: num(x.regularMarketPreviousClose * rate), v: Math.round(x.regularMarketVolume ?? 0) || 0, hi: Math.max(hl[0], stockPrices[s.sym]), lo: hl[1] ? Math.min(hl[1], stockPrices[s.sym]) : stockPrices[s.sym], cap: 0, st: x.marketState ?? '' }
   if (x.marketState && s.m !== 'IX') stockState[s.m] = x.marketState
   return true
 }
 async function fetchStockPrices() {
-  const q = await yahooQuotes([...stockList.map(s => s.y), 'KRW=X'])
-  if (quoteOk(q.get('KRW=X'))) stockFx = q.get('KRW=X').regularMarketPrice
+  const [q, fx] = await Promise.all([naverQuotes(stockList), fetchFx().catch(() => 0)])
+  if (fx) stockFx = fx
   let n = 0
-  for (const s of stockList) if (applyStock(s, q.get(s.y))) n++
+  for (const s of stockList) if (applyStock(s, q.get(s.sym))) n++
   if (!n) throw new Error('No stock prices in the answer')
   stockOkAt = Date.now()
 }
-/** The batch answer failed: price a rotating slice of the list one by one. */
-async function fetchStockSlice() {
-  if (!stockFx) { const fx = await chartQuote('KRW=X'); if (quoteOk(fx)) stockFx = fx.regularMarketPrice; else throw new Error('No USD/KRW rate') }
-  const slice = stockList.slice(stockRot, stockRot + 40)
-  stockRot = stockRot + 40 >= stockList.length ? 0 : stockRot + 40
-  let n = 0
-  for (const s of slice) { const x = await chartQuote(s.y).catch(() => null); if (x && applyStock(s, x)) n++ }
-  if (n) stockOkAt = Date.now()
+/** A stock's daily closes (in its own currency) from Naver: [days since 1970[], closes[]]. */
+async function naverDaily(s) {
+  const nc = await resolveNaver(s)
+  if (!nc) return null
+  const day = n => { const d = new Date(Date.now() - n * 86400_000); return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}` }
+  const kind = kindOf(s)
+  const path = s.m === 'IX' ? `chart/${kind}/index/${nc}/day` : `chart/${kind}/item/${nc}/day`
+  const d = [], v = []
+  const add = (date, close) => {
+    const m = /^(\d{4})-?(\d{2})-?(\d{2})/.exec(String(date))
+    if (m && close > 0) { d.push(Math.floor(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400_000)); v.push(close) }
+  }
+  try {
+    const j = await naverGet(`${NAVER_API}/${path}?startDateTime=${day(5 * 366)}0000&endDateTime=${day(0)}2359`)
+    for (const r of Array.isArray(j) ? j : j?.priceInfos ?? j?.result ?? []) add(r.localDate ?? r.localTradedAt, nv(r.closePrice))
+  } catch { /* the older Korean sheet below */ }
+  if (v.length < 2 && s.m === 'KR') {
+    // siseJson: [["날짜", ...], ["20260102", open, high, low, close, volume, ...], ...]
+    const t = await naverGet(`${NAVER_SISE}/siseJson.naver?symbol=${nc}&requestType=1&startTime=${day(5 * 366)}&endTime=${day(0)}&timeframe=day`, true)
+    for (const m of t.matchAll(/\[\s*["'](\d{8})["']\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/g)) add(m[1], Number(m[5]))
+  }
+  return v.length >= 2 ? [d, v] : null
 }
 /** 5 years of daily closes per stock (and the small lines for the list): refreshed about daily. */
 async function stockDaily() {
@@ -1046,24 +1090,18 @@ async function stockDaily() {
   stockDailyBusy = true
   try {
     const spark = {}
-    let i = 0, ok = 0
-    const work = async () => {
-      while (i < stockList.length) {
-        const s = stockList[i++]
-        try {
-          const r = (await yahoo(`/v8/finance/chart/${encodeURIComponent(s.y)}?range=5y&interval=1d`))?.chart?.result?.[0]
-          const rate = s.m === 'IX' ? 1 : r?.meta?.currency === 'KRW' ? 1 : r?.meta?.currency === 'USD' ? stockFx : 0
-          const close = r?.indicators?.quote?.[0]?.close ?? []
-          const d = [], v = []
-          ;(r?.timestamp ?? []).forEach((t, k) => { if (close[k] > 0 && rate) { d.push(Math.floor(t / 86400)); v.push(num(close[k] * rate)) } })
-          if (v.length < 2) continue
-          await rdb.ref(`stocks/d/${s.sym}`).set({ d, v })
-          spark[s.sym] = v.slice(-30)
-          ok++
-        } catch (e) { /* one stock's history failing leaves it as it was */ }
-      }
-    }
-    await Promise.all([work(), work(), work(), work()])
+    let ok = 0
+    await pool(stockList, 4, async s => {
+      const h = await naverDaily(s)
+      if (!h) return
+      const rate = s.m === 'US' ? stockFx : 1
+      const d = h[0], v = h[1].map(c => num(c * rate))
+      await rdb.ref(`stocks/d/${s.sym}`).set({ d, v })
+      spark[s.sym] = v.slice(-30)
+      const year = v.slice(-252)
+      stockHiLo[s.sym] = [Math.max(...year), Math.min(...year)]
+      ok++
+    })
     if (ok) { await rdb.ref('stocks/spark').update(spark); stockDailyAt = Date.now(); await rdb.ref('stocks/dmeta').set({ at: stockDailyAt }) }
   } finally { stockDailyBusy = false }
 }
@@ -1157,10 +1195,10 @@ async function stockInit() {
 }
 async function stockTick() {
   if (!stockList) {
-    // the start-up didn't finish (Yahoo unreachable?): try again every 30 seconds
+    // the start-up didn't finish (Naver unreachable?): try again every 30 seconds
     if (Date.now() - stockInitAt > 30_000) {
       stockInitAt = Date.now()
-      await stockInit().catch(e => { setStockStatus(false, 'Yahoo 연결 실패: ' + e.message); if (stockInitAt - stockWarned > 5 * 60_000) { stockWarned = stockInitAt; warn('Stock start failed (retrying every 30 s): ' + e.message) } })
+      await stockInit().catch(e => { setStockStatus(false, '네이버 증권 연결 실패: ' + e.message); if (stockInitAt - stockWarned > 5 * 60_000) { stockWarned = stockInitAt; warn('Stock start failed (retrying every 30 s): ' + e.message) } })
     }
     return
   }
@@ -1171,10 +1209,9 @@ async function stockTick() {
   }
   if (now - stockAt < STOCK_TICK_MS) return
   stockAt = now
-  await fetchStockPrices().then(() => setStockStatus(true, 'ok'), async e => {
+  await fetchStockPrices().then(() => setStockStatus(true, 'ok'), e => {
     setStockStatus(false, '시세 가져오기 실패: ' + e.message)
-    if (now - stockWarned > 5 * 60_000) { stockWarned = now; warn('Fetching stock prices failed (trying them one by one): ' + e.message) }
-    await fetchStockSlice().catch(() => {})
+    if (now - stockWarned > 5 * 60_000) { stockWarned = now; warn('Fetching stock prices failed: ' + e.message) }
   })
   if (!stockOkAt) return
   // the daily history again after 20 hours (a failed try waits an hour)

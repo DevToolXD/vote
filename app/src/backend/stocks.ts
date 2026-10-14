@@ -31,7 +31,7 @@ export function watchStockList(db: Firestore, cb: (l: StockMeta[]) => void) {
 export const watchStockLive = (db: Firestore, cb: (l: StockLive) => void) => onValue(ref(R(db), 'stocks/live'), s => cb(s.val()), () => cb(null))
 export const watchStockSpark = (db: Firestore, cb: (s: Record<string, number[]>) => void) => onValue(ref(R(db), 'stocks/spark'), s => cb(s.val() ?? {}), () => cb({}))
 export type StockStatus = { at: number; ok: boolean; msg: string } | null
-/** What the worker last got from Yahoo (so a stuck screen says why). */
+/** What the worker last got from Naver 증권 (so a stuck screen says why). */
 export const watchStockStatus = (db: Firestore, cb: (s: StockStatus) => void) => onValue(ref(R(db), 'stocks/status'), s => cb(s.val()), () => cb(null))
 export const watchStockInfo = (db: Firestore, cb: (s: Record<string, StockFacts>) => void) => onValue(ref(R(db), 'stocks/info'), s => cb(s.val() ?? {}), () => cb({}))
 

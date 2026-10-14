@@ -1378,34 +1378,39 @@ async function fakeUpbit() {
   upbitBase = `http://127.0.0.1:${(server.address() as { port: number }).port}`
   return upbitBase
 }
-// ---- a fake Yahoo Finance: the cookie, the crumb, the batch quote and the chart ----
+// ---- a fake 네이버 증권: the batch for Korean stocks, `basic` for the rest, the daily chart and a rate API ----
 const FAKE_STOCKS: Record<string, { cur: string; price: number; chg: number }> = {
-  '005930.KS': { cur: 'KRW', price: 70_000, chg: 1.5 },
-  '247540.KQ': { cur: 'KRW', price: 200_000, chg: -2 }, // only known as .KQ: the .KS try must fall through
-  AAPL: { cur: 'USD', price: 200, chg: 1 },
-  'KRW=X': { cur: 'KRW', price: 1400, chg: 0 },
-  '^GSPC': { cur: 'USD', price: 5000, chg: 0.5 },
+  '005930': { cur: 'KRW', price: 70_000, chg: 1.5 },
+  '247540': { cur: 'KRW', price: 200_000, chg: -2 },
+  'AAPL.O': { cur: 'USD', price: 200, chg: 1 }, // only known with its suffix: the plain AAPL try must fall through
+  '.INX': { cur: 'USD', price: 5000, chg: -0.5 },
 }
 let yahooBase = ''
 async function fakeYahoo() {
   if (yahooBase) return yahooBase
   const server = createServer((req, res) => {
     const u = new URL(req.url ?? '/', 'http://x')
-    const json = (v: unknown) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(v))
-    if (u.pathname === '/') return void res.writeHead(404, { 'Set-Cookie': 'A1=abc; Path=/; HttpOnly' }).end()
-    if (!String(req.headers.cookie ?? '').includes('A1=abc')) return void res.writeHead(401).end('no cookie')
-    if (u.pathname === '/v1/test/getcrumb') return void res.writeHead(200, { 'Content-Type': 'text/plain' }).end('crumb123')
-    if (u.searchParams.get('crumb') !== 'crumb123') return void res.writeHead(401).end('no crumb')
-    if (u.pathname === '/v7/finance/quote') {
-      const want = (u.searchParams.get('symbols') ?? '').split(',')
-      return json({ quoteResponse: { result: want.filter(s => FAKE_STOCKS[s]).map(s => ({ symbol: s, currency: FAKE_STOCKS[s].cur, regularMarketPrice: FAKE_STOCKS[s].price, regularMarketChangePercent: FAKE_STOCKS[s].chg, regularMarketPreviousClose: FAKE_STOCKS[s].price / (1 + FAKE_STOCKS[s].chg / 100), regularMarketOpen: FAKE_STOCKS[s].price, regularMarketDayHigh: FAKE_STOCKS[s].price * 1.02, regularMarketDayLow: FAKE_STOCKS[s].price * 0.98, regularMarketVolume: 1234567, fiftyTwoWeekHigh: FAKE_STOCKS[s].price * 1.3, fiftyTwoWeekLow: FAKE_STOCKS[s].price * 0.6, marketCap: FAKE_STOCKS[s].price * 1e6, marketState: 'REGULAR' })), error: null } })
+    const json = (v: unknown, code = 200) => res.writeHead(code, { 'Content-Type': 'application/json' }).end(JSON.stringify(v))
+    if (u.pathname === '/fx') return json({ rates: { KRW: 1400 } })
+    if (u.pathname === '/api/realtime') {
+      const want = (u.searchParams.get('query') ?? '').replace('SERVICE_ITEM:', '').split(',')
+      return json({ resultCode: 'success', result: { areas: [{ name: 'SERVICE_ITEM', datas: want.filter(c => FAKE_STOCKS[c]).map(c => ({ cd: c, nv: FAKE_STOCKS[c].price, pcv: Math.round(FAKE_STOCKS[c].price / (1 + FAKE_STOCKS[c].chg / 100)), ov: FAKE_STOCKS[c].price, hv: FAKE_STOCKS[c].price * 1.02, lv: FAKE_STOCKS[c].price * 0.98, aq: 1234567, ms: 'OPEN' })) }] } })
     }
-    if (u.pathname.startsWith('/v8/finance/chart/')) {
-      const s = decodeURIComponent(u.pathname.slice('/v8/finance/chart/'.length))
-      const f = FAKE_STOCKS[s]
-      if (!f) return json({ chart: { result: null, error: { code: 'Not Found' } } })
-      const ts = Array.from({ length: 40 }, (_, k) => 1_790_000_000 - (39 - k) * 86400)
-      return json({ chart: { result: [{ meta: { currency: f.cur, regularMarketPrice: f.price, chartPreviousClose: f.price / (1 + f.chg / 100) }, timestamp: ts, indicators: { quote: [{ close: ts.map((_, k) => f.price * (0.9 + 0.0025 * k)) }] } }], error: null } })
+    let m = /^\/(?:api\/)?(stock|index)\/([^/]+)\/basic$/.exec(u.pathname)
+    if (m) {
+      const f = FAKE_STOCKS[decodeURIComponent(m[2])]
+      if (!f) return json({ code: 'StockConflict', message: 'not found' }, 404)
+      const fmt = (n: number) => n.toLocaleString('en-US')
+      return json({ closePrice: fmt(f.price), fluctuationsRatio: String(Math.abs(f.chg)), compareToPreviousPrice: { name: f.chg < 0 ? 'FALLING' : 'RISING' }, currencyType: { code: f.cur }, marketStatus: 'OPEN' })
+    }
+    m = /^\/chart\/(?:domestic|foreign)\/(?:item|index)\/([^/]+)\/day$/.exec(u.pathname)
+    if (m) {
+      const f = FAKE_STOCKS[decodeURIComponent(m[1])]
+      if (!f) return json({ code: 'StockConflict' }, 404)
+      return json(Array.from({ length: 40 }, (_, k) => {
+        const d = new Date(Date.UTC(2026, 5, 1) + k * 86400_000)
+        return { localDate: d.toISOString().slice(0, 10).replace(/-/g, ''), closePrice: f.price * (0.9 + 0.0025 * k) }
+      }))
     }
     res.writeHead(404).end()
   })
@@ -1431,7 +1436,7 @@ async function kickWorker(ms = 8000, yahooUrl?: string) {
   const base = await fakeUpbit()
   const yahoo = yahooUrl ?? await fakeYahoo()
   const w = execFile('node', ['../.github/scripts/send-notifications.mjs'], {
-    env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, UPBIT_BASE: base, YAHOO_BASE: yahoo, YAHOO_COOKIE_URL: yahoo + '/', STOCK_TICK_MS: '1000', STOCK_MIN_LIST: '3', RUN_FOR_MS: String(ms), SETTLE_MS: '0', COIN_TICK_MS: '1000' },
+    env: { ...process.env, FIRESTORE_BASE: `http://${HOST}:${PORT}/v1`, FCM_BASE: 'http://127.0.0.1:9', PROJECT_ID: PROJECT, UPBIT_BASE: base, NAVER_API_BASE: yahoo, NAVER_M_BASE: yahoo, NAVER_POLL_BASE: yahoo, NAVER_SISE_BASE: yahoo, FX_URL: yahoo + '/fx', STOCK_TICK_MS: '1000', STOCK_MIN_LIST: '3', RUN_FOR_MS: String(ms), SETTLE_MS: '0', COIN_TICK_MS: '1000' },
   })
   const say = (d: unknown) => { const t = String(d); if (/Coins reset|Refunding|Coin start|Coin order|Fetching prices|Stock/.test(t)) console.log('[worker]', t.trim().slice(0, 240)) }
   w.stdout?.on('data', say); w.stderr?.on('data', say)
@@ -1884,7 +1889,7 @@ describe('폰 (홈 화면 앱)', () => {
 describe('주식', () => {
   const R = (db: Firestore) => rtdbOf.get(db)!
   const pts = async (db: Firestore, u: string) => pointsOf(await read(db, `candidates/${u}`))
-  test('the worker builds the list from Yahoo, prices US stocks in won, and stocks trade like coins (no leverage)', async () => {
+  test('the worker builds the list from Naver 증권, prices US stocks in won, and stocks trade like coins (no leverage)', async () => {
     const a = await signUp('a'), admin = dbAs(ADMIN)
     await seedCoins()
     await grantPoints(admin, ADMIN.uid, 'a', 1_000_000)
@@ -1894,13 +1899,13 @@ describe('주식', () => {
     for (let i = 0; i < 60 && !list; i++) { await new Promise(r => setTimeout(r, 500)); list = await rt(a, 'stocks/list').catch(() => null) }
     assert.ok(list, 'the stock list is published')
     assert.deepEqual(Object.keys(list!).sort(), ['I_GSPC', 'S_005930', 'S_247540', 'S_AAPL'])
-    assert.equal(list!.S_247540.m, 'KR') // found as .KQ after .KS failed
+    assert.equal(list!.S_247540.m, 'KR')
     assert.equal(list!.I_GSPC.m, 'IX')
     // prices: US in won (200 USD × 1400), Korean as they are, an index in its own points
     let live = null as null | { p: Record<string, number>; fx: number; st: Record<string, string> }
     for (let i = 0; i < 40 && !live?.p?.S_AAPL; i++) { await new Promise(r => setTimeout(r, 500)); live = await rt(a, 'stocks/live').catch(() => null) }
     assert.equal(live!.p.S_AAPL, 280_000); assert.equal(live!.p.S_005930, 70_000); assert.equal(live!.p.S_247540, 200_000); assert.equal(live!.p.I_GSPC, 5000)
-    assert.equal(live!.fx, 1400); assert.equal(live!.st.US, 'REGULAR')
+    assert.equal(live!.fx, 1400); assert.equal(live!.st.US, 'REGULAR'); assert.ok(live!.chg.I_GSPC < 0)
     // an unknown stock, and leverage on a stock, are refused; only the list in meta/stocks counts
     const ord = (extra: Record<string, unknown>) => { const d = doc(collection(a, 'coinOrders')), b = writeBatch(a); b.set(d, { uid: 'a', coin: 'S_AAPL', side: 'buy', points: 1000, at: serverTimestamp(), status: 'open', ...extra }); b.update(doc(a, 'candidates', 'a'), { spent: increment(1000), lastCoin: d.id }); return b.commit() }
     await denied(ord({ coin: 'S_NOPE' }))
@@ -1927,9 +1932,9 @@ describe('주식', () => {
     const trades = await rt(a, 'coinTrades/S_AAPL')
     assert.equal(Object.keys(trades).length, 2)
   })
-  test('the stock list still shows when Yahoo refuses the start (the built-in list, prices later)', async () => {
+  test('the stock list still shows when Naver refuses the start (the built-in list, prices later)', async () => {
     const a = await signUp('a')
-    // no saved list, and Yahoo is shut out (a closed port): the built-in list must still be published
+    // no saved list, and Naver is shut out (a closed port): the built-in list must still be published
     await fetch(`http://${HOST}:${PORT}/v1/projects/${PROJECT}/databases/(default)/documents/meta/stocks`, { method: 'DELETE', headers: { Authorization: 'Bearer owner' } })
     await kickWorker(25000, 'http://127.0.0.1:9')
     // the earlier test left a 4-stock list behind: wait until the built-in one (much longer) replaces it

@@ -1,8 +1,8 @@
 // 주식 list for the worker: Korean stocks (code, name), US stocks / ETFs (ticker, Korean name) and
-// indices. Yahoo Finance symbols: a Korean code is tried as .KS (KOSPI) first and then .KQ
-// (KOSDAQ); anything Yahoo does not know is left out when the list is built, so a wrong code is
-// harmless. Raise STOCKS_VER after editing this file so the saved list (meta/stocks) is rebuilt.
-export const STOCKS_VER = 1
+// indices. A Korean stock is its six-digit code; a US stock is looked up on Naver 증권 by trying its
+// suffixes (AAPL.O, KO, …); anything Naver does not know is left out when the list is built, so a wrong
+// code is harmless. Raise STOCKS_VER after editing this file so the saved list (meta/stocks) is rebuilt.
+export const STOCKS_VER = 2
 
 export const KR = [
   ['005930', '삼성전자'], ['000660', 'SK하이닉스'], ['373220', 'LG에너지솔루션'], ['207940', '삼성바이오로직스'], ['005380', '현대차'],

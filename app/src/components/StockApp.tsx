@@ -235,7 +235,7 @@ function Detail({ s, price, chg, facts, live, holding, strip, onPick, onClose, c
               )}
             </div>
           )}
-          <div style={css(`margin-top:22px;font-size:13px;line-height:19px;color:${SEC}`)}>시세는 Yahoo Finance 기준이고 몇 분 늦을 수 있어요. 해외 주식은 지금 환율{live?.fx ? `(1달러 = ${Math.round(live.fx).toLocaleString()}원)` : ''}로 바꿔요.</div>
+          <div style={css(`margin-top:22px;font-size:13px;line-height:19px;color:${SEC}`)}>시세는 네이버 증권 기준이고 몇 분 늦을 수 있어요. 해외 주식은 지금 환율{live?.fx ? `(1달러 = ${Math.round(live.fx).toLocaleString()}원)` : ''}로 바꿔요.</div>
         </div>
       </div>
     </div>
@@ -367,7 +367,7 @@ export function StockApp({ db, uid, points, onLogin, onToast }: Ctx) {
         })}
         <div style={css(`margin-top:22px;font-size:13px;line-height:19px;color:${SEC}`)}>
           {states && <div>{states}</div>}
-          <div>1포인트 = 1원 · 시세는 Yahoo Finance 기준이고 몇 분 늦을 수 있어요</div>
+          <div>1포인트 = 1원 · 시세는 네이버 증권 기준이고 몇 분 늦을 수 있어요</div>
         </div>
       </div>
       {cur && (
