@@ -1,17 +1,22 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
+import { Avatar as ProfilePic } from './Avatar'
+import { InstaMessages } from './InstaMessages'
+import { isUnread, type ChatRow } from '../backend/messages'
+import type { Person } from '../model'
 import { addPost, addPostComment, countPostView, removePost, removePostComment, setPostLiked, shrinkPhoto, watchPostComments, watchPosts, type Post, type PostComment } from '../backend/posts'
 
 // 인스타그램, laid out like the real one: 홈 (stories row + feed), 릴스 (one post per screen, swipe up),
-// 검색 (a grid with the views), 메시지 (the app's own messages), 프로필 (my posts), and the floating bar.
+// 검색 (a grid with the views), 메시지 (Instagram-style, on the app's own chats), 프로필 (my posts), and the
+// floating bar. The account IS the app account: the name, the photo and the frame are the profile's own.
 // Nothing is shown until someone posts. A heart is yours alone, a view counts after a few seconds, and
 // anyone signed in can comment.
 type Props = {
-  db: Firestore | null; uid: string | null; name: string; isAdmin?: boolean
-  onLogin: () => void; onToast: (msg: string) => void; onMessages: () => void; onProfile: () => void
+  db: Firestore | null; uid: string | null; me?: Person; chats: ChatRow[]; byId: Map<string, Person>; isAdmin?: boolean
+  onLogin: () => void; onToast: (msg: string) => void; onProfile: () => void
 }
-type Tab = 'home' | 'reels' | 'search' | 'me'
+type Tab = 'home' | 'reels' | 'search' | 'dm' | 'me'
 
 const ago = (t: number) => {
   const m = Math.max(1, Math.round((Date.now() - t) / 60000))
@@ -36,10 +41,15 @@ const I = {
   grid: () => svg(<><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>, 24, 'currentColor'),
 }
 
-function Avatar({ name, size, ring = false }: { name: string; size: number; ring?: boolean }) {
-  const inner = (
-    <span style={{ ...css('display:flex;align-items:center;justify-content:center;border-radius:9999px;color:#fff;font-weight:700;flex:none'), width: size, height: size, fontSize: size * 0.4, background: hue(name) }}>{name.slice(0, 1) || '?'}</span>
-  )
+/** A person's picture: their own profile (photo and frame) when they're in the app's people, else a letter. */
+type Who = { byId: Map<string, Person> }
+const nameOf = (who: Who, uid: string, fallback: string) => who.byId.get(uid)?.name ?? fallback
+function Pic({ who, uid, name, size, ring = false }: { who: Who; uid?: string; name: string; size: number; ring?: boolean }) {
+  const p = uid ? who.byId.get(uid) : undefined
+  const n = p?.name ?? name
+  const inner = p
+    ? <ProfilePic frame={p.frame} photo={p.photoCss} size={size} style={{ flex: 'none' }} />
+    : <span style={{ ...css('display:flex;align-items:center;justify-content:center;border-radius:9999px;color:#fff;font-weight:700;flex:none'), width: size, height: size, fontSize: size * 0.4, background: hue(n) }}>{n.slice(0, 1) || '?'}</span>
   if (!ring) return inner
   return <span style={{ ...css('display:flex;padding:2px;border-radius:9999px;background:linear-gradient(45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5);flex:none'), width: size + 8, height: size + 8 }}><span style={css('display:flex;padding:2px;border-radius:9999px;background:#fff')}>{inner}</span></span>
 }
@@ -53,7 +63,7 @@ function useViewCount(db: Firestore | null, uid: string | null, post: Post | nul
   }, [on, post?.id, db, uid, ms])
 }
 
-function Comments({ db, post, uid, name, isAdmin, onToast }: { db: Firestore; post: Post; uid: string; name: string; isAdmin: boolean; onToast: (m: string) => void }) {
+function Comments({ db, post, uid, name, who, isAdmin, onToast }: { db: Firestore; post: Post; uid: string; name: string; who: Who; isAdmin: boolean; onToast: (m: string) => void }) {
   const [list, setList] = useState<PostComment[] | null>(null)
   const [text, setText] = useState('')
   useEffect(() => watchPostComments(db, post.id, setList), [db, post.id])
@@ -72,8 +82,8 @@ function Comments({ db, post, uid, name, isAdmin, onToast }: { db: Firestore; po
       {list?.length === 0 && <span style={css('font-size:13px;color:#8e8e93')}>아직 댓글이 없어요</span>}
       {list?.map(c => (
         <div key={c.id} style={css('display:flex;gap:10px;align-items:flex-start')}>
-          <Avatar name={c.name} size={28} />
-          <span style={css('flex:1;min-width:0;font-size:14px;line-height:20px;word-break:break-word')}><b>{c.name}</b> {c.text}</span>
+          <Pic who={who} uid={c.uid} name={c.name} size={28} />
+          <span style={css('flex:1;min-width:0;font-size:14px;line-height:20px;word-break:break-word')}><b>{nameOf(who, c.uid, c.name)}</b> {c.text}</span>
           {(c.uid === uid || post.uid === uid || isAdmin) && <button aria-label="댓글 지우기" onClick={() => drop(c)} style={css('font-size:13px;color:#8e8e93;padding:0 2px')}>✕</button>}
         </div>
       ))}
@@ -85,7 +95,9 @@ function Comments({ db, post, uid, name, isAdmin, onToast }: { db: Firestore; po
   )
 }
 
-export function InstaApp({ db, uid, name, isAdmin = false, onLogin, onToast, onMessages, onProfile }: Props) {
+export function InstaApp({ db, uid, me, chats, byId, isAdmin = false, onLogin, onToast, onProfile }: Props) {
+  const name = me?.name ?? ''
+  const who: Who = { byId }
   const [posts, setPosts] = useState<Post[] | null>(null)
   const [tab, setTab] = useState<Tab>('home')
   const [detail, setDetail] = useState<string | null>(null)
@@ -162,18 +174,18 @@ export function InstaApp({ db, uid, name, isAdmin = false, onLogin, onToast, onM
     <>
       {header('Instagram', plus)}
       <div style={css('flex:1;min-height:0;overflow-y:auto;padding-bottom:110px;background:#fff;color:#000')}>
-        <div style={css('display:flex;gap:14px;padding:6px 14px 12px;overflow-x:auto;scrollbar-width:none')}>
+        <div style={css('display:flex;gap:14px;padding:16px 16px 12px;overflow-x:auto;scrollbar-width:none')}>
           <button aria-label="내 스토리: 사진 올리기" onClick={() => setUpload(true)} style={css('flex:none;display:flex;flex-direction:column;align-items:center;gap:5px;width:74px')}>
             <span style={css('position:relative;display:flex')}>
-              <Avatar name={name || '나'} size={66} />
+              <Pic who={who} uid={uid ?? undefined} name={name || '나'} size={66} />
               <span style={css('position:absolute;right:-2px;bottom:-2px;width:22px;height:22px;border-radius:9999px;background:#1c1c1e;color:#fff;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1')}>+</span>
             </span>
             <span style={css('font-size:12px;color:#555')}>내 스토리</span>
           </button>
           {authors.map(p => (
             <button key={p.uid} onClick={() => setDetail(p.id)} style={css('flex:none;display:flex;flex-direction:column;align-items:center;gap:5px;width:74px')}>
-              <Avatar name={p.name} size={62} ring />
-              <span style={css('font-size:12px;color:#222;max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{p.name}</span>
+              <Pic who={who} uid={p.uid} name={p.name} size={62} ring />
+              <span style={css('font-size:12px;color:#222;max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{nameOf(who, p.uid, p.name)}</span>
             </button>
           ))}
         </div>
@@ -182,8 +194,8 @@ export function InstaApp({ db, uid, name, isAdmin = false, onLogin, onToast, onM
         {posts?.map(p => (
           <article key={p.id} style={css('flex:none;padding-bottom:12px')}>
             <div style={css('display:flex;align-items:center;gap:10px;padding:8px 14px')}>
-              <Avatar name={p.name} size={34} ring />
-              <span style={css('flex:1;min-width:0;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{p.name}</span>
+              <Pic who={who} uid={p.uid} name={p.name} size={34} ring />
+              <span style={css('flex:1;min-width:0;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{nameOf(who, p.uid, p.name)}</span>
               <span style={css('font-size:12px;color:#8e8e93')}>{ago(p.at)}</span>
               {(p.uid === uid || isAdmin) && <button aria-label="이 게시물 지우기" onClick={() => remove(p)} style={css('font-size:14px;color:#8e8e93;padding:0 2px')}>✕</button>}
             </div>
@@ -191,7 +203,7 @@ export function InstaApp({ db, uid, name, isAdmin = false, onLogin, onToast, onM
               <img src={p.photo} alt="" style={css('display:block;width:100%;aspect-ratio:1/1;object-fit:cover;background:#f2f2f2')} />
             </button>
             <div style={css('padding:10px 14px 0')}>{actions(p, () => setDetail(p.id))}</div>
-            {p.caption && <p style={css('margin:8px 14px 0;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}><b>{p.name}</b> {p.caption}</p>}
+            {p.caption && <p style={css('margin:8px 14px 0;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}><b>{nameOf(who, p.uid, p.name)}</b> {p.caption}</p>}
           </article>
         ))}
       </div>
@@ -228,7 +240,7 @@ export function InstaApp({ db, uid, name, isAdmin = false, onLogin, onToast, onM
         <span style={css('width:28px')} />
       </header>
       <div style={css('display:flex;align-items:center;gap:22px;padding:10px 18px')}>
-        <Avatar name={name || '나'} size={82} />
+        <Pic who={who} uid={uid ?? undefined} name={name || '나'} size={82} />
         <div style={css('flex:1;display:flex;justify-content:space-around;text-align:center')}>
           {([['게시물', mine.length], ['하트', mine.reduce((n, p) => n + p.likes.length, 0)], ['조회', mine.reduce((n, p) => n + p.views, 0)]] as const).map(([l, n]) => (
             <span key={l} style={css('display:flex;flex-direction:column;gap:2px')}><b style={css('font-size:18px')}>{compact(n)}</b><span style={css('font-size:13px')}>{l}</span></span>
@@ -255,7 +267,7 @@ export function InstaApp({ db, uid, name, isAdmin = false, onLogin, onToast, onM
         <div style={css('position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:30px;color:#bbb;font-size:15px;line-height:22px')}>아직 올라온 릴스가 없어요.<br />누군가 올리면 여기에 나와요.</div>
       ) : (
         <div style={css('position:absolute;inset:0;overflow-y:scroll;scroll-snap-type:y mandatory')}>
-          {posts?.map(p => <Reel key={p.id} db={db} uid={uid} post={p} onLike={() => like(p)} onComment={() => setDetail(p.id)} />)}
+          {posts?.map(p => <Reel key={p.id} db={db} uid={uid} who={who} post={p} onLike={() => like(p)} onComment={() => setDetail(p.id)} />)}
         </div>
       )}
       <div style={css('position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:center;padding:calc(var(--phone-top,54px) - 34px) 16px 0;pointer-events:none;z-index:2')}>
@@ -267,14 +279,15 @@ export function InstaApp({ db, uid, name, isAdmin = false, onLogin, onToast, onM
   )
 
   const dark = tab === 'reels'
+  const unreadDm = chats.some(c => isUnread(c, uid))
   const bar = (
     <nav aria-label="인스타그램 메뉴" style={css('position:absolute;left:14px;right:14px;z-index:15;bottom:calc(var(--phone-bottom,34px) - 14px);height:62px;border-radius:9999px;display:flex;align-items:center;justify-content:space-around;padding:0 8px;backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);box-shadow:0 8px 28px rgba(0,0,0,0.18),inset 0 0 0 0.5px rgba(0,0,0,0.06);' + (dark ? 'background:rgba(40,40,42,0.72);color:#fff' : 'background:rgba(250,250,252,0.82);color:#000'))}>
-      {([['home', I.home(tab === 'home')], ['reels', I.reels(tab === 'reels', dark)], ['dm', I.send()], ['search', I.search()], ['me', <Avatar key="a" name={name || '나'} size={28} />]] as [string, ReactNode][]).map(([k, icon]) => {
+      {([['home', I.home(tab === 'home')], ['reels', I.reels(tab === 'reels', dark)], ['dm', I.send()], ['search', I.search()], ['me', <Pic key="a" who={who} uid={uid ?? undefined} name={name || '나'} size={28} />]] as [string, ReactNode][]).map(([k, icon]) => {
         const on = k === tab
         return (
           <button key={k} aria-label={{ home: '홈', reels: '릴스', dm: '메시지', search: '검색', me: '프로필' }[k]} aria-current={on ? 'page' : undefined}
-            onClick={() => (k === 'dm' ? onMessages() : setTab(k as Tab))}
-            style={{ ...css('width:52px;height:46px;border-radius:9999px;display:flex;align-items:center;justify-content:center'), background: on ? (dark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.08)') : 'transparent' }}>{icon}</button>
+            onClick={() => setTab(k as Tab)}
+            style={{ ...css('position:relative;width:52px;height:46px;border-radius:9999px;display:flex;align-items:center;justify-content:center'), background: on ? (dark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.08)') : 'transparent' }}>{icon}{k === 'dm' && unreadDm && <span aria-label="안 읽은 메시지" style={css('position:absolute;right:9px;top:7px;width:10px;height:10px;border-radius:9999px;background:#ff3040;border:2px solid #fff')} />}</button>
         )
       })}
     </nav>
@@ -286,6 +299,7 @@ export function InstaApp({ db, uid, name, isAdmin = false, onLogin, onToast, onM
       {tab === 'search' && searchView}
       {tab === 'me' && meView}
       {tab === 'reels' && reelsView}
+      {tab === 'dm' && db && me && <InstaMessages db={db} me={me} chats={chats} byId={byId} onBack={() => setTab('home')} onToast={onToast} />}
       {bar}
 
       {open && db && (
@@ -297,14 +311,14 @@ export function InstaApp({ db, uid, name, isAdmin = false, onLogin, onToast, onM
           </header>
           <div style={css('flex:1;min-height:0;overflow-y:auto;padding-bottom:20px')}>
             <div style={css('display:flex;align-items:center;gap:10px;padding:10px 14px')}>
-              <Avatar name={open.name} size={34} ring />
-              <span style={css('flex:1;font-size:14px;font-weight:700')}>{open.name}</span>
+              <Pic who={who} uid={open.uid} name={open.name} size={34} ring />
+              <span style={css('flex:1;font-size:14px;font-weight:700')}>{nameOf(who, open.uid, open.name)}</span>
               <span style={css('font-size:12px;color:#8e8e93')}>{ago(open.at)}</span>
             </div>
             <img src={open.photo} alt="" style={css('display:block;width:100%;max-height:70vh;object-fit:contain;background:#000')} />
             <div style={css('padding:12px 14px 0')}>{actions(open, () => undefined)}</div>
-            {open.caption && <p style={css('margin:8px 14px 12px;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}><b>{open.name}</b> {open.caption}</p>}
-            <Comments db={db} post={open} uid={uid} name={name} isAdmin={isAdmin} onToast={onToast} />
+            {open.caption && <p style={css('margin:8px 14px 12px;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}><b>{nameOf(who, open.uid, open.name)}</b> {open.caption}</p>}
+            <Comments db={db} post={open} uid={uid} name={name} who={who} isAdmin={isAdmin} onToast={onToast} />
           </div>
         </div>
       )}
@@ -326,7 +340,7 @@ export function InstaApp({ db, uid, name, isAdmin = false, onLogin, onToast, onM
 }
 
 /** One reel: a post filling the screen. It's counted as viewed when it has been the one on screen for 3 seconds. */
-function Reel({ db, uid, post, onLike, onComment }: { db: Firestore | null; uid: string; post: Post; onLike: () => void; onComment: () => void }) {
+function Reel({ db, uid, who, post, onLike, onComment }: { db: Firestore | null; uid: string; who: Who; post: Post; onLike: () => void; onComment: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
   const [seen, setSeen] = useState(false)
   useEffect(() => {
@@ -348,7 +362,7 @@ function Reel({ db, uid, post, onLike, onComment }: { db: Firestore | null; uid:
         <span style={css('display:flex;flex-direction:column;align-items:center;gap:3px;font-size:13px;font-weight:700')}>{I.eye()}{compact(post.views)}</span>
       </div>
       <div style={css('position:absolute;left:14px;right:70px;bottom:104px;color:#fff;display:flex;flex-direction:column;gap:8px')}>
-        <span style={css('display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700')}><Avatar name={post.name} size={34} ring />{post.name}</span>
+        <span style={css('display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700')}><Pic who={who} uid={post.uid} name={post.name} size={34} ring />{nameOf(who, post.uid, post.name)}</span>
         {post.caption && <span style={css('font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word;max-height:80px;overflow:hidden')}>{post.caption}</span>}
       </div>
     </div>
