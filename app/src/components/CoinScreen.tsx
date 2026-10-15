@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { BottomSheet } from './Overlays'
@@ -86,7 +86,7 @@ const RANGES: [string, number][] = [['1시간', 240], ['6시간', 1440], ['하�
 /** Longer series are thinned to about this many points so the chart stays light. */
 const MAX_POINTS = 400
 
-export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
+export const CoinScreen = memo(function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
   const [live, setLive] = useState<Live>(null)
   const [list, setList] = useState<CoinInfo[]>([])
   const [spark, setSpark] = useState<Record<string, number[]>>({})
@@ -116,6 +116,8 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
     costSum += x.margin
   }
   const pl = evalSum - costSum
+  // highest price first
+  const sorted = useMemo(() => [...list].sort((x, y) => (live?.p?.[y.sym] ?? 0) - (live?.p?.[x.sym] ?? 0)), [list, live])
 
   if (!uid) {
     return (
@@ -152,23 +154,7 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
       <div style={css('padding:16px 20px 4px;font-size:22px;line-height:28px;font-weight:700;color:#000')}>코인 시세</div>
       {/* highest price first */}
       {list.length === 0 && <div style={css('padding:24px;font-size:15px;color:#8e8e93;text-align:center')}>코인 시세를 불러오는 중이에요</div>}
-      {[...list].sort((x, y) => (price(y.sym) ?? 0) - (price(x.sym) ?? 0)).map(c => {
-        const p = price(c.sym), ch = dayChange(c.sym), h = wallet[c.sym]
-        return (
-          <button key={c.sym} className="pr-dim" onClick={() => setOpen(c.sym)} style={css(`display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:0.5px solid #e5e5ea;background:none;color:#000;text-align:left;transition:background 200ms ${EASE}`)}>
-            <CoinIcon sym={c.sym} />
-            <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
-              <span style={css('font-size:19px;line-height:24px;font-weight:700;color:#000')}>{c.name}</span>
-              <span style={css('font-size:15px;line-height:20px;font-weight:600;color:#8e8e93;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{h ? `${fmtQty(h.q)} ${c.sym} 보유` : c.sym}</span>
-            </span>
-            <Spark data={[...(spark[c.sym] ?? []), ...(p != null ? [p] : [])]} color={tone(ch)} />
-            <span style={css('flex:none;min-width:96px;display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-variant-numeric:tabular-nums')}>
-              <span style={css('font-size:19px;line-height:24px;font-weight:600;color:#000')}>{fmtPrice(p)}</span>
-              <span style={sx('min-width:84px;height:30px;padding:0 8px;box-sizing:border-box;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:700', { background: ch < 0 ? '#ff453a' : '#30d158' })}>{pct(ch)}</span>
-            </span>
-          </button>
-        )
-      })}
+      {sorted.map(c => <CoinRow key={c.sym} c={c} p={price(c.sym)} ch={dayChange(c.sym)} held={wallet[c.sym]?.q} spark={spark[c.sym]} onOpen={setOpen} />)}
       <div style={css('padding:16px 20px 24px;font-size:13px;line-height:19.5px;color:#8e8e93')}>
         가격은 업비트 원화 시세예요 (1P = 1원). 사고팔 때는 그 순간의 가격으로 체결돼요. 포인트로 하는 가상 게임이라 실제 돈은 오가지 않아요.
       </div>
@@ -227,7 +213,7 @@ export function CoinScreen({ db, uid, points, onLogin, onToast }: Props) {
       )}
     </div>
   )
-}
+})
 
 function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast, onClose, positions }: {
   sym: CoinSym; name: string; db: Firestore; uid: string; points: number; price: number | undefined; wallet: Wallet
@@ -386,3 +372,22 @@ function CoinSheet({ sym, name, db, uid, points, price, wallet, change, onToast,
     </BottomSheet>
   )
 }
+
+/** One coin in the list: drawn again only when its own numbers change; off-screen rows aren't laid out or painted. */
+const CoinRow = memo(function CoinRow({ c, p, ch, held, spark, onOpen }: { c: CoinInfo; p: number | undefined; ch: number; held: number | undefined; spark: number[] | undefined; onOpen: (s: CoinSym) => void }) {
+  const data = useMemo(() => [...(spark ?? []), ...(p != null ? [p] : [])], [spark, p])
+  return (
+    <button className="pr-dim" onClick={() => onOpen(c.sym)} style={css(`display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:0.5px solid #e5e5ea;background:none;color:#000;text-align:left;transition:background 200ms ${EASE};content-visibility:auto;contain-intrinsic-size:auto 69px`)}>
+      <CoinIcon sym={c.sym} />
+      <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+        <span style={css('font-size:19px;line-height:24px;font-weight:700;color:#000')}>{c.name}</span>
+        <span style={css('font-size:15px;line-height:20px;font-weight:600;color:#8e8e93;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{held ? `${fmtQty(held)} ${c.sym} 보유` : c.sym}</span>
+      </span>
+      <Spark data={data} color={tone(ch)} />
+      <span style={css('flex:none;min-width:96px;display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-variant-numeric:tabular-nums')}>
+        <span style={css('font-size:19px;line-height:24px;font-weight:600;color:#000')}>{fmtPrice(p)}</span>
+        <span style={sx('min-width:84px;height:30px;padding:0 8px;box-sizing:border-box;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:700', { background: ch < 0 ? '#ff453a' : '#30d158' })}>{pct(ch)}</span>
+      </span>
+    </button>
+  )
+})

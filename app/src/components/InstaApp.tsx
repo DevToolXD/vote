@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
 import { Avatar as ProfilePic } from './Avatar'
@@ -95,7 +95,7 @@ function Comments({ db, post, uid, name, who, isAdmin, onToast }: { db: Firestor
   )
 }
 
-export function InstaApp({ db, uid, me, chats, byId, isAdmin = false, onLogin, onToast, onProfile }: Props) {
+export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdmin = false, onLogin, onToast, onProfile }: Props) {
   const name = me?.name ?? ''
   const who: Who = { byId }
   const [posts, setPosts] = useState<Post[] | null>(null)
@@ -192,7 +192,7 @@ export function InstaApp({ db, uid, me, chats, byId, isAdmin = false, onLogin, o
         {posts === null && <div style={css('padding:40px;text-align:center;color:#8e8e93;font-size:14px')}>불러오는 중</div>}
         {posts?.length === 0 && empty}
         {posts?.map(p => (
-          <article key={p.id} style={css('flex:none;padding-bottom:12px')}>
+          <article key={p.id} style={css('flex:none;padding-bottom:12px;content-visibility:auto;contain-intrinsic-size:auto 560px')}>
             <div style={css('display:flex;align-items:center;gap:10px;padding:8px 14px')}>
               <Pic who={who} uid={p.uid} name={p.name} size={34} ring />
               <span style={css('flex:1;min-width:0;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{nameOf(who, p.uid, p.name)}</span>
@@ -200,7 +200,7 @@ export function InstaApp({ db, uid, me, chats, byId, isAdmin = false, onLogin, o
               {(p.uid === uid || isAdmin) && <button aria-label="이 게시물 지우기" onClick={() => remove(p)} style={css('font-size:14px;color:#8e8e93;padding:0 2px')}>✕</button>}
             </div>
             <button aria-label="사진 크게 보기" onClick={() => setDetail(p.id)} style={css('display:block;width:100%;padding:0')}>
-              <img src={p.photo} alt="" style={css('display:block;width:100%;aspect-ratio:1/1;object-fit:cover;background:#f2f2f2')} />
+              <img src={p.photo} alt="" loading="lazy" decoding="async" style={css('display:block;width:100%;aspect-ratio:1/1;object-fit:cover;background:#f2f2f2')} />
             </button>
             <div style={css('padding:10px 14px 0')}>{actions(p, () => setDetail(p.id))}</div>
             {p.caption && <p style={css('margin:8px 14px 0;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}><b>{nameOf(who, p.uid, p.name)}</b> {p.caption}</p>}
@@ -223,7 +223,7 @@ export function InstaApp({ db, uid, me, chats, byId, isAdmin = false, onLogin, o
         <div style={css('display:grid;grid-template-columns:repeat(3,1fr);gap:2px')}>
           {found.map(p => (
             <button key={p.id} aria-label="게시물 열기" onClick={() => setDetail(p.id)} style={css('position:relative;display:block;aspect-ratio:3/4;overflow:hidden;background:#f2f2f2')}>
-              <img src={p.photo} alt="" style={css('width:100%;height:100%;object-fit:cover;display:block')} />
+              <img src={p.photo} alt="" loading="lazy" decoding="async" style={css('width:100%;height:100%;object-fit:cover;display:block')} />
               <span style={css('position:absolute;left:6px;bottom:6px;display:flex;align-items:center;gap:4px;color:#fff;font-size:13px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,0.6)')}>{I.eye()}{compact(p.views)}</span>
             </button>
           ))}
@@ -255,7 +255,7 @@ export function InstaApp({ db, uid, me, chats, byId, isAdmin = false, onLogin, o
       {mine.length === 0 && <div style={css('padding:40px 24px;text-align:center;color:#8e8e93;font-size:14px')}>아직 올린 사진이 없어요</div>}
       <div style={css('display:grid;grid-template-columns:repeat(3,1fr);gap:2px')}>
         {mine.map(p => (
-          <button key={p.id} aria-label="게시물 열기" onClick={() => setDetail(p.id)} style={css('display:block;aspect-ratio:1/1;overflow:hidden;background:#f2f2f2')}><img src={p.photo} alt="" style={css('width:100%;height:100%;object-fit:cover;display:block')} /></button>
+          <button key={p.id} aria-label="게시물 열기" onClick={() => setDetail(p.id)} style={css('display:block;aspect-ratio:1/1;overflow:hidden;background:#f2f2f2')}><img src={p.photo} alt="" loading="lazy" decoding="async" style={css('width:100%;height:100%;object-fit:cover;display:block')} /></button>
         ))}
       </div>
     </div>
@@ -337,7 +337,7 @@ export function InstaApp({ db, uid, me, chats, byId, isAdmin = false, onLogin, o
       )}
     </div>
   )
-}
+})
 
 /** One reel: a post filling the screen. It's counted as viewed when it has been the one on screen for 3 seconds. */
 function Reel({ db, uid, who, post, onLike, onComment }: { db: Firestore | null; uid: string; who: Who; post: Post; onLike: () => void; onComment: () => void }) {
@@ -354,7 +354,7 @@ function Reel({ db, uid, who, post, onLike, onComment }: { db: Firestore | null;
   const liked = post.likes.includes(uid)
   return (
     <div ref={ref} style={css('position:relative;height:100%;scroll-snap-align:start;scroll-snap-stop:always;overflow:hidden;background:#000')}>
-      <img src={post.photo} alt="" style={css('position:absolute;inset:0;width:100%;height:100%;object-fit:cover')} />
+      <img src={post.photo} alt="" loading="lazy" decoding="async" style={css('position:absolute;inset:0;width:100%;height:100%;object-fit:cover')} />
       <div style={css('position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0) 22%,rgba(0,0,0,0) 55%,rgba(0,0,0,0.65) 100%)')} />
       <div style={css('position:absolute;right:12px;bottom:130px;display:flex;flex-direction:column;align-items:center;gap:20px;color:#fff')}>
         <button aria-label={liked ? '하트 취소' : '하트'} aria-pressed={liked} onClick={onLike} style={css('display:flex;flex-direction:column;align-items:center;gap:3px;font-size:13px;font-weight:700')}>{I.heart(liked, 32)}{compact(post.likes.length)}</button>

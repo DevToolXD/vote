@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties } from 'react'
+import { memo, useRef, type CSSProperties } from 'react'
 import { css, sx } from '../css'
 import { CHART_H, MEDALS, PER, skinGeom } from '../data'
 import type { Person } from '../model'
@@ -10,7 +10,8 @@ import { isInstalledApp } from '../install'
 import { TowerSkin } from './TowerSkin'
 
 const EASE = '550ms cubic-bezier(0.22,1,0.36,1)'
-const RIDE = 'labelRide 600ms cubic-bezier(0.22,1,0.36,1) both'
+// backwards (not both): once grown, the bars and labels keep no animation (no lingering GPU layers)
+const RIDE = 'labelRide 600ms cubic-bezier(0.22,1,0.36,1) backwards'
 const LABEL_PAD = 60, CHART_EFF = CHART_H - LABEL_PAD
 
 type Props = {
@@ -36,7 +37,7 @@ type Props = {
  * Vertical net-score chart, 10 per page. Bar length is each entry's rank-based share of the page (see pageShares).
  * Rows are keyed by slot index so paging animates heights instead of remounting.
  */
-export function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile, seasonName, seasonEndsAt, points, onPoints, onInstall, secretName, onSecret }: Props) {
+export const RankScreen = memo(function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile, seasonName, seasonEndsAt, points, onPoints, onInstall, secretName, onSecret }: Props) {
   // 꾹 누르기 (0.6s) on the secret person's bar; the click that ends the press is swallowed.
   const press = useRef<{ t: ReturnType<typeof setTimeout> | null; fired: boolean }>({ t: null, fired: false })
   const pressEnd = () => { if (press.current.t) clearTimeout(press.current.t); press.current.t = null }
@@ -147,7 +148,7 @@ export function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile, s
                     display: 'flex', flexDirection: 'column', alignItems: 'center',
                     justifyContent: r.pos ? 'flex-end' : 'flex-start',
                     transformOrigin: r.pos ? 'bottom' : 'top',
-                    animation: 'growY 600ms cubic-bezier(0.22,1,0.36,1) both',
+                    animation: 'growY 600ms cubic-bezier(0.22,1,0.36,1) backwards',
                     animationDelay: r.delay,
                   }}
                 >
@@ -185,7 +186,7 @@ export function RankScreen({ all, query, onQuery, page, onPage, onOpenProfile, s
       )}
     </div>
   )
-}
+})
 
 const label = css('position:absolute;left:50%;transform:translateX(-50%)')
 

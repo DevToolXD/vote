@@ -1,11 +1,12 @@
 import type { User } from 'firebase/auth'
 import { doc, updateDoc } from 'firebase/firestore'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
+import { Covered, useStableFns } from './stable'
 import { accessOf, blockedUsers, myIp, recordIp, setAccess, watchAccess, watchIp, type Access, type IpDoc } from './backend/ip'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, revokeItem, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
 import { buyItem, buySeries, buyPass, castVote, hasFakePass, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
-import { createGroup, inviteMembers, isUnread, leaveGroup, onMyReads, setReadsUser, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, scheduleMessage, subscribeMyChats, type ChatRow } from './backend/messages'
+import { createGroup, inviteMembers, isUnread, leaveGroup, onMyReads, setReadsUser, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, scheduleMessage, subscribeMyChats, type ChatRow, type ReplyRef } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
 import { DEFAULT_OWNED, DEFAULT_SEASON, FAKE_PASS_PRICE, PASS_PRICE, type PassKind, type MyVote, type Season, type WeekKind } from './backend/types'
 import { deviceRegistered, disablePush, enablePush, pushAskLater, pushErrorMessage, pushOnOpen, pushSupport, refreshPush, setPushOptOut } from './push'
@@ -41,7 +42,7 @@ import { SupportFlow, SupportRoom } from './components/SupportScreen'
 import { closeTicket, linkTicket, sendSupport, subscribeLinkedTickets, subscribeTicket, subscribeTickets, type Ticket } from './backend/support'
 import { markNoticeSeen, nextUnseenNotice, pollResults, postNotice, subscribeNoticeIndex, voteNotice, type Notice } from './backend/notices'
 import { NoticeScreen } from './components/NoticeScreen'
-import { cancelGift, claimGift, holdItemGift, itemLabel, sendGift, sendItemGift, type TradeKind } from './backend/gifts'
+import { cancelGift, claimGift, holdItemGift, itemLabel, sendGift, sendItemGift, type GiftKind, type TradeKind } from './backend/gifts'
 import { BuyDialog, Dialog, InstallSheet, ProfileSheet, RuleDialog, ThemeSheet, Toast, VoteSheet } from './components/Overlays'
 import { RankScreen } from './components/RankScreen'
 import { Reveal } from './components/Reveal'
@@ -73,6 +74,9 @@ export type AppProps = {
 }
 
 const db = maybeDb
+/** The page under a full-screen room, once the room has slid in: not painted. (display:contents: the wrapper adds no box.) */
+const PAGE_SHOWN = { display: 'contents' } as const
+const PAGE_HIDDEN = { display: 'contents', visibility: 'hidden' } as const
 /** 거래 정지 (admin): no sending or taking 포인트 선물 until candidates/{uid}.tradeBan. */
 const tradeBanned = (p?: { tradeBan?: number }) => (p?.tradeBan ?? 0) > Date.now()
 const banText = (p?: { tradeBan?: number }) => (p?.tradeBan ?? 0) >= TRADE_BAN_FOREVER ? '거래가 정지됐어요 · 관리자에게 문의해주세요' : `거래가 정지됐어요 · ${leftLabel((p?.tradeBan ?? 0) - Date.now())} 뒤에 풀려요`
@@ -760,6 +764,116 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     }
   }
 
+  // The open chat room's actions. The room is memoized: with one identity per action it isn't
+  // drawn again (with all its messages) whenever anything else in the app changes.
+  const roomFns = useStableFns({
+    onBuyFakePass: () => setPassAsk('passFake'),
+    onToast: showToast,
+    onError: failToast,
+    onBack: () => setChatId(null),
+    onSendItemGift: async (kind: GiftKind, key: string) => {
+      const c = openChat!, u = authUser!, m = me!
+      const other = c.type === 'dm' ? byId.get(c.members.find(x => x !== u.uid) ?? '') : undefined
+      if (tradeBanned(m)) { showToast(banText(m)); return false }
+      if (other && tradeBanned(other)) { showToast(`${other.name}님은 거래 정지 중이라 선물을 받을 수 없어요`); return false }
+      try { await sendItemGift(db!, u.uid, c, kind, key); showToast(`${itemLabel(kind, key)}을(를) 선물했어요`); return true } catch (e) { failToast('선물하지 못했어요', e); return false }
+    },
+    onSchedule: async (text: string, at: number, gift?: { kind: GiftKind; key: string }) => {
+      const c = openChat!, u = authUser!, m = me!
+      if (gift) {
+        const other = c.type === 'dm' ? byId.get(c.members.find(x => x !== u.uid) ?? '') : undefined
+        if (tradeBanned(m)) { showToast(banText(m)); return false }
+        if (other && tradeBanned(other)) { showToast(`${other.name}님은 거래 정지 중이라 선물을 받을 수 없어요`); return false }
+      }
+      try {
+        if (gift) {
+          // The points are held now, so the gift can't fail for lack of them later.
+          const h = await holdItemGift(db!, u.uid, c, gift.kind, gift.key)
+          await scheduleMessage(db!, u.uid, c.id, h.text, at, h.giftId)
+        }
+        if (text) await scheduleMessage(db!, u.uid, c.id, text, at)
+        showToast('예약했어요 · 그 시간에 보내드릴게요')
+        return true
+      } catch (e) { failToast('예약하지 못했어요', e); return false }
+    },
+    onSendGift: async (amount: number) => {
+      const c = openChat!, u = authUser!, m = me!
+      const other = c.type === 'dm' ? byId.get(c.members.find(x => x !== u.uid) ?? '') : undefined
+      if (tradeBanned(m)) { showToast(banText(m)); return false }
+      if (other && tradeBanned(other)) { showToast(`${other.name}님은 거래 정지 중이라 선물을 받을 수 없어요`); return false }
+      try { await sendGift(db!, u.uid, c, amount); showToast(`${amount.toLocaleString()}P를 선물했어요`); return true } catch (e) { failToast('선물하지 못했어요', e); return false }
+    },
+    onClaimGift: (id: string) => {
+      const u = authUser!, m = me!
+      return tradeBanned(m) ? Promise.resolve(showToast(banText(m))) : claimGift(db!, u.uid, id, m).then(() => showToast('선물을 받았어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 다른 사람이 받았거나 취소된 선물이에요') : (e as Error)?.message === 'already-owned' ? showToast('이미 가지고 있는 아이템이에요') : failToast('받지 못했어요', e))
+    },
+    onCancelGift: (id: string) => cancelGift(db!, authUser!.uid, id).then(() => showToast('선물을 취소했어요. 포인트가 돌아왔어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 받은 선물이라 취소할 수 없어요') : failToast('취소하지 못했어요', e)),
+    onSendImage: async (file: File) => {
+      try { await sendImage(db!, authUser!.uid, openChat!.id, await fileToChatImage(file)); return true } catch (e) { failToast('사진을 보내지 못했어요', e); return false }
+    },
+    onCall: (video: boolean) => { const c = openChat!; const peer = c.members.find(x => x !== authUser!.uid); if (peer) startCall(c.id, peer, 'caller', video) },
+    onInvite: async (ids: string[]) => {
+      const names = ids.map(id => byId.get(id)?.name ?? '').filter(Boolean).join(', ')
+      try { await inviteMembers(db!, authUser!.uid, openChat!.id, ids, `${me!.name}님이 ${names}님을 초대했어요`); showToast('초대했어요'); return true } catch (e) { failToast('초대하지 못했어요. 상대가 메시지를 껐을 수 있어요', e); return false }
+    },
+    onGroupInfo: async ({ photoFile, name }: { photoFile?: File; name?: string }) => {
+      const c = openChat!
+      try {
+        if (photoFile) await setGroupInfo(db!, c.id, { photo: await fileToPhotoDataUrl(photoFile, 256, 0.8), name: c.name })
+        else await setGroupInfo(db!, c.id, { name: name ?? '' })
+        showToast(photoFile ? '채팅방 사진을 바꿨어요' : '채팅방 이름을 바꿨어요'); return true
+      } catch (e) { failToast('바꾸지 못했어요', e); return false }
+    },
+    onSend: async (text: string, replyTo?: ReplyRef) => {
+      const c = openChat!
+      // 관리자샵: an admin types /관리자샵 in a chat (or is in a chat named /관리자샵), then 상점
+      const t = text.trim()
+      if (isAdmin && t === '/관리자샵') { adminShopChats.current.add(c.id); showToast('관리자샵이 열렸어요 · "상점"이라고 치면 들어가요'); return true }
+      if (isAdmin && t === '상점' && (adminShopChats.current.has(c.id) || c.name.trim() === '/관리자샵')) { setAdminShopOpen(true); return true }
+      try { await sendMessage(db!, authUser!.uid, c.id, text, replyTo); return true } catch (e) { failToast('보내지 못했어요', e); return false }
+    },
+    onMute: (muted: boolean) => {
+      setChatMuted(db!, authUser!.uid, openChat!.id, muted)
+        .then(() => showToast(muted ? '이 채팅방 알림을 껐어요' : '이 채팅방 알림을 켰어요'))
+        .catch(e => failToast('바꾸지 못했어요', e))
+    },
+    onLeave: async () => {
+      try { await leaveGroup(db!, authUser!.uid, openChat!.id); setChatId(null); showToast('채팅방에서 나왔어요') } catch (e) { failToast('나가지 못했어요', e) }
+    },
+  })
+  // 메시지 tab's actions, the same way (the list is memoized too)
+  const msgFns = useStableFns({ onLogin: () => go('acct'), onNew: () => setNewChatOpen(true), onToggleOff: toggleMsgOff, onChrome: revealChrome })
+  // A full-screen room covers the page: the page isn't drawn again meanwhile, and once the room
+  // has slid in it isn't painted either.
+  const roomOpen = !!(openChat && me && authUser) || !!(linkedTicket && authUser) || !!(openTicket && isAdmin && authUser)
+  const [pageHidden, setPageHidden] = useState(false)
+  useEffect(() => {
+    if (!roomOpen) { setPageHidden(false); return }
+    const t = setTimeout(() => setPageHidden(true), 450)
+    return () => clearTimeout(t)
+  }, [roomOpen])
+
+  // Tabs and phone apps get one identity per action too (they're memoized): a change somewhere
+  // else in the app (a toast, someone's trade on the board) doesn't redraw them.
+  const uiFns = useStableFns({
+    goAcct: () => go('acct'),
+    toast: showToast,
+    earn: () => setEarnOpen(true),
+    install: () => setInstallOpen(true),
+    query: (q: string) => { setQuery(q); setPage(0) },
+    secret: () => openCasino(),
+    pickSet: (key: string) => pickSet(key),
+    pick: (k: ItemKind, key: string, l: string) => (me ? pickItem(k, key, l) : go('acct')),
+    marketBuy: (l: Listing) => marketBuy(l),
+    marketList: (kind: TradeKind, key: string, price: number) => marketList(kind, key, price),
+    marketCancel: (l: Listing) => marketCancel(l),
+    openApp: (a: OpenableApp) => openApp(a),
+    closeApp: () => setPhoneApp(null),
+  })
+  const equipped = useMemo(() => (me ? { frame: me.frame, plate: me.plate, skin: me.skin } : { frame: 'none', plate: 'none', skin: 'none' }), [me?.frame, me?.plate, me?.skin]) // eslint-disable-line react-hooks/exhaustive-deps
+  const fakePassOwned = hasFakePass(me)
+  const passes = useMemo(() => ({ pass2x: passActive, passFake: fakePassOwned }), [passActive, fakePassOwned])
+
   if (!firebaseConfigured) return <SetupNotice />
   if (!authReady) return <div data-g="app" style={css('width:100%;max-width:var(--app-w);min-height:100vh;background:#ffffff')} />
   // 접속 차단 (the account or an address it used): the app never finishes loading (never the admin)
@@ -773,26 +887,26 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           {app === 'flappy' && <FlappyBird />}
           {app === 'dino' && <DinoGame />}
           {app === 'bank' && db && (
-            <BankApp db={db} uid={authUser?.uid ?? null} owned={me?.owned ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />
+            <BankApp db={db} uid={authUser?.uid ?? null} owned={me?.owned ?? null} points={points} onLogin={uiFns.goAcct} onToast={uiFns.toast} />
           )}
-          {app === 'homework' && <HomeworkApp db={db} uid={authUser?.uid ?? null} name={me?.name ?? ''} isAdmin={isAdmin} onLogin={() => go('acct')} onToast={showToast} />}
-          {app === 'insta' && <InstaApp db={db} uid={authUser?.uid ?? null} me={me} chats={chats} byId={byId} isAdmin={isAdmin} onLogin={() => go('acct')} onToast={showToast} onProfile={() => go('acct')} />}
-          {app === 'stock' && <StockApp db={db} uid={authUser?.uid ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />}
+          {app === 'homework' && <HomeworkApp db={db} uid={authUser?.uid ?? null} name={me?.name ?? ''} isAdmin={isAdmin} onLogin={uiFns.goAcct} onToast={uiFns.toast} />}
+          {app === 'insta' && <InstaApp db={db} uid={authUser?.uid ?? null} me={me} chats={chats} byId={byId} isAdmin={isAdmin} onLogin={uiFns.goAcct} onToast={uiFns.toast} onProfile={uiFns.goAcct} />}
+          {app === 'stock' && <StockApp db={db} uid={authUser?.uid ?? null} points={points} onLogin={uiFns.goAcct} onToast={uiFns.toast} />}
           {app === 'shop' && (
             <ShopScreen
               loggedIn={loggedIn} name={me?.name ?? '내 이름'} bio={me ? bioDraft : ''} photoCss={me?.photoCss ?? 'none'}
-              equipped={me ? { frame: me.frame, plate: me.plate, skin: me.skin } : { frame: 'none', plate: 'none', skin: 'none' }}
-              owned={me?.owned ?? DEFAULT_OWNED} points={points} onPoints={() => setEarnOpen(true)} tab={shopTab} onPickSet={pickSet}
+              equipped={equipped}
+              owned={me?.owned ?? DEFAULT_OWNED} points={points} onPoints={uiFns.earn} tab={shopTab} onPickSet={uiFns.pickSet}
               onTab={setShopTab}
-              onPick={(k, key, l) => (me ? pickItem(k, key, l) : go('acct'))}
-              passes={{ pass2x: passActive, passFake: hasFakePass(me) }} onBuyPass={setPassAsk} onLogin={() => go('acct')}
+              onPick={uiFns.pick}
+              passes={passes} onBuyPass={setPassAsk} onLogin={uiFns.goAcct}
             />
           )}
           {app === 'market' && (
-            <MarketApp loggedIn={loggedIn} rows={marketRows} me={me} byId={byId} points={points} onLogin={() => go('acct')} onBuy={marketBuy} onList={marketList} onCancel={marketCancel} />
+            <MarketApp loggedIn={loggedIn} rows={marketRows} me={me} byId={byId} points={points} onLogin={uiFns.goAcct} onBuy={uiFns.marketBuy} onList={uiFns.marketList} onCancel={uiFns.marketCancel} />
           )}
           {app === 'coin' && (
-            <CoinScreen db={db} uid={authUser?.uid ?? null} points={points} onLogin={() => go('acct')} onToast={showToast} />
+            <CoinScreen db={db} uid={authUser?.uid ?? null} points={points} onLogin={uiFns.goAcct} onToast={uiFns.toast} />
           )}
           </Suspense>
           {app === 'admin' && isAdmin && authUser && (
@@ -837,21 +951,24 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
       {/* The page never scrolls: <main> scrolls inside the screen and the tab bar sits below it.
           (A fixed/sticky bar floated mid-screen on iPhone while the page moved.) */}
       <div data-g="app" style={css('width:100%;max-width:var(--app-w);height:100%;min-height:0;background:#ffffff;position:relative;display:flex;flex-direction:column')}>
+        {/* outside the frozen part, so hiding it doesn't wait for the room to close */}
+        <div style={roomOpen && pageHidden ? PAGE_HIDDEN : PAGE_SHOWN}>
+        <Covered covered={roomOpen}>
         <main data-scroll="page" style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch')}>
           {tab === 'phone' && (
             <PhoneScreen
               db={db} uid={authUser?.uid ?? null} isAdmin={isAdmin} adminUnread={unreadTickets}
-              app={phoneApp} onOpen={openApp} onClose={() => setPhoneApp(null)} renderApp={appView}
-              onLogin={() => go('acct')} onToast={showToast}
+              app={phoneApp} onOpen={uiFns.openApp} onClose={uiFns.closeApp} renderApp={appView}
+              onLogin={uiFns.goAcct} onToast={uiFns.toast}
             />
           )}
           {tab === 'rank' && (
             <RankScreen
-              all={all} query={query} onQuery={q => { setQuery(q); setPage(0) }}
+              all={all} query={query} onQuery={uiFns.query}
               page={page} onPage={setPage} onOpenProfile={setProfile}
               seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()} points={me ? points : undefined}
-              onPoints={() => setEarnOpen(true)} onInstall={() => setInstallOpen(true)}
-              secretName={INVITE_ADMIN} onSecret={openCasino}
+              onPoints={uiFns.earn} onInstall={uiFns.install}
+              secretName={INVITE_ADMIN} onSecret={uiFns.secret}
             />
           )}
           {tab === 'acct' && (
@@ -899,9 +1016,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           )}
           {tab === 'msg' && (
             <MessagesScreen
-              loggedIn={loggedIn} me={me} chats={chats} byId={byId}
-              onLogin={() => go('acct')} onOpen={setChatId} onNew={() => setNewChatOpen(true)} onToggleOff={toggleMsgOff}
-              db={db} chromeOn={chromeOn} onChrome={revealChrome}
+              loggedIn={loggedIn} me={me} chats={chats} byId={byId} onOpen={setChatId}
+              db={db} chromeOn={chromeOn} {...msgFns}
             />
           )}
         </main>
@@ -911,6 +1027,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           <div style={css('min-height:0;overflow:hidden')}>
             <BottomNav tab={tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} adminUnread={unreadTickets} />
           </div>
+        </div>
+        </Covered>
         </div>
 
         {sheetPerson && (
@@ -1012,71 +1130,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             onOpenProfile={setProfile}
             myPoints={points}
             fakePass={hasFakePass(me)}
-            onBuyFakePass={() => setPassAsk('passFake')}
-            onToast={showToast}
-            onSendItemGift={async (kind, key) => {
-              const other = openChat.type === 'dm' ? byId.get(openChat.members.find(m => m !== authUser.uid) ?? '') : undefined
-              if (tradeBanned(me)) { showToast(banText(me)); return false }
-              if (other && tradeBanned(other)) { showToast(`${other.name}님은 거래 정지 중이라 선물을 받을 수 없어요`); return false }
-              try { await sendItemGift(db!, authUser.uid, openChat, kind, key); showToast(`${itemLabel(kind, key)}을(를) 선물했어요`); return true } catch (e) { failToast('선물하지 못했어요', e); return false }
-            }}
-            onSchedule={async (text, at, gift) => {
-              if (gift) {
-                const other = openChat.type === 'dm' ? byId.get(openChat.members.find(m => m !== authUser.uid) ?? '') : undefined
-                if (tradeBanned(me)) { showToast(banText(me)); return false }
-                if (other && tradeBanned(other)) { showToast(`${other.name}님은 거래 정지 중이라 선물을 받을 수 없어요`); return false }
-              }
-              try {
-                if (gift) {
-                  // The points are held now, so the gift can't fail for lack of them later.
-                  const h = await holdItemGift(db!, authUser.uid, openChat, gift.kind, gift.key)
-                  await scheduleMessage(db!, authUser.uid, openChat.id, h.text, at, h.giftId)
-                }
-                if (text) await scheduleMessage(db!, authUser.uid, openChat.id, text, at)
-                showToast('예약했어요 · 그 시간에 보내드릴게요')
-                return true
-              } catch (e) { failToast('예약하지 못했어요', e); return false }
-            }}
-            onSendGift={async amount => {
-              const other = openChat.type === 'dm' ? byId.get(openChat.members.find(m => m !== authUser.uid) ?? '') : undefined
-              if (tradeBanned(me)) { showToast(banText(me)); return false }
-              if (other && tradeBanned(other)) { showToast(`${other.name}님은 거래 정지 중이라 선물을 받을 수 없어요`); return false }
-              try { await sendGift(db!, authUser.uid, openChat, amount); showToast(`${amount.toLocaleString()}P를 선물했어요`); return true } catch (e) { failToast('선물하지 못했어요', e); return false }
-            }}
-            onClaimGift={id => tradeBanned(me) ? Promise.resolve(showToast(banText(me))) : claimGift(db!, authUser.uid, id, me).then(() => showToast('선물을 받았어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 다른 사람이 받았거나 취소된 선물이에요') : (e as Error)?.message === 'already-owned' ? showToast('이미 가지고 있는 아이템이에요') : failToast('받지 못했어요', e))}
-            onCancelGift={id => cancelGift(db!, authUser.uid, id).then(() => showToast('선물을 취소했어요. 포인트가 돌아왔어요')).catch(e => (e as Error)?.message === 'gift-gone' ? showToast('이미 받은 선물이라 취소할 수 없어요') : failToast('취소하지 못했어요', e))}
-            onSendImage={async file => {
-              try { await sendImage(db!, authUser.uid, openChat.id, await fileToChatImage(file)); return true } catch (e) { failToast('사진을 보내지 못했어요', e); return false }
-            }}
-            onCall={video => { const peer = openChat.members.find(m => m !== authUser.uid); if (peer) startCall(openChat.id, peer, 'caller', video) }}
-            onInvite={async ids => {
-              const names = ids.map(id => byId.get(id)?.name ?? '').filter(Boolean).join(', ')
-              try { await inviteMembers(db!, authUser.uid, openChat.id, ids, `${me.name}님이 ${names}님을 초대했어요`); showToast('초대했어요'); return true } catch (e) { failToast('초대하지 못했어요. 상대가 메시지를 껐을 수 있어요', e); return false }
-            }}
-            onGroupInfo={async ({ photoFile, name }) => {
-              try {
-                if (photoFile) await setGroupInfo(db!, openChat.id, { photo: await fileToPhotoDataUrl(photoFile, 256, 0.8), name: openChat.name })
-                else await setGroupInfo(db!, openChat.id, { name: name ?? '' })
-                showToast(photoFile ? '채팅방 사진을 바꿨어요' : '채팅방 이름을 바꿨어요'); return true
-              } catch (e) { failToast('바꾸지 못했어요', e); return false }
-            }}
-            onBack={() => setChatId(null)}
-            onError={failToast}
-            onSend={async (text, replyTo) => {
-              // 관리자샵: an admin types /관리자샵 in a chat (or is in a chat named /관리자샵), then 상점
-              const t = text.trim()
-              if (isAdmin && t === '/관리자샵') { adminShopChats.current.add(openChat.id); showToast('관리자샵이 열렸어요 · "상점"이라고 치면 들어가요'); return true }
-              if (isAdmin && t === '상점' && (adminShopChats.current.has(openChat.id) || openChat.name.trim() === '/관리자샵')) { setAdminShopOpen(true); return true }
-              try { await sendMessage(db!, authUser.uid, openChat.id, text, replyTo); return true } catch (e) { failToast('보내지 못했어요', e); return false }
-            }}
-            onMute={muted => {
-              setChatMuted(db!, authUser.uid, openChat.id, muted)
-                .then(() => showToast(muted ? '이 채팅방 알림을 껐어요' : '이 채팅방 알림을 켰어요'))
-                .catch(e => failToast('바꾸지 못했어요', e))
-            }}
-            onLeave={async () => {
-              try { await leaveGroup(db!, authUser.uid, openChat.id); setChatId(null); showToast('채팅방에서 나왔어요') } catch (e) { failToast('나가지 못했어요', e) }
-            }}
+            {...roomFns}
           />
         )}
         {profilePerson && (

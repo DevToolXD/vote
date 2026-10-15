@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
 import { MIN_BUY, buyCoin, floor8, sellCoin, watchWallet, type Wallet } from '../backend/coins'
@@ -246,7 +246,7 @@ const FILTERS: [Filter, string][] = [['all', '전체'], ['KR', '국내'], ['US',
 const SORTS: [Sort, string][] = [['basic', '기본'], ['up', '변동률 높은 순'], ['down', '변동률 낮은 순'], ['price', '가격 높은 순'], ['name', '이름 순']]
 
 /** The 주식 app. */
-export function StockApp({ db, uid, points, onLogin, onToast }: Ctx) {
+export const StockApp = memo(function StockApp({ db, uid, points, onLogin, onToast }: Ctx) {
   const [list, setList] = useState<StockMeta[]>([])
   const [live, setLive] = useState<StockLive>(null)
   const [spark, setSpark] = useState<Record<string, number[]>>({})
@@ -299,6 +299,7 @@ export function StockApp({ db, uid, points, onLogin, onToast }: Ctx) {
     if (mode === 'won') return fmtSigned(Math.round((p - p / (1 + c)) * 100) / 100, s.market === 'IX')
     return fmtPct(c)
   }
+  const cycleMode = useCallback(() => setMode(m => (m === 'pct' ? 'won' : m === 'won' ? 'cap' : 'pct')), [])
   const btn = (label: string, on: boolean, f: () => void) => <button key={label} className="pr-96" onClick={f} style={css(`flex:none;height:36px;padding:0 16px;border-radius:18px;font-family:${FONT};font-size:16px;font-weight:600;background:${on ? CARD2 : 'none'};color:${on ? '#fff' : SEC}`)}>{label}</button>
 
   return (
@@ -350,20 +351,8 @@ export function StockApp({ db, uid, points, onLogin, onToast }: Ctx) {
               : '시세를 불러오는 중이에요…'}
           </div>
         ) : rows.map(s => {
-          const p = price(s.sym), c = chgOf(s.sym), ix = s.market === 'IX'
-          return (
-            <button key={s.sym} className="pr-dim" onClick={() => setSel(s.sym)} style={css(`width:100%;display:flex;align-items:center;gap:8px;padding:12px 0;border-bottom:0.5px solid ${SEP};background:none;color:#fff;text-align:left;font-family:${FONT}`)}>
-              <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:1px')}>
-                <span style={css('display:flex;align-items:center;gap:6px;font-size:21px;line-height:26px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{titleOf(s)}{mine(s.sym) && <span aria-label="보유" style={css(`flex:none;width:7px;height:7px;border-radius:9999px;background:${BLUE}`)} />}</span>
-                <span style={css(`font-size:15px;line-height:20px;font-weight:600;color:${SEC};white-space:nowrap;overflow:hidden;text-overflow:ellipsis`)}>{subOf(s)}</span>
-              </span>
-              <Spark values={lineOf(s.sym)} up={c >= 0} />
-              <span style={css('flex:none;width:104px;display:flex;flex-direction:column;align-items:flex-end;gap:4px')}>
-                <span style={css('font-size:20px;line-height:24px;font-weight:700;font-variant-numeric:tabular-nums')}>{p == null ? '—' : fmtStock(p, ix)}</span>
-                <span onClick={e => { e.stopPropagation(); setMode(m => (m === 'pct' ? 'won' : m === 'won' ? 'cap' : 'pct')) }} role="button" aria-label="표시 바꾸기" style={css(`min-width:84px;height:30px;padding:0 8px;box-sizing:border-box;border-radius:8px;display:flex;align-items:center;justify-content:center;background:${mode === 'cap' ? '#48484a' : tone(c)};font-size:16px;font-weight:700;font-variant-numeric:tabular-nums`)}>{pillText(s)}</span>
-              </span>
-            </button>
-          )
+          const p = price(s.sym), c = chgOf(s.sym)
+          return <StockRow key={s.sym} s={s} p={p} c={c} mine={mine(s.sym)} pill={pillText(s)} capMode={mode === 'cap'} spark={spark[s.sym]} onPick={setSel} onCycle={cycleMode} />
         })}
         <div style={css(`margin-top:22px;font-size:13px;line-height:19px;color:${SEC}`)}>
           {states && <div>{states}</div>}
@@ -375,4 +364,29 @@ export function StockApp({ db, uid, points, onLogin, onToast }: Ctx) {
       )}
     </div>
   )
-}
+})
+
+/**
+ * One stock in the list: drawn again only when its own numbers change. Off-screen rows aren't
+ * laid out or painted at all (content-visibility), so the long list costs what's on screen.
+ */
+const StockRow = memo(function StockRow({ s, p, c, mine, pill, capMode, spark, onPick, onCycle }: {
+  s: StockMeta; p: number | undefined; c: number; mine: boolean; pill: string; capMode: boolean; spark: number[] | undefined
+  onPick: (sym: string) => void; onCycle: () => void
+}) {
+  const ix = s.market === 'IX'
+  const line = useMemo(() => { const v = spark ?? []; return p ? [...v, p] : v }, [spark, p])
+  return (
+    <button className="pr-dim" onClick={() => onPick(s.sym)} style={css(`width:100%;display:flex;align-items:center;gap:8px;padding:12px 0;border-bottom:0.5px solid ${SEP};background:none;color:#fff;text-align:left;font-family:${FONT};content-visibility:auto;contain-intrinsic-size:auto 77px`)}>
+      <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:1px')}>
+        <span style={css('display:flex;align-items:center;gap:6px;font-size:21px;line-height:26px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{titleOf(s)}{mine && <span aria-label="보유" style={css(`flex:none;width:7px;height:7px;border-radius:9999px;background:${BLUE}`)} />}</span>
+        <span style={css(`font-size:15px;line-height:20px;font-weight:600;color:${SEC};white-space:nowrap;overflow:hidden;text-overflow:ellipsis`)}>{subOf(s)}</span>
+      </span>
+      <Spark values={line} up={c >= 0} />
+      <span style={css('flex:none;width:104px;display:flex;flex-direction:column;align-items:flex-end;gap:4px')}>
+        <span style={css('font-size:20px;line-height:24px;font-weight:700;font-variant-numeric:tabular-nums')}>{p == null ? '—' : fmtStock(p, ix)}</span>
+        <span onClick={e => { e.stopPropagation(); onCycle() }} role="button" aria-label="표시 바꾸기" style={css(`min-width:84px;height:30px;padding:0 8px;box-sizing:border-box;border-radius:8px;display:flex;align-items:center;justify-content:center;background:${capMode ? '#48484a' : tone(c)};font-size:16px;font-weight:700;font-variant-numeric:tabular-nums`)}>{pill}</span>
+      </span>
+    </button>
+  )
+})

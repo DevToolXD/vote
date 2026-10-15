@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { css, sx } from '../css'
 import { FRAMES, SKINS, type ItemKind } from '../data'
 import type { Person } from '../model'
@@ -149,7 +149,7 @@ function SellSheet({ me, onClose, onList }: { me: Mine; onClose: () => void; onL
 }
 
 /** 당근마켓 as its own app: the orange title bar, the list of things for sale, and 팔기 at the bottom. */
-export function MarketApp(props: Props) {
+export const MarketApp = memo(function MarketApp(props: Props) {
   const [sell, setSell] = useState(false)
   return (
     <div style={css('position:relative;min-height:100%;display:flex;flex-direction:column;background:#ffffff;color:#000')}>
@@ -168,4 +168,4 @@ export function MarketApp(props: Props) {
       )}
     </div>
   )
-}
+})

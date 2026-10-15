@@ -9,11 +9,11 @@
 //  · 막대: chrome rails round a black glass channel with the silk flowing up inside, a double
 //    helix of stardust winding up round it, a lens flare on its tip.
 //
-// How: the first time an item of the set is shown, the surfaces are painted into canvases — tens of
-// thousands of grains added up with 'lighter' blending over soft glows, smoke from fractal noise —
-// and turned into image URLs in one stylesheet (classes sl-i*). The markup below only names those
-// classes; its layers turn, sway, flow and flash with CSS transforms and opacity (the GPU runs all
-// of it), so nothing is painted per frame, however many grains there are.
+// How: the surfaces are painted into canvases — tens of thousands of grains added up with 'lighter'
+// blending over soft glows, smoke from fractal noise — once, ahead of time (scripts/silver-art.mjs
+// saves them to public/art/silver/), and named in one stylesheet (classes sl-i*). The markup below
+// only names those classes; its layers turn, sway, flow and flash with CSS transforms and opacity
+// (the GPU runs all of it), so nothing is painted per frame, however many grains there are.
 
 type Ctx = CanvasRenderingContext2D
 const TAU = Math.PI * 2
@@ -150,11 +150,6 @@ function sheetLight(dst: Ctx, pt: Pt, L: Light, t0: number, t1: number, K: numbe
   dst.globalAlpha = o.bloom; dst.drawImage(soften(bloom, Math.max(1, o.down[1] / q)), 0, 0, W, H)
   dst.globalAlpha = o.body; dst.drawImage(soften(body, Math.max(1, o.down[0] / q)), 0, 0, W, H)
   dst.restore()
-}
-function toUrl(c: HTMLCanvasElement): Promise<string> {
-  return new Promise(res => {
-    try { c.toBlob(b => res(b ? URL.createObjectURL(b) : c.toDataURL()), 'image/webp', 0.9) } catch { res(c.toDataURL()) }
-  })
 }
 
 // ---- 이름표 (canvas units 368×80: the plate plus a margin all round, so it can sway) --------------
@@ -451,35 +446,41 @@ function paintNoise() {
   return c
 }
 
+// The painted images, made once ahead of time (app/scripts/silver-art.mjs paints them in a browser
+// with the code above and saves them in public/art/silver/). Painting them on the phone took the
+// main thread for a long moment the first time a silver item came on screen; now it's a download,
+// fetched only when an element shows that layer.
+const SILVER_IMAGES = ['sl-iGA', 'sl-iGB', 'sl-iO1', 'sl-iO2', 'sl-iG', 'sl-iBS', 'sl-iBG', 'sl-iHF', 'sl-iHB', 'sl-iA', 'sl-iAm', 'sl-iB', 'sl-iS1', 'sl-iS2', 'sl-iF', 'sl-iN']
+/** Bump with the art: the file names change, so no one keeps an old picture. */
+const SILVER_VER = 1
+const silverUrl = (cls: string) => `art/silver/${cls}.v${SILVER_VER}.webp`
+
 let started = false
-/** Paints the set's images once (on first use) and puts them in a stylesheet. */
+/** Puts the set's images in a stylesheet (on first use). */
 export function ensureSilverArt() {
   if (started || typeof document === 'undefined') return
   started = true
-  setTimeout(() => { paintAll().catch(() => { /* no canvas: the layers stay empty */ }) }, 0)
+  const style = document.createElement('style')
+  style.id = 'silver-art'
+  style.textContent = SILVER_IMAGES.map(c => (c === 'sl-iAm'
+    ? `.${c}{-webkit-mask-image:url(${silverUrl(c)});mask-image:url(${silverUrl(c)})}`
+    : `.${c}{background-image:url(${silverUrl(c)})}`)).join('\n')
+  document.head.appendChild(style)
 }
-async function paintAll() {
-  const bg = (cls: string, c: HTMLCanvasElement) => toUrl(c).then(u => `.${cls}{background-image:url(${u})}`)
-  const mask = (cls: string, c: HTMLCanvasElement) => toUrl(c).then(u => `.${cls}{-webkit-mask-image:url(${u});mask-image:url(${u})}`)
-  // each piece gets its stylesheet as soon as it's painted (the frame first: it's on the most screens)
-  const add = async (id: string, rules: Promise<string>[]) => {
-    const style = document.createElement('style')
-    style.id = id
-    style.textContent = (await Promise.all(rules)).join('\n')
-    document.head.appendChild(style)
-  }
+
+/** Paints every image of the set (for scripts/silver-art.mjs, never in the app): class → canvas. */
+export async function paintSilverImages(): Promise<Record<string, HTMLCanvasElement>> {
   const f = await paintFrame()
-  await add('silver-art-frame', [bg('sl-iGA', f.gA), bg('sl-iGB', f.gB), bg('sl-iO1', f.o1), bg('sl-iO2', f.o2), bg('sl-iG', f.g)])
-  await tick()
   const b = await paintBar()
   const h = await paintHelix()
-  await add('silver-art-bar', [bg('sl-iBS', b.s), bg('sl-iBG', b.q), bg('sl-iHF', h.front), bg('sl-iHB', h.back)])
-  await tick()
   const p = await paintPlate()
-  await add('silver-art', [
-    bg('sl-iA', p.a), mask('sl-iAm', p.am), bg('sl-iB', p.b), bg('sl-iS1', p.s1), bg('sl-iS2', p.s2), bg('sl-iF', p.f),
-    bg('sl-iN', paintNoise()),
-  ])
+  const out: Record<string, HTMLCanvasElement> = {
+    'sl-iGA': f.gA, 'sl-iGB': f.gB, 'sl-iO1': f.o1, 'sl-iO2': f.o2, 'sl-iG': f.g,
+    'sl-iBS': b.s, 'sl-iBG': b.q, 'sl-iHF': h.front, 'sl-iHB': h.back,
+    'sl-iA': p.a, 'sl-iAm': p.am, 'sl-iB': p.b, 'sl-iS1': p.s1, 'sl-iS2': p.s2, 'sl-iF': p.f, 'sl-iN': paintNoise(),
+  }
+  for (const k of SILVER_IMAGES) if (!out[k]) throw new Error('missing ' + k)
+  return out
 }
 
 // ---- markup ------------------------------------------------------------------------------------

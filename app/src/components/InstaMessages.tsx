@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css, imageCss } from '../css'
 import { Avatar } from './Avatar'
@@ -170,7 +170,6 @@ function Conversation({ db, me, chat, byId, onBack, onToast }: { db: Firestore; 
   }
 
   const peer = v.people[0]
-  const rows = msgs ?? []
   return (
     <div style={css('position:absolute;inset:0;z-index:25;background:#fff;color:#000;display:flex;flex-direction:column')}>
       <header style={css('flex:none;display:flex;align-items:center;gap:8px;padding:calc(var(--phone-top,54px) - 30px) 12px 8px;border-bottom:0.5px solid #dbdbdb')}>
@@ -189,37 +188,7 @@ function Conversation({ db, me, chat, byId, onBack, onToast }: { db: Firestore; 
           </div>
         )}
         {msgs === null && <span style={css('align-self:center;font-size:13px;color:#8e8e93;padding:20px')}>불러오는 중</span>}
-        {rows.map((m, i) => {
-          if (m.kind === 'system') return <span key={m.id} style={css('align-self:center;max-width:80%;text-align:center;font-size:12px;line-height:17px;color:#8e8e93;padding:8px 0')}>{m.text}</span>
-          const mine = m.uid === me.id
-          const prev = rows[i - 1], next = rows[i + 1]
-          const first = !prev || prev.uid !== m.uid || prev.kind === 'system'
-          const last = !next || next.uid !== m.uid || next.kind === 'system'
-          const at = m.at?.toMillis()
-          const sender = byId.get(m.uid)
-          const gap = at && prev?.at && at - prev.at.toMillis() > 3_600_000
-          const body = m.kind === 'image' ? <Photo db={db} chatId={chat.id} m={m} /> : (
-            <span style={{ ...css('display:block;padding:8px 14px;border-radius:20px;font-size:15px;line-height:20px;white-space:pre-wrap;word-break:break-word'), ...(mine ? css('background:linear-gradient(135deg,#7a3cf0,#3a7bfd);color:#fff') : css('background:#efefef;color:#000')) }}>
-              {m.kind === 'gift' || m.kind === 'fake' ? `🎁 ${m.text || '포인트 선물'}` : m.text}
-            </span>
-          )
-          return (
-            <div key={m.id}>
-              {(gap || i === 0) && at && <div style={css('text-align:center;font-size:11px;color:#8e8e93;padding:10px 0 6px')}>{hhmm(at)}</div>}
-              <div style={css('display:flex;align-items:flex-end;gap:8px;' + (mine ? 'justify-content:flex-end' : 'justify-content:flex-start') + (first ? ';margin-top:6px' : ''))}>
-                {!mine && (
-                  <span style={css('width:28px;flex:none;display:flex')}>
-                    {last && <Avatar frame={sender?.frame} photo={sender?.photoCss} size={28} />}
-                  </span>
-                )}
-                <span style={css('max-width:72%;display:flex;flex-direction:column;gap:2px;' + (mine ? 'align-items:flex-end' : 'align-items:flex-start'))}>
-                  {!mine && chat.type === 'group' && first && <span style={css('font-size:11px;color:#8e8e93;padding-left:4px')}>{sender?.name ?? ''}</span>}
-                  {body}
-                </span>
-              </div>
-            </div>
-          )
-        })}
+        {msgs && <DmRows db={db} rows={msgs} meId={me.id} byId={byId} group={chat.type === 'group'} chatId={chat.id} />}
       </div>
       {v.canSend ? (
         <div style={css('flex:none;display:flex;align-items:center;gap:8px;padding:8px 12px calc(var(--phone-bottom,34px) - 14px)')}>
@@ -239,3 +208,49 @@ function Conversation({ db, me, chat, byId, onBack, onToast }: { db: Firestore; 
     </div>
   )
 }
+
+const BUBBLE = css('display:block;padding:8px 14px;border-radius:20px;font-size:15px;line-height:20px;white-space:pre-wrap;word-break:break-word')
+const BUBBLE_MINE = { ...BUBBLE, ...css('background:linear-gradient(135deg,#7a3cf0,#3a7bfd);color:#fff') }
+const BUBBLE_THEIRS = { ...BUBBLE, ...css('background:#efefef;color:#000') }
+
+/** The bubbles: drawn again only when the messages (or the people) change, never per key typed. */
+const DmRows = memo(function DmRows({ db, rows, meId, byId, group, chatId }: { db: Firestore; rows: MessageRow[]; meId: string; byId: Map<string, Person>; group: boolean; chatId: string }) {
+  return (
+    <>
+      {rows.map((m, i) => {
+        if (m.kind === 'system') return <span key={m.id} style={css('align-self:center;max-width:80%;text-align:center;font-size:12px;line-height:17px;color:#8e8e93;padding:8px 0')}>{m.text}</span>
+        const prev = rows[i - 1], next = rows[i + 1]
+        const at = m.at?.toMillis() ?? 0
+        const sender = m.uid === meId ? undefined : byId.get(m.uid)
+        return (
+          <DmRow key={m.id} db={db} chatId={chatId} m={m} mine={m.uid === meId}
+            first={!prev || prev.uid !== m.uid || prev.kind === 'system'}
+            last={!next || next.uid !== m.uid || next.kind === 'system'}
+            time={at && (i === 0 || (prev?.at && at - prev.at.toMillis() > 3_600_000)) ? hhmm(at) : ''}
+            name={group ? sender?.name ?? '' : ''} frame={sender?.frame} photo={sender?.photoCss} />
+        )
+      })}
+    </>
+  )
+})
+
+const DmRow = memo(function DmRow({ db, chatId, m, mine, first, last, time, name, frame, photo }: { db: Firestore; chatId: string; m: MessageRow; mine: boolean; first: boolean; last: boolean; time: string; name: string; frame?: string; photo?: string }) {
+  return (
+    <div>
+      {time && <div style={css('text-align:center;font-size:11px;color:#8e8e93;padding:10px 0 6px')}>{time}</div>}
+      <div style={css('display:flex;align-items:flex-end;gap:8px;' + (mine ? 'justify-content:flex-end' : 'justify-content:flex-start') + (first ? ';margin-top:6px' : ''))}>
+        {!mine && (
+          <span style={css('width:28px;flex:none;display:flex')}>
+            {last && <Avatar frame={frame} photo={photo} size={28} />}
+          </span>
+        )}
+        <span style={css('max-width:72%;display:flex;flex-direction:column;gap:2px;' + (mine ? 'align-items:flex-end' : 'align-items:flex-start'))}>
+          {!mine && first && name && <span style={css('font-size:11px;color:#8e8e93;padding-left:4px')}>{name}</span>}
+          {m.kind === 'image' ? <Photo db={db} chatId={chatId} m={m} /> : (
+            <span style={mine ? BUBBLE_MINE : BUBBLE_THEIRS}>{m.kind === 'gift' || m.kind === 'fake' ? `🎁 ${m.text || '포인트 선물'}` : m.text}</span>
+          )}
+        </span>
+      </div>
+    </div>
+  )
+})

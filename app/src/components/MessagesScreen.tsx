@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css, imageCss, sx } from '../css'
 import { MEDALS } from '../data'
@@ -9,7 +9,7 @@ import { FRAMES, LEGENDARY, SKIN_SERIES, skinGeom } from '../data'
 import { Nameplate } from './Nameplate'
 import { TowerSkin } from './TowerSkin'
 import { saveImage } from '../saveImage'
-import { readView, watchView } from '../viewport'
+import { useKeyboardRoom } from '../keyboardRoom'
 import type { Person } from '../model'
 import { Avatar } from './Avatar'
 import { GroupPresence, PresenceText } from './Presence'
@@ -62,24 +62,25 @@ function RankChip({ rank }: { rank?: number }) {
   return <span style={sx('flex:none;height:18px;padding:0 6px;border-radius:9999px;font-size:11px;line-height:18px;font-weight:700;font-variant-numeric:tabular-nums', { background: m ? m[0] : '#f2f4f6', color: m ? m[1] : '#6b7684' })}>{rank}위</span>
 }
 
+// One formatter each, made once (making one per call was a big part of drawing a long chat).
+const TIME_FMT = new Intl.DateTimeFormat('ko-KR', { hour: 'numeric', minute: '2-digit' })
+const DAY_FMT = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })
+const clock = (ms: number) => (ms ? TIME_FMT.format(ms) : '')
+const startOfDay = (ms: number) => new Date(ms).setHours(0, 0, 0, 0)
 function timeLabel(ms: number) {
   if (!ms) return ''
-  const d = new Date(ms), now = new Date()
-  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
-  const y = new Date(now); y.setDate(now.getDate() - 1)
-  if (d.toDateString() === y.toDateString()) return '어제'
+  const d = new Date(ms)
+  const days = Math.round((startOfDay(Date.now()) - startOfDay(ms)) / 86_400_000)
+  if (days === 0) return clock(ms)
+  if (days === 1) return '어제'
   return `${d.getMonth() + 1}월 ${d.getDate()}일`
 }
-const clock = (ms: number) => (ms ? new Date(ms).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }) : '')
-const dayLabel = (ms: number) => new Date(ms).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })
 /** iOS time stamp: the time today, (어제) for yesterday, the date for older days. */
 const stamp = (ms: number) => {
-  const d = new Date(ms)
-  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(ms).setHours(0, 0, 0, 0)) / 86_400_000)
-  const time = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })
-  if (days === 0) return time
-  if (days === 1) return `(어제) ${time}`
-  return `${dayLabel(ms)} ${time}`
+  const days = Math.round((startOfDay(Date.now()) - startOfDay(ms)) / 86_400_000)
+  if (days === 0) return clock(ms)
+  if (days === 1) return `(어제) ${clock(ms)}`
+  return `${DAY_FMT.format(ms)} ${clock(ms)}`
 }
 // iOS glass: the shared look of the round and pill buttons in both screens.
 const GLASS_BG = 'background:rgba(255,255,255,0.78);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);box-shadow:0 6px 20px rgba(0,0,0,0.10),inset 0 0 0 0.5px rgba(0,0,0,0.06)'
@@ -163,8 +164,11 @@ type ScreenProps = {
   onChrome?: () => void
 }
 
-export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onNew, onToggleOff, db = null, chromeOn = true, onChrome }: ScreenProps) {
+export const MessagesScreen = memo(function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onNew, onToggleOff, db = null, chromeOn = true, onChrome }: ScreenProps) {
   const drag = useRef<{ x: number; y: number } | null>(null)
+  const [q, setQ] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [onlyUnread, setOnlyUnread] = useState(false)
   if (!loggedIn || !me) {
     return (
       <div className="anim-list" style={css('flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:48px 24px;text-align:center')}>
@@ -176,9 +180,6 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
     )
   }
   const off = !!me.msgOff
-  const [q, setQ] = useState('')
-  const [editing, setEditing] = useState(false)
-  const [onlyUnread, setOnlyUnread] = useState(false)
   const needle = q.trim()
   const shown = chats.filter(c => (!onlyUnread || isUnread(c, me.id)) && (!needle || describeChat(c, me.id, byId, off).title.includes(needle)))
   const pinned = chats.slice(0, 3)
@@ -235,7 +236,7 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
               // 편집: a tap turns that chat's 알림 on or off instead of opening it
               const tap = () => { if (editing) { if (db) setChatMuted(db, me.id, c.id, !muted).catch(() => {}) } else onOpen(c.id) }
               return (
-                <button key={c.id} className="pr-dim" onClick={tap} aria-pressed={editing ? !muted : undefined} style={css('position:relative;display:flex;align-items:center;gap:6px;padding:12px 16px 12px 20px;text-align:left;background:#fff;color:#000;width:100%')}>
+                <button key={c.id} className="pr-dim" onClick={tap} aria-pressed={editing ? !muted : undefined} style={css('position:relative;display:flex;align-items:center;gap:6px;padding:12px 16px 12px 20px;text-align:left;background:#fff;color:#000;width:100%;content-visibility:auto;contain-intrinsic-size:auto 90px')}>
                   <span aria-hidden="true" style={sx('flex:none;width:10px;height:10px;border-radius:9999px;background:#007aff', { opacity: unread ? 1 : 0 })} />
                   <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:3px')}>
                     <span style={css('display:flex;align-items:center;gap:6px;min-width:0')}>
@@ -282,45 +283,17 @@ export function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onN
       </div>
     </div>
   )
-}
+})
 
 // ---- keyboard-safe full-screen layer ---------------------------------------------
 
-/**
- * Pins the chat to the *visual* viewport and locks the page behind it, so opening
- * the keyboard doesn't scroll the page and show whatever is underneath (the
- * "screen tearing open" feeling on iPhone). The input stays right above the keyboard.
- */
-export function useKeyboardSafeBox() {
-  const [box, setBox] = useState(() => { const v = readView(); return { top: v.top, height: v.height } })
-  useEffect(() => {
-    const y = window.scrollY
-    const b = document.body.style
-    const prev = { position: b.position, top: b.top, width: b.width, overflow: b.overflow }
-    Object.assign(b, { position: 'fixed', top: `-${y}px`, width: '100%', overflow: 'hidden' })
-    const update = () => {
-      const v = readView()
-      // iPhone sometimes leaves the page scrolled after the keyboard closes; the body is locked, so put it back.
-      if (!v.inset && window.scrollY !== 0) window.scrollTo(0, 0)
-      setBox(o => (o.top === v.top && o.height === v.height ? o : { top: v.top, height: v.height }))
-    }
-    const stop = watchView(update)
-    return () => {
-      stop()
-      Object.assign(b, prev)
-      window.scrollTo(0, y)
-    }
-  }, [])
-  return box
-}
+/** Drops any text selection the browser started (e.g. an iPhone long-press). */
+function clearSelection() { try { window.getSelection()?.removeAllRanges() } catch { /* nothing selected */ } }
 
 /**
  * White layer under a full-screen chat, reaching below the screen: the iPhone keyboard
  * (and its ⌃⌄✓ bar) is see-through, so without it the screen underneath showed through.
  */
-/** Drops any text selection the browser started (e.g. an iPhone long-press). */
-function clearSelection() { try { window.getSelection()?.removeAllRanges() } catch { /* nothing selected */ } }
-
 export function KeyboardUnderlay({ z }: { z: number }) {
   return <div aria-hidden="true" style={sx('position:fixed;left:0;right:0;top:0;height:200vh;background:#ffffff;pointer-events:none;animation:fade 160ms ease both', { zIndex: z })} />
 }
@@ -360,7 +333,23 @@ type RoomProps = {
   onError: (msg: string, e: unknown) => void
 }
 
-export function ChatRoom(p: RoomProps) {
+/** What a message row may call. One object for the whole room (its fields are kept current), so rows never re-render for a new callback. */
+type RowApi = {
+  db: Firestore
+  me: string
+  claim: (giftId: string) => Promise<unknown>
+  cancel: (giftId: string) => Promise<unknown>
+  loaded: () => void
+  openImage: (src: string) => void
+  openProfile: (uid: string) => void
+  jumpTo: (id: string) => void
+  fakeTaken: (m: MessageRow) => void
+}
+
+// The textarea grows with its text by itself where the browser can do that (no measuring on every key).
+const FIELD_SIZING = typeof CSS !== 'undefined' && !!CSS.supports?.('field-sizing', 'content')
+
+export const ChatRoom = memo(function ChatRoom(p: RoomProps) {
   const { db, chat, me, byId, onBack, onSend, onSendImage, onError, onOpenProfile } = p
   const [msgs, setMsgs] = useState<MessageRow[] | null>(null)
   const [draft, setDraft] = useState('')
@@ -368,9 +357,12 @@ export function ChatRoom(p: RoomProps) {
   const [menu, setMenu] = useState(false)
   const [viewer, setViewer] = useState<string | null>(null)
   const [bg, setBg] = useState(() => loadBg(chat.id))
+  const boxRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const replyIcon = useRef<HTMLSpanElement>(null)
   const [attach, setAttach] = useState<'menu' | 'gift' | 'item' | 'fake' | null>(null)
   // 아이템 선물 waits in the composer until 보내기 (or 예약).
   const [pendingGift, setPendingGift] = useState<{ kind: GiftKind; key: string } | null>(null)
@@ -384,14 +376,13 @@ export function ChatRoom(p: RoomProps) {
   // 답장: long-press (or right-click) a message for 답장/복사, or swipe it to the right.
   const [reply, setReply] = useState<ReplyRef | null>(null)
   const [actionFor, setActionFor] = useState<MessageRow | null>(null)
-  const [flash, setFlash] = useState<string | null>(null)
   const snippet = (m: MessageRow) => m.kind === 'image' ? '사진' : m.kind === 'gift' || m.kind === 'fake' ? m.text || '🎁 포인트 선물' : m.text
   const startReply = (m: MessageRow) => { setReply({ id: m.id, uid: m.uid, text: snippet(m).slice(0, 100) }); setActionFor(null); setTimeout(() => inputRef.current?.focus(), 50) }
   const jumpTo = (id: string) => {
     const el = listRef.current?.querySelector(`[data-mid="${id}"]`) as HTMLElement | null
     if (!el) return
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    setFlash(id); setTimeout(() => setFlash(f => (f === id ? null : f)), 1200)
+    el.animate?.([{ backgroundColor: 'rgba(49,130,246,0.12)' }, { backgroundColor: 'rgba(49,130,246,0.12)', offset: 0.6 }, { backgroundColor: 'rgba(49,130,246,0)' }], { duration: 1400, easing: 'ease' })
   }
   // Long-pressing a message is ours (답장 · 복사 · 타임아웃): on iPhone it also started a
   // text selection that tinted the whole screen blue and showed 복사하기/찾아보기/번역.
@@ -405,31 +396,67 @@ export function ChatRoom(p: RoomProps) {
     document.addEventListener('selectstart', block)
     return () => document.removeEventListener('selectstart', block)
   }, [])
-  const press = useRef<{ id: string; x: number; y: number; timer?: ReturnType<typeof setTimeout>; dx: number } | null>(null)
-  const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
-  const gestures = (m: MessageRow) => m.kind === 'system' ? {} : {
-    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setActionFor(m) },
+  // Press, long-press and swipe-to-reply, for every row at once (handled on the list). The swipe
+  // moves the row itself (no re-render while the finger moves).
+  const msgsRef = useRef(msgs)
+  msgsRef.current = msgs
+  const findMsg = (id: string | undefined) => (id ? msgsRef.current?.find(m => m.id === id) : undefined)
+  const press = useRef<{ id: string; el: HTMLElement; x: number; y: number; timer?: ReturnType<typeof setTimeout>; dx: number } | null>(null)
+  const rowAt = (t: EventTarget | null) => {
+    const r = (t as Element | null)?.closest?.('[data-mid]') as HTMLElement | null
+    return r && !r.dataset.sys ? r : null
+  }
+  const dragTo = (el: HTMLElement, dx: number) => {
+    el.style.transition = 'none'
+    el.style.transform = `translateX(${dx}px)`
+    const ic = replyIcon.current
+    if (ic) {
+      ic.style.opacity = String(Math.min(1, dx / 56))
+      ic.style.transform = `translate(${dx - 24}px, ${el.offsetTop + el.offsetHeight / 2 - 14}px) scale(${dx > 56 ? 1.1 : 0.9})`
+    }
+  }
+  const letGo = (el: HTMLElement) => {
+    if (!el.style.transform) return
+    el.style.transition = `transform 260ms ${EASE}`
+    el.style.transform = ''
+    if (replyIcon.current) replyIcon.current.style.opacity = '0'
+  }
+  const gestures = {
+    onContextMenu: (e: React.MouseEvent) => { const r = rowAt(e.target); const m = findMsg(r?.dataset.mid); if (!m) return; e.preventDefault(); setActionFor(m) },
     onPointerDown: (e: React.PointerEvent) => {
-      const timer = setTimeout(() => { press.current = null; setDrag(null); clearSelection(); try { navigator.vibrate?.(15) } catch { /* no vibration */ } setActionFor(m) }, 480)
-      press.current = { id: m.id, x: e.clientX, y: e.clientY, timer, dx: 0 }
+      const r = rowAt(e.target)
+      if (!r) return
+      const id = r.dataset.mid!
+      const timer = setTimeout(() => {
+        const pr = press.current
+        press.current = null
+        if (pr) letGo(pr.el)
+        clearSelection()
+        try { navigator.vibrate?.(15) } catch { /* no vibration */ }
+        const m = findMsg(id)
+        if (m) setActionFor(m)
+      }, 480)
+      press.current = { id, el: r, x: e.clientX, y: e.clientY, timer, dx: 0 }
     },
     onPointerMove: (e: React.PointerEvent) => {
       const pr = press.current
-      if (!pr || pr.id !== m.id) return
+      if (!pr) return
       const dx = e.clientX - pr.x, dy = e.clientY - pr.y
       if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(pr.timer)
-      if (Math.abs(dy) > 24 && Math.abs(dy) > Math.abs(dx)) { press.current = null; setDrag(null); return }
-      if (dx > 0) { pr.dx = dx; setDrag({ id: m.id, dx: Math.min(dx, 72) }) }
+      if (Math.abs(dy) > 24 && Math.abs(dy) > Math.abs(dx)) { press.current = null; letGo(pr.el); return }
+      if (dx > 0) { pr.dx = dx; dragTo(pr.el, Math.min(dx, 72)) }
     },
     onPointerUp: () => {
       const pr = press.current
-      if (pr) { clearTimeout(pr.timer); if (pr.dx > 56) startReply(m) }
-      press.current = null; setDrag(null)
+      if (!pr) return
+      press.current = null
+      clearTimeout(pr.timer)
+      letGo(pr.el)
+      if (pr.dx > 56) { const m = findMsg(pr.id); if (m) startReply(m) }
     },
-    onPointerCancel: () => { if (press.current) clearTimeout(press.current.timer); press.current = null; setDrag(null) },
+    onPointerCancel: () => { const pr = press.current; if (!pr) return; press.current = null; clearTimeout(pr.timer); letGo(pr.el) },
   }
   const firstIds = useRef<Set<string> | null>(null)
-  const box = useKeyboardSafeBox()
   // While I'm in 타임아웃 the composer counts down and comes back on its own.
   const [now, setNow] = useState(Date.now())
   const myTimeout = timedOutUntil(chat, me.id, now)
@@ -535,23 +562,11 @@ export function ChatRoom(p: RoomProps) {
     else if (nearBottom.current) toBottom(true)
     else setNewBelow(n => n + added)
   }, [msgs]) // eslint-disable-line react-hooks/exhaustive-deps
-  // When the keyboard opens or closes the list changes size. iPhone Safari can leave the
-  // old scroll position painted (the messages stuck at the top with a blank area below),
-  // so re-apply the position now and once more after the keyboard animation ends.
-  useEffect(() => {
-    const fix = () => {
-      const el = listRef.current
-      if (!el) return
-      if (nearBottom.current) toBottom()
-      else el.scrollTop = Math.min(el.scrollTop, el.scrollHeight - el.clientHeight)
-    }
-    fix()
-    const t = setTimeout(fix, 350)
-    return () => clearTimeout(t)
-  }, [box.height]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The keyboard: the room follows the visible area and its parts slide (see keyboardRoom.ts).
+  useKeyboardRoom({ box: boxRef, composer: composerRef, list: listRef, pinned: nearBottom })
   const keepBottom = () => { if (nearBottom.current) toBottom() }
-  // Auto-grow the input up to ~5 lines.
-  useLayoutEffect(() => { const t = inputRef.current; if (t) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px' } }, [draft])
+  // Auto-grow the input up to ~5 lines (measured only where the browser can't do it itself).
+  useLayoutEffect(() => { const t = inputRef.current; if (t && !FIELD_SIZING) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px' } }, [draft])
 
   // Text sends never block each other (typing fast and hitting 보내기 again must not drop a message).
   const send = async () => {
@@ -586,16 +601,24 @@ export function ChatRoom(p: RoomProps) {
     setSending(false); setPhotoSending(false)
   }
 
-  const lastMine = msgs?.slice().reverse().find(x => x.uid === me.id && x.kind !== 'system')?.id
+  const lastMine = useMemo(() => msgs?.slice().reverse().find(x => x.uid === me.id && x.kind !== 'system')?.id, [msgs, me.id])
+  // what the rows call: one object, its fields kept current
+  const api = useRef({} as RowApi).current
+  Object.assign(api, {
+    db, me: me.id, claim: p.onClaimGift, cancel: p.onCancelGift, loaded: keepBottom, openImage: setViewer, openProfile: onOpenProfile, jumpTo,
+    fakeTaken: (m: MessageRow) => {
+      setFooled(true)
+      if (markFooled(m.id)) postFooled(db, me.id, chat.id, `${me.name}님이 ${nameIn(byId, m.uid)}님의 페이크 선물에 속았어요 🤣`).catch(() => {})
+    },
+  } satisfies RowApi)
 
   return (
     <>
     <KeyboardUnderlay z={199} />
-    <div style={sx('position:fixed;left:0;right:0;z-index:200;display:flex;justify-content:center', { top: box.top, height: box.height })}>
-        <div data-g="app" className="no-select" style={css(`width:100%;max-width:var(--app-w);height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;color:#000;background:#ffffff;animation:roomIn 360ms ${EASE} backwards`)}>
-          {/* iOS Messages: round glass back, the contact centred with a name pill, glass call/menu */}
+    <div ref={boxRef} style={css('position:fixed;left:0;right:0;z-index:200;display:flex;justify-content:center;top:0;height:100%')}>
+        <div data-g="app" className="no-select" style={sx(`width:100%;max-width:var(--app-w);height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;color:#000;animation:roomIn 360ms ${EASE} backwards`, { background: bgCss })}>
           {/* A slim bar: round glass back, a small name pill in the middle, glass call/menu */}
-          <div style={{ ...css('flex:none;position:relative;z-index:2;display:flex;align-items:center;gap:8px;padding:0 12px 6px'), paddingTop: box.top ? 6 : 'calc(6px + env(safe-area-inset-top))' }}>
+          <div style={css('flex:none;position:relative;z-index:2;display:flex;align-items:center;gap:8px;padding:calc(6px + var(--kb-safe-top, env(safe-area-inset-top))) 12px 6px')}>
             <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css(GLASS_CIRCLE)}><BackIcon /></button>
             <button className="pr-dim" onClick={() => (chat.type === 'dm' && v.people[0] ? onOpenProfile(v.people[0].id) : setMenu(true))} style={css(`flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 14px 0 6px;border-radius:9999px;color:#000;${GLASS_BG}`)}>
               <ChatAvatar people={v.people} size={36} photo={chat.photo} />
@@ -620,87 +643,27 @@ export function ChatRoom(p: RoomProps) {
             <button className="pr-dim" onClick={() => setMenu(true)} aria-label="채팅방 메뉴" style={css(GLASS_CIRCLE)}><MenuIcon /></button>
           </div>
 
-        <div ref={listRef} onScroll={onListScroll} style={sx('flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 36px);mask-image:linear-gradient(180deg,transparent 0,#000 36px)', { background: bgCss })}>
-          {msgs === null ? null : msgs.length === 0 ? (
+        {/* the list's box: what slides with the keyboard is clipped here (never over the bar above) */}
+        <div style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative')}>
+        <div ref={listRef} onScroll={onListScroll} {...gestures} style={css('flex:1;min-height:0;position:relative;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 36px);mask-image:linear-gradient(180deg,transparent 0,#000 36px)')}>
+          {msgs?.length === 0 && (
             <div className="anim-list" style={css('margin:auto;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center')}>
               <ChatAvatar people={v.people} size={72} photo={chat.photo} />
               <span style={css('margin-top:12px;font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{v.title}</span>
               <span style={css('font-size:15px;line-height:22.5px;color:#6b7684')}>첫 메시지를 보내보세요</span>
             </div>
-          ) : msgs.map((m, i) => {
-            const mine = m.uid === me.id
-            const prev = msgs[i - 1], next = msgs[i + 1]
-            const at = m.at?.toMillis() ?? 0
-            const newDay = !prev || new Date(prev.at?.toMillis() ?? 0).toDateString() !== new Date(at).toDateString()
-            const isNew = !!firstIds.current && !firstIds.current.has(m.id)
-            const longGap = !!prev && at - (prev.at?.toMillis() ?? 0) > 3_600_000
-            const dayRow = (newDay || longGap) && at > 0 && <div style={css('align-self:center;margin:16px 0 8px;font-size:13px;line-height:18px;color:#8e8e93')}>{stamp(at)}</div>
-            if (m.kind === 'system') {
-              return (
-                <Fragment key={m.id}>
-                  {dayRow}
-                  <div data-anim style={sx('align-self:center;margin:12px 0 4px;padding:4px 12px;border-radius:9999px;font-size:13px;line-height:19.5px;color:#6b7684;text-align:center', { background: tinted ? 'rgba(255,255,255,0.7)' : '#f2f4f6', animation: isNew ? `listIn 420ms ${EASE} both` : undefined })}>{m.text}</div>
-                </Fragment>
-              )
-            }
-            // A new run (avatar + name again) when the sender changes or a minute has passed.
-            const firstOfRun = newDay || prev.uid !== m.uid || prev.kind === 'system' || at - (prev.at?.toMillis() ?? 0) > 60_000
-            const lastOfRun = !next || next.uid !== m.uid || next.kind === 'system' || (next.at?.toMillis() ?? 0) - at > 60_000 || clock(next.at?.toMillis() ?? 0) !== clock(at)
-            const sender = byId.get(m.uid)
-            const bubble = m.kind === 'gift' && m.giftId
-              ? <GiftBubble db={db} giftId={m.giftId} me={me.id} mine={me} byId={byId} onClaim={p.onClaimGift} onCancel={p.onCancelGift} onLoaded={keepBottom} />
-              : m.kind === 'fake'
-              ? <FakeGiftBubble msg={m} mine={mine} dm={chat.type === 'dm'} onTake={() => {
-                  setFooled(true)
-                  if (markFooled(m.id)) postFooled(db, me.id, chat.id, `${me.name}님이 ${nameIn(byId, m.uid)}님의 페이크 선물에 속았어요 🤣`).catch(() => {})
-                }} />
-              : m.kind === 'image'
-              ? <ImageBubble db={db} chatId={chat.id} msgId={m.mediaId ?? m.id} onOpen={setViewer} onLoaded={keepBottom} />
-              : <span style={sx('position:relative;padding:8px 14px 9px;border-radius:20px;font-size:17px;line-height:22px;white-space:pre-wrap;word-break:break-word;display:flex;flex-direction:column;gap:6px', { background: mine ? 'linear-gradient(180deg,#72d26f,#5fc75f)' : '#e9e9eb', color: mine ? '#ffffff' : '#000000', fontWeight: 400 })}>
-                  {m.replyTo && (
-                    <button onClick={() => jumpTo(m.replyTo!.id)} style={sx('display:flex;flex-direction:column;gap:1px;padding:6px 10px;border-radius:12px;text-align:left;max-width:100%;border-left:3px solid', { background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(0,23,51,0.05)', borderLeftColor: mine ? 'rgba(255,255,255,0.7)' : '#3182f6' })}>
-                      <span style={sx('font-size:12px;line-height:16px;font-weight:700', { color: mine ? 'rgba(255,255,255,0.9)' : '#1b64da' })}>{m.replyTo.uid === me.id ? '나' : nameIn(byId, m.replyTo.uid)}에게 답장</span>
-                      <span style={sx('font-size:13px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px', { color: mine ? 'rgba(255,255,255,0.85)' : '#4e5968', fontWeight: 400 })}>{m.replyTo.text}</span>
-                    </button>
-                  )}
-                  <span>{m.text}</span>
-                  {lastOfRun && <Tail mine={mine} color={mine ? '#66cb66' : '#e9e9eb'} />}
-                </span>
-            return (
-              <Fragment key={m.id}>
-                {dayRow}
-                <div data-anim data-mid={m.id} {...gestures(m)} style={sx('display:flex;gap:8px;align-items:flex-end;position:relative;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;border-radius:14px', { justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: firstOfRun ? 12 : 4, transform: drag?.id === m.id ? `translateX(${drag.dx}px)` : undefined, transition: drag?.id === m.id ? 'none' : `transform 260ms ${EASE}, background 400ms ease`, background: flash === m.id ? 'rgba(49,130,246,0.12)' : undefined, animation: isNew ? (mine ? 'msgSend 520ms cubic-bezier(0.25,0.9,0.3,1) both' : `msgInL 380ms ${EASE} both`) : undefined, transformOrigin: mine ? 'bottom right' : 'bottom left' })}>
-                  {drag?.id === m.id && (
-                    <span aria-hidden="true" style={sx('position:absolute;left:-40px;top:50%;margin-top:-14px;width:28px;height:28px;border-radius:9999px;background:#f2f4f6;display:flex;align-items:center;justify-content:center;color:#4e5968', { opacity: Math.min(1, drag.dx / 56), transform: `scale(${drag.dx > 56 ? 1.1 : 0.9})`, transition: 'transform 120ms' })}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 6 6v5" /></svg>
-                    </span>
-                  )}
-                  {!mine && (
-                    <span style={css('width:32px;flex:none;align-self:flex-start')}>
-                      {firstOfRun && <button className="pr-94" onClick={() => sender && onOpenProfile(sender.id)} aria-label={`${sender?.name ?? ''} 프로필`} style={css('display:block;border-radius:9999px')}><Avatar frame={sender?.frame} photo={sender?.photoCss} size={32} full /></button>}
-                    </span>
-                  )}
-                  <span style={sx('display:flex;flex-direction:column;gap:4px;max-width:74%', { alignItems: mine ? 'flex-end' : 'flex-start' })}>
-                    {!mine && firstOfRun && chat.type === 'group' && (
-                      <button onClick={() => sender && onOpenProfile(sender.id)} style={css('display:flex;align-items:center;gap:4px;padding:0;text-align:left')}>
-                        <span style={css('font-size:13px;line-height:19.5px;color:#4e5968;font-weight:500')}>{nameIn(byId, m.uid)}</span>
-                        <RankChip rank={sender?.rank} />
-                      </button>
-                    )}
-                    <span style={sx('display:flex;align-items:flex-end;gap:6px', { flexDirection: mine ? 'row-reverse' : 'row' })}>
-                      {bubble}
-                    </span>
-                    {m.id === lastMine && <span style={css('font-size:13px;line-height:18px;color:#8e8e93;margin-top:2px')}>전송됨</span>}
-                  </span>
-                </div>
-              </Fragment>
-            )
-          })}
+          )}
+          {msgs && msgs.length > 0 && <MessageList msgs={msgs} meId={me.id} me={me} byId={byId} group={chat.type === 'group'} dm={chat.type === 'dm'} chatId={chat.id} tinted={tinted} lastMine={lastMine} firstIds={firstIds} api={api} />}
           {photoSending && (
             <div style={css('display:flex;justify-content:flex-end;margin-top:8px;animation:msgInMine 260ms ease both')}>
               <span className="skeleton" style={css('width:160px;height:120px;border-radius:18px;display:flex;align-items:flex-end;justify-content:flex-end;padding:8px 10px;font-size:12px;font-weight:600;color:#6b7684')}>보내는 중…</span>
             </div>
           )}
+          {/* swipe-to-reply arrow: moved by the swipe itself */}
+          <span ref={replyIcon} aria-hidden="true" style={css('position:absolute;left:0;top:0;width:28px;height:28px;border-radius:9999px;background:#f2f4f6;display:flex;align-items:center;justify-content:center;color:#4e5968;opacity:0;pointer-events:none;transition:opacity 120ms')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 6 6v5" /></svg>
+          </span>
+        </div>
         </div>
         {newBelow > 0 && (
           <button className="pr-96" onClick={() => toBottom(true)} style={css('position:absolute;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom));z-index:3;height:36px;padding:0 14px;border-radius:9999px;background:#191f28;color:#fff;font-size:14px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,0.18);animation:toastDown 260ms cubic-bezier(0.16,1,0.3,1) both;display:flex;align-items:center;gap:6px')}>
@@ -709,7 +672,7 @@ export function ChatRoom(p: RoomProps) {
           </button>
         )}
 
-        <div style={sx('flex:none;padding:8px 12px', { paddingBottom: box.top || box.height < window.innerHeight - 80 ? 8 : 'calc(8px + env(safe-area-inset-bottom))', background: tinted ? '#ffffff' : 'transparent' })}>
+        <div ref={composerRef} style={sx('flex:none;position:relative;z-index:1;padding:8px 12px calc(8px + var(--kb-safe-bottom, env(safe-area-inset-bottom)))', { background: tinted ? '#ffffff' : 'inherit' })}>
           {reply && v.canSend && (
             <div style={css('display:flex;align-items:center;gap:10px;padding:8px 6px 10px 12px;margin-bottom:6px;border-radius:14px;background:#f9fafb;animation:toastDown 220ms cubic-bezier(0.16,1,0.3,1) both')}>
               <span style={css('width:3px;align-self:stretch;border-radius:2px;background:#3182f6;flex:none')} />
@@ -745,7 +708,7 @@ export function ChatRoom(p: RoomProps) {
                   onChange={e => setDraft(e.target.value)}
                   onFocus={() => setTimeout(() => toBottom(true), 300)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }}
-                  style={css('flex:1;min-width:0;min-height:32px;max-height:120px;resize:none;outline:none;border:0;background:transparent;padding:6px 0;font-size:17px;line-height:22px;color:#000;font-family:inherit')}
+                  style={sx('flex:1;min-width:0;min-height:32px;max-height:120px;resize:none;outline:none;border:0;background:transparent;padding:6px 0;font-size:17px;line-height:22px;color:#000;font-family:inherit', FIELD_SIZING ? ({ fieldSizing: 'content' } as unknown as React.CSSProperties) : undefined)}
                 />
                 <button className="pr-94" title="꾹 누르면 예약 전송"
                   onPointerDown={e => { e.preventDefault(); pressStart() }} onPointerUp={pressEnd} onPointerLeave={pressEnd} onPointerCancel={pressEnd}
@@ -843,7 +806,112 @@ export function ChatRoom(p: RoomProps) {
     </div>
     </>
   )
+})
+
+// ---- the messages ---------------------------------------------------------------------
+// The list is drawn once per change of the messages (not per key typed, not per keyboard
+// step), and each row only when its own message or neighbours change.
+
+type ListProps = {
+  msgs: MessageRow[]; meId: string; me: Person; byId: Map<string, Person>
+  group: boolean; dm: boolean; chatId: string; tinted: boolean; lastMine?: string
+  firstIds: React.MutableRefObject<Set<string> | null>; api: RowApi
 }
+const dayKey = (ms: number) => { const d = new Date(ms); return d.getFullYear() * 400 + d.getMonth() * 32 + d.getDate() }
+const MessageList = memo(function MessageList({ msgs, meId, me, byId, group, dm, chatId, tinted, lastMine, firstIds, api }: ListProps) {
+  return (
+    <>
+      {msgs.map((m, i) => {
+        const prev = msgs[i - 1], next = msgs[i + 1]
+        const at = m.at?.toMillis() ?? 0
+        const prevAt = prev?.at?.toMillis() ?? 0
+        const newDay = !prev || dayKey(prevAt) !== dayKey(at)
+        const longGap = !!prev && at - prevAt > 3_600_000
+        const day = (newDay || longGap) && at > 0 ? stamp(at) : ''
+        const isNew = !!firstIds.current && !firstIds.current.has(m.id)
+        if (m.kind === 'system') return <SystemRow key={m.id} id={m.id} text={m.text} day={day} isNew={isNew} tinted={tinted} />
+        const nextAt = next?.at?.toMillis() ?? 0
+        // A new run (avatar + name again) when the sender changes or a minute has passed.
+        const first = newDay || prev.uid !== m.uid || prev.kind === 'system' || at - prevAt > 60_000
+        const last = !next || next.uid !== m.uid || next.kind === 'system' || nextAt - at > 60_000 || Math.floor(nextAt / 60_000) !== Math.floor(at / 60_000)
+        const sender = m.uid === meId ? undefined : byId.get(m.uid)
+        const replyName = m.replyTo ? (m.replyTo.uid === meId ? '나' : nameIn(byId, m.replyTo.uid)) : ''
+        const gift = m.kind === 'gift' && !!m.giftId
+        return (
+          <MessageItem key={m.id} m={m} mine={m.uid === meId} first={first} last={last} day={day} isNew={isNew}
+            group={group} dm={dm} chatId={chatId} tinted={tinted} sent={m.id === lastMine}
+            sName={sender?.name ?? (m.uid === meId ? '' : nameIn(byId, m.uid))} sFrame={sender?.frame} sPhoto={sender?.photoCss} sRank={sender?.rank}
+            replyName={replyName} giftMe={gift ? me : undefined} giftById={gift ? byId : undefined} api={api} />
+        )
+      })}
+    </>
+  )
+})
+
+const DayStamp = ({ text }: { text: string }) => <div style={css('align-self:center;margin:16px 0 8px;font-size:13px;line-height:18px;color:#8e8e93')}>{text}</div>
+
+const SystemRow = memo(function SystemRow({ id, text, day, isNew, tinted }: { id: string; text: string; day: string; isNew: boolean; tinted: boolean }) {
+  return (
+    <>
+      {day && <DayStamp text={day} />}
+      <div data-anim data-mid={id} data-sys="1" style={sx('align-self:center;margin:12px 0 4px;padding:4px 12px;border-radius:9999px;font-size:13px;line-height:19.5px;color:#6b7684;text-align:center', { background: tinted ? 'rgba(255,255,255,0.7)' : '#f2f4f6', animation: isNew ? `listIn 420ms ${EASE} backwards` : undefined })}>{text}</div>
+    </>
+  )
+})
+
+type ItemProps = {
+  m: MessageRow; mine: boolean; first: boolean; last: boolean; day: string; isNew: boolean
+  group: boolean; dm: boolean; chatId: string; tinted: boolean; sent: boolean
+  sName: string; sFrame?: string; sPhoto?: string; sRank?: number; replyName: string
+  /** a 포인트 선물 card only: who I am and who everyone is (who took it, do I own the item) */
+  giftMe?: Person; giftById?: Map<string, Person>
+  api: RowApi
+}
+const MessageItem = memo(function MessageItem({ m, mine, first, last, day, isNew, group, dm, chatId, sent, sName, sFrame, sPhoto, sRank, replyName, giftMe, giftById, api }: ItemProps) {
+  const bubble = m.kind === 'gift' && m.giftId
+    ? <GiftBubble db={api.db} giftId={m.giftId} me={api.me} mine={giftMe} byId={giftById ?? EMPTY_PEOPLE} onClaim={id => api.claim(id)} onCancel={id => api.cancel(id)} onLoaded={() => api.loaded()} />
+    : m.kind === 'fake'
+    ? <FakeGiftBubble msg={m} mine={mine} dm={dm} onTake={() => api.fakeTaken(m)} />
+    : m.kind === 'image'
+    ? <ImageBubble db={api.db} chatId={chatId} msgId={m.mediaId ?? m.id} onOpen={src => api.openImage(src)} onLoaded={() => api.loaded()} />
+    : <span style={sx('position:relative;padding:8px 14px 9px;border-radius:20px;font-size:17px;line-height:22px;white-space:pre-wrap;word-break:break-word;display:flex;flex-direction:column;gap:6px;font-weight:400', mine ? BUBBLE_MINE : BUBBLE_THEIRS)}>
+        {m.replyTo && (
+          <button onClick={() => api.jumpTo(m.replyTo!.id)} style={sx('display:flex;flex-direction:column;gap:1px;padding:6px 10px;border-radius:12px;text-align:left;max-width:100%;border-left:3px solid', { background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(0,23,51,0.05)', borderLeftColor: mine ? 'rgba(255,255,255,0.7)' : '#3182f6' })}>
+            <span style={sx('font-size:12px;line-height:16px;font-weight:700', { color: mine ? 'rgba(255,255,255,0.9)' : '#1b64da' })}>{replyName}에게 답장</span>
+            <span style={sx('font-size:13px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px', { color: mine ? 'rgba(255,255,255,0.85)' : '#4e5968', fontWeight: 400 })}>{m.replyTo.text}</span>
+          </button>
+        )}
+        <span>{m.text}</span>
+        {last && <Tail mine={mine} color={mine ? '#66cb66' : '#e9e9eb'} />}
+      </span>
+  return (
+    <>
+      {day && <DayStamp text={day} />}
+      <div data-anim data-mid={m.id} style={sx('display:flex;gap:8px;align-items:flex-end;position:relative;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;border-radius:14px', { justifyContent: mine ? 'flex-end' : 'flex-start', marginTop: first ? 12 : 4, animation: isNew ? (mine ? 'msgSend 520ms cubic-bezier(0.25,0.9,0.3,1) backwards' : `msgInL 380ms ${EASE} backwards`) : undefined, transformOrigin: mine ? 'bottom right' : 'bottom left' })}>
+        {!mine && (
+          <span style={css('width:32px;flex:none;align-self:flex-start')}>
+            {first && <button className="pr-94" onClick={() => api.openProfile(m.uid)} aria-label={`${sName} 프로필`} style={css('display:block;border-radius:9999px')}><Avatar frame={sFrame} photo={sPhoto} size={32} /></button>}
+          </span>
+        )}
+        <span style={sx('display:flex;flex-direction:column;gap:4px;max-width:74%', { alignItems: mine ? 'flex-end' : 'flex-start' })}>
+          {!mine && first && group && (
+            <button onClick={() => api.openProfile(m.uid)} style={css('display:flex;align-items:center;gap:4px;padding:0;text-align:left')}>
+              <span style={css('font-size:13px;line-height:19.5px;color:#4e5968;font-weight:500')}>{sName}</span>
+              <RankChip rank={sRank} />
+            </button>
+          )}
+          <span style={sx('display:flex;align-items:flex-end;gap:6px', { flexDirection: mine ? 'row-reverse' : 'row' })}>
+            {bubble}
+          </span>
+          {sent && <span style={css('font-size:13px;line-height:18px;color:#8e8e93;margin-top:2px')}>전송됨</span>}
+        </span>
+      </div>
+    </>
+  )
+})
+const BUBBLE_MINE: React.CSSProperties = { background: 'linear-gradient(180deg,#72d26f,#5fc75f)', color: '#ffffff' }
+const BUBBLE_THEIRS: React.CSSProperties = { background: '#e9e9eb', color: '#000000' }
+const EMPTY_PEOPLE = new Map<string, Person>()
 
 function ImageBubble({ db, chatId, msgId, onOpen, onLoaded }: { db: Firestore; chatId: string; msgId: string; onOpen: (src: string) => void; onLoaded?: () => void }) {
   const [src, setSrc] = useState<string | null>(null)

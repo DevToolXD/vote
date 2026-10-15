@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
 import { addComment, addDocPost, countView, removeComment, removeDoc, setLiked, watchComments, watchDocs, type Comment, type Doc } from '../backend/homework'
@@ -49,7 +49,7 @@ function Comments({ db, post, uid, name, isAdmin, onToast }: { db: Firestore; po
   )
 }
 
-export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }: Props) {
+export const HomeworkApp = memo(function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }: Props) {
   const [docs, setDocs] = useState<Doc[] | null>(null)
   const [sheet, setSheet] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
@@ -117,7 +117,7 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
           const liked = d.likes.includes(uid)
           const expanded = open === d.id
           return (
-            <article key={d.id} style={css('flex:none;background:#ffffff;border-radius:16px;overflow:hidden')}>
+            <article key={d.id} style={css('flex:none;background:#ffffff;border-radius:16px;overflow:hidden;content-visibility:auto;contain-intrinsic-size:auto 420px')}>
               <div style={css('display:flex;align-items:center;gap:10px;padding:12px 14px 8px')}>
                 <span style={css('width:30px;height:30px;border-radius:9999px;background:#dbdbdb;color:#333;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center')}>?</span>
                 <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
@@ -128,7 +128,7 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
               </div>
               <div style={css('padding:0 14px 8px;font-size:17px;font-weight:800;line-height:24px;word-break:break-word')}>{d.title}</div>
               <button aria-label="사진 크게 보기" onClick={() => setViewing(d)} style={css('display:block;width:100%;padding:0')}>
-                <img src={d.photo} alt="" style={css('display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:#f2f2f2')} />
+                <img src={d.photo} alt="" loading="lazy" decoding="async" style={css('display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:#f2f2f2')} />
               </button>
               {d.caption && <p style={css('margin:10px 14px 0;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}>{d.caption}</p>}
               <div style={css('display:flex;align-items:center;gap:14px;padding:10px 12px 8px')}>
@@ -173,4 +173,4 @@ export function HomeworkApp({ db, uid, name, isAdmin = false, onLogin, onToast }
       )}
     </div>
   )
-}
+})

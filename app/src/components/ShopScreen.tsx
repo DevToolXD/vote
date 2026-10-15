@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { memo, useState, type ReactNode } from 'react'
 import { css, sx } from '../css'
 import { BANNERS, BLUE, FRAMES, LEGENDARY, SKINS, seriesItems, seriesMissing, seriesPrice, skinGeom, type ItemKind } from '../data'
 import { FAKE_PASS_PRICE, PASS_PRICE, type PassKind } from '../backend/types'
@@ -86,7 +86,7 @@ const TAB_ICONS: Record<'feat' | 'set' | 'pass' | 'inv', ReactNode> = {
 }
 const SEARCH_ICON = <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
 
-export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, onPoints, tab, onTab, onPick, passes, onBuyPass, onLogin, onPickSet }: Props) {
+export const ShopScreen = memo(function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, onPoints, tab, onTab, onPick, passes, onBuyPass, onLogin, onPickSet }: Props) {
   const [q, setQ] = useState('')
   const [searching, setSearching] = useState(false)
   const [filter, setFilter] = useState<(typeof SET_FILTERS)[number][0]>('all')
@@ -291,5 +291,5 @@ export function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, poi
       </nav>
     </div>
   )
-}
+})
 

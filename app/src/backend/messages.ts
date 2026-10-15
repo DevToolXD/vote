@@ -115,12 +115,22 @@ export function subscribeMyChats(db: Firestore, uid: string, cb: (rows: ChatRow[
   const photoStops = new Map<string, () => void>()
   let myReads: Record<string, number> = {}
   let pending = false
+  // A chat that didn't change keeps its row object, so a screen showing it isn't drawn again.
+  const made = new Map<string, { n: ChatNode; photo?: string; read?: number; row: ChatRow | null }>()
+  const rowOf = (id: string, n: ChatNode) => {
+    const photo = photos.get(id), read = myReads[id], hit = made.get(id)
+    if (hit && hit.n === n && hit.photo === photo && hit.read === read) return hit.row
+    const row = toRow(id, n, photo, read, uid)
+    made.set(id, { n, photo, read, row })
+    return row
+  }
   const emit = () => {
     if (pending) return
     pending = true
     queueMicrotask(() => {
       pending = false
-      const rows = [...nodes.entries()].map(([id, n]) => toRow(id, n, photos.get(id), myReads[id], uid)).filter((r): r is ChatRow => !!r)
+      for (const id of made.keys()) if (!nodes.has(id)) made.delete(id)
+      const rows = [...nodes.entries()].map(([id, n]) => rowOf(id, n)).filter((r): r is ChatRow => !!r)
       rows.sort((a, b) => ms(b.updatedAt) - ms(a.updatedAt))
       cb(rows)
     })
@@ -164,10 +174,25 @@ export async function loadOlderMessages(db: Firestore, chatId: string, beforeId:
   return rowsOf(s.val())
 }
 
-/** Merges a fresh page into what the room already shows (by id), oldest first. */
+const sameMessage = (a: MessageRow, b: MessageRow) =>
+  a.uid === b.uid && a.text === b.text && ms(a.at) === ms(b.at) && a.kind === b.kind && a.giftId === b.giftId &&
+  a.amount === b.amount && a.mediaId === b.mediaId && a.replyTo?.id === b.replyTo?.id && a.replyTo?.text === b.replyTo?.text
+
+/**
+ * Merges a fresh page into what the room already shows (by id), oldest first. A message that
+ * didn't change keeps its object (each page arrives whole, every time), so only new or changed
+ * rows are drawn again; with nothing new at all the same list comes back.
+ */
 export function mergeMessages(prev: MessageRow[] | null, rows: MessageRow[]) {
   const byId = new Map((prev ?? []).map(m => [m.id, m]))
-  for (const r of rows) byId.set(r.id, r)
+  let changed = !prev
+  for (const r of rows) {
+    const old = byId.get(r.id)
+    if (old && sameMessage(old, r)) continue
+    byId.set(r.id, r)
+    changed = true
+  }
+  if (!changed) return prev as MessageRow[]
   return [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : 1))
 }
 

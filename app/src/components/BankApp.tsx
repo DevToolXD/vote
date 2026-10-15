@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css, sx } from '../css'
 import { priceOf, type ItemKind } from '../data'
@@ -30,7 +30,7 @@ const LABEL: Record<BankLog['kind'], string> = { in: '넣기', out: '빼기', bo
 /** Points coming into my wallet (+) or leaving it (−) for a log line. The interest on a loan is owed, not paid. */
 const SIGN: Record<BankLog['kind'], 1 | -1> = { in: -1, out: 1, borrow: 1, repay: -1, 'int-dep': 1, 'int-loan': -1 }
 
-export function BankApp({ db, uid, owned, points, onLogin, onToast }: Props) {
+export const BankApp = memo(function BankApp({ db, uid, owned, points, onLogin, onToast }: Props) {
   const [bank, setBank] = useState<BankDoc | null | undefined>(undefined) // undefined: still loading
   const [log, setLog] = useState<BankLog[]>([])
   const [sheet, setSheet] = useState<BankKind | null>(null)
@@ -160,7 +160,7 @@ export function BankApp({ db, uid, owned, points, onLogin, onToast }: Props) {
       )}
     </>
   )
-}
+})
 
 function Point({ title, text }: { title: string; text: string }) {
   return (

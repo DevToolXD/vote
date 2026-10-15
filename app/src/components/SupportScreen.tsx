@@ -4,13 +4,15 @@ import { css, sx } from '../css'
 import { MAX_SUPPORT_TEXT, markSupportRead, sendSupport, subscribeSupportMessages, subscribeTicket, type SupportFrom, type SupportMessage, type Ticket } from '../backend/support'
 import { restartSupport, signInForSupport } from '../backend/auth'
 import { BackIcon } from './icons'
-import { KeyboardUnderlay, PlaneIcon, useKeyboardSafeBox } from './MessagesScreen'
+import { KeyboardUnderlay, PlaneIcon } from './MessagesScreen'
+import { useKeyboardRoom } from '../keyboardRoom'
 
 // 상담 (support chat) screens: the user side opens from 로그인 → 비밀번호를 잊었어요
 // (no account needed — an anonymous login), the admin side from 관리 → 상담.
 
 const EASE = 'cubic-bezier(0.16,1,0.3,1)'
-const clock = (ms: number) => (ms ? new Date(ms).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }) : '')
+const TIME_FMT = new Intl.DateTimeFormat('ko-KR', { hour: 'numeric', minute: '2-digit' })
+const clock = (ms: number) => (ms ? TIME_FMT.format(ms) : '')
 const field = 'height:52px;border:0;outline:none;border-radius:14px;background-color:#f2f4f6;padding:0 16px;font-size:17px;color:#191f28;min-width:0'
 
 type RoomProps = {
@@ -39,15 +41,18 @@ export function SupportRoom({ db, ticketUid, as, title, subtitle, exists, profil
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLDivElement>(null)
+  const pinned = useRef(true)
   const firstIds = useRef<Set<string> | null>(null)
-  const box = useKeyboardSafeBox()
+  useKeyboardRoom({ box: boxRef, composer: composerRef, list: listRef, pinned })
 
   useEffect(() => subscribeSupportMessages(db, ticketUid, rows => {
     if (!firstIds.current) firstIds.current = new Set(rows.map(r => r.id))
     setMsgs(rows)
   }), [db, ticketUid])
   useEffect(() => { if (exists) markSupportRead(db, ticketUid, as).catch(() => {}) }, [db, ticketUid, as, exists, msgs.length])
-  useLayoutEffect(() => { const el = listRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: firstIds.current && msgs.length > firstIds.current.size ? 'smooth' : 'auto' }) }, [msgs, box.height])
+  useLayoutEffect(() => { const el = listRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: firstIds.current && msgs.length > firstIds.current.size ? 'smooth' : 'auto' }) }, [msgs])
 
   const send = async () => {
     const t = draft.trim()
@@ -60,9 +65,9 @@ export function SupportRoom({ db, ticketUid, as, title, subtitle, exists, profil
   return (
     <>
     <KeyboardUnderlay z={249} />
-    <div style={sx('position:fixed;left:0;right:0;z-index:250;display:flex;justify-content:center', { top: box.top, height: box.height })}>
+    <div ref={boxRef} style={css('position:fixed;left:0;right:0;z-index:250;display:flex;justify-content:center;top:0;height:100%')}>
       <div data-g="app" className="no-select" style={css(`width:100%;max-width:var(--app-w);height:100%;background:#ffffff;display:flex;flex-direction:column;animation:roomIn 360ms ${EASE} backwards`)}>
-        <div style={css('flex:none;display:flex;align-items:center;gap:4px;padding:calc(4px + env(safe-area-inset-top)) 8px 4px')}>
+        <div style={css('flex:none;display:flex;align-items:center;gap:4px;padding:calc(4px + var(--kb-safe-top, env(safe-area-inset-top))) 8px 4px')}>
           <button className="pr-dim" onClick={onBack} aria-label="뒤로" style={css('width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#191f28')}><BackIcon /></button>
           <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;padding-left:4px')}>
             <span style={css('font-size:17px;line-height:25.5px;font-weight:600;color:#191f28;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{title}</span>
@@ -71,7 +76,8 @@ export function SupportRoom({ db, ticketUid, as, title, subtitle, exists, profil
           {headerAction}
         </div>
         {tools}
-        <div ref={listRef} style={css('flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;gap:4px')}>
+        <div style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden')}>
+        <div ref={listRef} style={css('flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:8px 16px 16px;display:flex;flex-direction:column;gap:4px')}>
           {intro}
           {msgs.map((m, i) => {
             const mine = m.from === as
@@ -79,7 +85,7 @@ export function SupportRoom({ db, ticketUid, as, title, subtitle, exists, profil
             const isNew = !!firstIds.current && !firstIds.current.has(m.id)
             const lastOfRun = !next || next.from !== m.from
             return (
-              <div key={m.id} style={sx('display:flex;flex-direction:column;gap:4px', { alignItems: mine ? 'flex-end' : 'flex-start', marginTop: i > 0 && msgs[i - 1].from !== m.from ? 12 : 0, animation: isNew ? `${mine ? 'msgInR' : 'msgInL'} 380ms ${EASE} both` : undefined })}>
+              <div key={m.id} style={sx('display:flex;flex-direction:column;gap:4px', { alignItems: mine ? 'flex-end' : 'flex-start', marginTop: i > 0 && msgs[i - 1].from !== m.from ? 12 : 0, animation: isNew ? `${mine ? 'msgInR' : 'msgInL'} 380ms ${EASE} backwards` : undefined })}>
                 {!mine && (i === 0 || msgs[i - 1].from !== m.from) && <span style={css('font-size:13px;color:#4e5968;font-weight:500')}>{m.from === 'admin' ? '상담원' : title}</span>}
                 <span style={sx('display:flex;align-items:flex-end;gap:6px;max-width:80%', { flexDirection: mine ? 'row-reverse' : 'row' })}>
                   <span style={sx('padding:10px 14px;border-radius:20px;font-size:15px;line-height:22px;white-space:pre-wrap;word-break:break-word', { background: mine ? '#3182f6' : '#f2f4f6', color: mine ? '#fff' : '#191f28', fontWeight: mine ? 500 : 400 })}>{m.text}</span>
@@ -89,12 +95,13 @@ export function SupportRoom({ db, ticketUid, as, title, subtitle, exists, profil
             )
           })}
         </div>
+        </div>
         {closed ? (
-          <div style={css('flex:none;padding:14px 20px calc(14px + env(safe-area-inset-bottom));text-align:center;font-size:14px;line-height:21px;color:#6b7684;background:#f9fafb')}>
+          <div ref={composerRef} style={css('flex:none;position:relative;z-index:1;padding:14px 20px calc(14px + var(--kb-safe-bottom, env(safe-area-inset-bottom)));text-align:center;font-size:14px;line-height:21px;color:#6b7684;background:#f9fafb')}>
             상담이 끝났어요{as === 'user' ? ' · 더 궁금하면 로그인 화면의 "비밀번호를 잊었어요"로 새로 시작해주세요' : ''}
           </div>
         ) : (
-          <div style={css('flex:none;padding:8px 12px calc(8px + env(safe-area-inset-bottom));display:flex;align-items:flex-end;gap:8px')}>
+          <div ref={composerRef} style={css('flex:none;position:relative;z-index:1;background:inherit;padding:8px 12px calc(8px + var(--kb-safe-bottom, env(safe-area-inset-bottom)));display:flex;align-items:flex-end;gap:8px')}>
             <textarea className="box-focus" rows={1} value={draft} maxLength={MAX_SUPPORT_TEXT} placeholder={as === 'admin' ? '답변 보내기' : '궁금한 점을 적어주세요'}
               onChange={e => setDraft(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }}
