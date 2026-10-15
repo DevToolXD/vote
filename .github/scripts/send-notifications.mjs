@@ -904,13 +904,40 @@ let stockState = {}
 let stockDailyBusy = false, stockDailyAt = 0, stockDailyTry = 0
 const num = v => (Number.isFinite(v) ? sig(v) : 0)
 const nv = v => { const x = Number(String(v ?? '').replace(/[, ]/g, '')); return Number.isFinite(x) ? x : 0 }
-async function naverGet(url, text = false) {
-  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 10_000)
+/** One GET (6 s at most). `err.down`: the site didn't answer properly (no connection, a timeout, 5xx, 429), as opposed to "not found". */
+async function httpGet(url, text = false) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 6_000)
+  const what = url.replace(/^https?:\/\//, '').slice(0, 60)
   try {
-    const r = await fetch(url, { signal: ctl.signal, headers: { 'User-Agent': STOCK_UA, Accept: 'application/json, text/plain, */*', Referer: 'https://m.stock.naver.com/' } })
-    if (!r.ok) throw new Error(`Naver ${url.replace(/^https?:\/\//, '').slice(0, 60)} → ${r.status}`)
+    let r
+    try { r = await fetch(url, { signal: ctl.signal, headers: { 'User-Agent': STOCK_UA, Accept: 'application/json, text/plain, */*', Referer: 'https://m.stock.naver.com/' } }) }
+    catch (e) { throw Object.assign(new Error(`${what} → ${e.name === 'AbortError' ? 'timeout' : e.message}`), { down: true }) }
+    if (!r.ok) throw Object.assign(new Error(`${what} → ${r.status}`), { down: r.status >= 500 || r.status === 429 })
     return text ? await r.text() : await r.json()
   } finally { clearTimeout(t) }
+}
+// Naver not answering (an outage, or it turned this server away): after a few failures in a row the
+// worker stops asking for a while — 1, 2, 4 … 30 minutes — instead of sending hundreds of requests
+// into the void. Everything else in the worker carries on meanwhile (the stocks run beside it).
+const NV_FAIL_LIMIT = 8
+let nvFails = 0, nvDownUntil = 0, nvDownStep = 0
+const nvWait = () => Math.max(1, Math.ceil((nvDownUntil - Date.now()) / 60_000))
+async function naverGet(url, text = false) {
+  if (Date.now() < nvDownUntil) throw Object.assign(new Error(`네이버 증권이 응답하지 않아 쉬는 중 · ${nvWait()}분 뒤 다시 시도`), { down: true, resting: true })
+  try {
+    const v = await httpGet(url, text)
+    nvFails = 0; nvDownStep = 0
+    return v
+  } catch (e) {
+    if (!e.down) { nvFails = 0; throw e } // it answered ("not found"): it's up
+    if (++nvFails >= NV_FAIL_LIMIT) {
+      nvFails = 0
+      nvDownStep = Math.min(nvDownStep ? nvDownStep * 2 : 60_000, 30 * 60_000)
+      nvDownUntil = Date.now() + nvDownStep
+      warn(`Naver isn't answering (${e.message}); trying again in ${Math.round(nvDownStep / 60_000)} min`)
+    }
+    throw e
+  }
 }
 /** The first of these addresses that answers. */
 async function naverFirst(urls, text = false) {
@@ -945,17 +972,26 @@ async function pollKorean(codes) {
   }
   return out
 }
-/** One stock or index by its Naver code: Naver's `basic`, from either host. */
-async function naverBasic(s, nc) {
+/** One stock or index by its Naver code: Naver's `basic` (from the second host too, unless only guessing). */
+async function naverBasic(s, nc, guessing = false) {
   const base = s.m === 'IX' ? `index/${nc}` : `stock/${nc}`
-  return basicQuote(await naverFirst([`${NAVER_API}/${base}/basic`, `${NAVER_M}/api/${base}/basic`]), s.y, s.m)
+  const urls = [`${NAVER_API}/${base}/basic`, `${NAVER_M}/api/${base}/basic`]
+  return basicQuote(await naverFirst(guessing ? urls.slice(0, 1) : urls), s.y, s.m)
 }
+// Tickers Naver knows under none of the guesses (asked once per run, not every tick)
+const naverUnknown = new Set()
 /** Naver's code for a stock or index: for a foreign stock the first guess Naver answers to (kept on the entry). */
 async function resolveNaver(s) {
   if (s.nc) return s.nc
   if (s.m === 'KR') return (s.nc = s.t) // a Korean stock's ticker IS its six-digit code
   if (s.m === 'IX') return (s.nc = NAVER_INDEX[s.y]?.[0] ?? s.t)
-  for (const g of usGuesses(s.t)) { const q = await naverBasic(s, g).catch(() => null); if (q) { s.nc = g; s.q0 = q; return g } }
+  if (naverUnknown.has(s.t)) return null
+  let answered = true
+  for (const g of usGuesses(s.t)) {
+    try { const q = await naverBasic(s, g, true); if (q) { s.nc = g; s.q0 = q; return g } }
+    catch (e) { if (e.down) { answered = false; break } }
+  }
+  if (answered) naverUnknown.add(s.t) // every guess got a real "no": stop asking
   return null
 }
 /** Runs `fn` over `items`, a few at a time. */
@@ -987,7 +1023,7 @@ async function naverQuotes(list) {
 async function fetchFx() {
   let last = null
   for (const u of FX_URLS) {
-    try { const r = nv((await naverGet(u))?.rates?.KRW); if (r > 100 && r < 100000) return r } catch (e) { last = e }
+    try { const r = nv((await httpGet(u))?.rates?.KRW); if (r > 100 && r < 100000) return r } catch (e) { last = e }
   }
   throw last ?? new Error('No USD/KRW rate')
 }
@@ -1053,12 +1089,23 @@ function applyStock(s, x) {
   if (x.marketState && s.m !== 'IX') stockState[s.m] = x.marketState
   return true
 }
+// How often each market is asked: the Korean stocks are one batch (two requests), but each US stock
+// is a request of its own, so those are asked less often — and much less while the US market is
+// closed (their prices don't move then). Indices every minute.
+const US_OPEN_MS = 3 * 60_000, US_CLOSED_MS = 15 * 60_000, IX_EVERY_MS = 60_000
+let usAt = 0, ixAt = 0
 async function fetchStockPrices() {
-  const [q, fx] = await Promise.all([naverQuotes(stockList), fetchFx().catch(() => 0)])
+  const now = Date.now()
+  const usDue = now - usAt >= (stockState.US === 'REGULAR' ? US_OPEN_MS : US_CLOSED_MS)
+  const ixDue = now - ixAt >= IX_EVERY_MS
+  const want = stockList.filter(s => s.m === 'KR' || (s.m === 'US' ? usDue : ixDue))
+  const [q, fx] = await Promise.all([naverQuotes(want), usDue || !stockFx ? fetchFx().catch(() => 0) : 0])
   if (fx) stockFx = fx
   let n = 0
-  for (const s of stockList) if (applyStock(s, q.get(s.sym))) n++
+  for (const s of want) if (applyStock(s, q.get(s.sym))) n++
   if (!n) throw new Error('No stock prices in the answer')
+  if (want.some(s => s.m === 'US' && q.has(s.sym))) usAt = now
+  if (want.some(s => s.m === 'IX' && q.has(s.sym))) ixAt = now
   stockOkAt = Date.now()
 }
 /** A stock's daily closes (in its own currency) from Naver: [days since 1970[], closes[]]. */
@@ -1192,6 +1239,14 @@ async function stockInit() {
   await fetchStockPrices().then(() => setStockStatus(true, 'ok'), e => setStockStatus(false, '시세 가져오기 실패: ' + e.message))
   stockDailyAt = (await rdb.ref('stocks/dmeta/at').once('value')).val() ?? 0
   if (Date.now() - stockDailyAt > 20 * 3600_000) { stockDailyTry = Date.now(); stockDaily().catch(e => warn('Stock history failed: ' + e.message)) }
+}
+// The stocks run beside the main loop: a slow or unreachable Naver never holds up notifications,
+// coin orders or chat. One run at a time.
+let stockRunning = false
+function stockKick() {
+  if (stockRunning) return
+  stockRunning = true
+  stockTick().catch(e => warn('Stock prices failed: ' + e.message)).finally(() => { stockRunning = false })
 }
 async function stockTick() {
   if (!stockList) {
@@ -1341,8 +1396,7 @@ const rulesCheck = () => new Promise(res => execFile('node', ['.github/scripts/d
 
 coinInitAt = Date.now()
 await coinInit().catch(e => warn('Coin start failed (retrying): ' + e.message))
-stockInitAt = Date.now()
-await stockInit().catch(e => warn('Stock start failed (retrying): ' + e.message))
+stockKick() // starts the stocks (beside the loop, see stockKick)
 let migrated = await migrateChats().catch(e => { warn('Moving chats to the Realtime Database failed (will retry): ' + e.message); return false })
 let nextMigration = Date.now() + 30 * 60_000
 let rounds = 0
@@ -1381,7 +1435,7 @@ while (true) {
   await pruneLedger().catch(e => warn('Ledger prune failed: ' + e.message))
   await deliverScheduled().catch(e => warn('Scheduled messages failed: ' + e.message))
   await coinTick().catch(e => warn('Coin prices failed: ' + e.message))
-  await stockTick().catch(e => warn('Stock prices failed: ' + e.message))
+  stockKick()
   await bankTick().catch(e => warn('Bank failed: ' + e.message))
   await homeTick().catch(e => warn('Hearts failed: ' + e.message))
   await fillCoinOrders()
