@@ -4,7 +4,7 @@
 disk, the way the film's picture is made (light bends round the hole, so the far side of the disk shows
 up over the top and again, thinner, under it; the photon ring; the near side crossing in front).
 
-  python3 scripts/gargantua.py            writes public/garg/gargantua.v2.webp (an animated, transparent loop)
+  python3 scripts/gargantua.py            writes public/garg/gargantua.v3.webp (an animated, transparent loop)
   python3 scripts/gargantua.py preview    writes preview PNGs next to it in the scratch dir given by $OUT
 
 How it works (M = 1, the hole's shadow has radius b_c = 3√3):
@@ -31,7 +31,7 @@ BC = 3 * math.sqrt(3)          # the shadow's radius (in M)
 SHADOW_PX = 62.0
 PX = SHADOW_PX / BC            # pixels per M
 INCL = math.radians(83.0)      # the viewer's angle from the disk's axis (90° = edge on)
-R_IN, R_OUT = 6.0, 15.0
+R_IN, R_OUT = 6.0, float(os.environ.get('ROUT', 10.5))   # the disk ends close in, so the picture hardly spills over the neighbours
 FRAMES, MS = 40, 60
 TURNS = 1.5                    # turns of the disk's inner edge in one loop
 
@@ -131,13 +131,13 @@ def shade(geo, t):
         if not ok.any():
             continue
         noise = sample_tex(r, theta, t)
-        edge = smooth(R_IN - 0.3, R_IN + 0.5, r) * (1 - smooth(R_OUT - 4.5, R_OUT, r))
+        edge = smooth(R_IN - 0.3, R_IN + 0.5, r) * (1 - smooth(R_OUT - 3.2, R_OUT, r))
         trel = (R_IN / r) ** 0.75
         heat = g * trel * 1.05
-        rad = (R_IN / r) ** 2.2 * g ** 3.0 * (0.35 + 1.25 * noise ** 1.3) * edge
+        rad = (R_IN / r) ** 1.9 * g ** 3.0 * (0.45 + 1.5 * noise ** 1.3) * edge
         # an image of higher order is the same disk seen after light went round: dimmer and thinner
         rad = rad * (1.0 if n == 0 else 0.85 if n == 1 else 0.7)
-        op = np.clip(0.30 + 1.1 * noise, 0, 1) * smooth(R_IN - 0.3, R_IN + 0.3, r) * (1 - smooth(R_OUT - 2.0, R_OUT + 0.8, r))
+        op = np.clip(0.30 + 1.1 * noise, 0, 1) * smooth(R_IN - 0.3, R_IN + 0.3, r) * (1 - smooth(R_OUT - 1.4, R_OUT + 0.6, r))
         a = np.where(ok, op, 0.0)
         light += (T * a * rad)[..., None] * colormap(heat)
         T = T * (1 - a)
@@ -148,8 +148,8 @@ def blur(img, sigma):
 
 def finish(light, cover):
     """Light → a transparent picture: tone-mapped, bloomed, with a dark haze under the glow."""
-    k = 2.1
-    glow = light + 0.55 * blur(light, 3.5) + 0.35 * blur(light, 11.0) + 0.18 * blur(light, 26.0)
+    k = 2.5
+    glow = light + 0.8 * blur(light, 3.0) + 0.6 * blur(light, 8.0) + 0.4 * blur(light, 17.0) + 0.15 * blur(light, 30.0)
     v = 1 - np.exp(-k * glow)
     a = np.clip(v.max(-1), 0, 1)
     haze = np.clip(blur(cover, 5.0) * 1.2, 0, 0.7)
@@ -196,6 +196,6 @@ if __name__ == '__main__':
         frames.append(Image.fromarray(f, 'RGBA'))
         print('frame', i, flush=True)
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, 'gargantua.v2.webp')
+    path = os.path.join(out_dir, 'gargantua.v3.webp')
     frames[0].save(path, save_all=True, append_images=frames[1:], duration=MS, loop=0, lossless=False, quality=88, method=5, minimize_size=False)
     print(path, os.path.getsize(path) // 1024, 'KB')

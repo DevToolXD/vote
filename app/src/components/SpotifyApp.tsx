@@ -12,7 +12,7 @@ import { playMusic, toggleMusic, useMusic } from '../music'
 const BG = '#121212', CARD = '#1f1f1f', GREEN = '#1ed760', SEC = '#b3b3b3'
 const FONT = "'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif"
 type Tab = 'home' | 'search' | 'lib'
-const SONG_POINTS = 10
+const SONG_POINTS = 6
 
 type Props = { db: Firestore | null; uid: string | null; me?: Person; byId: Map<string, Person>; onLogin: () => void; onToast: (msg: string) => void }
 
@@ -184,8 +184,8 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
             ))}
             <div style={css('flex:1;min-height:0;overflow-y:auto;padding:0 18px 24px')}>
               <div style={css(`margin:2px 0 8px;padding:12px 14px;border-radius:10px;background:${CARD};font-size:13px;line-height:19px;color:${SEC}`)}>
-                내가 추가한 곡을 다른 사람이 <b style={css('color:#fff')}>1분 이상</b> 들으면 {SONG_POINTS}포인트를 받아요.
-                {mine.length > 0 && <div style={css('margin-top:4px;color:#fff;font-weight:600')}>내 곡 {mine.length}개 · 들은 횟수 {listens}회 · {(listens * SONG_POINTS).toLocaleString()}P</div>}
+                내가 추가한 곡을 다른 사람이 들으면 <b style={css('color:#fff')}>1분마다</b> {SONG_POINTS}포인트를 받아요. 다시 들어도, 10초씩 나눠 들어도 같은 사람이 들은 시간이 쌓여요.
+                {mine.length > 0 && <div style={css('margin-top:4px;color:#fff;font-weight:600')}>내 곡 {mine.length}개 · 들은 시간 {listens}분 · {(listens * SONG_POINTS).toLocaleString()}P</div>}
               </div>
               {songs === null ? <div style={css(`padding:40px;text-align:center;color:${SEC}`)}>불러오는 중</div> : mine.length === 0 ? (
                 <div style={css(`padding:44px 24px;text-align:center;color:${SEC};font-size:15px;line-height:23px`)}>아직 추가한 곡이 없어요.<br />위의 ＋를 눌러 유튜브 링크를 붙여 넣어 보세요.</div>

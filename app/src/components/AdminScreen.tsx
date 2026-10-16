@@ -415,7 +415,7 @@ export function AdminScreen({ all, db, boostCoin, tickets, onOpenTicket, postNot
           </div>
         </Dialog>
       )}
-      {ledgerOf && <LedgerSheet uid={ledgerOf} title={`${all.find(p => p.id === ledgerOf)?.name ?? ''}님의 거래 내역`} byId={new Map(all.map(p => [p.id, p]))} onClose={() => setLedgerOf(null)} />}
+      {ledgerOf && <LedgerSheet uid={ledgerOf} title={`${all.find(p => p.id === ledgerOf)?.name ?? ''}님의 거래 내역`} byId={new Map(all.map(p => [p.id, p]))} canTrace onClose={() => setLedgerOf(null)} />}
     </div>
   )
 }

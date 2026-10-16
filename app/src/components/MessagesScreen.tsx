@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type React
 import type { Firestore } from 'firebase/firestore'
 import { css, imageCss, sx } from '../css'
 import { MEDALS } from '../data'
+import { useNear } from './LazyImg'
 import { setChatMuted, HEARTBEAT_MS, MAX_GROUP, MAX_GROUP_NAME, MAX_TEXT, PAGE, isUnread, markGone, markHere, noteRead, postFooled, sendFakeGift, cancelScheduled, subscribeScheduled, type Scheduled, setChatTimeout, timedOutUntil, loadImage, loadOlderMessages, mergeMessages, subscribeMessages, type ChatRow, type MessageRow, type ReplyRef } from '../backend/messages'
 import { MAX_GIFT, giftPrice, hasGift, itemLabel, subscribeGift, type Gift, type GiftKind } from '../backend/gifts'
 import { PASSES } from './ShopScreen'
@@ -533,7 +534,7 @@ export const ChatRoom = memo(function ChatRoom(p: RoomProps) {
     if (!el) return
     nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
     if (nearBottom.current && newBelow) setNewBelow(0)
-    if (el.scrollTop < 200) loadOlder()
+    if (el.scrollTop < Math.max(700, el.clientHeight * 1.2)) loadOlder()   // a screen early: older messages are in before you get to them
   }
   useLayoutEffect(() => {
     if (!msgs) return
@@ -903,9 +904,12 @@ const EMPTY_PEOPLE = new Map<string, Person>()
 function ImageBubble({ db, chatId, msgId, onOpen, onLoaded }: { db: Firestore; chatId: string; msgId: string; onOpen: (src: string) => void; onLoaded?: () => void }) {
   const [src, setSrc] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
-  useEffect(() => { let live = true; loadImage(db, chatId, msgId).then(s => { if (live) setSrc(s) }).catch(() => {}); return () => { live = false } }, [db, chatId, msgId])
+  const box = useRef<HTMLButtonElement>(null)
+  // fetched when it is about a screen away from view, not all at once when the chat opens
+  const near = useNear(box, 1200)
+  useEffect(() => { if (!near) return; let live = true; loadImage(db, chatId, msgId).then(s => { if (live) setSrc(s) }).catch(() => {}); return () => { live = false } }, [db, chatId, msgId, near])
   return (
-    <button className="pr-96" onClick={() => src && onOpen(src)} aria-label="사진 크게 보기" style={css('display:block;padding:0;border-radius:18px;overflow:hidden;position:relative;min-width:120px;min-height:120px;background:#f2f4f6')}>
+    <button ref={box} className="pr-96" onClick={() => src && onOpen(src)} aria-label="사진 크게 보기" style={css('display:block;padding:0;border-radius:18px;overflow:hidden;position:relative;min-width:120px;min-height:120px;background:#f2f4f6')}>
       {!loaded && <span className="skeleton" style={css('position:absolute;inset:0')} />}
       {src && <img src={src} alt="사진" onLoad={() => { setLoaded(true); onLoaded?.() }} style={sx(`display:block;max-width:220px;max-height:300px;object-fit:cover;transition:opacity 300ms ${EASE}`, { opacity: loaded ? 1 : 0 })} />}
     </button>

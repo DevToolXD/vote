@@ -441,7 +441,7 @@ describe('profile and shop', () => {
     await denied(remove(a, 'k1'))                                                                         // already gone
     await deleteDoc(fsDoc(a, 'posts', 'cc1'))
   })
-  test('Spotify: a song is added once (its id is the YouTube id); a listen counts once per 10 minutes and never for your own song; the owner earns 10P per listen', async () => {
+  test('Spotify: a song is added once (its id is the YouTube id); listening time adds up and every full minute pays the owner 6P, never for your own song', async () => {
     const a = await signUp('a'), b = await signUp('b')
     const vid = 'dQw4w9WgXcQ'
     const song = (uid: string, over: Record<string, unknown> = {}) => ({ vid, title: '노래 제목', uid, plays: 0, at: fsServerTimestamp(), ...over })
@@ -461,24 +461,40 @@ describe('profile and shop', () => {
     await fsUpdateDoc(fsDoc(b, 'songs', 'EEEEEEEEEEE'), { title: '진짜 제목' })
     await denied(fsUpdateDoc(fsDoc(b, 'songs', 'EEEEEEEEEEE'), { title: '또 바꿈' }))
     await denied(fsUpdateDoc(fsDoc(a, 'songs', vid), { plays: 99 }))
-    // listens
-    const play = (who: typeof a, uid: string, v = vid, id = `${v}_${uid}`) => fsSetDoc(fsDoc(who, 'songPlays', id), { vid: v, uid, at: fsServerTimestamp() }, { merge: true })
-    await denied(play(a, 'a'))                                              // your own song
-    await denied(play(b, 'b', vid, `${vid}_a`))                             // someone else's record
-    await denied(play(b, 'b', 'ZZZZZZZZZZZ'))                               // no such song
-    await play(b, 'b')
-    await denied(play(b, 'b'))                                              // again within 10 minutes
+    // listening time: seconds add up over every play
+    const play = (who: typeof a, uid: string, secs: number, v = vid, id = `${v}_${uid}`) => fsSetDoc(fsDoc(who, 'songPlays', id), { vid: v, uid, secs: fsIncrement(secs), at: fsServerTimestamp() }, { merge: true })
+    await denied(play(a, 'a', 30))                                          // your own song
+    await denied(play(b, 'b', 30, vid, `${vid}_a`))                         // someone else's record
+    await denied(play(b, 'b', 30, 'ZZZZZZZZZZZ'))                           // no such song
+    await denied(play(b, 'b', 41))                                          // more than 40 s at once
+    await denied(play(b, 'b', 0))
+    await play(b, 'b', 40)
+    await denied(play(b, 'b', 1))                                           // within 5 s of the last one
     await denied(fsGetDoc(fsDoc(b, 'songPlays', `${vid}_b`)))               // only the worker reads them
     await denied(deleteDoc(fsDoc(b, 'songPlays', `${vid}_b`)))
-    // the worker pays the owner 10P for the listen and counts it on the song
+    // not worth a point yet: 40 s
     const bonusOf = async () => (await read(a, 'candidates/a')).bonus ?? 0
     const start = await bonusOf()
     await kickWorker(40000)
-    for (let i = 0; i < 80 && (await bonusOf()) < start + 10; i++) await new Promise(r => setTimeout(r, 500))
-    assert.equal(await bonusOf(), start + 10, 'one listen: 10 points')
+    await new Promise(r => setTimeout(r, 19000))
+    await denied(play(b, 'b', 40))                                          // 40 s of listening can't have happened in 19 s
+    assert.equal(await bonusOf(), start, 'under a minute: nothing yet')
+    await play(b, 'b', 20)                                                  // 20 s more (the earlier play and this one: a minute)
+    for (let i = 0; i < 80 && (await bonusOf()) < start + 6; i++) await new Promise(r => setTimeout(r, 500))
+    assert.equal(await bonusOf(), start + 6, 'one minute: 6 points')
     assert.equal((await read(a, 'songs/' + vid)).plays, 1)
     await new Promise(r => setTimeout(r, 5000))
-    assert.equal(await bonusOf(), start + 10, 'paid once')
+    assert.equal(await bonusOf(), start + 6, 'paid once')
+    // the 거래 내역 says who listened to what (not "관리자가 지급")
+    let row: { k: string; d: number; x?: string; b?: number } | undefined
+    for (let i = 0; i < 40 && !row; i++) {
+      row = Object.values((await rt(a, 'ledger/a')) ?? {}).find((r: any) => r.k === 'song') as typeof row
+      if (!row) await new Promise(r => setTimeout(r, 500))
+    }
+    assert.ok(row, 'a song line in the ledger')
+    assert.equal(row.d, 6)
+    assert.ok(row.x?.startsWith(`${vid}|b|`), 'the line names the song and the listener: ' + row.x)
+    assert.equal(Object.values((await rt(a, 'ledger/a')) ?? {}).filter((r: any) => r.k === 'grant').length, 0)
     await denied(deleteDoc(fsDoc(b, 'songs', vid)))
     await deleteDoc(fsDoc(a, 'songs', vid))
   })

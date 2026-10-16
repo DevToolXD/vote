@@ -3,8 +3,8 @@ import type { Firestore } from 'firebase/firestore'
 import { FALLBACK_TITLE, countListen, fixSongTitle, thumbOf, type Song } from './backend/songs'
 
 // The one player of the whole app (Spotify's songs play here, whatever screen is up): YouTube's player
-// (IFrame API) in a hidden element that stays on the page, a queue, and the 1-minute listen count that
-// makes the song's owner earn points. Screens read it with useMusic() and call the functions below.
+// (IFrame API) in a hidden element that stays on the page, a queue, and the listen count that
+// makes the song's owner earn points (6 for every minute heard). Screens read it with useMusic() and call the functions below.
 
 type YTPlayer = {
   loadVideoById(id: string): void
@@ -44,7 +44,11 @@ export function configureMusic(s: Setup) {
 
 let player: YTPlayer | null = null
 let apiLoading: Promise<void> | null = null
-let listened = 0, listenTimer: ReturnType<typeof setInterval> | undefined, counted = false
+let listenTimer: ReturnType<typeof setInterval> | undefined, lastTick = 0
+// Listening time not yet sent, per song (every second of someone else's song counts, replays too, so ten
+// seconds here and a minute there add up): sent every ~15 s, and when the music stops, pauses or changes.
+const owed = new Map<string, number>()
+let flushing = false
 let guard: ReturnType<typeof setTimeout> | undefined
 
 function loadApi(): Promise<void> {
@@ -65,15 +69,37 @@ function loadApi(): Promise<void> {
 
 const current = () => state.queue[state.index] as Song | undefined
 
+const FLUSH_EVERY = 15, MAX_OWED = 150
+async function flushListen(all = false) {
+  if (flushing || !setup.db || !setup.uid) return
+  flushing = true
+  try {
+    for (const [id, ms] of [...owed]) {
+      const secs = Math.min(Math.floor(ms / 1000), 40)
+      if (secs < (all ? 1 : FLUSH_EVERY)) continue
+      owed.set(id, ms - secs * 1000)
+      const ok = await countListen(setup.db, id, setup.uid, secs)
+      // too soon after the last one (the rules want 5 s between): try again with the next flush
+      if (!ok) owed.set(id, Math.min((owed.get(id) ?? 0) + secs * 1000, MAX_OWED * 1000))
+    }
+  } finally { flushing = false }
+}
 function startListenClock() {
   clearInterval(listenTimer)
+  lastTick = Date.now()
   listenTimer = setInterval(() => {
+    const now = Date.now(), dt = Math.min(now - lastTick, 2500)
+    lastTick = now
     const song = current()
-    if (state.status !== 'playing' || !song) return
-    listened++
-    // a minute of listening to someone else's song counts (the worker pays its owner)
-    if (listened >= 60 && !counted && setup.db && setup.uid && song.uid !== setup.uid) { counted = true; countListen(setup.db, song.id, setup.uid) }
+    if (state.status !== 'playing' || !song || !setup.uid || song.uid === setup.uid) return
+    owed.set(song.id, (owed.get(song.id) ?? 0) + dt)
+    if ((owed.get(song.id) ?? 0) >= FLUSH_EVERY * 1000) flushListen()
   }, 1000)
+}
+// what is owed also goes out when the page is left
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushListen(true) })
+  window.addEventListener('pagehide', () => { flushListen(true) })
 }
 
 function mediaSession() {
@@ -144,7 +170,7 @@ async function ensurePlayer(): Promise<YTPlayer> {
 function load(index: number) {
   const song = state.queue[index]
   if (!song) return
-  listened = 0; counted = false
+  flushListen(true)
   set({ index, status: 'loading', artist: setup.nameOf(song.uid) })
   mediaSession()
   ensurePlayer().then(p => {
@@ -174,6 +200,7 @@ export function pauseMusic() {
   if (!player) return
   player.pauseVideo()
   set({ status: 'paused' })
+  flushListen(true)
 }
 export function toggleMusic() {
   if (state.status === 'playing' || state.status === 'loading') pauseMusic()
@@ -190,6 +217,7 @@ export function prevMusic() {
 export function seekMusic(seconds: number) { player?.seekTo(Math.max(0, seconds), true) }
 /** Turns the music off and takes the circle away. */
 export function stopMusic() {
+  flushListen(true)
   clearInterval(listenTimer); clearTimeout(guard)
   try { player?.pauseVideo() } catch { /* the player is gone */ }
   const ms = (navigator as Navigator & { mediaSession?: MediaSession }).mediaSession

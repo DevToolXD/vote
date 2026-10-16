@@ -5,9 +5,15 @@ import { FRAMES, SKINS } from '../data'
 // Realtime Database (ledger/{uid}; ledgerFeed and alerts for the admin). See
 // .github/scripts/send-notifications.mjs (classify / record).
 
-export type LedgerKind = 'vote' | 'giftSent' | 'giftClaim' | 'giftCancel' | 'buy' | 'pass' | 'grant' | 'season' | 'app' | 'revoke' | 'giftItemSent' | 'giftItemClaim' | 'bet' | 'betWin' | 'marketBuy' | 'marketSell' | 'marketList' | 'marketCancel' | 'coinBuy' | 'coinSell' | 'coinRefund' | 'other'
-/** d = point change; n = how many 추천 one 'vote' line adds up; x = detail (item, other person); u = whose (feed only). */
-export type LedgerRow = { id: string; at: number; d: number; k: LedgerKind; x?: string; n?: number; u?: string }
+export type LedgerKind = 'vote' | 'giftSent' | 'giftClaim' | 'giftCancel' | 'buy' | 'pass' | 'grant' | 'season' | 'app' | 'revoke' | 'giftItemSent' | 'giftItemClaim' | 'bet' | 'betWin' | 'marketBuy' | 'marketSell' | 'marketList' | 'marketCancel' | 'coinBuy' | 'coinSell' | 'coinRefund' | 'heart' | 'song' | 'other'
+/**
+ * d = point change; n = how many votes / hearts / minutes one 'vote' / 'heart' / 'song' line adds up; b = the points
+ * after this line; x = detail (item, other person; for votes, hearts and listens a list 'who|…|count;…', see entriesOf);
+ * u = whose (feed only).
+ */
+export type LedgerRow = { id: string; at: number; d: number; k: LedgerKind; x?: string; n?: number; b?: number; u?: string }
+/** The list in a vote / heart / song line: each entry is its parts ('uid' · 'posts/ID', 'uid' · 'vid', 'uid') and how many. */
+export const entriesOf = (x?: string) => (x ?? '').split(';').filter(Boolean).map(e => { const p = e.split('|'); const n = Number(p.pop()) || 1; return { parts: p, n } })
 /** 수상한 포인트 증가: gained within the worker's window (since → at). */
 export type Alert = { uid: string; at: number; since: number; gain: number; votes: number; gifts: number; other: number; points: number }
 
@@ -28,9 +34,13 @@ export const ITEM_KIND: Record<string, string> = { frame: '프레임', plate: '�
 export const itemName = (kind: string, key: string) => kind === 'set' ? FRAMES.find(([k]) => k === key)?.[1] ?? key : kind === 'pass' ? (key === 'pass2x' ? '투표 2배권' : '페이크 선물 패스') : (kind === 'skin' ? SKINS : FRAMES).find(([k]) => k === key)?.[1] ?? key
 
 /** One line of 거래 내역 in words, and an emoji for it. */
-export function describe(r: LedgerRow, nameOf: (uid: string) => string): { icon: string; text: string } {
+export function describe(r: LedgerRow, nameOf: (uid: string) => string): { icon: string; text: string; sub?: string } {
+  const who = (uids: string[]) => { const u = [...new Set(uids)].map(id => nameOf(id) || '탈퇴한 사람'); return u.length ? (u.length > 2 ? `${u.slice(0, 2).join(', ')} 외 ${u.length - 2}명` : u.join(', ')) + '님' : '' }
+  const people = entriesOf(r.x).map(e => e.parts[e.parts.length - 1] ?? '')
   switch (r.k) {
-    case 'vote': return r.d > 0 ? { icon: '🗳️', text: r.n && r.n > 1 ? `투표 ${r.n}개 받음` : '투표 받음' } : { icon: '↩️', text: '투표 취소됨' }
+    case 'vote': return r.d > 0 ? { icon: '🗳️', text: r.n && r.n > 1 ? `투표 ${r.n}개 받음` : '투표 받음', sub: who(people) } : { icon: '↩️', text: '투표 취소됨' }
+    case 'heart': return { icon: '❤️', text: r.n && r.n > 1 ? `하트 ${r.n}개 받음` : '하트 받음', sub: who(people) }
+    case 'song': return { icon: '🎧', text: `내 곡이 ${r.n ?? 1}분 들렸어요`, sub: who(people) }
     case 'giftSent': return { icon: '🎁', text: r.x && !r.x.includes('_') && nameOf(r.x) ? `${nameOf(r.x)}님에게 선물` : '포인트 선물 보냄' }
     case 'giftClaim': return { icon: '🎁', text: r.x ? `${nameOf(r.x) || '누군가'}님이 준 선물 받음` : '선물 받음' }
     case 'giftItemSent': case 'giftItemClaim': {

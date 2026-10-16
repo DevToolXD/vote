@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react'
+import { LazyImg } from './LazyImg'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
 import { addComment, addDocPost, countView, removeComment, removeDoc, setLiked, watchComments, watchDocs, type Comment, type Doc } from '../backend/homework'
@@ -128,7 +129,7 @@ export const HomeworkApp = memo(function HomeworkApp({ db, uid, name, isAdmin = 
               </div>
               <div style={css('padding:0 14px 8px;font-size:17px;font-weight:800;line-height:24px;word-break:break-word')}>{d.title}</div>
               <button aria-label="사진 크게 보기" onClick={() => setViewing(d)} style={css('display:block;width:100%;padding:0')}>
-                <img src={d.photo} alt="" loading="lazy" decoding="async" style={css('display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:#f2f2f2')} />
+                <LazyImg src={d.photo} style={css('display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:#f2f2f2')} />
               </button>
               {d.caption && <p style={css('margin:10px 14px 0;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}>{d.caption}</p>}
               <div style={css('display:flex;align-items:center;gap:14px;padding:10px 12px 8px')}>

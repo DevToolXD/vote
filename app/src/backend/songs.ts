@@ -1,8 +1,9 @@
-import { collection, deleteDoc, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, type Firestore, type Timestamp, type Unsubscribe } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDoc, increment, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, type Firestore, type Timestamp, type Unsubscribe } from 'firebase/firestore'
 
 // Spotify: songs come from YouTube links. songs/{videoId} is the song (the doc id IS the 11-character
-// video id, so a song can only be added once); songPlays/{videoId}_{listener} records that someone
-// listened for a minute, and the background worker pays the song's owner 10 points for each new one.
+// video id, so a song can only be added once); songPlays/{videoId}_{listener} adds up the seconds someone
+// has listened (every play, however short), and the background worker pays the song's owner 6 points for
+// each full minute.
 export type Song = { id: string; title: string; uid: string; at: number; plays: number }
 
 const ms = (t: unknown) => (t as Timestamp | null)?.toMillis?.() ?? Date.now()
@@ -79,9 +80,10 @@ export async function addSong(db: Firestore, uid: string, link: string): Promise
 export const removeSong = (db: Firestore, id: string) => deleteDoc(doc(db, 'songs', id))
 
 /**
- * Listened for a minute: records it (the rules allow one per song and person every 10 minutes and none for
- * your own songs; the worker pays the owner). A refusal just means it doesn't count, nothing to tell anyone.
+ * Listened for `secs` more seconds (at most 40 at a time, and the rules allow no more than real time passed and none
+ * for your own songs; the worker pays the owner per full minute). True when it was saved: a refusal just means those
+ * seconds don't count.
  */
-// (merge: the worker's own paidAt on the doc stays, so the rules see only `at` change)
-export const countListen = (db: Firestore, vid: string, uid: string) =>
-  setDoc(doc(db, 'songPlays', `${vid}_${uid}`), { vid, uid, at: serverTimestamp() }, { merge: true }).catch(() => {})
+// (merge: the worker's own paidMin on the doc stays, so the rules see only `at` and `secs` change)
+export const countListen = (db: Firestore, vid: string, uid: string, secs: number) =>
+  setDoc(doc(db, 'songPlays', `${vid}_${uid}`), { vid, uid, secs: increment(secs), at: serverTimestamp() }, { merge: true }).then(() => true, () => false)

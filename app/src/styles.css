@@ -297,6 +297,7 @@ html,body{overscroll-behavior:none}
 .legend-tag.ch-tag{background:linear-gradient(90deg,#ffffff,#ffd6f5,#cfeaff,#fff8c4,#d6ffe6,#ffffff);color:#1a1a1f;animation:none;box-shadow:0 0 0 1px rgba(255,255,255,0.6),0 0 8px rgba(255,190,240,0.5)}
 /* 가르강튀아 (gargantuaArt.ts): the black hole's glow breathes, the lines fall in, the photon ring pulses */
 @keyframes gaPulse{0%,100%{opacity:.65}50%{opacity:1}}
+@keyframes gaTwinkle{0%,100%{opacity:.55}50%{opacity:1}}
 @keyframes gaFall{0%{transform:scale(1.06);opacity:0}12%{opacity:1}100%{transform:scale(.7);opacity:0}}
 .legend-tag.ga-tag{background:linear-gradient(90deg,#1a0a00,#4a1c00 50%,#0c0500);color:#ffd9a6;animation:none;box-shadow:inset 0 0 0 1px rgba(255,170,90,0.7),0 0 8px rgba(255,140,50,0.5)}
 @keyframes callPulse{0%{transform:scale(0.9);opacity:0.9}100%{transform:scale(1.35);opacity:0}}

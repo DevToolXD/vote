@@ -153,11 +153,37 @@ const ALERT_WINDOW_MS = Number(process.env.ALERT_WINDOW_MS ?? 60 * 60_000)
 const ALERT_POINTS = Number(process.env.ALERT_POINTS ?? 1000), ALERT_VOTES = Number(process.env.ALERT_VOTES ?? 20)
 const pts = c => (c?.earned ?? c?.up ?? 0) + (c?.bonus ?? 0) - (c?.spent ?? 0)
 const stateOf = c => ({ earned: c.earned ?? c.up ?? 0, up: c.up ?? 0, down: c.down ?? 0, bonus: c.bonus ?? 0, spent: c.spent ?? 0, lastGift: c.lastGift ?? '', lastBet: c.lastBet ?? '', payBet: c.payBet ?? '', lastMarket: c.lastMarket ?? '', lastSale: c.lastSale ?? '', lastCancel: c.lastCancel ?? '', lastCoin: c.lastCoin ?? '', payCoin: c.payCoin ?? '', appBonus: !!c.appBonus, pass2x: !!c.pass2x, passFake: !!c.passFake, owned: JSON.stringify(c.owned ?? {}) })
-const lastVote = new Map() // uid → { key, at, d, n }: 추천 within 30 minutes go into one line
+const lastAgg = new Map()  // `${uid}|${kind}` → { key, feed, at, d, n, x }: votes, hearts and listens within 30 minutes go into one line
+// Who paid whom, noted by the worker at the moment it pays (hearts, listens) or sees it (votes), so the
+// ledger line can say where the points came from. Entries are 'what|…|count' strings, merged per line.
+const payNotes = new Map() // uid → [{ at, d, k, x }]
+function notePay(uid, k, d, entries) {
+  if (!uid || !d) return
+  const list = (payNotes.get(uid) ?? []).filter(n => Date.now() - n.at < 15 * 60_000)
+  list.push({ at: Date.now(), d, k, x: entries.join(';') }); payNotes.set(uid, list)
+}
+/** 'a|b|1;c|d|2' + more → one list: the same entries add their counts (the newest 30 are kept). */
+function mergeX(old, more) {
+  const map = new Map()
+  for (const e of [old, more].flatMap(t => (t ?? '').split(';')).filter(Boolean)) {
+    const i = e.lastIndexOf('|'), key = e.slice(0, i), n = Number(e.slice(i + 1)) || 1
+    const cur = map.get(key) ?? 0
+    map.delete(key); map.set(key, cur + n)
+  }
+  return [...map].slice(-30).map(([k, n]) => `${k}|${n}`).join(';')
+}
+const countX = x => (x ?? '').split(';').filter(Boolean).reduce((n, e) => n + (Number(e.slice(e.lastIndexOf('|') + 1)) || 1), 0)
 const gains = new Map()    // uid → [{ at, d, k }] within ALERT_WINDOW_MS
 const ledgerWrites = new Map()
 let feedWrites = 0
 
+const voterNotes = new Map() // candidate uid → [{ by, at }]: who voted for them lately
+function voterEntries(uid, n) {
+  const list = (voterNotes.get(uid) ?? []).filter(v => Date.now() - v.at < 15 * 60_000)
+  const mine = list.splice(0, n)
+  voterNotes.set(uid, list)
+  return mine.map(v => `${v.by}|1`).join(';')
+}
 async function marketOf(id) {
   try { return (await fdb.doc(`market/${id}`).get()).data() ?? null } catch { return null }
 }
@@ -170,7 +196,7 @@ function newItems(o, d) {
   return out
 }
 /** What happened between two states, as ledger lines { d: point change, k: kind, x?: detail }. */
-async function classify(o, d) {
+async function classify(o, d, uid = '') {
   const out = []
   let dEarned = (d.earned ?? d.up) - (o.earned ?? o.up), dBonus = d.bonus - o.bonus, dSpent = d.spent - o.spent
   if (d.up === 0 && d.down === 0 && (o.up !== 0 || o.down !== 0) && dEarned === 0 && dBonus >= 0) { if (dBonus) out.push({ d: dBonus, k: 'season' }); dBonus = 0 }
@@ -208,25 +234,34 @@ async function classify(o, d) {
   if (items.length && dSpent > 0) { out.push({ d: -dSpent, k: 'buy', x: items.join(',') }); dSpent = 0 }
   const gone = (d.lastGift !== o.lastGift || marketMoved ? [] : newItems(d, o)).concat(marketMoved ? [] : ['pass2x', 'passFake'].filter(k => o[k] && !d[k]))
   if (gone.length && dSpent === 0) out.push({ d: 0, k: 'revoke', x: gone.join(',') })
-  if (dEarned) out.push({ d: dEarned, k: 'vote' })
+  // hearts and listens the worker itself paid (it noted who from): not an admin grant
+  const notes = payNotes.get(uid) ?? []
+  while (dBonus > 0 && notes.length && notes[0].d <= dBonus) { const n = notes.shift(); out.push({ d: n.d, k: n.k, x: n.x }); dBonus -= n.d }
+  if (dEarned) out.push({ d: dEarned, k: 'vote', x: voterEntries(uid, Math.max(1, Math.round(dEarned / 10))) })
   if (dBonus) out.push({ d: dBonus, k: 'grant' })
   if (dSpent) out.push({ d: -dSpent, k: 'other' })
   return out.filter(e => e.d !== 0 || ['revoke', 'giftItemClaim', 'marketList', 'marketCancel'].includes(e.k))
 }
-async function record(uid, lines, at = Date.now()) {
+const AGG = ['vote', 'heart', 'song']
+/** `balance`: the points after all of `lines`; every line then shows what the points were after it. */
+async function record(uid, lines, at = Date.now(), balance = null) {
   const up = {}
+  let running = balance == null ? null : balance - lines.reduce((n, e) => n + e.d, 0)
   for (const e of lines) {
-    const lv = lastVote.get(uid)
-    if (e.k === 'vote' && lv && at - lv.at < 30 * 60_000) {
-      lv.d += e.d; lv.n += Math.max(1, Math.round(e.d / 10)); lv.at = at
-      up[`ledger/${uid}/${lv.key}/d`] = lv.d; up[`ledger/${uid}/${lv.key}/n`] = lv.n; up[`ledger/${uid}/${lv.key}/at`] = at
-      if (lv.feed) { up[`ledgerFeed/${lv.feed}/d`] = lv.d; up[`ledgerFeed/${lv.feed}/n`] = lv.n; up[`ledgerFeed/${lv.feed}/at`] = at }
+    if (running != null) running += e.d
+    const bal = running == null ? {} : { b: running }
+    const ak = `${uid}|${e.k}`, lv = AGG.includes(e.k) ? lastAgg.get(ak) : null
+    const cnt = e.k === 'vote' ? Math.max(1, Math.round(e.d / 10)) : Math.max(1, countX(e.x))
+    if (lv && at - lv.at < 30 * 60_000) {
+      lv.d += e.d; lv.n += cnt; lv.at = at; lv.x = mergeX(lv.x, e.x)
+      const f = { d: lv.d, n: lv.n, at, ...(lv.x ? { x: lv.x } : {}), ...bal }
+      for (const [k, v] of Object.entries(f)) { up[`ledger/${uid}/${lv.key}/${k}`] = v; if (lv.feed) up[`ledgerFeed/${lv.feed}/${k}`] = v }
     } else {
       const key = rdb.ref(`ledger/${uid}`).push().key, feed = rdb.ref('ledgerFeed').push().key
-      const row = { at, d: e.d, k: e.k, ...(e.x ? { x: e.x } : {}), ...(e.k === 'vote' ? { n: Math.max(1, Math.round(e.d / 10)) } : {}) }
+      const row = { at, d: e.d, k: e.k, ...(e.x ? { x: e.x } : {}), ...(AGG.includes(e.k) ? { n: cnt } : {}), ...bal }
       up[`ledger/${uid}/${key}`] = row
       up[`ledgerFeed/${feed}`] = { ...row, u: uid }
-      if (e.k === 'vote') lastVote.set(uid, { key, feed, at, d: e.d, n: Math.max(1, Math.round(e.d / 10)) })
+      if (AGG.includes(e.k)) lastAgg.set(ak, { key, feed, at, d: e.d, n: cnt, x: e.x ?? '' })
       ledgerWrites.set(uid, (ledgerWrites.get(uid) ?? 0) + 1); feedWrites++
     }
     // 수상한 포인트 증가: gains that aren't the admin's or the season's, within the window.
@@ -249,7 +284,7 @@ async function ledgerInit() {
   for (const [uid, c] of snap) {
     const now = stateOf(c), before = saved[uid]
     if (before && JSON.stringify(before) === JSON.stringify(now)) continue
-    if (before) await record(uid, await classify({ ...stateOf({}), ...before }, now))
+    if (before) await record(uid, await classify({ ...stateOf({}), ...before }, now, uid), Date.now(), now.earned + now.bonus - now.spent)
     await saveState(uid, c)
   }
 }
@@ -259,7 +294,7 @@ async function processLedger() {
     if (!o) continue
     const a = stateOf(o), b = stateOf(d)
     if (JSON.stringify(a) === JSON.stringify(b)) continue
-    await record(id, await classify(a, b))
+    await record(id, await classify(a, b, id), Date.now(), b.earned + b.bonus - b.spent)
     await saveState(id, d)
   }
 }
@@ -554,7 +589,7 @@ const firstDone = new Promise(resolve => {
       for (const c of snap.docChanges()) if (c.type !== 'removed') homeQueue.add('posts/' + c.doc.id)
     }),
     listen('songPlays', fdb.collection('songPlays'), snap => {
-      for (const c of snap.docChanges()) if (c.type !== 'removed') playQueue.add(c.doc.id)
+      for (const c of snap.docChanges()) if (c.type !== 'removed' && Math.floor((c.doc.get('secs') ?? 0) / 60) > (c.doc.get('paidMin') ?? 0)) playQueue.add(c.doc.id)
     }),
     listen('settings', fdb.collection('settings'), snap => snap.docChanges().forEach(c => c.type === 'removed' ? settings.delete(c.doc.id) : settings.set(c.doc.id, c.doc.data()))),
     listen('tokens', fdb.collection('pushTokens'), snap => {
@@ -566,7 +601,10 @@ const firstDone = new Promise(resolve => {
         if (c.type === 'removed') continue
         const v = c.doc.data(), at = ms(v.updatedAt)
         // This week's vote as it is now (a new vote or a switch); a cancel isn't announced.
-        if (at > cursor && v.candidateId && (v.weekKind === 'up' || v.weekKind === 'down')) voteEvents.push({ candidateId: v.candidateId, kind: v.weekKind, at })
+        if (at > cursor && v.candidateId && (v.weekKind === 'up' || v.weekKind === 'down')) {
+          voteEvents.push({ candidateId: v.candidateId, kind: v.weekKind, at })
+          if (v.uid) voterNotes.set(v.candidateId, [...(voterNotes.get(v.candidateId) ?? []), { by: v.uid, at: Date.now() }])
+        }
       }
     }),
     listen('support', fdb.collection('support').where('updatedAt', '>', since), snap => {
@@ -1191,46 +1229,51 @@ async function homeTick() {
         if (snap.exists && snap.get('comments') === undefined) await ref.update({ comments: (await ref.collection('comments').count().get()).data().count })
       }).catch(e => warn(`Counting comments of ${path} failed: ${e.message}`))
     }
-    await fdb.runTransaction(async tx => {
+    const paidNow = await fdb.runTransaction(async tx => {
       const post = await tx.get(ref)
-      if (!post.exists) return
+      if (!post.exists) return null
       const v = post.data(), author = v.uid, paid = Array.isArray(v.paid) ? v.paid : []
       const likers = Array.isArray(v.likes) ? v.likes : []
       const fresh = [...new Set(likers)].filter(u => u && u !== author && !paid.includes(u))
-      if (!fresh.length || !author) return
+      if (!fresh.length || !author) return null
       const cand = fdb.doc(`candidates/${author}`)
       const c = await tx.get(cand)
-      if (!c.exists) return
+      if (!c.exists) return null
       tx.update(cand, { bonus: FieldValue.increment(fresh.length * HEART_POINTS) })
       tx.update(ref, { paid: [...paid, ...fresh] })
-    }).catch(e => warn(`Hearts for ${path} failed: ${e.message}`))
+      return { author, fresh }
+    }).catch(e => { warn(`Hearts for ${path} failed: ${e.message}`); return null })
+    // the ledger line says whose hearts, on which photo
+    if (paidNow) notePay(paidNow.author, 'heart', paidNow.fresh.length * HEART_POINTS, paidNow.fresh.map(u => `${path}|${u}|1`))
   }
 }
 
-// Spotify: someone listened to a song for a minute (the app writes songPlays/{vid}_{listener} then, the rules
-// allow it once per 10 minutes per song and person and never for your own song). Each new listen pays the
-// song's owner SONG_POINTS and counts as a play of the song (`plays`); `paidAt` is the listen already paid.
-const SONG_POINTS = 10
+// Spotify: the app counts how long someone listens to a song (songPlays/{vid}_{listener}: `secs`, added up over
+// every play, the rules limit it to real time and never for your own song). Every full minute pays the song's
+// owner SONG_POINTS and counts as a play of the song (`plays`); `paidMin` is the minutes already paid.
+const SONG_POINTS = 6
 async function playTick() {
   const ids = [...playQueue]
   playQueue.clear()
   for (const id of ids) {
     const ref = fdb.doc(`songPlays/${id}`)
-    await fdb.runTransaction(async tx => {
+    const paid = await fdb.runTransaction(async tx => {
       const play = await tx.get(ref)
-      if (!play.exists) return
-      const v = play.data(), at = ms(v.at)
-      if (!at || at <= ms(v.paidAt)) return
+      if (!play.exists) return null
+      const v = play.data(), due = Math.floor((v.secs ?? 0) / 60) - (v.paidMin ?? 0)
+      if (due <= 0) return null
       const songRef = fdb.doc(`songs/${v.vid}`)
       const song = await tx.get(songRef)
       const owner = song.get('uid')
-      if (!song.exists || !owner || owner === v.uid) { tx.update(ref, { paidAt: v.at }); return }
+      if (!song.exists || !owner || owner === v.uid) { tx.update(ref, { paidMin: (v.paidMin ?? 0) + due }); return null }
       const cand = fdb.doc(`candidates/${owner}`)
       const c = await tx.get(cand)
-      if (c.exists) tx.update(cand, { bonus: FieldValue.increment(SONG_POINTS) })
-      tx.update(songRef, { plays: FieldValue.increment(1) })
-      tx.update(ref, { paidAt: v.at })
-    }).catch(e => warn(`Listen ${id} failed: ${e.message}`))
+      if (c.exists) tx.update(cand, { bonus: FieldValue.increment(due * SONG_POINTS) })
+      tx.update(songRef, { plays: FieldValue.increment(due) })
+      tx.update(ref, { paidMin: (v.paidMin ?? 0) + due })
+      return c.exists ? { owner, vid: v.vid, listener: v.uid, due } : null
+    }).catch(e => { warn(`Listen ${id} failed: ${e.message}`); return null })
+    if (paid) notePay(paid.owner, 'song', paid.due * SONG_POINTS, [`${paid.vid}|${paid.listener}|${paid.due}`])
   }
 }
 

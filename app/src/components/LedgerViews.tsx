@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { css, sx } from '../css'
 import { rtdb } from '../firebase'
-import { describe, dismissAlert, subscribeAlerts, subscribeFeed, subscribeLedger, type Alert, type LedgerRow } from '../backend/ledger'
+import { describe, dismissAlert, subscribeAlerts, subscribeFeed, subscribeLedger, type Alert, type LedgerKind, type LedgerRow } from '../backend/ledger'
 import type { Person } from '../model'
 import { BottomSheet } from './Overlays'
 import { shortPoints } from './PointsChip'
+import { TraceSheet } from './LedgerTrace'
 
 const EASE = 'cubic-bezier(0.22,1,0.36,1)'
 const when = (ms: number) => {
@@ -14,38 +15,56 @@ const when = (ms: number) => {
 }
 const signed = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '') + shortPoints(Math.abs(n)) + 'P'
 
-function Row({ r, nameOf, who }: { r: LedgerRow; nameOf: (id: string) => string; who?: string }) {
-  const { icon, text } = describe(r, nameOf)
-  return (
-    <div style={css('padding:12px 0;display:flex;align-items:center;gap:12px')}>
+function Row({ r, nameOf, who, hot, onOpen }: { r: LedgerRow; nameOf: (id: string) => string; who?: string; hot?: boolean; onOpen?: () => void }) {
+  const { icon, text, sub } = describe(r, nameOf)
+  const inner = (
+    <>
       <span style={css('width:40px;height:40px;flex:none;border-radius:9999px;background:#f2f4f6;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:#4e5968')}>{icon}</span>
-      <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+      <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;text-align:left')}>
         <span style={css('font-size:15px;line-height:22px;font-weight:600;color:#191f28;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{who ? <><b>{who}</b> · </> : null}{text}</span>
-        <span style={css('font-size:13px;line-height:19px;color:#8b95a1')}>{when(r.at)}</span>
+        {sub && <span style={css('font-size:13px;line-height:19px;color:#6b7684;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{sub}</span>}
+        <span style={css('font-size:12px;line-height:18px;color:#8b95a1')}>{when(r.at)}</span>
       </span>
-      <span style={sx('flex:none;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums', { color: r.d > 0 ? '#1b64da' : r.d < 0 ? '#f04452' : '#8b95a1' })}>{r.k === 'revoke' ? '수거' : r.k === 'giftItemClaim' ? '받음' : signed(r.d)}</span>
-    </div>
+      <span style={css('flex:none;display:flex;flex-direction:column;align-items:flex-end')}>
+        <span style={sx('font-size:15px;font-weight:700;font-variant-numeric:tabular-nums', { color: r.d > 0 ? '#1b64da' : r.d < 0 ? '#f04452' : '#8b95a1' })}>{r.k === 'revoke' ? '수거' : r.k === 'giftItemClaim' ? '받음' : signed(r.d)}</span>
+        {r.b != null && <span style={css('font-size:12px;line-height:18px;color:#8b95a1;font-variant-numeric:tabular-nums')}>{shortPoints(r.b)}P</span>}
+      </span>
+    </>
   )
+  const style = sx('padding:12px 10px;margin:0 -10px;border-radius:14px;display:flex;align-items:center;gap:12px;width:calc(100% + 20px);text-align:left', { background: hot ? '#e8f3ff' : 'transparent' })
+  return onOpen ? <button className="pr-dim" data-hot={hot ? '1' : undefined} onClick={onOpen} style={style}>{inner}</button> : <div data-hot={hot ? '1' : undefined} style={style}>{inner}</div>
 }
 
-/** Someone's 거래 내역 (mine, or anyone's for the admin), live. */
-export function LedgerSheet({ uid, title, byId, onClose }: { uid: string; title: string; byId: Map<string, Person>; onClose: () => void }) {
+/**
+ * Someone's 거래 내역 (mine, or anyone's for the admin), live. A line opens up into where the points came from and went
+ * (LedgerTrace); the admin (`canTrace`) can go on to the other person's 거래 내역, where the matching line is marked.
+ */
+export function LedgerSheet({ uid, title, byId, onClose, canTrace = false, focus }: { uid: string; title: string; byId: Map<string, Person>; onClose: () => void; canTrace?: boolean; focus?: { at: number; kinds: LedgerKind[] } }) {
   const [list, setList] = useState<LedgerRow[] | null>(null)
+  const [detail, setDetail] = useState<LedgerRow | null>(null)
+  const [next, setNext] = useState<{ uid: string; focus: { at: number; kinds: LedgerKind[] } } | null>(null)
   useEffect(() => (rtdb ? subscribeLedger(rtdb, uid, setList) : undefined), [uid])
   const nameOf = (id: string) => byId.get(id)?.name ?? ''
+  // the line that matches the one the admin came from: the closest in time of the kind that pairs with it
+  const hotId = focus && list ? list.filter(r => focus.kinds.includes(r.k)).sort((a, b) => Math.abs(a.at - focus.at) - Math.abs(b.at - focus.at))[0]?.id : undefined
+  useEffect(() => { if (hotId) document.querySelector('[data-hot="1"]')?.scrollIntoView({ block: 'center' }) }, [hotId])
   return (
-    <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(16px + env(safe-area-inset-bottom));animation:sheetUp 380ms ${EASE} both`}>
-      <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
-      <div style={css('padding:20px 24px 8px;display:flex;flex-direction:column;gap:2px')}>
-        <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{title}</span>
-        <span style={css('font-size:13px;color:#8b95a1')}>최근 100건까지 보여요</span>
-      </div>
-      <div className="anim-list" style={css('padding:0 24px;min-height:120px')}>
-        {list === null && <div style={css('padding:32px 0;text-align:center;font-size:15px;color:#8b95a1')}>불러오는 중이에요…</div>}
-        {list?.length === 0 && <div style={css('padding:32px 0;text-align:center;font-size:15px;color:#8b95a1')}>아직 거래 내역이 없어요</div>}
-        {list?.map(r => <Row key={r.id} r={r} nameOf={nameOf} />)}
-      </div>
-    </BottomSheet>
+    <>
+      <BottomSheet onScrim={onClose} scrim="rgba(0,0,0,0.2)" sheetStyle={`border-radius:28px 28px 0 0;padding:8px 0 calc(16px + env(safe-area-inset-bottom));animation:sheetUp 380ms ${EASE} both`}>
+        <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
+        <div style={css('padding:20px 24px 8px;display:flex;flex-direction:column;gap:2px')}>
+          <span style={css('font-size:20px;line-height:29px;font-weight:700;color:#191f28')}>{title}</span>
+          <span style={css('font-size:13px;color:#8b95a1')}>{focus ? '파랗게 칠한 줄이 방금 본 거래의 짝이에요 · ' : ''}줄을 누르면 포인트가 어디서 와서 어디로 갔는지 볼 수 있어요</span>
+        </div>
+        <div className="anim-list" style={css('padding:0 24px;min-height:120px')}>
+          {list === null && <div style={css('padding:32px 0;text-align:center;font-size:15px;color:#8b95a1')}>불러오는 중이에요…</div>}
+          {list?.length === 0 && <div style={css('padding:32px 0;text-align:center;font-size:15px;color:#8b95a1')}>아직 거래 내역이 없어요</div>}
+          {list?.map(r => <Row key={r.id} r={r} nameOf={nameOf} hot={r.id === hotId} onOpen={() => setDetail(r)} />)}
+        </div>
+      </BottomSheet>
+      {detail && <TraceSheet r={detail} ownerName={byId.get(uid)?.name || '나'} nameOf={nameOf} canTrace={canTrace} onPerson={(u, f) => { setDetail(null); setNext({ uid: u, focus: f }) }} onClose={() => setDetail(null)} />}
+      {next && <LedgerSheet uid={next.uid} title={`${nameOf(next.uid) || '(탈퇴한 사람)'}님의 거래 내역`} byId={byId} canTrace={canTrace} focus={next.focus} onClose={() => setNext(null)} />}
+    </>
   )
 }
 
@@ -96,9 +115,9 @@ export function AdminLedger({ all }: { all: Person[] }) {
         <span style={css('font-size:13px;line-height:19.5px;color:#6b7684')}>모든 사람의 포인트 변동, 최근 100건. 사람별 내역은 아래 사람 관리에서 볼 수 있어요</span>
         {showFeed && feed === null && <span style={css('padding:16px 0;font-size:15px;color:#8b95a1')}>불러오는 중이에요…</span>}
         {showFeed && feed?.length === 0 && <span style={css('padding:16px 0;font-size:15px;color:#8b95a1')}>아직 없어요</span>}
-        {showFeed && feed?.map(r => <button key={r.id} onClick={() => r.u && setOpen(r.u)} style={css('text-align:left')}><Row r={r} nameOf={nameOf} who={nameOf(r.u ?? '') || '(탈퇴한 사람)'} /></button>)}
+        {showFeed && feed?.map(r => <Row key={r.id} r={r} nameOf={nameOf} who={nameOf(r.u ?? '') || '(탈퇴한 사람)'} onOpen={() => r.u && setOpen(r.u)} />)}
       </section>
-      {open && <LedgerSheet uid={open} title={`${nameOf(open) || '(탈퇴한 사람)'}님의 거래 내역`} byId={byId} onClose={() => setOpen(null)} />}
+      {open && <LedgerSheet uid={open} title={`${nameOf(open) || '(탈퇴한 사람)'}님의 거래 내역`} byId={byId} canTrace onClose={() => setOpen(null)} />}
     </>
   )
 }

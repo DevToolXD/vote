@@ -1461,20 +1461,26 @@ service cloud.firestore {
       allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
     }
 
-    // A listen of at least a minute: songPlays/{vid}_{listener}. The first one creates the doc, later ones may
-    // change `at` once 10 minutes have passed (the worker pays the owner for each new `at`, see send-notifications.mjs).
-    // Never for your own song. Only the worker reads them.
+    // Listening time: songPlays/{vid}_{listener} adds up the seconds someone has listened to a song (replays and
+    // short listens too). The first write creates the doc (up to 40 s), later ones add up to 40 s each, never more
+    // than the time since the last one (+3 s) and not within 5 s of it. The worker pays the song's owner for
+    // every full minute (see send-notifications.mjs). Never for your own song. Only the worker reads them.
     match /songPlays/{pid} {
-      allow create: if signedIn() && request.resource.data.keys().hasOnly(['vid', 'uid', 'at'])
+      allow create: if signedIn() && request.resource.data.keys().hasOnly(['vid', 'uid', 'at', 'secs'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.vid is string && request.resource.data.vid.matches('[A-Za-z0-9_-]{11}')
         && pid == request.resource.data.vid + '_' + request.auth.uid
         && request.resource.data.at == request.time
+        && request.resource.data.secs is int && request.resource.data.secs >= 1 && request.resource.data.secs <= 40
         && get(/databases/$(database)/documents/songs/$(request.resource.data.vid)).data.uid != request.auth.uid;
       allow update: if signedIn() && resource.data.uid == request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['at'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['at', 'secs'])
         && request.resource.data.at == request.time
-        && resource.data.at + duration.value(10, 'm') <= request.time;
+        && request.resource.data.secs is int
+        && request.resource.data.secs - resource.data.get('secs', 0) >= 1
+        && request.resource.data.secs - resource.data.get('secs', 0) <= 40
+        && request.time.toMillis() - resource.data.at.toMillis() >= 5000
+        && (request.resource.data.secs - resource.data.get('secs', 0)) * 1000 <= request.time.toMillis() - resource.data.at.toMillis() + 3000;
       allow read, delete: if false;
     }
 
