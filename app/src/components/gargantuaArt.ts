@@ -10,17 +10,18 @@ export const gaRing = (a: number, b: number) => `radial-gradient(closest-side,tr
 export const GA_ARCS = 'conic-gradient(from 0deg,rgba(255,130,40,0) 0deg,rgba(255,196,120,0.95) 22deg,rgba(255,250,235,0.95) 38deg,rgba(255,150,60,0.65) 78deg,rgba(255,110,30,0) 130deg,rgba(255,110,30,0) 215deg,rgba(255,140,60,0.4) 250deg,rgba(255,110,30,0) 290deg,rgba(255,226,170,0.85) 330deg,rgba(255,130,40,0) 360deg)'
 export const GA_LINES = 'repeating-radial-gradient(closest-side,rgba(255,236,200,0) 0%,rgba(255,236,200,0.9) 1.6%,rgba(255,236,200,0) 3.4%,rgba(255,236,200,0) 6%)'
 
-// The animated picture (public/garg/gargantua.v3.webp, rendered by scripts/gargantua.py: 40 frames, 481×360, transparent): the
+// The animated picture (public/garg/gargantua.v4.webp, rendered by scripts/gargantua.py: 40 frames, 600×360, transparent): the
 // disk turns round the hole while the hole and the photon ring stay still, the dark centre is clear so the
 // profile shows through. Its shadow (the photon ring) has a radius of 62 px. The photo is 55 px of it, so the
 // profile (radius 0.5 of the frame) is 55 px of the picture, and the picture is scaled to make that true.
-const CUT_IMG = 'url(garg/gargantua.v3.webp)'
-const PIC_W = 481, PIC_H = 360, PHOTO_PX = 55, BC_PX = 62 // BC_PX: the shadow's edge (the photon ring)
+const CUT_IMG = 'url(garg/gargantua.v4.webp)'
+export const PIC_W = 600, PIC_H = 360, BC_PX = 62
+const PHOTO_PX = 55 // BC_PX: the shadow's edge (the photon ring)
 /** The frame's picture: its width and height in frame sizes (--av), so the photo's edge is at 0.5. */
 const PIC_W_S = (PIC_W / PHOTO_PX) * 0.5, PIC_H_S = (PIC_H / PHOTO_PX) * 0.5
 const cutBox = `position:absolute;left:50%;top:50%;width:calc(var(--av,52px) * ${PIC_W_S.toFixed(3)});height:calc(var(--av,52px) * ${PIC_H_S.toFixed(3)});margin:calc(var(--av,52px) * ${(-PIC_H_S / 2).toFixed(3)}) 0 0 calc(var(--av,52px) * ${(-PIC_W_S / 2).toFixed(3)});pointer-events:none`
-// the edges fade out (an elliptical mask), so no hard border shows where the picture ends
-const FADE = '' // (the picture fades out by itself)
+// the disk's long faint ends fade out sideways, so the frame doesn't reach far over its neighbours
+const FADE = '-webkit-mask-image:linear-gradient(90deg,transparent,#000 22%,#000 78%,transparent);mask-image:linear-gradient(90deg,transparent,#000 22%,#000 78%,transparent);'
 const cutFrame = `${cutBox};background-image:${CUT_IMG};background-size:100% 100%;background-repeat:no-repeat;${FADE}`
 export const GARG_AVATAR: { before: string; after: string } = {
   // the hole's shadow behind the photo: as wide as the picture's (62 px against the photo's 55)

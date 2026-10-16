@@ -1,6 +1,7 @@
 import { css } from '../css'
 import type { SkinGeom } from '../data'
 import { GEM_GLOW } from './auraArt'
+import { BC_PX, PIC_H, PIC_W } from './gargantuaArt'
 import { MX_FONT, MX_STRIPS, cubeOrbit } from './matrixArt'
 import { BAR_TIP_SVG, BLUE, INK, IVORY, SEAM_TILE, barCoinOrbit } from './koreaArt'
 import { pauseOffscreen } from '../offscreen'
@@ -236,6 +237,8 @@ const CH_BAND_BG = 'linear-gradient(180deg,rgba(255,95,162,0.9),rgba(255,212,95,
 const GA_TILE_A = 41
 const GA_TILE_A_BG = 'linear-gradient(180deg,transparent 0 8px,rgba(255,196,110,0.45) 8px 9px,transparent 9px 27px,rgba(255,150,70,0.35) 27px 28px,transparent 28px 41px)'
 // stars drifting up the dark column, two depths: small and dim and slow, bigger and bright and quick
+// the disk's long faint ends fade out sideways, so the tip stays within its own slot
+const GA_TAIL_FADE = { WebkitMaskImage: 'linear-gradient(90deg,transparent,#000 27%,#000 73%,transparent)', maskImage: 'linear-gradient(90deg,transparent,#000 27%,#000 73%,transparent)' }
 const GA_STAR_FAR = 53, GA_STAR_NEAR = 71
 const dots = (list: [number, number, number, string][]) => list.map(([x, y, r, c]) => `radial-gradient(circle at ${x}% ${y}px,${c} 0,${c} ${r}px,transparent ${r + 0.7}px)`).join(',')
 const GA_STARS_FAR = dots([[18, 7, 0.5, 'rgba(255,255,255,0.8)'], [72, 19, 0.5, 'rgba(255,225,190,0.7)'], [44, 31, 0.4, 'rgba(255,255,255,0.6)'], [85, 43, 0.5, 'rgba(255,255,255,0.8)'], [28, 49, 0.4, 'rgba(255,200,150,0.7)']])
@@ -269,7 +272,7 @@ const GA_WAVES = [...holeWaves(36, 'rgba(255,214,150,0.6)', 1.1, 0), ...holeWave
  */
 function GargantuaBar({ flip }: { flip: boolean }) {
   // the black hole at the tip: the rendered picture (the same as the profile frame's), small enough to stay inside the bar's own slot
-  const SHADOW = 9, SPRITE_W = Math.round(481 * SHADOW / 62), SPRITE_H = Math.round(360 * SHADOW / 62)
+  const SHADOW = 9, SPRITE_W = Math.round(PIC_W * SHADOW / BC_PX), SPRITE_H = Math.round(PIC_H * SHADOW / BC_PX)
   return (
     <span ref={pauseOffscreen} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', transform: flip ? 'scaleY(-1)' : 'none' }}>
       <span className="ga-glow" style={css('position:absolute;left:-90%;right:-90%;top:-22px;bottom:-8px;border-radius:40%;background:radial-gradient(closest-side,rgba(255,170,80,0.62),rgba(255,110,40,0.22) 60%,transparent);filter:blur(7px);animation:gaPulse 2.2s ease-in-out infinite')} />
@@ -286,7 +289,7 @@ function GargantuaBar({ flip }: { flip: boolean }) {
       {/* the hole at the tip: its black shadow, and over it the disk's picture (clear where the light falls in) */}
       <span style={css('position:absolute;left:50%;top:0;width:0;height:0')}>
         <span style={{ position: 'absolute', left: -SHADOW, top: -SHADOW, width: SHADOW * 2, height: SHADOW * 2, borderRadius: '50%', background: '#000' }} />
-        <span style={{ position: 'absolute', left: -SPRITE_W / 2, top: -SPRITE_H / 2, width: SPRITE_W, height: SPRITE_H, backgroundImage: 'url(garg/gargantua.v3.webp)', backgroundSize: '100% 100%' }} />
+        <span style={{ position: 'absolute', left: -SPRITE_W / 2, top: -SPRITE_H / 2, width: SPRITE_W, height: SPRITE_H, backgroundImage: 'url(garg/gargantua.v4.webp)', backgroundSize: '100% 100%', ...GA_TAIL_FADE }} />
       </span>
       {GA_MOTES.map(([left, dur, delay, c]) => (
         <span key={left} className="aura-spark" style={{ ...css('position:absolute;bottom:8%;width:2px;height:2px;margin-left:-1px;border-radius:50%;opacity:0'), left, background: c, boxShadow: `0 0 4px ${c},0 0 8px rgba(255,190,120,0.8)`, animation: `auraSpark ${dur}s ease-out ${delay}s infinite` }} />

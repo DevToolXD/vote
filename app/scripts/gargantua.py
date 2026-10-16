@@ -4,7 +4,7 @@
 disk, the way the film's picture is made (light bends round the hole, so the far side of the disk shows
 up over the top and again, thinner, under it; the photon ring; the near side crossing in front).
 
-  python3 scripts/gargantua.py            writes public/garg/gargantua.v3.webp (an animated, transparent loop)
+  python3 scripts/gargantua.py            writes public/garg/gargantua.v4.webp (an animated, transparent loop)
   python3 scripts/gargantua.py preview    writes preview PNGs next to it in the scratch dir given by $OUT
 
 How it works (M = 1, the hole's shadow has radius b_c = 3√3):
@@ -25,13 +25,14 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
 
-W, H = 481, 360               # the picture (the site's CSS expects this size, the shadow's edge at 62 px)
+W, H = 600, 360               # the picture (gargantuaArt.ts has this size; the shadow's edge is at 62 px)
 SS = 3                         # supersampling
 BC = 3 * math.sqrt(3)          # the shadow's radius (in M)
 SHADOW_PX = 62.0
 PX = SHADOW_PX / BC            # pixels per M
-INCL = math.radians(83.0)      # the viewer's angle from the disk's axis (90° = edge on)
-R_IN, R_OUT = 6.0, float(os.environ.get('ROUT', 10.5))   # the disk ends close in, so the picture hardly spills over the neighbours
+INCL = math.radians(float(os.environ.get('INCL', 76.0)))
+ROLL = math.radians(float(os.environ.get('ROLL', 7.0)))   # the picture is turned a little: the disk's left end rises, as in the film      # the viewer's angle from the disk's axis (90° = edge on)
+R_IN, R_OUT = float(os.environ.get('RIN', 4.2)), float(os.environ.get('ROUT', 19.0))   # (the film's hole spins, so its disk reaches in close to the photon ring)   # the disk ends close in, so the picture hardly spills over the neighbours
 FRAMES, MS = 40, 60
 TURNS = 1.5                    # turns of the disk's inner edge in one loop
 
@@ -67,7 +68,9 @@ def orbit_table():
 def geometry(bs, tab, dphi):
     xs = (np.arange(W * SS) + 0.5) / SS - W / 2
     ys = (np.arange(H * SS) + 0.5) / SS - H / 2
-    X, Y = np.meshgrid(xs / PX, -ys / PX)
+    X0, Y0 = np.meshgrid(xs / PX, -ys / PX)
+    X = X0 * math.cos(ROLL) - Y0 * math.sin(ROLL)
+    Y = X0 * math.sin(ROLL) + Y0 * math.cos(ROLL)
     b = np.maximum(np.hypot(X, Y), 0.02)
     a = np.arctan2(Y, X)
     phi1 = np.arctan2(math.cos(INCL), -math.sin(INCL) * np.sin(a))
@@ -92,8 +95,8 @@ def geometry(bs, tab, dphi):
         om = rr ** -1.5
         g = np.sqrt(np.maximum(1 - 3 / rr, 1e-3)) / (1 + om * b * math.sin(INCL) * np.cos(a))
         # the film softened the one-sided glow; so the shift is applied at about a third of its real strength
-        out.append((ok, rr, theta, np.clip(g, 0.3, 2.2) ** 0.38))
-    return out
+        out.append((ok, rr, theta, np.clip(g, 0.3, 2.2) ** 0.35, b, np.sin(a) < 0))
+    return out, np.hypot(X0, Y0), np.arctan2(Y0, X0)
 
 # ---------------------------------------------------------------------------- the disk's texture
 def texture(seed, shape, kr, kt):
@@ -107,16 +110,22 @@ def texture(seed, shape, kr, kt):
     return np.clip((t - lo) / (hi - lo), 0, 1)
 
 TR, TT = 384, 1024
-TEX = 0.5 * texture(1, (TR, TT), 70, 10) + 0.3 * texture(2, (TR, TT), 28, 22) + 0.2 * texture(3, (TR, TT), 120, 5)
+# long streaks round the ring (fine across it, very long along it), fine concentric grooves, and dust clumps
+STREAK = 0.6 * texture(1, (TR, TT), 80, 5) + 0.4 * texture(4, (TR, TT), 130, 3)
+DUST = texture(2, (TR, TT), 22, 18)
+TEX = STREAK
 
-def sample_tex(r, theta, turns_t):
+
+def sample_tex(r, theta, turns_t, tex=None):
+    tex = STREAK if tex is None else tex
     s = (np.log(np.clip(r, R_IN, R_OUT)) - math.log(R_IN)) / (math.log(R_OUT) - math.log(R_IN)) * (TR - 1)
     turns = TURNS * (R_IN / r) ** 1.5
     th = (theta / (2 * math.pi) - turns * turns_t) % 1.0 * TT
-    return ndi.map_coordinates(TEX, [s, th], order=1, mode='grid-wrap')
+    return ndi.map_coordinates(tex, [s, th], order=1, mode='grid-wrap')
 
-STOPS = np.array([0.0, 0.25, 0.5, 0.75, 1.0, 1.4])
-COLS = np.array([(0.10, 0.012, 0.0), (0.55, 0.10, 0.01), (1.0, 0.42, 0.06), (1.0, 0.66, 0.22), (1.0, 0.85, 0.55), (1.0, 0.97, 0.9)])
+# the film's colours: white-hot at the inner edge, cream, peach, burnt orange, then dusty brown (not pure gold)
+STOPS = np.array([0.0, 0.18, 0.36, 0.55, 0.75, 0.95, 1.3])
+COLS = np.array([(0.05, 0.022, 0.012), (0.26, 0.105, 0.05), (0.62, 0.29, 0.13), (0.92, 0.55, 0.30), (1.0, 0.80, 0.60), (1.0, 0.93, 0.84), (1.0, 0.98, 0.95)])
 def colormap(t):
     return np.stack([np.interp(t, STOPS, COLS[:, c]) for c in range(3)], -1)
 
@@ -127,29 +136,74 @@ def smooth(a, b, x):
 def shade(geo, t):
     """The picture at time t (0..1 of the loop): premultiplied light and how much of the disk is in the way."""
     light = np.zeros((H * SS, W * SS, 3)); T = np.ones((H * SS, W * SS))
-    for n, (ok, r, theta, g) in enumerate(geo):
+    near = np.zeros((H * SS, W * SS, 3))   # the disk's near side crossing in front of the hole: it is not smeared
+    for n, (ok, r, theta, g, b, front) in enumerate(geo):
         if not ok.any():
             continue
         noise = sample_tex(r, theta, t)
-        edge = smooth(R_IN - 0.3, R_IN + 0.5, r) * (1 - smooth(R_OUT - 3.2, R_OUT, r))
-        trel = (R_IN / r) ** 0.75
-        heat = g * trel * 1.05
-        rad = (R_IN / r) ** 1.9 * g ** 3.0 * (0.45 + 1.5 * noise ** 1.3) * edge
-        # an image of higher order is the same disk seen after light went round: dimmer and thinner
-        rad = rad * (1.0 if n == 0 else 0.85 if n == 1 else 0.7)
-        op = np.clip(0.30 + 1.1 * noise, 0, 1) * smooth(R_IN - 0.3, R_IN + 0.3, r) * (1 - smooth(R_OUT - 1.4, R_OUT + 0.6, r))
+        dust = sample_tex(r, theta, t, DUST)
+        # the outer edge is torn into wisps by the dust, not a clean circle
+        edge = smooth(R_IN - 0.3, R_IN + 0.5, r) * (1 - smooth(R_OUT - 9.0, R_OUT, r + 7.0 * (dust - 0.45)))
+        trel = (R_IN / r) ** 1.15
+        # clumps of dust dim the light and make it browner, more so farther out
+        lane = 1 - np.clip((dust - 0.35) * 2.2, 0, 1) * np.clip((r - R_IN) / 3.0, 0.3, 1.0) * 0.8
+        heat = g * trel * 1.2 * (0.6 + 0.4 * lane)
+        rad = ((R_IN / r) ** 1.35 * (0.22 + 2.5 * noise ** 1.9) + 0.06 * noise ** 1.5) * g ** 3.0 * lane * edge
+        # an image of higher order is the same disk seen after light went round: dimmer and thinner; inside the
+        # shadow's edge it is faint, outside it piles up into the thin bright photon ring
+        k = 1.0 if n == 0 else 0.85 if n == 1 else np.where(b > BC, 1.1, 0.06)
+        rad = rad * k * (np.where(front, 1.5, 1.0) if n == 0 else 1.0)   # the near band in front is lit a little more
+        op = np.clip(0.25 + 1.2 * noise, 0, 1) * smooth(R_IN - 0.3, R_IN + 0.3, r) * (1 - smooth(R_OUT - 4.0, R_OUT + 0.6, r + 5.0 * (dust - 0.45)))
         a = np.where(ok, op, 0.0)
-        light += (T * a * rad)[..., None] * colormap(heat)
+        add = (T * a * rad)[..., None] * colormap(heat)
+        if n == 0:
+            near += np.where(front[..., None], add, 0); light += np.where(front[..., None], 0, add)
+        else:
+            light += add
         T = T * (1 - a)
-    return light, 1 - T
+    return (light, near), 1 - T
 
 def blur(img, sigma):
     return ndi.gaussian_filter(img, (sigma * SS, sigma * SS, 0) if img.ndim == 3 else sigma * SS)
 
+# ---- streaks: the light of the arcs is smeared round the hole (a long exposure of matter in orbit), in polar coordinates
+NA = 2048
+def polar_maps():
+    cy, cx = H * SS / 2, W * SS / 2
+    rmax = math.hypot(cy, cx)
+    nr = int(rmax) + 1
+    ang = np.linspace(-math.pi, math.pi, NA, endpoint=False)
+    rr = np.arange(nr, dtype=np.float64)
+    to_polar = (cy - np.outer(rr, np.sin(ang)), cx + np.outer(rr, np.cos(ang)))
+    yy, xx = np.mgrid[0:H * SS, 0:W * SS]
+    dy, dx = cy - (yy + 0.5), (xx + 0.5) - cx
+    back = (np.hypot(dx, dy), (np.arctan2(dy, dx) + math.pi) / (2 * math.pi) * NA)
+    return to_polar, back, np.arctan2(dy, dx)
+POLAR = None
+def smear(img, sigma_rad, amount):
+    """Blur `img` along circles round the centre (by `sigma_rad` radians), more where the circle is horizontal-ish (not along the near band)."""
+    global POLAR
+    if POLAR is None:
+        POLAR = polar_maps()
+    to_polar, back, ang = POLAR
+    chans = img.shape[-1] if img.ndim == 3 else 1
+    out = np.empty_like(img)
+    for c in range(chans):
+        ch = img[..., c] if img.ndim == 3 else img
+        pol = ndi.map_coordinates(ch, to_polar, order=1, mode='nearest')
+        pol = ndi.gaussian_filter1d(pol, sigma_rad / (2 * math.pi) * NA, axis=1, mode='wrap')
+        res = ndi.map_coordinates(np.pad(pol, ((0, 0), (0, 1)), mode='wrap'), back, order=1, mode='nearest')
+        if img.ndim == 3: out[..., c] = res
+        else: out = res
+    m = amount * smooth(0.25, 0.8, np.abs(np.sin(ang + ROLL)))
+    return img * (1 - m[..., None] if img.ndim == 3 else 1 - m) + out * (m[..., None] if img.ndim == 3 else m)
+
 def finish(light, cover):
-    """Light → a transparent picture: tone-mapped, bloomed, with a dark haze under the glow."""
-    k = 2.5
-    glow = light + 0.8 * blur(light, 3.0) + 0.6 * blur(light, 8.0) + 0.4 * blur(light, 17.0) + 0.15 * blur(light, 30.0)
+    """Light → a transparent picture: smeared into streaks, tone-mapped, bloomed, with a dark haze under the glow."""
+    light = smear(light[0], 0.22, 0.95) + light[1]
+    cover = smear(cover, 0.22, 0.95)
+    k = 2.2
+    glow = light + 0.7 * blur(light, 2.5) + 0.5 * blur(light, 7.0) + 0.3 * blur(light, 16.0) + 0.12 * blur(light, 30.0)
     v = 1 - np.exp(-k * glow)
     a = np.clip(v.max(-1), 0, 1)
     haze = np.clip(blur(cover, 5.0) * 1.2, 0, 0.7)
@@ -168,9 +222,9 @@ def finish(light, cover):
 def frame(geo, i):
     t = i / FRAMES
     # a seamless loop: the end of the loop blends back into its start
-    l0, c0 = shade(geo, t)
-    l1, c1 = shade(geo, t - 1.0)
-    return finish((1 - t) * l0 + t * l1, (1 - t) * c0 + t * c1)
+    (l0, n0), c0 = shade(geo, t)
+    (l1, n1), c1 = shade(geo, t - 1.0)
+    return finish(((1 - t) * l0 + t * l1, (1 - t) * n0 + t * n1), (1 - t) * c0 + t * c1)
 
 def over(img, bg):
     a = img[..., 3:] / 255.0
@@ -180,7 +234,7 @@ if __name__ == '__main__':
     print('light paths…', flush=True)
     bs, tab, dphi = orbit_table()
     print('geometry…', flush=True)
-    geo = geometry(bs, tab, dphi)
+    geo, _, _ = geometry(bs, tab, dphi)
     del tab
     if len(sys.argv) > 1 and sys.argv[1] == 'preview':
         for i in (0, 10, 20, 30):
@@ -196,6 +250,6 @@ if __name__ == '__main__':
         frames.append(Image.fromarray(f, 'RGBA'))
         print('frame', i, flush=True)
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, 'gargantua.v3.webp')
+    path = os.path.join(out_dir, 'gargantua.v4.webp')
     frames[0].save(path, save_all=True, append_images=frames[1:], duration=MS, loop=0, lossless=False, quality=88, method=5, minimize_size=False)
     print(path, os.path.getsize(path) // 1024, 'KB')

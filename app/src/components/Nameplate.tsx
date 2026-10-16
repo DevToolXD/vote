@@ -66,7 +66,7 @@ export const Nameplate = memo(function Nameplate({ kind = 'none', person, sub, f
               <Avatar frame={frame} photo={photo} size={34} />
             </span>
           )}
-          <span style={css('flex:1;min-width:0;display:flex;flex-direction:column')}>
+          <span style={css('position:relative;z-index:3;flex:1;min-width:0;display:flex;flex-direction:column')}>
             <span className={k === 'matrix' ? 'mx-name' : k === 'silver' ? 'sl-name' : undefined} data-text={k === 'matrix' || k === 'silver' ? person : undefined} style={{ ...css('font-size:16px;line-height:22px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), color: p.fg, textShadow: shadow }}>{person}</span>
             {sub && (
               <span style={{ ...css('font-size:12px;line-height:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'), color: p.sub, textShadow: shadow }}>{sub}</span>
