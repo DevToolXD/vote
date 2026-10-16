@@ -1392,7 +1392,8 @@ service cloud.firestore {
     // made in the same batch) and never on your own post; anyone signed in can comment.
     match /posts/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.keys().hasOnly(['uid', 'name', 'photo', 'caption', 'likes', 'views', 'at'])
+      allow create: if signedIn() && request.resource.data.keys().hasOnly(['uid', 'name', 'photo', 'caption', 'likes', 'views', 'comments', 'at'])
+        && request.resource.data.get('comments', 0) == 0
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.name is string && request.resource.data.name.size() <= 30
         && request.resource.data.photo is string && request.resource.data.photo.size() < 300000
@@ -1407,7 +1408,18 @@ service cloud.firestore {
               && request.resource.data.likes.size() == resource.data.get('likes', []).size() - 1)))
         || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
           && request.resource.data.get('views', 0) == resource.data.get('views', 0) + 1 && request.auth.uid != resource.data.uid
-          && existsAfter(/databases/$(database)/documents/posts/$(id)/views/$(request.auth.uid))));
+          && existsAfter(/databases/$(database)/documents/posts/$(id)/views/$(request.auth.uid)))
+        // the comment count: +1 only together with a comment of yours made in the same batch (its id in
+        // lastComment), -1 only together with that comment's removal
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments', 'lastComment'])
+          && request.resource.data.lastComment is string && request.resource.data.lastComment.size() > 0
+          && ((request.resource.data.comments == resource.data.get('comments', 0) + 1
+                && !exists(/databases/$(database)/documents/posts/$(id)/comments/$(request.resource.data.lastComment))
+                && existsAfter(/databases/$(database)/documents/posts/$(id)/comments/$(request.resource.data.lastComment))
+                && getAfter(/databases/$(database)/documents/posts/$(id)/comments/$(request.resource.data.lastComment)).data.uid == request.auth.uid)
+            || (request.resource.data.comments == resource.data.get('comments', 0) - 1 && request.resource.data.comments >= 0
+                && exists(/databases/$(database)/documents/posts/$(id)/comments/$(request.resource.data.lastComment))
+                && !existsAfter(/databases/$(database)/documents/posts/$(id)/comments/$(request.resource.data.lastComment))))));
       allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
 
       match /views/{vid} {
@@ -1429,6 +1441,38 @@ service cloud.firestore {
         allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin()
           || get(/databases/$(database)/documents/posts/$(id)).data.uid == request.auth.uid);
       }
+    }
+
+    // ---- Spotify: songs are added from YouTube links. The doc id IS the YouTube video id (11 characters), so a
+    // song can be added once, by whoever gets there first. The owner can fix the title or take it down.
+    match /songs/{vid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && vid.matches('[A-Za-z0-9_-]{11}')
+        && request.resource.data.keys().hasOnly(['vid', 'title', 'uid', 'at', 'plays'])
+        && request.resource.data.vid == vid && request.resource.data.uid == request.auth.uid
+        && request.resource.data.title is string && request.resource.data.title.size() >= 1 && request.resource.data.title.size() <= 120
+        && request.resource.data.plays == 0 && request.resource.data.at == request.time;
+      allow update: if signedIn() && resource.data.uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title'])
+        && request.resource.data.title is string && request.resource.data.title.size() >= 1 && request.resource.data.title.size() <= 120;
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
+    // A listen of at least a minute: songPlays/{vid}_{listener}. The first one creates the doc, later ones may
+    // change `at` once 10 minutes have passed (the worker pays the owner for each new `at`, see send-notifications.mjs).
+    // Never for your own song. Only the worker reads them.
+    match /songPlays/{pid} {
+      allow create: if signedIn() && request.resource.data.keys().hasOnly(['vid', 'uid', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.vid is string && request.resource.data.vid.matches('[A-Za-z0-9_-]{11}')
+        && pid == request.resource.data.vid + '_' + request.auth.uid
+        && request.resource.data.at == request.time
+        && get(/databases/$(database)/documents/songs/$(request.resource.data.vid)).data.uid != request.auth.uid;
+      allow update: if signedIn() && resource.data.uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['at'])
+        && request.resource.data.at == request.time
+        && resource.data.at + duration.value(10, 'm') <= request.time;
+      allow read, delete: if false;
     }
 
     // ---- 문서 (숙제 공유방): a photo with a title and a caption; anyone signed in can like (a heart: the

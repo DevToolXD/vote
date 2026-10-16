@@ -7,19 +7,20 @@ import { R } from './messages'
 //   phone/{uid}/apps/{app}  true | false — set from 앱스토어; missing = installed (the default)
 // 관리 (admin only) and 앱스토어 are always there, so they are never stored.
 
-export type StoreApp = 'shop' | 'market' | 'coin' | 'stock' | 'block' | 'flappy' | 'dino' | 'bank' | 'insta' | 'homework'
-export type AppId = StoreApp | 'admin' | 'store'
+export type StoreApp = 'shop' | 'market' | 'coin' | 'stock' | 'block' | 'flappy' | 'dino' | 'bank' | 'spotify' | 'homework'
+/** 계정 is on every phone and can't be deleted (it is where you log in); 인스타그램 is a tab of its own now. */
+export type AppId = StoreApp | 'admin' | 'store' | 'account'
 /** Apps that open a screen (앱스토어 opens inside 폰 itself). */
 export type OpenableApp = Exclude<AppId, 'store'>
 
-export const STORE_APPS: StoreApp[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino', 'bank', 'insta', 'homework']
-export const APP_NAME: Record<AppId, string> = { homework: '문서', insta: '인스타그램', admin: '관리', store: '앱스토어', shop: '상점', market: '당근마켓', coin: '코인', stock: '주식', block: '블록 블라스트', flappy: '플래피 버드', dino: '공룡 점프', bank: '은행' }
+export const STORE_APPS: StoreApp[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino', 'bank', 'spotify', 'homework']
+export const APP_NAME: Record<AppId, string> = { homework: '문서', spotify: 'Spotify', account: '계정', admin: '관리', store: '앱스토어', shop: '상점', market: '당근마켓', coin: '코인', stock: '주식', block: '블록 블라스트', flappy: '플래피 버드', dino: '공룡 점프', bank: '은행' }
 /** 앱스토어 sections: 당근마켓 is filed under 상점. */
 export const APP_GROUPS: { title: string; apps: StoreApp[] }[] = [
   { title: '상점', apps: ['shop', 'market'] },
   { title: '투자', apps: ['coin', 'stock', 'bank'] },
   { title: '게임', apps: ['block', 'flappy', 'dino'] },
-  { title: '소셜', apps: ['insta'] },
+  { title: '음악', apps: ['spotify'] },
   { title: '생산성', apps: ['homework'] },
 ]
 export const APP_DESC: Record<StoreApp, string> = {
@@ -31,7 +32,7 @@ export const APP_DESC: Record<StoreApp, string> = {
   flappy: '탭해서 날아 파이프 사이를 지나가요',
   dino: '선인장과 새를 뛰어넘어요. 멀리 갈수록 빨라져요',
   bank: '포인트를 넣으면 매주 이자가 붙어요. 신용등급에 따라 대출도 받아요',
-  insta: '사진을 올리고 다른 사람의 사진을 봐요. 메시지도 여기서 보내요',
+  spotify: '유튜브 링크로 음악을 추가해 같이 들어요. 내 곡을 들으면 10포인트를 받아요',
   homework: '숙제 사진을 제목과 함께 올리고, 하트와 댓글로 같이 봐요',
 }
 

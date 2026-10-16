@@ -2,6 +2,8 @@ import type { User } from 'firebase/auth'
 import { doc, updateDoc } from 'firebase/firestore'
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { Covered, useStableFns } from './stable'
+import { configureMusic } from './music'
+import { MusicBubble } from './components/MusicBubble'
 import { accessOf, blockedUsers, myIp, recordIp, setAccess, watchAccess, watchIp, type Access, type IpDoc } from './backend/ip'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, revokeItem, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
@@ -22,6 +24,7 @@ const CoinScreen = lazy(() => import('./components/CoinScreen').then(m => ({ def
 const MarketApp = lazy(() => import('./components/Market').then(m => ({ default: m.MarketApp })))
 const DinoGame = lazy(() => import('./components/DinoGame').then(m => ({ default: m.DinoGame })))
 const InstaApp = lazy(() => import('./components/InstaApp').then(m => ({ default: m.InstaApp })))
+const SpotifyApp = lazy(() => import('./components/SpotifyApp').then(m => ({ default: m.SpotifyApp })))
 const HomeworkApp = lazy(() => import('./components/HomeworkApp').then(m => ({ default: m.HomeworkApp })))
 const BankApp = lazy(() => import('./components/BankApp').then(m => ({ default: m.BankApp })))
 const AdminScreen = lazy(() => import('./components/AdminScreen').then(m => ({ default: m.AdminScreen })))
@@ -95,8 +98,8 @@ function loadTheme() {
 }
 
 /** Real backend: Firebase Auth for accounts, Firestore for the live leaderboard/votes/shop. See app/README.md. */
-/** 상점, 코인 and 관리 are apps inside 폰: asking for their tab opens 폰 with that app. */
-const APP_OF_TAB: Partial<Record<Tab, OpenableApp>> = { shop: 'shop', coin: 'coin', admin: 'admin' }
+/** 계정, 상점, 코인 and 관리 are apps inside 폰: asking for their tab opens 폰 with that app. */
+const APP_OF_TAB: Partial<Record<Tab, OpenableApp>> = { acct: 'account', shop: 'shop', coin: 'coin', admin: 'admin' }
 const navTab = (t: Tab): Tab => (APP_OF_TAB[t] ? 'phone' : t)
 
 export function App({ startTab = 'rank', startChat = null, startSupport = null, swapPalette = false }: AppProps) {
@@ -156,21 +159,6 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const [sound, setSound] = useState(true)
   const [chats, setChats] = useState<ChatRow[]>([])
   const [chatId, setChatId] = useState<string | null>(startChat)
-  // 메시지 (the list, no chat open) is full screen: the tab bar and the search bar slide away.
-  // A drag or scroll in the list brings them back for a few seconds, then they hide again.
-  const msgFull = tab === 'msg' && !chatId
-  const [chromeOn, setChromeOn] = useState(true)
-  const chromeT = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const revealChrome = () => {
-    setChromeOn(true)
-    clearTimeout(chromeT.current)
-    chromeT.current = setTimeout(() => setChromeOn(false), 3500)
-  }
-  useEffect(() => {
-    clearTimeout(chromeT.current)
-    setChromeOn(!msgFull)
-  }, [msgFull])
-  useEffect(() => () => clearTimeout(chromeT.current), [])
   const [notify, setNotify] = useState<NotifyPrefs>(DEFAULT_NOTIFY)
   const [pushOn, setPushOn] = useState(deviceRegistered)
   const [pushBusy, setPushBusy] = useState(false)
@@ -342,18 +330,20 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   // My votes are read only where they're shown: all of them on 계정 (내 투표), otherwise
   // just the one person whose vote sheet or profile is open (1 read, not one per person).
   const voteFocus = sheet ?? profile
+  /** The 계정 app is on screen (it lists all my votes). */
+  const onAcct = tab === 'phone' && phoneApp === 'account'
   useEffect(() => {
-    if (!authUser || !db || tab !== 'acct') return
+    if (!authUser || !db || !onAcct) return
     return subscribeMyVotes(db, authUser.uid, setVotes)
-  }, [authUser, tab])
+  }, [authUser, onAcct])
   useEffect(() => {
-    if (!authUser || !db || !voteFocus || tab === 'acct' || voteFocus === authUser.uid) return
+    if (!authUser || !db || !voteFocus || onAcct || voteFocus === authUser.uid) return
     return subscribeMyVote(db, authUser.uid, voteFocus, one => setVotes(v => {
       const next = { ...v }
       if (one) next[voteFocus] = one; else delete next[voteFocus]
       return next
     }))
-  }, [authUser, voteFocus, tab])
+  }, [authUser, voteFocus, onAcct])
   useEffect(() => { if (!authUser) setVotes({}) }, [authUser])
   // Chats I mark read on this device update the unread badges right away.
   const [, setReadTick] = useState(0)
@@ -414,6 +404,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const passActive = hasPass(me)
   const isAdmin = isAdminEmail(authUser?.email)
   const byId = useMemo(() => new Map(all.map(p => [p.id, p])), [all])
+  // the music player (music.ts) learns who is signed in and how to name people
+  useEffect(() => { configureMusic({ db: db ?? null, uid: authUser?.uid ?? null, nameOf: u => byId.get(u)?.name ?? '', toast: showToast }) }, [authUser, byId]) // eslint-disable-line react-hooks/exhaustive-deps
   const unreadChats = authUser ? chats.filter(c => isUnread(c, authUser.uid)).length : 0
   const openChat = chats.find(c => c.id === chatId)
 
@@ -842,7 +834,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     },
   })
   // 메시지 tab's actions, the same way (the list is memoized too)
-  const msgFns = useStableFns({ onLogin: () => go('acct'), onNew: () => setNewChatOpen(true), onToggleOff: toggleMsgOff, onChrome: revealChrome })
+  const msgFns = useStableFns({ onLogin: () => go('acct'), onNew: () => setNewChatOpen(true), onToggleOff: toggleMsgOff })
   // A full-screen room covers the page: the page isn't drawn again meanwhile, and once the room
   // has slid in it isn't painted either.
   const roomOpen = !!(openChat && me && authUser) || !!(linkedTicket && authUser) || !!(openTicket && isAdmin && authUser)
@@ -890,7 +882,50 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             <BankApp db={db} uid={authUser?.uid ?? null} owned={me?.owned ?? null} points={points} onLogin={uiFns.goAcct} onToast={uiFns.toast} />
           )}
           {app === 'homework' && <HomeworkApp db={db} uid={authUser?.uid ?? null} name={me?.name ?? ''} isAdmin={isAdmin} onLogin={uiFns.goAcct} onToast={uiFns.toast} />}
-          {app === 'insta' && <InstaApp db={db} uid={authUser?.uid ?? null} me={me} chats={chats} byId={byId} isAdmin={isAdmin} onLogin={uiFns.goAcct} onToast={uiFns.toast} onProfile={uiFns.goAcct} />}
+      {app === 'account' && (
+        <AccountScreen
+          openLedger={() => setLedgerOpen(true)}
+          loggedIn={loggedIn}
+          view={acctView}
+          onView={setAcctView}
+          login={login}
+          onLoginField={patch => setLogin(s => ({ ...s, ...patch }))}
+          onLogin={doLogin}
+          onLogout={doLogout}
+          signup={signup}
+          onSignup={patch => setSignup(s => ({ ...s, ...patch }))}
+          nameAck={nameAck}
+          nameRef={nameRef}
+          onNameFocus={el => { if (!nameAck) { el.blur(); setRuleOpen(true); setRuleCheck(false) } }}
+          onSubmitSignup={doSignup}
+          authBusy={authBusy}
+          isAdmin={isAdmin}
+          goAdmin={() => go('admin')}
+          me={me ? { ...me, bio: bioDraft, loginId: me.loginId ?? myLoginId } : undefined}
+          onPhoto={onPhoto}
+          onRemovePhoto={onRemovePhoto}
+          onBio={v => setBioDraft(v.slice(0, 60))}
+          onGender={g => authUser && updateMyProfile(db!, authUser.uid, { gender: g }).catch(e => failToast('저장하지 못했어요', e))}
+          points={points}
+          mine={mine}
+          others={all.filter(d => !d.isMe && !mine.includes(d))}
+          onOpenVote={d => setSheet(d.id)}
+          openEdit={() => setEditOpen(true)}
+          openEarn={() => setEarnOpen(true)}
+          openTheme={() => setThemeOpen(true)}
+          goHome={() => go('rank')}
+          onForgot={() => setSupportOpen('new')}
+          supportSlot={supportCard}
+          notifySlot={
+            <NotifySettings
+              support={pushSupport()} on={pushOn && notify.notify} busy={pushBusy} settings={notify}
+              onToggle={togglePush}
+              onChange={patch => authUser && saveNotifySettings(db!, authUser.uid, patch).catch(e => failToast('저장하지 못했어요', e))}
+            />
+          }
+        />
+      )}
+          {app === 'spotify' && <SpotifyApp db={db} uid={authUser?.uid ?? null} me={me} byId={byId} onLogin={uiFns.goAcct} onToast={uiFns.toast} />}
           {app === 'stock' && <StockApp db={db} uid={authUser?.uid ?? null} points={points} onLogin={uiFns.goAcct} onToast={uiFns.toast} />}
           {app === 'shop' && (
             <ShopScreen
@@ -971,63 +1006,23 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               secretName={INVITE_ADMIN} onSecret={uiFns.secret}
             />
           )}
-          {tab === 'acct' && (
-            <AccountScreen
-              openLedger={() => setLedgerOpen(true)}
-              loggedIn={loggedIn}
-              view={acctView}
-              onView={setAcctView}
-              login={login}
-              onLoginField={patch => setLogin(s => ({ ...s, ...patch }))}
-              onLogin={doLogin}
-              onLogout={doLogout}
-              signup={signup}
-              onSignup={patch => setSignup(s => ({ ...s, ...patch }))}
-              nameAck={nameAck}
-              nameRef={nameRef}
-              onNameFocus={el => { if (!nameAck) { el.blur(); setRuleOpen(true); setRuleCheck(false) } }}
-              onSubmitSignup={doSignup}
-              authBusy={authBusy}
-              isAdmin={isAdmin}
-              goAdmin={() => go('admin')}
-              me={me ? { ...me, bio: bioDraft, loginId: me.loginId ?? myLoginId } : undefined}
-              onPhoto={onPhoto}
-              onRemovePhoto={onRemovePhoto}
-              onBio={v => setBioDraft(v.slice(0, 60))}
-              onGender={g => authUser && updateMyProfile(db!, authUser.uid, { gender: g }).catch(e => failToast('저장하지 못했어요', e))}
-              points={points}
-              mine={mine}
-              others={all.filter(d => !d.isMe && !mine.includes(d))}
-              onOpenVote={d => setSheet(d.id)}
-              openEdit={() => setEditOpen(true)}
-              openEarn={() => setEarnOpen(true)}
-              openTheme={() => setThemeOpen(true)}
-              goHome={() => go('rank')}
-              onForgot={() => setSupportOpen('new')}
-              supportSlot={supportCard}
-              notifySlot={
-                <NotifySettings
-                  support={pushSupport()} on={pushOn && notify.notify} busy={pushBusy} settings={notify}
-                  onToggle={togglePush}
-                  onChange={patch => authUser && saveNotifySettings(db!, authUser.uid, patch).catch(e => failToast('저장하지 못했어요', e))}
-                />
-              }
-            />
+          {tab === 'insta' && (
+            // 인스타그램 is a tab: the app's own screens fill the page above the tab bar
+            <div style={css('flex:1;min-height:0;position:relative;--phone-top:calc(env(safe-area-inset-top) + 30px);--phone-bottom:22px')}>
+              <Suspense fallback={null}>
+                <InstaApp db={db} uid={authUser?.uid ?? null} me={me} chats={chats} byId={byId} isAdmin={isAdmin} onLogin={uiFns.goAcct} onToast={uiFns.toast} onProfile={uiFns.goAcct} />
+              </Suspense>
+            </div>
           )}
           {tab === 'msg' && (
             <MessagesScreen
               loggedIn={loggedIn} me={me} chats={chats} byId={byId} onOpen={setChatId}
-              db={db} chromeOn={chromeOn} {...msgFns}
+              db={db} {...msgFns}
             />
           )}
         </main>
 
-        {/* The row collapses to nothing (not just hidden) so the screen above gets the space */}
-        <div style={css(`flex:none;display:grid;grid-template-rows:${chromeOn ? '1fr' : '0fr'};transition:grid-template-rows 360ms cubic-bezier(0.16,1,0.3,1)`)}>
-          <div style={css('min-height:0;overflow:hidden')}>
-            <BottomNav tab={tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} adminUnread={unreadTickets} />
-          </div>
-        </div>
+        <BottomNav tab={tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} adminUnread={unreadTickets} />
         </Covered>
         </div>
 
@@ -1145,7 +1140,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             onCta={() => {
               setProfile(null)
               // Vote right here (the vote sheet opens over the current tab, e.g. 랭킹).
-              if (profilePerson.isMe) { setChatId(null); setTab('acct'); setEditOpen(true) } else setSheet(profilePerson.id)
+              if (profilePerson.isMe) { setChatId(null); setTab('phone'); setPhoneApp('account'); setEditOpen(true) } else setSheet(profilePerson.id)
             }}
           />
           </div>
@@ -1246,6 +1241,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
         {notice && authUser && !mustChangePw && <NoticeScreen notice={notice} onDone={closeNotice} onVote={choice => voteNotice(db!, authUser.uid, notice.id, choice)} />}
         {banner && <MessageBanner banner={banner} onDone={() => setBanner(null)} onOpen={id => { setProfile(null); setSheet(null); setTab('msg'); setChatId(id) }} />}
         {toast && <Toast msg={toast} />}
+        <MusicBubble />
       </div>
       {/* Sheets and dialogs portal here (see Overlays.tsx) so they're never inside an animated screen. */}
       <div id="overlay-root" />

@@ -337,7 +337,7 @@ describe('profile and shop', () => {
     await denied(deleteDoc(fsDoc(b, 'homework', 'h1')))
     await deleteDoc(fsDoc(a, 'homework', 'h1'))
   })
-  test('문서: a heart from someone else pays the author 1 point, once per person; your own heart pays nothing', async () => {
+  test('문서: a heart from someone else pays the author 5 points, once per person; your own heart pays nothing', async () => {
     const a = await signUp('a'), b = await signUp('b'), c = await signUp('c')
     const photo = 'data:image/jpeg;base64,/9j/4AAQ'
     const bonusOf = async () => (await read(a, 'candidates/a')).bonus ?? 0
@@ -348,13 +348,13 @@ describe('profile and shop', () => {
     await fsUpdateDoc(fsDoc(c, 'homework', 'h9'), { likes: arrayUnion('c') })
     await kickWorker(40000)
     // the worker pays the hearts it finds (it works in the background: wait for it, up to 40 s)
-    for (let i = 0; i < 80 && (await bonusOf()) < start + 2; i++) await new Promise(r => setTimeout(r, 500))
-    assert.equal(await bonusOf(), start + 2, 'two others hearted: two points, not three')
+    for (let i = 0; i < 80 && (await bonusOf()) < start + 10; i++) await new Promise(r => setTimeout(r, 500))
+    assert.equal(await bonusOf(), start + 10, 'two others hearted: 5 points each, not three hearts')
     // taken back and given again: nothing more (give the worker time to look, then check)
     await fsUpdateDoc(fsDoc(b, 'homework', 'h9'), { likes: arrayRemove('b') })
     await fsUpdateDoc(fsDoc(b, 'homework', 'h9'), { likes: arrayUnion('b') })
     await new Promise(r => setTimeout(r, 8000))
-    assert.equal(await bonusOf(), start + 2)
+    assert.equal(await bonusOf(), start + 10)
   })
   test('문서 조회수: a view counts once per person (with their view record, in one batch); not on your own post', async () => {
     const a = await signUp('a'), b = await signUp('b'), c = await signUp('c')
@@ -394,6 +394,88 @@ describe('profile and shop', () => {
     await denied(fsSetDoc(fsDoc(b, 'posts', 'q1', 'comments', 'c2'), { uid: 'a', name: 'a', text: 'x', at: fsServerTimestamp() }))
     await deleteDoc(fsDoc(a, 'posts', 'q1', 'comments', 'c1'))
     await deleteDoc(fsDoc(a, 'posts', 'q1'))
+  })
+  test('인스타그램: a heart from someone else pays the author 5 points, once per person', async () => {
+    const a = await signUp('a'), b = await signUp('b')
+    const photo = 'data:image/jpeg;base64,/9j/4AAQ'
+    const bonusOf = async () => (await read(a, 'candidates/a')).bonus ?? 0
+    const start = await bonusOf()
+    await fsSetDoc(fsDoc(a, 'posts', 'heart1'), { uid: 'a', name: 'a', photo, caption: '', likes: [], views: 0, comments: 0, at: fsServerTimestamp() })
+    await fsUpdateDoc(fsDoc(a, 'posts', 'heart1'), { likes: arrayUnion('a') })
+    await fsUpdateDoc(fsDoc(b, 'posts', 'heart1'), { likes: arrayUnion('b') })
+    await kickWorker(40000)
+    for (let i = 0; i < 80 && (await bonusOf()) < start + 5; i++) await new Promise(r => setTimeout(r, 500))
+    assert.equal(await bonusOf(), start + 5, 'one other hearted: 5 points; your own heart pays nothing')
+    await fsUpdateDoc(fsDoc(b, 'posts', 'heart1'), { likes: arrayRemove('b') })
+    await fsUpdateDoc(fsDoc(b, 'posts', 'heart1'), { likes: arrayUnion('b') })
+    await new Promise(r => setTimeout(r, 6000))
+    assert.equal(await bonusOf(), start + 5, 'taken back and given again: nothing more')
+  })
+  test('인스타그램: the comment count goes up only with a comment of yours in the same batch, and down only when one is removed', async () => {
+    const a = await signUp('a'), b = await signUp('b')
+    const photo = 'data:image/jpeg;base64,/9j/4AAQ'
+    await fsSetDoc(fsDoc(a, 'posts', 'cc1'), { uid: 'a', name: 'a', photo, caption: '', likes: [], views: 0, comments: 0, at: fsServerTimestamp() })
+    await denied(fsSetDoc(fsDoc(a, 'posts', 'cc2'), { uid: 'a', name: 'a', photo, caption: '', likes: [], views: 0, comments: 7, at: fsServerTimestamp() })) // starts at 0
+    const add = (who: typeof a, uid: string, id: string, as = uid) => {
+      const w = writeBatch(who)
+      w.set(fsDoc(who, 'posts', 'cc1', 'comments', id), { uid: as, name: as, text: '안녕', at: fsServerTimestamp() })
+      w.update(fsDoc(who, 'posts', 'cc1'), { comments: increment(1), lastComment: id })
+      return w.commit()
+    }
+    await add(b, 'b', 'k1')
+    assert.equal((await read(a, 'posts/cc1')).comments, 1)
+    await denied(fsUpdateDoc(fsDoc(b, 'posts', 'cc1'), { comments: increment(1), lastComment: 'k1' }))   // that comment already exists
+    await denied(fsUpdateDoc(fsDoc(b, 'posts', 'cc1'), { comments: increment(1), lastComment: 'nope' })) // no comment made with it
+    await denied(add(b, 'b', 'k2', 'a'))                                                                  // a comment as someone else
+    await denied(fsUpdateDoc(fsDoc(b, 'posts', 'cc1'), { comments: increment(5), lastComment: 'k1' }))
+    // down: only together with the removal (the post's author may remove anyone's comment)
+    await denied(fsUpdateDoc(fsDoc(a, 'posts', 'cc1'), { comments: increment(-1), lastComment: 'k1' }))   // the comment is still there
+    const remove = (who: typeof a, id: string) => {
+      const w = writeBatch(who)
+      w.delete(fsDoc(who, 'posts', 'cc1', 'comments', id))
+      w.update(fsDoc(who, 'posts', 'cc1'), { comments: increment(-1), lastComment: id })
+      return w.commit()
+    }
+    await remove(a, 'k1')
+    assert.equal((await read(a, 'posts/cc1')).comments, 0)
+    await denied(remove(a, 'k1'))                                                                         // already gone
+    await deleteDoc(fsDoc(a, 'posts', 'cc1'))
+  })
+  test('Spotify: a song is added once (its id is the YouTube id); a listen counts once per 10 minutes and never for your own song; the owner earns 10P per listen', async () => {
+    const a = await signUp('a'), b = await signUp('b')
+    const vid = 'dQw4w9WgXcQ'
+    const song = (uid: string, over: Record<string, unknown> = {}) => ({ vid, title: '노래 제목', uid, plays: 0, at: fsServerTimestamp(), ...over })
+    await fsSetDoc(fsDoc(a, 'songs', vid), song('a'))
+    await denied(fsSetDoc(fsDoc(b, 'songs', vid), song('b')))                                  // again, by someone else: no
+    await denied(fsSetDoc(fsDoc(a, 'songs', vid), song('a')))                                  // again, by the owner: no
+    await denied(fsSetDoc(fsDoc(a, 'songs', 'short'), song('a', { vid: 'short' })))             // not a video id
+    await denied(fsSetDoc(fsDoc(a, 'songs', 'AAAAAAAAAAA'), song('a')))                         // the doc id is not its vid
+    await denied(fsSetDoc(fsDoc(a, 'songs', 'BBBBBBBBBBB'), song('b', { vid: 'BBBBBBBBBBB' }))) // as someone else
+    await denied(fsSetDoc(fsDoc(a, 'songs', 'CCCCCCCCCCC'), song('a', { vid: 'CCCCCCCCCCC', plays: 50 })))
+    await denied(fsSetDoc(fsDoc(a, 'songs', 'DDDDDDDDDDD'), song('a', { vid: 'DDDDDDDDDDD', title: '' })))
+    await fsUpdateDoc(fsDoc(a, 'songs', vid), { title: '새 제목' })
+    await denied(fsUpdateDoc(fsDoc(b, 'songs', vid), { title: '남의 곡' }))
+    await denied(fsUpdateDoc(fsDoc(a, 'songs', vid), { plays: 99 }))
+    // listens
+    const play = (who: typeof a, uid: string, v = vid, id = `${v}_${uid}`) => fsSetDoc(fsDoc(who, 'songPlays', id), { vid: v, uid, at: fsServerTimestamp() }, { merge: true })
+    await denied(play(a, 'a'))                                              // your own song
+    await denied(play(b, 'b', vid, `${vid}_a`))                             // someone else's record
+    await denied(play(b, 'b', 'ZZZZZZZZZZZ'))                               // no such song
+    await play(b, 'b')
+    await denied(play(b, 'b'))                                              // again within 10 minutes
+    await denied(fsGetDoc(fsDoc(b, 'songPlays', `${vid}_b`)))               // only the worker reads them
+    await denied(deleteDoc(fsDoc(b, 'songPlays', `${vid}_b`)))
+    // the worker pays the owner 10P for the listen and counts it on the song
+    const bonusOf = async () => (await read(a, 'candidates/a')).bonus ?? 0
+    const start = await bonusOf()
+    await kickWorker(40000)
+    for (let i = 0; i < 80 && (await bonusOf()) < start + 10; i++) await new Promise(r => setTimeout(r, 500))
+    assert.equal(await bonusOf(), start + 10, 'one listen: 10 points')
+    assert.equal((await read(a, 'songs/' + vid)).plays, 1)
+    await new Promise(r => setTimeout(r, 5000))
+    assert.equal(await bonusOf(), start + 10, 'paid once')
+    await denied(deleteDoc(fsDoc(b, 'songs', vid)))
+    await deleteDoc(fsDoc(a, 'songs', vid))
   })
   test('인스타그램: a full-size photo (about 280 KB of text) can be posted', async () => {
     const a = await signUp('a')

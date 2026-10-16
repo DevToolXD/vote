@@ -74,7 +74,7 @@ function Comments({ db, post, uid, name, who, isAdmin, onToast }: { db: Firestor
   }
   const drop = async (c: PostComment) => {
     if (!window.confirm('이 댓글을 지울까요?')) return
-    try { await removePostComment(db, post.id, c.id) } catch { onToast('지우지 못했어요') }
+    try { await removePostComment(db, post.id, c.id, post.comments > 0) } catch { onToast('지우지 못했어요') }
   }
   return (
     <div style={css('padding:0 14px;display:flex;flex-direction:column;gap:10px')}>
@@ -153,7 +153,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
   const actions = (p: Post, onComment: () => void, dark = false) => (
     <div style={css('display:flex;align-items:center;gap:16px;color:' + (dark ? '#fff' : '#000'))}>
       <button aria-label={p.likes.includes(uid) ? '하트 취소' : '하트'} aria-pressed={p.likes.includes(uid)} className="pr-96" onClick={() => like(p)} style={css('display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600')}>{I.heart(p.likes.includes(uid))}{p.likes.length}</button>
-      <button aria-label="댓글" className="pr-96" onClick={onComment} style={css('display:flex;align-items:center;font-size:14px')}>{I.comment()}</button>
+      <button aria-label={`댓글 ${p.comments}개`} className="pr-96" onClick={onComment} style={css('display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600')}>{I.comment()}{p.comments}</button>
       <span style={css('margin-left:auto;display:flex;align-items:center;gap:5px;font-size:13px;opacity:0.7')}>{I.eye()}{compact(p.views)}</span>
     </div>
   )
@@ -224,7 +224,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
           {found.map(p => (
             <button key={p.id} aria-label="게시물 열기" onClick={() => setDetail(p.id)} style={css('position:relative;display:block;aspect-ratio:3/4;overflow:hidden;background:#f2f2f2')}>
               <img src={p.photo} alt="" loading="lazy" decoding="async" style={css('width:100%;height:100%;object-fit:cover;display:block')} />
-              <span style={css('position:absolute;left:6px;bottom:6px;display:flex;align-items:center;gap:4px;color:#fff;font-size:13px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,0.6)')}>{I.eye()}{compact(p.views)}</span>
+              <span style={css('position:absolute;left:6px;bottom:6px;display:flex;align-items:center;gap:4px;color:#fff;font-size:13px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,0.6)')}>{I.eye()}{compact(p.views)}<span style={css('margin-left:6px;display:flex;align-items:center;gap:3px')}>{I.comment(14)}{p.comments}</span></span>
             </button>
           ))}
         </div>
@@ -358,7 +358,7 @@ function Reel({ db, uid, who, post, onLike, onComment }: { db: Firestore | null;
       <div style={css('position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0) 22%,rgba(0,0,0,0) 55%,rgba(0,0,0,0.65) 100%)')} />
       <div style={css('position:absolute;right:12px;bottom:130px;display:flex;flex-direction:column;align-items:center;gap:20px;color:#fff')}>
         <button aria-label={liked ? '하트 취소' : '하트'} aria-pressed={liked} onClick={onLike} style={css('display:flex;flex-direction:column;align-items:center;gap:3px;font-size:13px;font-weight:700')}>{I.heart(liked, 32)}{compact(post.likes.length)}</button>
-        <button aria-label="댓글" onClick={onComment} style={css('display:flex;flex-direction:column;align-items:center;gap:3px;font-size:13px;font-weight:700')}>{I.comment(30)}</button>
+        <button aria-label={`댓글 ${post.comments}개`} onClick={onComment} style={css('display:flex;flex-direction:column;align-items:center;gap:3px;font-size:13px;font-weight:700')}>{I.comment(30)}{compact(post.comments)}</button>
         <span style={css('display:flex;flex-direction:column;align-items:center;gap:3px;font-size:13px;font-weight:700')}>{I.eye()}{compact(post.views)}</span>
       </div>
       <div style={css('position:absolute;left:14px;right:70px;bottom:104px;color:#fff;display:flex;flex-direction:column;gap:8px')}>

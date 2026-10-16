@@ -522,10 +522,11 @@ let seasonEndsAt = null
 const listeners = []
 // accounts that changed (a new account, or a move): their grade is worked out at once, not at the next sweep
 const bankQueue = new Set(), bankSeen = new Map()
-// 문서 posts whose hearts changed: each new heart (from someone else) pays the author 1 point, once per person
-const homeQueue = new Set()
+// 문서 and 인스타그램 posts whose hearts changed ('homework/ID', 'posts/ID'): each new heart (from someone else)
+// pays the author HEART_POINTS, once per person. Spotify listens ('songPlays/ID') pay the song's owner.
+const homeQueue = new Set(), playQueue = new Set()
 const firstDone = new Promise(resolve => {
-  const seen = new Set(), total = 11
+  const seen = new Set(), total = 13
   const done = name => { if (!seen.has(name)) { seen.add(name); if (seen.size === total) resolve() } }
   const listen = (name, ref, onSnap) => ref.onSnapshot(snap => { onSnap(snap); done(name) }, err => { warn(`Listener ${name} failed: ${err.message}`); done(name) })
   listeners.push(
@@ -546,7 +547,14 @@ const firstDone = new Promise(resolve => {
       }
     }),
     listen('homework', fdb.collection('homework'), snap => {
-      for (const c of snap.docChanges()) if (c.type !== 'removed') homeQueue.add(c.doc.id)
+      for (const c of snap.docChanges()) if (c.type !== 'removed') homeQueue.add('homework/' + c.doc.id)
+    }),
+    // the latest 200 photos (hearts on older ones are not paid)
+    listen('posts', fdb.collection('posts').orderBy('at', 'desc').limit(200), snap => {
+      for (const c of snap.docChanges()) if (c.type !== 'removed') homeQueue.add('posts/' + c.doc.id)
+    }),
+    listen('songPlays', fdb.collection('songPlays'), snap => {
+      for (const c of snap.docChanges()) if (c.type !== 'removed') playQueue.add(c.doc.id)
     }),
     listen('settings', fdb.collection('settings'), snap => snap.docChanges().forEach(c => c.type === 'removed' ? settings.delete(c.doc.id) : settings.set(c.doc.id, c.doc.data()))),
     listen('tokens', fdb.collection('pushTokens'), snap => {
@@ -1169,13 +1177,20 @@ function creditOf(netWorth) {
   const g = BANK.grades.find(x => netWorth >= x.min) ?? BANK.grades.at(-1)
   return { grade: g.grade, limit: Math.max(0, Math.min(BANK.loan.cap, Math.floor(netWorth * g.ratio))) }
 }
-// 문서: a heart from someone else pays the author 1 point. The post remembers who has been paid (`paid`),
-// so a heart taken back and given again pays nothing more, and your own hearts pay nothing.
+// 문서 and 인스타그램: a heart from someone else pays the author HEART_POINTS. The post remembers who has been
+// paid (`paid`), so a heart taken back and given again pays nothing more, and your own hearts pay nothing.
+const HEART_POINTS = 5
 async function homeTick() {
-  const ids = [...homeQueue]
+  const paths = [...homeQueue]
   homeQueue.clear()
-  for (const id of ids) {
-    const ref = fdb.doc(`homework/${id}`)
+  for (const path of paths) {
+    const ref = fdb.doc(path)
+    // a photo from before comments were counted: count them once
+    if (path.startsWith('posts/')) {
+      await ref.get().then(async snap => {
+        if (snap.exists && snap.get('comments') === undefined) await ref.update({ comments: (await ref.collection('comments').count().get()).data().count })
+      }).catch(e => warn(`Counting comments of ${path} failed: ${e.message}`))
+    }
     await fdb.runTransaction(async tx => {
       const post = await tx.get(ref)
       if (!post.exists) return
@@ -1186,9 +1201,36 @@ async function homeTick() {
       const cand = fdb.doc(`candidates/${author}`)
       const c = await tx.get(cand)
       if (!c.exists) return
-      tx.update(cand, { bonus: FieldValue.increment(fresh.length) })
+      tx.update(cand, { bonus: FieldValue.increment(fresh.length * HEART_POINTS) })
       tx.update(ref, { paid: [...paid, ...fresh] })
-    }).catch(e => warn(`Hearts for ${id} failed: ${e.message}`))
+    }).catch(e => warn(`Hearts for ${path} failed: ${e.message}`))
+  }
+}
+
+// Spotify: someone listened to a song for a minute (the app writes songPlays/{vid}_{listener} then, the rules
+// allow it once per 10 minutes per song and person and never for your own song). Each new listen pays the
+// song's owner SONG_POINTS and counts as a play of the song (`plays`); `paidAt` is the listen already paid.
+const SONG_POINTS = 10
+async function playTick() {
+  const ids = [...playQueue]
+  playQueue.clear()
+  for (const id of ids) {
+    const ref = fdb.doc(`songPlays/${id}`)
+    await fdb.runTransaction(async tx => {
+      const play = await tx.get(ref)
+      if (!play.exists) return
+      const v = play.data(), at = ms(v.at)
+      if (!at || at <= ms(v.paidAt)) return
+      const songRef = fdb.doc(`songs/${v.vid}`)
+      const song = await tx.get(songRef)
+      const owner = song.get('uid')
+      if (!song.exists || !owner || owner === v.uid) { tx.update(ref, { paidAt: v.at }); return }
+      const cand = fdb.doc(`candidates/${owner}`)
+      const c = await tx.get(cand)
+      if (c.exists) tx.update(cand, { bonus: FieldValue.increment(SONG_POINTS) })
+      tx.update(songRef, { plays: FieldValue.increment(1) })
+      tx.update(ref, { paidAt: v.at })
+    }).catch(e => warn(`Listen ${id} failed: ${e.message}`))
   }
 }
 
@@ -1438,6 +1480,7 @@ while (true) {
   stockKick()
   await bankTick().catch(e => warn('Bank failed: ' + e.message))
   await homeTick().catch(e => warn('Hearts failed: ' + e.message))
+  await playTick().catch(e => warn('Listens failed: ' + e.message))
   await fillCoinOrders()
   await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
   if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })

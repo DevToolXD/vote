@@ -32,7 +32,10 @@ const BackChevron = () => (
 
 // A new phone has nothing but the 앱스토어: apps come from the store (받기), and 관리 only for the admin.
 const DEFAULT_LAYOUT = { grid: ['admin'] as AppId[], dock: [] as AppId[] }
-const REMOVABLE: AppId[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino', 'bank', 'insta', 'homework']
+const REMOVABLE: AppId[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino', 'bank', 'spotify', 'homework']
+/** On every phone, whoever's it is (and never deleted). */
+const ALWAYS: AppId[] = ['account']
+const SPOTIFY_BG = '#121212'
 type Layout = { grid: AppId[]; dock: AppId[] }
 function loadLayout(): Layout {
   let l: Layout = DEFAULT_LAYOUT
@@ -72,14 +75,14 @@ function AppTile({ app, badge = 0, editing, wiggle, removable, slot, idx, draggi
 /** 검색: find an app by name; an app you do not have yet is pointed at 앱스토어. */
 function SearchView({ phone, isAdmin, onOpen, onClose }: { phone: PhoneState; isAdmin: boolean; onOpen: (app: OpenableApp) => void; onClose: () => void }) {
   const [q, setQ] = useState('')
-  const all: OpenableApp[] = [...(isAdmin ? ['admin' as const] : []), 'shop', 'market', 'coin']
+  const all: OpenableApp[] = [...(isAdmin ? ['admin' as const] : []), 'account', 'shop', 'market', 'coin', 'spotify']
   const list = all.filter(a => APP_NAME[a].includes(q.trim()))
   return (
     <div onClick={onClose} style={css(`position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;padding:calc(var(--phone-top) + 16px) 16px 0;box-sizing:border-box;border-radius:var(--phone-r);overflow:hidden;background:rgba(0,0,0,0.4);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);animation:fade 200ms ease both;font-family:${FONT}`)}>
       <div onClick={e => e.stopPropagation()} style={css('display:flex;flex-direction:column;gap:8px')}>
         <input value={q} onChange={e => setQ(e.target.value.slice(0, 20))} placeholder="앱 검색" aria-label="앱 검색" style={css('height:36px;padding:0 12px;border:0;border-radius:10px;background:rgba(255,255,255,0.92);color:#000;font-size:17px;outline:none;font-family:inherit;box-sizing:border-box')} />
         {list.map(app => {
-          const ok = app === 'admin' || onHome(phone, app)
+          const ok = app === 'admin' || app === 'account' || onHome(phone, app)
           return (
             <button key={app} className="pr-96" onClick={() => { if (ok) { onOpen(app); onClose() } }} style={css('height:52px;display:flex;align-items:center;gap:12px;padding:0 12px;border-radius:12px;background:rgba(255,255,255,0.92);color:#000;text-align:left;font-family:inherit')}>
               <AppIcon app={app} size={36} />
@@ -196,10 +199,11 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
   const [editing, setEditing] = useState(false)
   const [drag, setDrag] = useState<{ app: AppId; x: number; y: number } | null>(null)
   const [askDelete, setAskDelete] = useState<AppId | null>(null)
-  const visibleApp = (a: AppId) => (a === 'admin' ? isAdmin : onHome(phone, a as StoreApp))
+  // (an app an older home screen remembers but that doesn't exist any more, like 인스타그램, is just not shown)
+  const visibleApp = (a: AppId) => (a === 'admin' ? isAdmin : ALWAYS.includes(a) ? true : STORE_APPS.includes(a as StoreApp) && onHome(phone, a as StoreApp))
   // an app installed from the 앱스토어 joins the end of the home screen
   const seen = new Set([...layout.grid, ...layout.dock])
-  const installedNew = (STORE_APPS as AppId[]).filter(a => !seen.has(a) && visibleApp(a))
+  const installedNew = ([...ALWAYS, ...STORE_APPS] as AppId[]).filter(a => !seen.has(a) && visibleApp(a))
   const grid = [...layout.grid, ...installedNew].filter((a, i, arr) => arr.indexOf(a) === i && visibleApp(a))
   const dock = layout.dock.filter((a, i, arr) => arr.indexOf(a) === i && visibleApp(a)).slice(0, 3)
   const commit = (l: Layout) => { setLayout(l); saveLayout(l) }
@@ -251,9 +255,9 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
     commit({ grid: layout.grid.filter(a => a !== app), dock: layout.dock.filter(a => a !== app) })
   }
   const inApp = !!shown
-  const dark = shown === 'stock' || shown === 'block' // 주식 and the game are black apps (코인 is white)
+  const dark = shown === 'stock' || shown === 'block' || shown === 'spotify' // 주식, Spotify and the game are dark apps (코인 is white)
   // the whole screen takes the open app's colour, so the strip above it is not the wallpaper
-  const appBg = shown ? (shown === 'block' ? BLOCK_BG : dark ? '#000000' : shown === 'flappy' ? FLAPPY_SKY : '#ffffff') : WALL
+  const appBg = shown ? (shown === 'block' ? BLOCK_BG : shown === 'spotify' ? SPOTIFY_BG : dark ? '#000000' : shown === 'flappy' ? FLAPPY_SKY : '#ffffff') : WALL
   // In full screen the phone covers the page, so the browser tints the status bar from the screen's top colour
   const topColour = !shown ? WALL_TOP : shown === 'block' ? BLOCK_TOP : appBg
   useEffect(() => {
@@ -263,7 +267,7 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
     return () => { meta?.setAttribute('content', '#ffffff') }
   }, [full, topColour])
   const away = inApp || view !== 'home'
-  const backInk = shown === 'block' ? '#ffffff' : dark ? '#0a84ff' : inApp ? '#007aff' : view === 'store' ? 'var(--ios-blue)' : '#fff'
+  const backInk = shown === 'block' || shown === 'spotify' ? '#ffffff' : dark ? '#0a84ff' : inApp ? '#007aff' : view === 'store' ? 'var(--ios-blue)' : '#fff'
   const btnInk = dark ? '#fff' : inApp ? '#191f28' : view === 'store' ? 'var(--ios-label)' : '#fff'
   const indicator = dark ? '#fff' : inApp ? '#000' : view === 'store' ? 'var(--ios-label)' : '#fff'
 
@@ -328,7 +332,7 @@ export function PhoneScreen({ db, uid, isAdmin, adminUnread, app, onOpen, onClos
 
       {/* the open app */}
       {shown && (
-        <div className="phone-app" data-phone-app style={css(`position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;padding-top:var(--phone-top);box-sizing:border-box;background:${shown === 'block' ? BLOCK_BG : dark ? '#000000' : shown === 'flappy' ? FLAPPY_SKY : '#ffffff'};border-radius:${full ? 0 : 53}px;overflow:hidden;color:${dark ? '#ffffff' : '#191f28'};font-family:${APP_FONT};word-break:keep-all;transform-origin:${origin.x}px ${origin.y}px;animation:${closing ? 'appClose' : 'appOpen'} ${closing ? 280 : 420}ms cubic-bezier(0.32,0.72,0,1) both`)}>
+        <div className="phone-app" data-phone-app style={css(`position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;padding-top:var(--phone-top);box-sizing:border-box;background:${shown === 'block' ? BLOCK_BG : shown === 'spotify' ? SPOTIFY_BG : dark ? '#000000' : shown === 'flappy' ? FLAPPY_SKY : '#ffffff'};border-radius:${full ? 0 : 53}px;overflow:hidden;color:${dark ? '#ffffff' : '#191f28'};font-family:${APP_FONT};word-break:keep-all;transform-origin:${origin.x}px ${origin.y}px;animation:${closing ? 'appClose' : 'appOpen'} ${closing ? 280 : 420}ms cubic-bezier(0.32,0.72,0,1) both`)}>
           <div data-phone-scroll style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;padding-bottom:var(--phone-bottom)')}>
             {renderApp(shown)}
           </div>

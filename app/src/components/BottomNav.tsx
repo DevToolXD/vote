@@ -2,17 +2,17 @@ import { css, sx } from '../css'
 import type { Tab } from '../data'
 import { PhoneTabIcon } from './PhoneIcons'
 
-// 폰 holds 상점, 코인 and (for the admin) 관리 as its apps, so the bar is 폰 · 계정 · 랭킹 · 메시지.
-const TABS: [Tab, string][] = [['phone', '폰'], ['acct', '계정'], ['rank', '랭킹'], ['msg', '메시지']]
+// 폰 holds 계정, 상점, 코인 and (for the admin) 관리 as its apps, so the bar is 폰 · 인스타그램 · 랭킹 · 메시지.
+const TABS: [Tab, string][] = [['phone', '폰'], ['insta', '인스타그램'], ['rank', '랭킹'], ['msg', '메시지']]
 
 const icons: Partial<Record<Tab, JSX.Element>> = {
   phone: <PhoneTabIcon />,
-  acct: <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3.5 19.5C3.5 15.9 7.3 14 12 14s8.5 1.9 8.5 5.5c0 .8-.7 1.5-1.5 1.5H5c-.8 0-1.5-.7-1.5-1.5z" /></svg>,
+  insta: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="5" /><circle cx="12" cy="12" r="3.9" /><circle cx="17.2" cy="6.8" r="1" fill="currentColor" stroke="none" /></svg>,
   rank: <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="11" width="5" height="10" rx="1.5" /><rect x="9.5" y="4" width="5" height="17" rx="1.5" /><rect x="16" y="14" width="5" height="7" rx="1.5" /></svg>,
   msg: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinejoin="round" strokeLinecap="round"><path d="M22 3 9.218 10.083" /><path d="M11.698 20.334 22 3.001H2l7.218 7.083z" /></svg>,
 }
 
-/** 폰 · 계정 · 랭킹 · 메시지. `unread` badges 메시지; the admin's open tickets badge 폰 (관리 is inside it). */
+/** 폰 · 인스타그램 · 랭킹 · 메시지. `unread` badges 메시지; the admin's open tickets badge 폰 (관리 is inside it). */
 export function BottomNav({ tab, onGo, isAdmin = false, unread = 0, adminUnread = 0 }: { tab: Tab; onGo: (t: Tab) => void; isAdmin?: boolean; unread?: number; adminUnread?: number }) {
   const tabs = TABS
   const idx = tabs.findIndex(([k]) => k === tab)

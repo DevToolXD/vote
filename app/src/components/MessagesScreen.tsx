@@ -158,17 +158,12 @@ type ScreenProps = {
   onToggleOff: (off: boolean) => void
   /** for 온라인 표시 next to 1:1 chats */
   db?: Firestore | null
-  /** The bottom search bar shows (the app shows the tab bar too). */
-  chromeOn?: boolean
-  /** A drag, tap or scroll in the list: brings the bars back for a while. */
-  onChrome?: () => void
 }
 
-export const MessagesScreen = memo(function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onNew, onToggleOff, db = null, chromeOn = true, onChrome }: ScreenProps) {
-  const drag = useRef<{ x: number; y: number } | null>(null)
+export const MessagesScreen = memo(function MessagesScreen({ loggedIn, me, chats, byId, onLogin, onOpen, onNew, onToggleOff, db = null }: ScreenProps) {
   const [q, setQ] = useState('')
+  const [searching, setSearching] = useState(false)
   const [editing, setEditing] = useState(false)
-  const [onlyUnread, setOnlyUnread] = useState(false)
   if (!loggedIn || !me) {
     return (
       <div className="anim-list" style={css('flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:48px 24px;text-align:center')}>
@@ -181,27 +176,30 @@ export const MessagesScreen = memo(function MessagesScreen({ loggedIn, me, chats
   }
   const off = !!me.msgOff
   const needle = q.trim()
-  const shown = chats.filter(c => (!onlyUnread || isUnread(c, me.id)) && (!needle || describeChat(c, me.id, byId, off).title.includes(needle)))
+  const shown = chats.filter(c => (!needle || describeChat(c, me.id, byId, off).title.includes(needle)))
   const pinned = chats.slice(0, 3)
   return (
     <div data-g="clear"
-      onPointerDown={e => { drag.current = { x: e.clientX, y: e.clientY }; onChrome?.() }}
-      onPointerMove={e => { const d = drag.current; if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8) { drag.current = null; onChrome?.() } }}
-      onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }}
-      onWheel={e => { if (Math.abs(e.deltaY) > 4) onChrome?.() }}
       style={css('position:relative;flex:1;display:flex;flex-direction:column;min-height:100%;background:#ffffff;color:#000;padding-bottom:calc(var(--phone-bottom,0px))')}>
-      {/* iOS Messages: glass 편집 · centred title · glass filter */}
+      {/* iOS Messages: glass 편집 · centred title · glass 검색 and 새 채팅 */}
       <div style={css('position:sticky;top:0;z-index:5;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 16px 10px;background:rgba(255,255,255,0.82);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%)')}>
         <span style={css('justify-self:start')}>
           <button className="pr-94" onClick={() => setEditing(e => !e)} disabled={chats.length === 0} aria-pressed={editing} style={css(`height:44px;padding:0 18px;border-radius:9999px;font-size:17px;font-weight:600;color:#000;${GLASS_BG}`)}>{editing ? '완료' : '편집'}</button>
         </span>
         <h1 style={css('margin:0;font-size:17px;line-height:22px;font-weight:600;color:#000;text-align:center')}>메시지</h1>
         <span style={css('justify-self:end;display:flex;gap:8px')}>
-          <button className="pr-94" onClick={() => setOnlyUnread(u => !u)} aria-pressed={onlyUnread} aria-label="안 읽은 대화만 보기" style={css(`${GLASS_CIRCLE};color:${onlyUnread ? '#007aff' : '#000'}`)}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+          <button className="pr-94" onClick={() => { setSearching(v => !v); setQ('') }} aria-pressed={searching} aria-label="대화 검색" style={css(`${GLASS_CIRCLE};color:${searching ? '#007aff' : '#000'}`)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
           </button>
+          <button className="pr-94" onClick={onNew} disabled={off} aria-label="새 채팅 쓰기" style={sx(`${GLASS_CIRCLE};color:#007aff;transition:opacity 200ms`, { opacity: off ? 0.3 : 1 })}><ComposeIcon /></button>
         </span>
       </div>
+      {searching && (
+        <label style={css('margin:0 16px 8px;height:44px;display:flex;align-items:center;gap:8px;padding:0 14px;border-radius:9999px;background:#f2f2f7;color:#8e8e93;animation:toastDown 220ms cubic-bezier(0.16,1,0.3,1) both')}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value.slice(0, 20))} placeholder="검색" aria-label="대화 검색어" style={css('flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:17px;color:#000;font-family:inherit')} />
+        </label>
+      )}
       {off && <div style={css('padding:0 20px 6px;font-size:13px;line-height:18px;color:#8e8e93')}>메시지 받기가 꺼져 있어요</div>}
 
       {chats.length === 0 ? (
@@ -262,7 +260,7 @@ export const MessagesScreen = memo(function MessagesScreen({ loggedIn, me, chats
 
       <div style={css('height:16px')} />
       {/* settings row, grouped like iOS */}
-      <div style={css('margin:0 16px 96px;padding:12px 16px;border-radius:12px;background:#f2f2f7;display:flex;align-items:center;gap:12px')}>
+      <div style={css('margin:0 16px 24px;padding:12px 16px;border-radius:12px;background:#f2f2f7;display:flex;align-items:center;gap:12px')}>
         <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
           <span style={css('font-size:17px;line-height:22px;color:#000')}>메시지 받기</span>
           <span style={css('font-size:13px;line-height:18px;color:#8e8e93')}>{off ? '꺼두면 아무도 메시지를 보내거나 초대할 수 없고, 나도 보낼 수 없어요' : '끄면 새 채팅 목록에서도 보이지 않아요'}</span>
@@ -270,17 +268,6 @@ export const MessagesScreen = memo(function MessagesScreen({ loggedIn, me, chats
         <Switch on={!off} onToggle={() => onToggleOff(!off)} label="메시지 받기" />
       </div>
 
-      {/* iOS 26 bottom bar: a glass search field and the compose button */}
-      <div style={sx('z-index:4;padding:8px 16px calc(8px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,rgba(255,255,255,0),#fff 40%);transition:transform 360ms ' + EASE + ',opacity 300ms ease', chromeOn
-        ? { position: 'sticky', bottom: 0, marginTop: 'auto', transform: 'none', opacity: 1 }
-        : { position: 'absolute', left: 0, right: 0, bottom: 0, transform: 'translateY(100%)', opacity: 0, pointerEvents: 'none' })}>
-        <label style={css('flex:1;min-width:0;height:44px;display:flex;align-items:center;gap:8px;padding:0 14px;border-radius:9999px;background:rgba(255,255,255,0.72);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);box-shadow:0 6px 20px rgba(0,0,0,0.12),inset 0 0 0 0.5px rgba(0,0,0,0.06);color:#8e8e93')}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
-          <input value={q} onChange={e => setQ(e.target.value.slice(0, 20))} placeholder="검색" aria-label="대화 검색" style={css('flex:1;min-width:0;border:0;outline:none;background:transparent;font-size:17px;color:#000;font-family:inherit')} />
-          <svg width="18" height="20" viewBox="0 0 18 22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="5.5" y="1.5" width="7" height="12" rx="3.5" fill="currentColor" stroke="none" /><path d="M2 10.5a7 7 0 0 0 14 0M9 17.5v3" /></svg>
-        </label>
-        <button className="pr-94" onClick={onNew} disabled={off} aria-label="새 채팅 쓰기" style={sx('width:44px;height:44px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.72);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);box-shadow:0 6px 20px rgba(0,0,0,0.12);color:#007aff;transition:opacity 200ms', { opacity: off ? 0.3 : 1 })}><ComposeIcon /></button>
-      </div>
     </div>
   )
 })

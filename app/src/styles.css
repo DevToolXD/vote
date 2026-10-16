@@ -321,3 +321,11 @@ main[data-scroll="page"]{overflow-x:hidden}
 /* 폰 home screen, edit mode: the icons wiggle (iOS). */
 @keyframes jiggle{0%,100%{transform:rotate(-1.4deg)}50%{transform:rotate(1.4deg)}}
 .jiggle{animation:jiggle 300ms ease-in-out infinite}
+
+/* Spotify: the turning picture of the music circle (transform only) and the song bar's handle */
+@keyframes musicSpin{to{transform:rotate(360deg)}}
+.music-disc{animation:musicSpin 14s linear infinite;will-change:transform}
+.music-seek::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;border-radius:9999px;background:#fff;box-shadow:0 0 0 4px rgba(255,255,255,0.12)}
+.music-seek::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:9999px;background:#fff}
+@media (prefers-reduced-motion:reduce){.music-disc{animation:none}}
+@keyframes spBar{from{transform:scaleY(0.3)}to{transform:scaleY(1)}}
