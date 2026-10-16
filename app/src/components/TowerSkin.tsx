@@ -5,7 +5,6 @@ import { MX_FONT, MX_STRIPS, cubeOrbit } from './matrixArt'
 import { BAR_TIP_SVG, BLUE, INK, IVORY, SEAM_TILE, barCoinOrbit } from './koreaArt'
 import { pauseOffscreen } from '../offscreen'
 import { BAR_TILE, BAR_TIP, HELIX_TILE, SILVER_BAR_SPILL, ensureSilverArt } from './silverArt'
-import { GA_ARCS, GA_LINES, gaRing } from './gargantuaArt'
 
 const segment = 'display:block;width:100%;flex:none;background-repeat:no-repeat;background-size:100% 100%'
 
@@ -238,36 +237,26 @@ const GA_TILE_A = 41, GA_TILE_B = 27
 const GA_TILE_A_BG = 'linear-gradient(180deg,transparent 0 8px,rgba(255,206,130,0.8) 8px 9px,transparent 9px 27px,rgba(190,150,255,0.6) 27px 28px,transparent 28px 41px)'
 const GA_TILE_B_BG = 'linear-gradient(180deg,transparent 0 12px,rgba(255,255,255,0.7) 12px 13px,transparent 13px 27px)'
 const GA_MOTES: [string, number, number, string][] = [['12%', 2.2, 0, '#ffd29a'], ['80%', 2.8, 0.6, '#ffffff'], ['40%', 3, 1.2, '#ffb35c'], ['66%', 2.5, 1.8, '#ffffff']]
-const gaMask = (a: number, b: number) => ({ WebkitMaskImage: gaRing(a, b), maskImage: gaRing(a, b) })
-
 /**
  * 가르강튀아 막대: a black column with light lines flowing up it, and a black hole at its tip with
  * the disk turning round it (the far half behind the column, the near half in front).
  */
 function GargantuaBar({ flip }: { flip: boolean }) {
-  // the disk, squashed to a thin ellipse round the tip: two rings of light turning the other way
-  const disk = (near: boolean) => (
-    <span style={{ position: 'absolute', left: -30, top: -30, width: 60, height: 60, clipPath: near ? 'inset(50% 0 0 0)' : 'inset(0 0 50% 0)' }}>
-      <span style={{ position: 'absolute', inset: 0, transform: 'scaleY(0.4) rotate(-6deg)' }}>
-        <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: GA_ARCS, ...gaMask(60, 100), animation: 'avSpin 4s linear infinite' }} />
-        <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: GA_LINES, ...gaMask(60, 100), animation: 'avSpin 7s linear infinite reverse' }} />
-      </span>
-    </span>
-  )
+  // the black hole at the tip: the rendered picture (the same as the profile frame's), the shadow as wide as the column
+  const SHADOW = 13, SPRITE_W = Math.round(481 * SHADOW / 62), SPRITE_H = Math.round(360 * SHADOW / 62)
   return (
     <span ref={pauseOffscreen} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', transform: flip ? 'scaleY(-1)' : 'none' }}>
       <span className="ga-glow" style={css('position:absolute;left:-70%;right:-70%;top:-18px;bottom:-6px;border-radius:40%;background:radial-gradient(closest-side,rgba(255,160,70,0.5),rgba(255,110,40,0.18) 60%,transparent);filter:blur(6px);animation:gaPulse 3s ease-in-out infinite')} />
-      <span style={css('position:absolute;left:50%;top:0;width:0;height:0')}>{disk(false)}</span>
       {/* the black column, the lines of light flowing up it (two speeds) */}
       <span style={css('position:absolute;inset:0;border-radius:6px;overflow:hidden;background:#000;box-shadow:0 0 12px rgba(255,150,70,0.35)')}>
         <span style={css(`position:absolute;left:0;right:0;top:0;bottom:-${GA_TILE_A}px;will-change:transform;background-image:${GA_TILE_A_BG};background-size:100% ${GA_TILE_A}px;background-repeat:repeat-y;--t:${GA_TILE_A}px;animation:slRiseT 2.6s linear infinite`)} />
         <span style={css(`position:absolute;left:0;right:0;top:0;bottom:-${GA_TILE_B}px;will-change:transform;background-image:${GA_TILE_B_BG};background-size:100% ${GA_TILE_B}px;background-repeat:repeat-y;opacity:0.7;--t:${GA_TILE_B}px;animation:slRiseT 1.7s linear infinite`)} />
       </span>
-      {/* the hole itself, at the tip, and the near half of the disk in front of it */}
+      {/* the hole at the tip: its black shadow, and over it the disk's picture (clear where the light falls in) */}
       <span style={css('position:absolute;left:50%;top:0;width:0;height:0')}>
-        <span style={css('position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:#000;box-shadow:0 0 0 1px rgba(255,220,170,0.9),0 0 8px rgba(255,150,60,0.9)')} />
+        <span style={{ position: 'absolute', left: -SHADOW, top: -SHADOW, width: SHADOW * 2, height: SHADOW * 2, borderRadius: '50%', background: '#000' }} />
+        <span style={{ position: 'absolute', left: -SPRITE_W / 2, top: -SPRITE_H / 2, width: SPRITE_W, height: SPRITE_H, backgroundImage: 'url(garg/gargantua.v2.webp)', backgroundSize: '100% 100%' }} />
       </span>
-      <span style={css('position:absolute;left:50%;top:0;width:0;height:0')}>{disk(true)}</span>
       {GA_MOTES.map(([left, dur, delay, c]) => (
         <span key={left} className="aura-spark" style={{ ...css('position:absolute;bottom:8%;width:2px;height:2px;margin-left:-1px;border-radius:50%;opacity:0'), left, background: c, boxShadow: `0 0 4px ${c},0 0 8px rgba(255,190,120,0.8)`, animation: `auraSpark ${dur}s ease-out ${delay}s infinite` }} />
       ))}
