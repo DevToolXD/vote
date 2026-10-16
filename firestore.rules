@@ -1452,9 +1452,12 @@ service cloud.firestore {
         && request.resource.data.vid == vid && request.resource.data.uid == request.auth.uid
         && request.resource.data.title is string && request.resource.data.title.size() >= 1 && request.resource.data.title.size() <= 120
         && request.resource.data.plays == 0 && request.resource.data.at == request.time;
-      allow update: if signedIn() && resource.data.uid == request.auth.uid
+      // the owner fixes the title; anyone may replace a placeholder title ("YouTube 영상 …", saved when
+      // YouTube could not be asked) with the real one the player reports
+      allow update: if signedIn() && (resource.data.uid == request.auth.uid || resource.data.title.matches('YouTube 영상 .*'))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title'])
-        && request.resource.data.title is string && request.resource.data.title.size() >= 1 && request.resource.data.title.size() <= 120;
+        && request.resource.data.title is string && request.resource.data.title.size() >= 1 && request.resource.data.title.size() <= 120
+        && (resource.data.uid == request.auth.uid || !request.resource.data.title.matches('YouTube 영상 .*'));
       allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
     }
 

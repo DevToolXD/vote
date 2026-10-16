@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { Firestore } from 'firebase/firestore'
-import { countListen, thumbOf, type Song } from './backend/songs'
+import { FALLBACK_TITLE, countListen, fixSongTitle, thumbOf, type Song } from './backend/songs'
 
 // The one player of the whole app (Spotify's songs play here, whatever screen is up): YouTube's player
 // (IFrame API) in a hidden element that stays on the page, a queue, and the 1-minute listen count that
@@ -13,6 +13,7 @@ type YTPlayer = {
   seekTo(seconds: number, allowSeekAhead: boolean): void
   getCurrentTime(): number
   getDuration(): number
+  getVideoData?(): { title?: string }
   destroy(): void
 }
 type YTApi = { Player: new (el: HTMLElement, opts: Record<string, unknown>) => YTPlayer }
@@ -92,7 +93,16 @@ function mediaSession() {
 function onState(code: number) {
   // -1 unstarted · 0 ended · 1 playing · 2 paused · 3 buffering · 5 cued
   clearTimeout(guard)
-  if (code === 1) set({ status: 'playing' })
+  if (code === 1) {
+    set({ status: 'playing' })
+    // a song added while YouTube couldn't tell its title: now the player knows it
+    const song = current(), title = player?.getVideoData?.().title?.trim()
+    if (song && title && FALLBACK_TITLE.test(song.title) && setup.db) {
+      fixSongTitle(setup.db, song.id, title)
+      state = { ...state, queue: state.queue.map(q => (q.id === song.id ? { ...q, title } : q)) }
+      subs.forEach(f => f())
+    }
+  }
   else if (code === 2) set({ status: 'paused' })
   else if (code === 3 || code === -1 || code === 5) { if (state.status !== 'paused') set({ status: 'loading' }) }
   else if (code === 0) {

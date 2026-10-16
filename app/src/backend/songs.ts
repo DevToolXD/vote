@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, type Firestore, type Timestamp, type Unsubscribe } from 'firebase/firestore'
+import { collection, deleteDoc, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, type Firestore, type Timestamp, type Unsubscribe } from 'firebase/firestore'
 
 // Spotify: songs come from YouTube links. songs/{videoId} is the song (the doc id IS the 11-character
 // video id, so a song can only be added once); songPlays/{videoId}_{listener} records that someone
@@ -9,7 +9,8 @@ const ms = (t: unknown) => (t as Timestamp | null)?.toMillis?.() ?? Date.now()
 
 /** The video id in a YouTube link (watch, youtu.be, shorts, embed, music.youtube.com, live), or null. */
 export function youtubeId(input: string): string | null {
-  const text = input.trim()
+  // a shared link often comes with words around it ("제목 https://youtu.be/…"): the link is what counts
+  const text = (/(?:https?:\/\/|(?:www\.|m\.|music\.)?youtu(?:\.be|be\.com))\S+/i.exec(input)?.[0] ?? input).trim()
   if (/^[A-Za-z0-9_-]{11}$/.test(text)) return text
   let u: URL
   try { u = new URL(/^https?:\/\//i.test(text) ? text : 'https://' + text) } catch { return null }
@@ -39,15 +40,22 @@ export type Adding = { ok: true; song: Song } | { ok: false; why: 'link' | 'dup'
 
 /** The video's title from YouTube (null: couldn't ask; 'gone': it can't be played in a page). */
 async function titleFromYoutube(id: string): Promise<string | null | 'gone'> {
-  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 6000)
-  try {
-    const r = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent('https://www.youtube.com/watch?v=' + id)}`, { signal: ctl.signal })
-    if (r.status === 400 || r.status === 401 || r.status === 403 || r.status === 404) return 'gone'
-    if (!r.ok) return null
-    const j = await r.json()
-    return typeof j.title === 'string' && j.title.trim() ? j.title.trim().slice(0, 120) : null
-  } catch { return null } finally { clearTimeout(t) }
+  const watch = encodeURIComponent('https://www.youtube.com/watch?v=' + id)
+  // YouTube's own answer first; a browser that can't read it (no CORS) gets it from noembed.com instead
+  for (const url of [`https://www.youtube.com/oembed?format=json&url=${watch}`, `https://noembed.com/embed?url=${watch}`]) {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 5000)
+    try {
+      const r = await fetch(url, { signal: ctl.signal })
+      if (!r.ok) { if (url.includes('youtube.com') && [400, 401, 403, 404].includes(r.status)) return 'gone'; continue }
+      const j = await r.json()
+      if (typeof j.title === 'string' && j.title.trim()) return j.title.trim().slice(0, 120)
+    } catch { /* try the next one */ } finally { clearTimeout(t) }
+  }
+  return null
 }
+export const FALLBACK_TITLE = /^YouTube 영상 /
+/** A song saved without its real title gets it from the player (the rules let anyone fix such a title once). */
+export const fixSongTitle = (db: Firestore, id: string, title: string) => updateDoc(doc(db, 'songs', id), { title: title.slice(0, 120) }).catch(() => {})
 
 /** Adds a song from a YouTube link: once per video (the doc id is the video id). */
 export async function addSong(db: Firestore, uid: string, link: string): Promise<Adding> {

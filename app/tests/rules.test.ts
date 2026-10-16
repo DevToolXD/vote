@@ -455,6 +455,11 @@ describe('profile and shop', () => {
     await denied(fsSetDoc(fsDoc(a, 'songs', 'DDDDDDDDDDD'), song('a', { vid: 'DDDDDDDDDDD', title: '' })))
     await fsUpdateDoc(fsDoc(a, 'songs', vid), { title: '새 제목' })
     await denied(fsUpdateDoc(fsDoc(b, 'songs', vid), { title: '남의 곡' }))
+    // a placeholder title can be fixed by anyone (once, with a real title)
+    await fsSetDoc(fsDoc(a, 'songs', 'EEEEEEEEEEE'), song('a', { vid: 'EEEEEEEEEEE', title: 'YouTube 영상 EEEEEEEEEEE' }))
+    await denied(fsUpdateDoc(fsDoc(b, 'songs', 'EEEEEEEEEEE'), { title: 'YouTube 영상 바꿈' }))
+    await fsUpdateDoc(fsDoc(b, 'songs', 'EEEEEEEEEEE'), { title: '진짜 제목' })
+    await denied(fsUpdateDoc(fsDoc(b, 'songs', 'EEEEEEEEEEE'), { title: '또 바꿈' }))
     await denied(fsUpdateDoc(fsDoc(a, 'songs', vid), { plays: 99 }))
     // listens
     const play = (who: typeof a, uid: string, v = vid, id = `${v}_${uid}`) => fsSetDoc(fsDoc(who, 'songPlays', id), { vid: v, uid, at: fsServerTimestamp() }, { merge: true })
