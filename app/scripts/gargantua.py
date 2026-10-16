@@ -230,7 +230,40 @@ def over(img, bg):
     a = img[..., 3:] / 255.0
     return (img[..., :3] * a + np.array(bg) * (1 - a)).astype(np.uint8)
 
+# ---------------------------------------------------------------------------- the bar's skin: the disk itself, unrolled
+BAR_W, BAR_H, BAR_FRAMES = 52, 260, 32
+def bar_frame(t):
+    """The disk's own light, as a strip that tiles downward: across it the radius (the hottest, white edge in the middle, cooling
+    to brown at both sides), along it the way round the hole. The matter turns faster inside (the same texture and colours as
+    the picture), so it flows along the bar and shears like the real thing."""
+    u = (np.arange(BAR_W) + 0.5) / BAR_W
+    q = np.abs(2 * u - 1)                                  # 0 in the middle, 1 at the edges
+    r = R_IN * (11.0 / R_IN) ** (q ** 0.8)
+    th = (np.arange(BAR_H) + 0.5) / BAR_H * 2 * math.pi
+    R, TH = np.meshgrid(r, th)
+    TH = TH + np.where(u[None, :] > 0.5, 2.1, 0.0)           # the two halves are not mirror images
+    out = np.zeros((BAR_H, BAR_W, 3))
+    for tt, wt in ((t, 1 - t), (t - 1.0, t)):
+        noise = sample_tex(R, TH, tt)
+        dust = sample_tex(R, TH, tt, DUST)
+        lane = 1 - np.clip((dust - 0.4) * 2.0, 0, 1) * 0.7 * np.clip((R - R_IN) / 3.0, 0.3, 1.0)
+        trel = (R_IN / R) ** 1.15
+        heat = trel * (0.38 + 0.85 * noise ** 1.5) * (0.7 + 0.3 * lane)
+        rad = ((R_IN / R) ** 1.0 * (0.06 + 4.2 * noise ** 2.6) + 0.02) * lane
+        out += wt * rad[..., None] * colormap(heat)
+    out = ndi.gaussian_filter(out, (0.7, 0.7, 0))
+    v = 1 - np.exp(-1.8 * out)
+    return Image.fromarray((np.clip(v, 0, 1) * 255 + 0.5).astype(np.uint8), 'RGB')
+
 if __name__ == '__main__':
+    if len(sys.argv) > 1 and sys.argv[1] == 'bar':
+        frames = [bar_frame(i / BAR_FRAMES) for i in range(BAR_FRAMES)]
+        os.makedirs(out_dir, exist_ok=True)
+        path = os.path.join(out_dir, 'gargbar.v1.webp')
+        frames[0].save(path, save_all=True, append_images=frames[1:], duration=MS, loop=0, lossless=False, quality=82, method=5)
+        print(path, os.path.getsize(path) // 1024, 'KB')
+        frames[0].resize((BAR_W * 4, BAR_H)).save(os.path.join(scratch, 'gargbar-0.png'))
+        sys.exit(0)
     print('light paths…', flush=True)
     bs, tab, dphi = orbit_table()
     print('geometry…', flush=True)

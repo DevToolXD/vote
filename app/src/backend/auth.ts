@@ -50,12 +50,9 @@ async function ensureCandidateDoc(user: User, name: string) {
 
 export async function signUp(name: string, id: string, pw: string) {
   if (!auth || !db) throw new Error('firebase-not-configured')
-  // 중복 가입 방지: one account per internet address (backend/ip.ts)
-  const ip = await myIp()
-  if (!ip) throw new Error('ip-unknown')
-  const onIp = await readIp(db, ip)
-  if (onIp?.blocked) throw new Error('ip-blocked')
-  if (onIp?.uid) throw new IpTakenError(ip)
+  // (no limit by internet address any more: anyone can make an account from any network; the address is only noted for the admin)
+  const ip = await myIp().catch(() => null)
+  const onIp = ip ? await readIp(db, ip).catch(() => null) : null
   await setPersistence(auth, indexedDBLocalPersistence).catch(() => setPersistence(auth!, browserLocalPersistence))
   let user: User
   try {
@@ -72,7 +69,7 @@ export async function signUp(name: string, id: string, pw: string) {
     if (!user.displayName) await updateProfile(user, { displayName: name })
   }
   await ensureCandidateDoc(user, user.displayName || name)
-  await recordIp(db, user.uid, ip, onIp, [], true).catch(() => {})
+  if (ip) await recordIp(db, user.uid, ip, onIp, [], true).catch(() => {})
   return user
 }
 

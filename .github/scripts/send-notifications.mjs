@@ -1217,7 +1217,7 @@ function creditOf(netWorth) {
 }
 // 문서 and 인스타그램: a heart from someone else pays the author HEART_POINTS. The post remembers who has been
 // paid (`paid`), so a heart taken back and given again pays nothing more, and your own hearts pay nothing.
-const HEART_POINTS = 5
+const HEART_POINTS = 3
 async function homeTick() {
   const paths = [...homeQueue]
   homeQueue.clear()

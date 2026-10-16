@@ -18,11 +18,17 @@ export async function postNotice(db: Firestore, adminUid: string, title: string,
   const poll = opts.length >= 2 ? { options: opts } : {}
   const id = doc(collection(db, 'notices')).id
   const idx = await getDoc(doc(db, 'meta', 'noticeIndex'))
-  const ids = [id, ...((idx.data()?.ids as string[] | undefined) ?? [])].slice(0, 20)
+  const ids = [id, ...((idx.data()?.ids as string[] | undefined) ?? [])].slice(0, 100)
   await runAdminOp(db, adminUid, 'postNotice', { id, title: t, body: b, ...poll }, [
     w => { w.set(doc(db, 'notices', id), { title: t, body: b, by: adminUid, createdAt: serverTimestamp(), ...poll }); w.set(doc(db, 'meta', 'noticeIndex'), { ids }); return 2 },
   ], onProgress)
   return id
+}
+
+/** Every notice in `ids` (newest first), for the 공지 app (each one is a single read, so only what is opened is read once more). */
+export async function loadNotices(db: Firestore, ids: string[]): Promise<Notice[]> {
+  const got = await Promise.all(ids.map(id => getDoc(doc(db, 'notices', id)).then(s => (s.exists() ? ({ id, ...(s.data() as Omit<Notice, 'id'>) } as Notice) : null)).catch(() => null)))
+  return got.filter((n): n is Notice => !!n)
 }
 
 /** Calls back with the notice ids that exist (newest first), live. */

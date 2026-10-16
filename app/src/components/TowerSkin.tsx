@@ -234,15 +234,9 @@ function SilverBar({ flip, h, chroma = false }: { flip: boolean; h: number; chro
 
 const CH_BAND = 240
 const CH_BAND_BG = 'linear-gradient(180deg,rgba(255,95,162,0.9),rgba(255,212,95,0.9),rgba(125,255,154,0.9),rgba(95,212,255,0.9),rgba(157,123,255,0.9),rgba(255,95,162,0.9))'
-const GA_TILE_A = 41
-const GA_TILE_A_BG = 'linear-gradient(180deg,transparent 0 8px,rgba(255,196,110,0.45) 8px 9px,transparent 9px 27px,rgba(255,150,70,0.35) 27px 28px,transparent 28px 41px)'
 // stars drifting up the dark column, two depths: small and dim and slow, bigger and bright and quick
 // the disk's long faint ends fade out sideways, so the tip stays within its own slot
 const GA_TAIL_FADE = { WebkitMaskImage: 'linear-gradient(90deg,transparent,#000 27%,#000 73%,transparent)', maskImage: 'linear-gradient(90deg,transparent,#000 27%,#000 73%,transparent)' }
-const GA_STAR_FAR = 53, GA_STAR_NEAR = 71
-const dots = (list: [number, number, number, string][]) => list.map(([x, y, r, c]) => `radial-gradient(circle at ${x}% ${y}px,${c} 0,${c} ${r}px,transparent ${r + 0.7}px)`).join(',')
-const GA_STARS_FAR = dots([[18, 7, 0.5, 'rgba(255,255,255,0.8)'], [72, 19, 0.5, 'rgba(255,225,190,0.7)'], [44, 31, 0.4, 'rgba(255,255,255,0.6)'], [85, 43, 0.5, 'rgba(255,255,255,0.8)'], [28, 49, 0.4, 'rgba(255,200,150,0.7)']])
-const GA_STARS_NEAR = dots([[62, 6, 0.9, '#fff'], [22, 21, 0.8, 'rgba(255,236,205,1)'], [80, 38, 1, '#fff'], [40, 52, 0.8, 'rgba(255,200,140,1)'], [12, 66, 0.9, '#fff'], [70, 62, 0.7, 'rgba(255,255,255,0.9)']])
 const GA_MOTES: [string, number, number, string][] = [['12%', 1.4, 0, '#ffd29a'], ['80%', 1.8, 0.4, '#ffffff'], ['40%', 1.6, 0.8, '#ffb35c'], ['66%', 1.5, 1.1, '#ffffff'], ['25%', 1.7, 0.6, '#ffe2b0']]
 /**
  * Light waves going out of the column in all directions (the way 아우라 bar's pulse does, but quicker and much farther):
@@ -280,11 +274,10 @@ function GargantuaBar({ flip }: { flip: boolean }) {
       <span className="ga-waves" style={css('position:absolute;inset:0;pointer-events:none')}>
         {GA_WAVES.map((st, i) => <span key={i} className="ga-wave" style={css(st)} />)}
       </span>
-      {/* the black column: stars drifting up it, and a few faint lines of light */}
+      {/* the column: the disk's own moving streaks (rendered by scripts/gargantua.py bar), flowing along it */}
       <span style={css('position:absolute;inset:0;border-radius:6px;overflow:hidden;background:#000;box-shadow:0 0 14px rgba(255,150,70,0.5),inset 0 0 0 0.5px rgba(255,190,120,0.35)')}>
-        <span style={css(`position:absolute;left:0;right:0;top:0;bottom:-${GA_STAR_FAR}px;will-change:transform;background-image:${GA_STARS_FAR};background-size:100% ${GA_STAR_FAR}px;background-repeat:repeat-y;--t:${GA_STAR_FAR}px;animation:slRiseT 5.5s linear infinite`)} />
-        <span style={css(`position:absolute;left:0;right:0;top:0;bottom:-${GA_TILE_A}px;will-change:transform;background-image:${GA_TILE_A_BG};background-size:100% ${GA_TILE_A}px;background-repeat:repeat-y;--t:${GA_TILE_A}px;animation:slRiseT 2.2s linear infinite`)} />
-        <span style={css(`position:absolute;left:0;right:0;top:0;bottom:-${GA_STAR_NEAR}px;will-change:transform;background-image:${GA_STARS_NEAR};background-size:100% ${GA_STAR_NEAR}px;background-repeat:repeat-y;--t:${GA_STAR_NEAR}px;animation:slRiseT 2.4s linear infinite,gaTwinkle 1.3s ease-in-out infinite`)} />
+        <span style={{ ...css('position:absolute;inset:0;background-repeat:repeat-y;background-size:100% auto'), backgroundImage: 'url(garg/gargbar.v1.webp)' }} />
+        <span style={css('position:absolute;inset:0;border-radius:6px;box-shadow:inset 0 0 7px 1px rgba(0,0,0,0.85)')} />
       </span>
       {/* the hole at the tip: its black shadow, and over it the disk's picture (clear where the light falls in) */}
       <span style={css('position:absolute;left:50%;top:0;width:0;height:0')}>

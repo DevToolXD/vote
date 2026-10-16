@@ -32,7 +32,7 @@ export function NoticeScreen({ notice, onDone, onVote }: { notice: Notice; onDon
           )}
         </div>
         <div style={css('flex:none;padding:12px 20px calc(20px + env(safe-area-inset-bottom))')}>
-          <span style={css('display:block;margin-bottom:10px;text-align:center;font-size:13px;color:#8b95a1')}>이 공지는 한 번만 볼 수 있어요</span>
+          <span style={css('display:block;margin-bottom:10px;text-align:center;font-size:13px;color:#8b95a1')}>지난 공지는 폰의 공지 앱에서 다시 볼 수 있어요</span>
           <button data-g="primary" className="pr-96" disabled={busy || (!!poll && pick === null)} onClick={async () => {
             setBusy(true)
             try { if (poll && pick !== null) await onVote(pick).catch(() => {}); await onDone() } finally { setBusy(false) }

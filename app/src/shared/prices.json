@@ -2,7 +2,7 @@
  "frame": {
   "silver": 1000,
   "chroma": 1200,
-  "gargantua": 1400,
+  "gargantua": 5000,
   "korea": 500,
   "matrix": 800,
   "aura": 400,
@@ -21,7 +21,7 @@
  "skin": {
   "silver": 750,
   "chroma": 900,
-  "gargantua": 800,
+  "gargantua": 2499,
   "korea": 400,
   "matrix": 600,
   "aura": 300,
@@ -36,7 +36,7 @@
   "matrix": 600,
   "korea": 400,
   "chroma": 900,
-  "gargantua": 800
+  "gargantua": 2500
  },
  "frameFallback": 60,
  "plateExtra": 15,

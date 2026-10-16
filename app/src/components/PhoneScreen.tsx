@@ -34,7 +34,7 @@ const BackChevron = () => (
 const DEFAULT_LAYOUT = { grid: ['admin'] as AppId[], dock: [] as AppId[] }
 const REMOVABLE: AppId[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino', 'bank', 'spotify', 'homework']
 /** On every phone, whoever's it is (and never deleted). */
-const ALWAYS: AppId[] = ['account']
+const ALWAYS: AppId[] = ['account', 'notice']
 const SPOTIFY_BG = '#121212'
 type Layout = { grid: AppId[]; dock: AppId[] }
 function loadLayout(): Layout {
@@ -75,14 +75,14 @@ function AppTile({ app, badge = 0, editing, wiggle, removable, slot, idx, draggi
 /** 검색: find an app by name; an app you do not have yet is pointed at 앱스토어. */
 function SearchView({ phone, isAdmin, onOpen, onClose }: { phone: PhoneState; isAdmin: boolean; onOpen: (app: OpenableApp) => void; onClose: () => void }) {
   const [q, setQ] = useState('')
-  const all: OpenableApp[] = [...(isAdmin ? ['admin' as const] : []), 'account', 'shop', 'market', 'coin', 'spotify']
+  const all: OpenableApp[] = [...(isAdmin ? ['admin' as const] : []), 'account', 'notice', 'shop', 'market', 'coin', 'spotify']
   const list = all.filter(a => APP_NAME[a].includes(q.trim()))
   return (
     <div onClick={onClose} style={css(`position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;padding:calc(var(--phone-top) + 16px) 16px 0;box-sizing:border-box;border-radius:var(--phone-r);overflow:hidden;background:rgba(0,0,0,0.4);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);animation:fade 200ms ease both;font-family:${FONT}`)}>
       <div onClick={e => e.stopPropagation()} style={css('display:flex;flex-direction:column;gap:8px')}>
         <input value={q} onChange={e => setQ(e.target.value.slice(0, 20))} placeholder="앱 검색" aria-label="앱 검색" style={css('height:36px;padding:0 12px;border:0;border-radius:10px;background:rgba(255,255,255,0.92);color:#000;font-size:17px;outline:none;font-family:inherit;box-sizing:border-box')} />
         {list.map(app => {
-          const ok = app === 'admin' || app === 'account' || onHome(phone, app)
+          const ok = app === 'admin' || app === 'account' || app === 'notice' || onHome(phone, app)
           return (
             <button key={app} className="pr-96" onClick={() => { if (ok) { onOpen(app); onClose() } }} style={css('height:52px;display:flex;align-items:center;gap:12px;padding:0 12px;border-radius:12px;background:rgba(255,255,255,0.92);color:#000;text-align:left;font-family:inherit')}>
               <AppIcon app={app} size={36} />

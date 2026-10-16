@@ -134,7 +134,7 @@ export const RankScreen = memo(function RankScreen({ all, query, onQuery, page, 
                 onClick={() => { if (press.current.fired) { press.current.fired = false; return } onOpenProfile(r.d.id) }}
                 onPointerDown={() => pressStart(r.d.name)} onPointerUp={pressEnd} onPointerLeave={pressEnd} onPointerCancel={pressEnd}
                 onContextMenu={e => { if (r.d.name === secretName) e.preventDefault() }}
-                style={css('flex:0 0 10%;min-width:0;position:relative;height:100%;padding:0;border-radius:10px;transition:background 150ms;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none')}
+                style={{ ...css('flex:0 0 10%;min-width:0;position:relative;height:100%;padding:0;border-radius:10px;transition:background 150ms;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none'), ...(r.skin?.special === 'gargantua' || r.d.frame === 'gargantua' ? { zIndex: 4 } : null) }}
               >
                 <span
                   data-g={r.skin ? 'skin' : 'bar'}

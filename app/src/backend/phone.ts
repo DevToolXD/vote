@@ -8,13 +8,13 @@ import { R } from './messages'
 // 관리 (admin only) and 앱스토어 are always there, so they are never stored.
 
 export type StoreApp = 'shop' | 'market' | 'coin' | 'stock' | 'block' | 'flappy' | 'dino' | 'bank' | 'spotify' | 'homework'
-/** 계정 is on every phone and can't be deleted (it is where you log in); 인스타그램 is a tab of its own now. */
-export type AppId = StoreApp | 'admin' | 'store' | 'account'
+/** 계정 and 공지 are on every phone and can't be deleted (it is where you log in); 인스타그램 is a tab of its own now. */
+export type AppId = StoreApp | 'admin' | 'store' | 'account' | 'notice'
 /** Apps that open a screen (앱스토어 opens inside 폰 itself). */
 export type OpenableApp = Exclude<AppId, 'store'>
 
 export const STORE_APPS: StoreApp[] = ['shop', 'market', 'coin', 'stock', 'block', 'flappy', 'dino', 'bank', 'spotify', 'homework']
-export const APP_NAME: Record<AppId, string> = { homework: '문서', spotify: 'Spotify', account: '계정', admin: '관리', store: '앱스토어', shop: '상점', market: '당근마켓', coin: '코인', stock: '주식', block: '블록 블라스트', flappy: '플래피 버드', dino: '공룡 점프', bank: '은행' }
+export const APP_NAME: Record<AppId, string> = { homework: '문서', spotify: 'Spotify', account: '계정', notice: '공지', admin: '관리', store: '앱스토어', shop: '상점', market: '당근마켓', coin: '코인', stock: '주식', block: '블록 블라스트', flappy: '플래피 버드', dino: '공룡 점프', bank: '은행' }
 /** 앱스토어 sections: 당근마켓 is filed under 상점. */
 export const APP_GROUPS: { title: string; apps: StoreApp[] }[] = [
   { title: '상점', apps: ['shop', 'market'] },

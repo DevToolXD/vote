@@ -34,7 +34,7 @@ function stepsOf(r: LedgerRow, me: Node, nameOf: (id: string) => string): Step[]
   switch (r.k) {
     case 'heart': {
       const posts = uniq(es.map(e => e.parts[0]))
-      return [{ nodes: who.map(u => person(u, '❤️')) }, { nodes: posts.map(p => ({ icon: p.startsWith('homework') ? '📄' : '📸', label: p.startsWith('homework') ? '문서' : '인스타그램 사진', ref: p })), note: '하트 1개 = 5P' }, { nodes: [me], note: `+${r.d}P` }]
+      return [{ nodes: who.map(u => person(u, '❤️')) }, { nodes: posts.map(p => ({ icon: p.startsWith('homework') ? '📄' : '📸', label: p.startsWith('homework') ? '문서' : '인스타그램 사진', ref: p })), note: '하트 1개 = 3P' }, { nodes: [me], note: `+${r.d}P` }]
     }
     case 'song': {
       const songs = uniq(es.map(e => e.parts[0]))

@@ -24,6 +24,7 @@ const CoinScreen = lazy(() => import('./components/CoinScreen').then(m => ({ def
 const MarketApp = lazy(() => import('./components/Market').then(m => ({ default: m.MarketApp })))
 const DinoGame = lazy(() => import('./components/DinoGame').then(m => ({ default: m.DinoGame })))
 const InstaApp = lazy(() => import('./components/InstaApp').then(m => ({ default: m.InstaApp })))
+const NoticesApp = lazy(() => import('./components/NoticesApp').then(m => ({ default: m.NoticesApp })))
 const SpotifyApp = lazy(() => import('./components/SpotifyApp').then(m => ({ default: m.SpotifyApp })))
 const HomeworkApp = lazy(() => import('./components/HomeworkApp').then(m => ({ default: m.HomeworkApp })))
 const BankApp = lazy(() => import('./components/BankApp').then(m => ({ default: m.BankApp })))
@@ -869,7 +870,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   if (!firebaseConfigured) return <SetupNotice />
   if (!authReady) return <div data-g="app" style={css('width:100%;max-width:var(--app-w);min-height:100vh;background:#ffffff')} />
   // 접속 차단 (the account or an address it used): the app never finishes loading (never the admin)
-  if ((ipDoc?.blocked || access?.blocked) && !isAdmin) return <EndlessLoading />
+  if (access?.blocked && !isAdmin) return <EndlessLoading />   // (an account the admin blocked; the internet address alone no longer blocks anyone)
 
   /** What an app shows on the phone screen. */
   const appView = (app: OpenableApp) => (
@@ -925,6 +926,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           }
         />
       )}
+          {app === 'notice' && <NoticesApp db={db} ids={noticeIds} loggedIn={loggedIn} onLogin={uiFns.goAcct} />}
           {app === 'spotify' && <SpotifyApp db={db} uid={authUser?.uid ?? null} me={me} byId={byId} onLogin={uiFns.goAcct} onToast={uiFns.toast} />}
           {app === 'stock' && <StockApp db={db} uid={authUser?.uid ?? null} points={points} onLogin={uiFns.goAcct} onToast={uiFns.toast} />}
           {app === 'shop' && (

@@ -300,17 +300,17 @@ describe('profile and shop', () => {
     const c = await read(a, 'candidates/a')
     assert.equal(pointsOf(c), 100); assert.deepEqual([c.frame, c.plate, c.skin], ['silver', 'silver', 'silver'])
   })
-  test('크로마틱 삼겹살 / 가르강튀아: each a 세트 of frame + 이름표 + 막대 스킨 (3000P each in the rules, as in prices.json)', async () => {
-    const a = await signUp('a'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 6000)
-    assert.equal(seriesPrice('chroma'), 1200 + 900 + 900); assert.equal(seriesPrice('gargantua'), 1400 + 800 + 800)
+  test('크로마틱 삼겹살 / 가르강튀아: each a 세트 of frame + 이름표 + 막대 스킨 (prices as in prices.json: 3000P and 9999P)', async () => {
+    const a = await signUp('a'); await grantPoints(dbAs(ADMIN), ADMIN.uid, 'a', 13000)
+    assert.equal(seriesPrice('chroma'), 1200 + 900 + 900); assert.equal(seriesPrice('gargantua'), 5000 + 2500 + 2499)
     await denied(buyItem(a, 'a', 'frame', 'chroma', priceOf('frame', 'chroma')))
     await denied(buyItem(a, 'a', 'skin', 'gargantua', priceOf('skin', 'gargantua')))
     await buySeries(a, 'a', 'chroma', (await read(a, 'candidates/a')).owned)
     let c = await read(a, 'candidates/a')
-    assert.equal(pointsOf(c), 6000 - 3000); assert.deepEqual([c.frame, c.plate, c.skin], ['chroma', 'chroma', 'chroma'])
+    assert.equal(pointsOf(c), 13000 - 3000); assert.deepEqual([c.frame, c.plate, c.skin], ['chroma', 'chroma', 'chroma'])
     await buySeries(a, 'a', 'gargantua', c.owned)
     c = await read(a, 'candidates/a')
-    assert.equal(pointsOf(c), 0); assert.deepEqual([c.frame, c.plate, c.skin], ['gargantua', 'gargantua', 'gargantua'])
+    assert.equal(pointsOf(c), 1); assert.deepEqual([c.frame, c.plate, c.skin], ['gargantua', 'gargantua', 'gargantua'])
   })
   test('인스타그램 posts: you post a photo as yourself; only you (or the admin) delete it', async () => {
     const a = await signUp('a'), b = await signUp('b')
@@ -337,7 +337,7 @@ describe('profile and shop', () => {
     await denied(deleteDoc(fsDoc(b, 'homework', 'h1')))
     await deleteDoc(fsDoc(a, 'homework', 'h1'))
   })
-  test('문서: a heart from someone else pays the author 5 points, once per person; your own heart pays nothing', async () => {
+  test('문서: a heart from someone else pays the author 3 points, once per person; your own heart pays nothing', async () => {
     const a = await signUp('a'), b = await signUp('b'), c = await signUp('c')
     const photo = 'data:image/jpeg;base64,/9j/4AAQ'
     const bonusOf = async () => (await read(a, 'candidates/a')).bonus ?? 0
@@ -348,13 +348,13 @@ describe('profile and shop', () => {
     await fsUpdateDoc(fsDoc(c, 'homework', 'h9'), { likes: arrayUnion('c') })
     await kickWorker(40000)
     // the worker pays the hearts it finds (it works in the background: wait for it, up to 40 s)
-    for (let i = 0; i < 80 && (await bonusOf()) < start + 10; i++) await new Promise(r => setTimeout(r, 500))
-    assert.equal(await bonusOf(), start + 10, 'two others hearted: 5 points each, not three hearts')
+    for (let i = 0; i < 80 && (await bonusOf()) < start + 6; i++) await new Promise(r => setTimeout(r, 500))
+    assert.equal(await bonusOf(), start + 6, 'two others hearted: 3 points each, not three hearts')
     // taken back and given again: nothing more (give the worker time to look, then check)
     await fsUpdateDoc(fsDoc(b, 'homework', 'h9'), { likes: arrayRemove('b') })
     await fsUpdateDoc(fsDoc(b, 'homework', 'h9'), { likes: arrayUnion('b') })
     await new Promise(r => setTimeout(r, 8000))
-    assert.equal(await bonusOf(), start + 10)
+    assert.equal(await bonusOf(), start + 6)
   })
   test('문서 조회수: a view counts once per person (with their view record, in one batch); not on your own post', async () => {
     const a = await signUp('a'), b = await signUp('b'), c = await signUp('c')
@@ -395,7 +395,7 @@ describe('profile and shop', () => {
     await deleteDoc(fsDoc(a, 'posts', 'q1', 'comments', 'c1'))
     await deleteDoc(fsDoc(a, 'posts', 'q1'))
   })
-  test('인스타그램: a heart from someone else pays the author 5 points, once per person', async () => {
+  test('인스타그램: a heart from someone else pays the author 3 points, once per person', async () => {
     const a = await signUp('a'), b = await signUp('b')
     const photo = 'data:image/jpeg;base64,/9j/4AAQ'
     const bonusOf = async () => (await read(a, 'candidates/a')).bonus ?? 0
@@ -404,12 +404,12 @@ describe('profile and shop', () => {
     await fsUpdateDoc(fsDoc(a, 'posts', 'heart1'), { likes: arrayUnion('a') })
     await fsUpdateDoc(fsDoc(b, 'posts', 'heart1'), { likes: arrayUnion('b') })
     await kickWorker(40000)
-    for (let i = 0; i < 80 && (await bonusOf()) < start + 5; i++) await new Promise(r => setTimeout(r, 500))
-    assert.equal(await bonusOf(), start + 5, 'one other hearted: 5 points; your own heart pays nothing')
+    for (let i = 0; i < 80 && (await bonusOf()) < start + 3; i++) await new Promise(r => setTimeout(r, 500))
+    assert.equal(await bonusOf(), start + 3, 'one other hearted: 3 points; your own heart pays nothing')
     await fsUpdateDoc(fsDoc(b, 'posts', 'heart1'), { likes: arrayRemove('b') })
     await fsUpdateDoc(fsDoc(b, 'posts', 'heart1'), { likes: arrayUnion('b') })
     await new Promise(r => setTimeout(r, 6000))
-    assert.equal(await bonusOf(), start + 5, 'taken back and given again: nothing more')
+    assert.equal(await bonusOf(), start + 3, 'taken back and given again: nothing more')
   })
   test('인스타그램: the comment count goes up only with a comment of yours in the same batch, and down only when one is removed', async () => {
     const a = await signUp('a'), b = await signUp('b')
@@ -950,7 +950,7 @@ describe('상담 and password reset', () => {
 })
 
 describe('공지', () => {
-  test('admin posts; each member reads it once; anonymous and regular users can’t post', async () => {
+  test('admin posts; each member sees it once (and can read it again); anonymous and regular users can’t post', async () => {
     const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
     await assert.rejects(postNotice(b, 'b', '가짜 공지', '내용'))
     await postNotice(admin, ADMIN.uid, '점검 안내', '오늘 밤 점검이 있어요')
@@ -959,7 +959,7 @@ describe('공지', () => {
     const n = await nextUnseenNotice(a, 'a', ids)
     assert.deepEqual([n?.title, n?.body], ['점검 안내', '오늘 밤 점검이 있어요'])
     await markNoticeSeen(a, 'a', ids[0])
-    await denied(getDoc(doc(a, 'notices', ids[0]))) // read once
+    assert.ok((await getDoc(doc(a, 'notices', ids[0]))).exists()) // the 공지 app reads earlier ones again
     assert.equal(await nextUnseenNotice(a, 'a', ids), null)
     await denied(setDoc(doc(a, 'noticeReads', 'a'), { seen: {} })) // can't un-see
     assert.ok(await nextUnseenNotice(b, 'b', ids)) // others still can
@@ -978,7 +978,7 @@ describe('공지', () => {
     const since = ((await read(late, 'candidates/late')).createdAt as { toMillis(): number }).toMillis()
     const ids = (await getDoc(doc(a, 'meta', 'noticeIndex'))).data()!.ids as string[]
     assert.equal(await nextUnseenNotice(late, 'late', ids, since), null)
-    await denied(getDoc(doc(late, 'notices', ids[0]))) // now marked seen
+    assert.ok((await getDoc(doc(late, 'notices', ids[0]))).exists()) // (marked seen, but still readable in the 공지 app)
     const aSince = ((await read(a, 'candidates/a')).createdAt as { toMillis(): number }).toMillis()
     assert.equal((await nextUnseenNotice(a, 'a', ids, aSince))?.title, '예전 공지') // older account still sees it
     // a notice posted after the late account was made does show
