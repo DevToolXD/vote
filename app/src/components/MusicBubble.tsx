@@ -126,7 +126,7 @@ export function MusicBubble() {
           <span style={{ ...css('flex:none;width:56px;height:56px;border-radius:12px;background-size:cover;background-position:center;box-shadow:0 2px 8px rgba(0,0,0,0.4)'), backgroundImage: `url(${thumbOf(song.id)})` }} />
           <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
             <span style={css('font-size:15px;line-height:19px;font-weight:700;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden')}>{song.title}</span>
-            <span style={css('font-size:13px;line-height:17px;color:#b3b3b3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{m.artist ? `${m.artist} 님이 추가` : 'Spotify'}</span>
+            <span style={css('font-size:13px;line-height:17px;color:#b3b3b3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{m.ad ? '광고가 끝나면 시작돼요 · 소리 꺼짐' : m.artist ? `${m.artist} 님이 추가` : 'Spotify'}</span>
           </span>
           <button aria-label="음악 접기" onClick={() => setOpen(false)} style={css('flex:none;align-self:flex-start;width:32px;height:32px;margin:-6px 0 0 0;display:flex;align-items:center;justify-content:center;color:#b3b3b3;background:none')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>

@@ -13,7 +13,12 @@ type YTPlayer = {
   seekTo(seconds: number, allowSeekAhead: boolean): void
   getCurrentTime(): number
   getDuration(): number
-  getVideoData?(): { title?: string }
+  getPlayerState?(): number
+  mute?(): void
+  unMute?(): void
+  /** (not in the documented API, but YouTube's player has it: 1 while an ad plays) */
+  getAdState?(): number
+  getVideoData?(): { title?: string; video_id?: string }
   destroy(): void
 }
 type YTApi = { Player: new (el: HTMLElement, opts: Record<string, unknown>) => YTPlayer }
@@ -26,8 +31,10 @@ export type MusicState = {
   status: 'idle' | 'loading' | 'playing' | 'paused'
   /** who added the playing song (shown under its title) */
   artist: string
+  /** YouTube is playing an ad: the sound is off, nothing is counted, and the circle shows it is loading */
+  ad: boolean
 }
-const IDLE: MusicState = { queue: [], index: -1, status: 'idle', artist: '' }
+const IDLE: MusicState = { queue: [], index: -1, status: 'idle', artist: '', ad: false }
 let state = IDLE
 const subs = new Set<() => void>()
 const set = (p: Partial<MusicState>) => { state = { ...state, ...p }; subs.forEach(f => f()) }
@@ -50,6 +57,32 @@ let listenTimer: ReturnType<typeof setInterval> | undefined, lastTick = 0
 const owed = new Map<string, number>()
 let flushing = false
 let guard: ReturnType<typeof setTimeout> | undefined
+// Ads YouTube puts before a song: muted and shown as loading, and their time doesn't count towards anyone's points
+let mutedByUs = false, adSince = 0, adGaveUp = false
+function adPlaying(): boolean {
+  const song = current()
+  if (!player || !song) return false
+  try {
+    if (player.getAdState?.() === 1) return true
+    const id = player.getVideoData?.().video_id
+    return !!id && id !== song.id
+  } catch { return false }
+}
+function checkAd() {
+  if (!player || state.status === 'idle' || state.status === 'paused' || adGaveUp) return
+  let ad = adPlaying()
+  // never stay silent for good because of a wrong guess: after 90 s it is treated as the song
+  if (ad && adSince && Date.now() - adSince > 90_000) { ad = false; adGaveUp = true }
+  if (ad && !state.ad) {
+    adSince = Date.now()
+    try { player.mute?.(); mutedByUs = true } catch { /* no mute */ }
+    set({ ad: true, status: 'loading' })
+  } else if (!ad && state.ad) {
+    adSince = 0
+    if (mutedByUs) { try { player.unMute?.() } catch { /* */ } mutedByUs = false }
+    set({ ad: false, status: player.getPlayerState?.() === 1 ? 'playing' : 'loading' })
+  }
+}
 
 function loadApi(): Promise<void> {
   if (window.YT?.Player) return Promise.resolve()
@@ -119,6 +152,8 @@ function mediaSession() {
 function onState(code: number) {
   // -1 unstarted · 0 ended · 1 playing · 2 paused · 3 buffering · 5 cued
   clearTimeout(guard)
+  if (code === 1 || code === 3) checkAd()
+  if (state.ad && code !== 0 && code !== 2) return   // an ad: stays 'loading' until the song itself starts
   if (code === 1) {
     set({ status: 'playing' })
     // a song added while YouTube couldn't tell its title: now the player knows it
@@ -161,7 +196,7 @@ async function ensurePlayer(): Promise<YTPlayer> {
       host: 'https://www.youtube-nocookie.com',
       playerVars: { playsinline: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1, origin: location.origin },
       events: {
-        onReady: () => { player = p; ok(p) },
+        onReady: () => { player = p; setInterval(checkAd, 500); ok(p) },
         onStateChange: (e: { data: number }) => onState(e.data),
         onError: () => onError(),
       },
@@ -173,7 +208,9 @@ function load(index: number) {
   const song = state.queue[index]
   if (!song) return
   flushListen(true)
-  set({ index, status: 'loading', artist: setup.nameOf(song.uid) })
+  if (mutedByUs) { try { player?.unMute?.() } catch { /* */ } mutedByUs = false }
+  adSince = 0; adGaveUp = false
+  set({ index, status: 'loading', artist: setup.nameOf(song.uid), ad: false })
   mediaSession()
   ensurePlayer().then(p => {
     // the song may have been changed while the player was getting ready
@@ -196,7 +233,7 @@ export function playMusic(queue: Song[], index: number) {
 export function resumeMusic() {
   if (!player || !current()) return
   player.playVideo()
-  set({ status: 'playing' })
+  set({ status: state.ad ? 'loading' : 'playing' })
 }
 export function pauseMusic() {
   if (!player) return
@@ -224,6 +261,7 @@ export function stopMusic() {
   try { player?.pauseVideo() } catch { /* the player is gone */ }
   const ms = (navigator as Navigator & { mediaSession?: MediaSession }).mediaSession
   try { if (ms) ms.metadata = null } catch { /* no media session */ }
+  if (mutedByUs) { try { player?.unMute?.() } catch { /* */ } mutedByUs = false }
   state = IDLE
   subs.forEach(f => f())
 }
