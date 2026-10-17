@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { Suspense, lazy, useState, type ReactNode } from 'react'
 import { css, sx } from '../css'
 import { Avatar } from './Avatar'
 import { AppIcon } from './PhoneIcons'
@@ -7,7 +7,10 @@ import type { Person } from '../model'
 import { BlockBlast } from './BlockBlast'
 import { FlappyBird } from './FlappyBird'
 import { DinoGame } from './DinoGame'
-import { SpaceGame, SpaceIcon } from './SpaceGame'
+import { SpaceIcon } from './SpaceIcon'
+
+// the game's code (its engine, models and planets) is only fetched when it is opened, so the app starts as light as before
+const SpaceGame = lazy(() => import('./SpaceGame').then(m => ({ default: m.SpaceGame })))
 
 export type HomeTab = 'rank' | 'game' | 'notice'
 const SUBS = [['rank', '랭킹'], ['game', '게임'], ['notice', '공지']] as const
@@ -32,7 +35,7 @@ function Games({ onOpen }: { onOpen: (open: boolean) => void }) {
           {game === 'block' && <BlockBlast />}
           {game === 'flappy' && <FlappyBird />}
           {game === 'dino' && <DinoGame />}
-          {game === 'space' && <SpaceGame />}
+          {game === 'space' && <Suspense fallback={<div style={css('flex:1;background:#000')} />}><SpaceGame /></Suspense>}
         </div>
       </div>
     )
