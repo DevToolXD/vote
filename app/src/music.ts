@@ -192,8 +192,7 @@ async function ensurePlayer(): Promise<YTPlayer> {
   return new Promise<YTPlayer>((ok) => {
     const p = new window.YT!.Player(inner, {
       width: '2', height: '2',
-      // the no-cookie address: no personalised ads (YouTube's own ads can still come before a song; the app can't switch them off)
-      host: 'https://www.youtube-nocookie.com',
+      // youtube.com itself (not the no-cookie address): the person's own YouTube login is used, so Premium (no ads) counts
       playerVars: { playsinline: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1, origin: location.origin },
       events: {
         onReady: () => { player = p; setInterval(checkAd, 500); ok(p) },
