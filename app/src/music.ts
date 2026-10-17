@@ -97,6 +97,10 @@ function checkAd() {
     adSince = 0
     if (mutedByUs) { try { player.unMute?.() } catch { /* */ } mutedByUs = false }
     set({ ad: false, status: player.getPlayerState?.() === 1 ? 'playing' : 'loading' })
+  } else if (!ad && mutedByUs && player.getPlayerState?.() === 1) {
+    // muted at the start (before it was known whether an ad comes first) and it is the song: the sound comes back at once
+    try { player.unMute?.() } catch { /* */ }
+    mutedByUs = false
   }
 }
 
@@ -245,7 +249,7 @@ async function ensurePlayer(): Promise<YTPlayer> {
       // youtube.com itself (not the no-cookie address): the person's own YouTube login is used, so Premium (no ads) counts
       playerVars: { playsinline: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1, origin: location.origin },
       events: {
-        onReady: () => { player = p; setInterval(checkAd, 500); ok(p) },
+        onReady: () => { player = p; setInterval(checkAd, 250); ok(p) },
         onStateChange: (e: { data: number }) => onState(e.data),
         onError: () => onError(),
       },
@@ -293,6 +297,8 @@ function startYouTube(song: Song) {
   ensurePlayer().then(p => {
     // the song may have been changed while the player was getting ready
     if (current()?.id !== song.id) return
+    // muted from the first moment, so no ad is heard before it is noticed; the sound returns as soon as the song itself plays
+    try { p.mute?.(); mutedByUs = true } catch { /* no mute */ }
     p.loadVideoById(song.id)
     startListenClock()
     // started from a tap, so it should play at once; if the phone refused (no tap behind it), the
