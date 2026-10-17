@@ -6,9 +6,11 @@ import { collection, deleteDoc, doc, getDoc, increment, limit, onSnapshot, order
 // each full minute.
 export type Song = {
   id: string; title: string; uid: string; at: number; plays: number
-  /** 'au': a track from Audius (no YouTube, no ads, nobody earns points): played from `url`, with its own picture and artist */
-  src?: 'au'; url?: string; art?: string; artist?: string
+  /** 'au' (Audius) or 'ia' (Internet Archive): a track from an open catalogue (no YouTube, no ads, nobody earns points): played from `url`, with its own picture and artist */
+  src?: 'au' | 'ia'; url?: string; art?: string; artist?: string
 }
+/** From an open catalogue (played in an audio element, no ads)? */
+export const isOpen = (s?: Pick<Song, 'src'>) => s?.src === 'au' || s?.src === 'ia'
 
 const ms = (t: unknown) => (t as Timestamp | null)?.toMillis?.() ?? Date.now()
 

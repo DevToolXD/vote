@@ -47,6 +47,8 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          # optional: Audius's free API key (api.audius.co/plans → Create API Key), set as a repository variable
+          VITE_AUDIUS_API_KEY: ${{ vars.VITE_AUDIUS_API_KEY }}
         run: npm run build
 
       - name: Publish build output to repo root

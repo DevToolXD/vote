@@ -1,8 +1,10 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
-import { addSong, removeSong, songArt, watchSongs, type Song } from '../backend/songs'
+import { addSong, isOpen, removeSong, songArt, watchSongs, type Song } from '../backend/songs'
 import { searchAudius, trendingAudius } from '../backend/audius'
+import { archiveTracks, searchArchive, type Album } from '../backend/archive'
+import { adFreeOn, setAdFree } from '../backend/adfree'
 import type { Person } from '../model'
 import { playMusic, toggleMusic, useMusic } from '../music'
 
@@ -46,7 +48,7 @@ const Row = memo(function Row({ s, who, active, playing, onPlay, onMore, sub }: 
           <span style={css(`font-size:16px;line-height:20px;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:${active ? GREEN : '#fff'}`)}>{s.title}</span>
           <span style={css(`display:flex;align-items:center;gap:6px;font-size:13px;line-height:17px;color:${SEC};white-space:nowrap;overflow:hidden`)}>
             {active && playing && <Bars />}
-            <span style={css('overflow:hidden;text-overflow:ellipsis')}>{sub ?? (s.src === 'au' ? s.artist : `${who} · 들은 횟수 ${s.plays}회`)}</span>
+            <span style={css('overflow:hidden;text-overflow:ellipsis')}>{sub ?? (isOpen(s) ? s.artist : `${who} · 들은 횟수 ${s.plays}회`)}</span>
           </span>
         </span>
       </button>
@@ -68,6 +70,10 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
   // 광고 없는 음악: Audius (backend/audius.ts) — trending when the search is empty, results while typing
   const [au, setAu] = useState<Song[] | null>(null)
   const [auErr, setAuErr] = useState(false)
+  // 인터넷 아카이브: free public music (no key, no ads), found by name; an album plays as a queue of its tracks
+  const [ia, setIa] = useState<Album[] | null>(null)
+  const [iaBusy, setIaBusy] = useState<string | null>(null)
+  const [adFree, setAdFreeState] = useState(adFreeOn)
   const music = useMusic()
   const nowId = music.queue[music.index]?.id
   const playing = music.status === 'playing' || music.status === 'loading'
@@ -81,6 +87,14 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
     const timer = setTimeout(() => {
       (t.length >= 2 ? searchAudius(t) : trendingAudius()).then(r => { if (live) setAu(r) }).catch(() => { if (live) { setAu([]); setAuErr(true) } })
     }, t ? 450 : 0)
+    return () => { live = false; clearTimeout(timer) }
+  }, [tab, q])
+  useEffect(() => {
+    if (tab !== 'search') return
+    const t = q.trim()
+    if (t.length < 2) { setIa(null); return }
+    let live = true
+    const timer = setTimeout(() => { searchArchive(t).then(r => { if (live) setIa(r) }).catch(() => { if (live) setIa([]) }) }, 500)
     return () => { live = false; clearTimeout(timer) }
   }, [tab, q])
   const who = (u: string) => byId.get(u)?.name ?? '알 수 없음'
@@ -116,6 +130,15 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
       : r.why === 'dup' ? (r.by && r.by === uid ? '내가 이미 추가한 곡이에요' : `이미 추가된 곡이에요${r.by ? ` (${who(r.by)}님)` : ''}`)
       : r.why === 'gone' ? '재생할 수 없는 영상이에요 (지워졌거나 퍼가기가 막혀 있어요)'
       : '추가하지 못했어요. 잠시 뒤에 다시 해보세요')
+  }
+  const playAlbum = async (a: Album) => {
+    if (iaBusy) return
+    setIaBusy(a.id)
+    try {
+      const tracks = await archiveTracks(a)
+      if (!tracks.length) onToast('이 앨범에는 들을 수 있는 mp3가 없어요')
+      else playMusic(tracks, 0)
+    } catch { onToast('앨범을 불러오지 못했어요') } finally { setIaBusy(null) }
   }
   const drop = async (s: Song) => {
     if (!db || !window.confirm(`“${s.title}”을(를) 지울까요?\n지우면 다른 사람도 들을 수 없어요.`)) return
@@ -188,6 +211,21 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
               {au === null ? <div style={css(`padding:24px;text-align:center;color:${SEC}`)}>불러오는 중</div>
                 : au.length === 0 ? <div style={css(`padding:24px;text-align:center;color:${SEC}`)}>{auErr ? '음악을 불러오지 못했어요. 인터넷을 확인해 주세요' : '찾는 곡이 없어요'}</div>
                 : au.map(s => <Row key={s.id} s={s} who="" active={s.id === nowId} playing={playing} onPlay={() => play(au, s)} />)}
+              {ia !== null && (
+                <>
+                  <h2 style={css('margin:22px 0 2px;font-size:20px;line-height:26px;font-weight:800')}>공개 음악 · 인터넷 아카이브</h2>
+                  <div style={css(`margin:0 0 6px;font-size:12px;line-height:17px;color:${SEC}`)}>저작권이 풀렸거나 만든 사람이 나눠 준 음악이에요. 광고도 로그인도 필요 없어요. 앨범을 누르면 이어서 들려줘요.</div>
+                  {ia.length === 0 ? <div style={css(`padding:24px;text-align:center;color:${SEC}`)}>찾는 앨범이 없어요</div> : ia.map(a => (
+                    <button key={a.id} className="pr-dim" onClick={() => playAlbum(a)} aria-label={`${a.title} 앨범 재생`} style={css('width:100%;display:flex;align-items:center;gap:12px;padding:6px 0;text-align:left;color:#fff;background:none')}>
+                      <img src={`https://archive.org/services/img/${encodeURIComponent(a.id)}`} alt="" loading="lazy" decoding="async" draggable={false} style={css('flex:none;width:56px;height:56px;border-radius:6px;object-fit:cover;background:#2a2a2a;display:block')} />
+                      <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:3px')}>
+                        <span style={css('font-size:16px;line-height:20px;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden')}>{a.title}</span>
+                        <span style={css(`font-size:13px;line-height:17px;color:${SEC};white-space:nowrap;overflow:hidden;text-overflow:ellipsis`)}>{iaBusy === a.id ? '불러오는 중…' : a.artist || '앨범'}</span>
+                      </span>
+                    </button>
+                  ))}
+                </>
+              )}
               <h2 style={css('margin:22px 0 6px;font-size:20px;line-height:26px;font-weight:800')}>친구들이 추가한 곡</h2>
               {songs !== null && songs.length === 0 ? <div style={css(`padding:24px;text-align:center;color:${SEC}`)}>아직 추가된 곡이 없어요</div> : found.length === 0 ? <div style={css(`padding:24px;text-align:center;color:${SEC}`)}>찾는 곡이 없어요</div>
                 : found.map(s => <Row key={s.id} s={s} who={who(s.uid)} active={s.id === nowId} playing={playing} onPlay={() => play(found, s)} />)}
@@ -207,6 +245,16 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
                 내가 추가한 곡을 다른 사람이 들으면 <b style={css('color:#fff')}>1분마다</b> {SONG_POINTS}포인트를 받아요. 다시 들어도, 10초씩 나눠 들어도 같은 사람이 들은 시간이 쌓여요.
                 {mine.length > 0 && <div style={css('margin-top:4px;color:#fff;font-weight:600')}>내 곡 {mine.length}개 · 들은 시간 {listens}분 · {(listens * SONG_POINTS).toLocaleString()}P</div>}
               </div>
+              <button className="pr-96" onClick={() => { const v = !adFree; setAdFree(v); setAdFreeState(v) }} role="switch" aria-checked={adFree} aria-label="광고 없는 버전 우선"
+                style={css(`width:100%;margin:0 0 8px;padding:12px 14px;border-radius:10px;background:${CARD};display:flex;align-items:center;gap:12px;text-align:left;color:#fff`)}>
+                <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:3px')}>
+                  <span style={css('font-size:15px;line-height:20px;font-weight:700')}>광고 없는 버전 먼저 찾기</span>
+                  <span style={css(`font-size:12px;line-height:17px;color:${SEC}`)}>유튜브 링크로 추가한 곡과 같은 곡이 Audius(광고 없는 무료 음악)에 있으면 그걸로 들려줘요. 없으면 유튜브로 재생돼요 (유튜브가 붙이는 광고는 앱이 막을 수 없어요).</span>
+                </span>
+                <span aria-hidden="true" style={css(`flex:none;width:46px;height:28px;border-radius:14px;padding:2px;box-sizing:border-box;background:${adFree ? GREEN : '#535353'};transition:background 250ms`)}>
+                  <span style={css(`display:block;width:24px;height:24px;border-radius:12px;background:#fff;transition:transform 300ms cubic-bezier(0.32,0.72,0,1);transform:translateX(${adFree ? 18 : 0}px)`)} />
+                </span>
+              </button>
               {songs === null ? <div style={css(`padding:40px;text-align:center;color:${SEC}`)}>불러오는 중</div> : mine.length === 0 ? (
                 <div style={css(`padding:44px 24px;text-align:center;color:${SEC};font-size:15px;line-height:23px`)}>아직 추가한 곡이 없어요.<br />위의 ＋를 눌러 유튜브 링크를 붙여 넣어 보세요.</div>
               ) : mine.map(s => <Row key={s.id} s={s} who={who(s.uid)} active={s.id === nowId} playing={playing} onPlay={() => play(mine, s)} onMore={() => drop(s)} sub={`내가 추가한 곡 · 들은 횟수 ${s.plays}회`} />)}

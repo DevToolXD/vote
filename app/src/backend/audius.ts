@@ -6,6 +6,9 @@ import type { Song } from './songs'
 // (that address answers with a redirect to the audio file).
 const API = 'https://api.audius.co/v1'
 const APP = 'popular_vote'
+// Audius's free API key (api.audius.co/plans → Create API Key; safe in a page): set as VITE_AUDIUS_API_KEY when the site is built.
+// Without it the older app_name way is used, which Audius may stop answering.
+const KEY = (import.meta.env?.VITE_AUDIUS_API_KEY as string | undefined) || ''
 
 type Raw = {
   id?: string; title?: string; duration?: number; is_streamable?: boolean; is_stream_gated?: boolean; is_delete?: boolean; is_unlisted?: boolean
@@ -19,14 +22,14 @@ export function toSong(t: Raw): Song | null {
   const art = t.artwork?.['480x480'] ?? t.artwork?.['150x150'] ?? t.artwork?.['1000x1000']
   return {
     id: 'au_' + t.id, title: t.title.slice(0, 120), uid: '', at: 0, plays: 0, src: 'au',
-    url: `${API}/tracks/${encodeURIComponent(t.id)}/stream?app_name=${APP}`, art, artist: t.user?.name ?? t.user?.handle ?? 'Audius',
+    url: `${API}/tracks/${encodeURIComponent(t.id)}/stream?app_name=${APP}${KEY ? `&api_key=${encodeURIComponent(KEY)}` : ''}`, art, artist: t.user?.name ?? t.user?.handle ?? 'Audius',
   }
 }
 
 async function list(path: string): Promise<Song[]> {
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 8000)
   try {
-    const r = await fetch(`${API}${path}${path.includes('?') ? '&' : '?'}app_name=${APP}`, { signal: ctl.signal })
+    const r = await fetch(`${API}${path}${path.includes('?') ? '&' : '?'}app_name=${APP}`, { signal: ctl.signal, headers: KEY ? { 'x-api-key': KEY } : undefined })
     if (!r.ok) throw new Error('audius ' + r.status)
     const j = await r.json() as { data?: Raw[] }
     return (j.data ?? []).map(toSong).filter((s): s is Song => !!s)
