@@ -12,7 +12,7 @@ import { playMusic, toggleMusic, useMusic } from '../music'
 const BG = '#121212', CARD = '#1f1f1f', GREEN = '#1ed760', SEC = '#b3b3b3'
 const FONT = "'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif"
 type Tab = 'home' | 'search' | 'lib'
-const SONG_POINTS = 6
+const SONG_POINTS = 8
 
 type Props = { db: Firestore | null; uid: string | null; me?: Person; byId: Map<string, Person>; onLogin: () => void; onToast: (msg: string) => void }
 

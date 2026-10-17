@@ -337,7 +337,7 @@ describe('profile and shop', () => {
     await denied(deleteDoc(fsDoc(b, 'homework', 'h1')))
     await deleteDoc(fsDoc(a, 'homework', 'h1'))
   })
-  test('문서: a heart from someone else pays the author 3 points, once per person; your own heart pays nothing', async () => {
+  test('문서: a heart from someone else pays the author 2 points, once per person; your own heart pays nothing', async () => {
     const a = await signUp('a'), b = await signUp('b'), c = await signUp('c')
     const photo = 'data:image/jpeg;base64,/9j/4AAQ'
     const bonusOf = async () => (await read(a, 'candidates/a')).bonus ?? 0
@@ -348,13 +348,13 @@ describe('profile and shop', () => {
     await fsUpdateDoc(fsDoc(c, 'homework', 'h9'), { likes: arrayUnion('c') })
     await kickWorker(40000)
     // the worker pays the hearts it finds (it works in the background: wait for it, up to 40 s)
-    for (let i = 0; i < 80 && (await bonusOf()) < start + 6; i++) await new Promise(r => setTimeout(r, 500))
-    assert.equal(await bonusOf(), start + 6, 'two others hearted: 3 points each, not three hearts')
+    for (let i = 0; i < 80 && (await bonusOf()) < start + 4; i++) await new Promise(r => setTimeout(r, 500))
+    assert.equal(await bonusOf(), start + 4, 'two others hearted: 2 points each, not three hearts')
     // taken back and given again: nothing more (give the worker time to look, then check)
     await fsUpdateDoc(fsDoc(b, 'homework', 'h9'), { likes: arrayRemove('b') })
     await fsUpdateDoc(fsDoc(b, 'homework', 'h9'), { likes: arrayUnion('b') })
     await new Promise(r => setTimeout(r, 8000))
-    assert.equal(await bonusOf(), start + 6)
+    assert.equal(await bonusOf(), start + 4)
   })
   test('문서 조회수: a view counts once per person (with their view record, in one batch); not on your own post', async () => {
     const a = await signUp('a'), b = await signUp('b'), c = await signUp('c')
@@ -395,7 +395,7 @@ describe('profile and shop', () => {
     await deleteDoc(fsDoc(a, 'posts', 'q1', 'comments', 'c1'))
     await deleteDoc(fsDoc(a, 'posts', 'q1'))
   })
-  test('인스타그램: a heart from someone else pays the author 3 points, once per person', async () => {
+  test('인스타그램: a heart from someone else pays the author 2 points, once per person', async () => {
     const a = await signUp('a'), b = await signUp('b')
     const photo = 'data:image/jpeg;base64,/9j/4AAQ'
     const bonusOf = async () => (await read(a, 'candidates/a')).bonus ?? 0
@@ -404,12 +404,12 @@ describe('profile and shop', () => {
     await fsUpdateDoc(fsDoc(a, 'posts', 'heart1'), { likes: arrayUnion('a') })
     await fsUpdateDoc(fsDoc(b, 'posts', 'heart1'), { likes: arrayUnion('b') })
     await kickWorker(40000)
-    for (let i = 0; i < 80 && (await bonusOf()) < start + 3; i++) await new Promise(r => setTimeout(r, 500))
-    assert.equal(await bonusOf(), start + 3, 'one other hearted: 3 points; your own heart pays nothing')
+    for (let i = 0; i < 80 && (await bonusOf()) < start + 2; i++) await new Promise(r => setTimeout(r, 500))
+    assert.equal(await bonusOf(), start + 2, 'one other hearted: 2 points; your own heart pays nothing')
     await fsUpdateDoc(fsDoc(b, 'posts', 'heart1'), { likes: arrayRemove('b') })
     await fsUpdateDoc(fsDoc(b, 'posts', 'heart1'), { likes: arrayUnion('b') })
     await new Promise(r => setTimeout(r, 6000))
-    assert.equal(await bonusOf(), start + 3, 'taken back and given again: nothing more')
+    assert.equal(await bonusOf(), start + 2, 'taken back and given again: nothing more')
   })
   test('인스타그램: the comment count goes up only with a comment of yours in the same batch, and down only when one is removed', async () => {
     const a = await signUp('a'), b = await signUp('b')
@@ -441,7 +441,7 @@ describe('profile and shop', () => {
     await denied(remove(a, 'k1'))                                                                         // already gone
     await deleteDoc(fsDoc(a, 'posts', 'cc1'))
   })
-  test('Spotify: a song is added once (its id is the YouTube id); listening time adds up and every full minute pays the owner 6P, never for your own song', async () => {
+  test('Spotify: a song is added once (its id is the YouTube id); listening time adds up and every full minute pays the owner 8P, never for your own song', async () => {
     const a = await signUp('a'), b = await signUp('b')
     const vid = 'dQw4w9WgXcQ'
     const song = (uid: string, over: Record<string, unknown> = {}) => ({ vid, title: '노래 제목', uid, plays: 0, at: fsServerTimestamp(), ...over })
@@ -480,11 +480,11 @@ describe('profile and shop', () => {
     await denied(play(b, 'b', 40))                                          // 40 s of listening can't have happened in 19 s
     assert.equal(await bonusOf(), start, 'under a minute: nothing yet')
     await play(b, 'b', 20)                                                  // 20 s more (the earlier play and this one: a minute)
-    for (let i = 0; i < 80 && (await bonusOf()) < start + 6; i++) await new Promise(r => setTimeout(r, 500))
-    assert.equal(await bonusOf(), start + 6, 'one minute: 6 points')
+    for (let i = 0; i < 80 && (await bonusOf()) < start + 8; i++) await new Promise(r => setTimeout(r, 500))
+    assert.equal(await bonusOf(), start + 8, 'one minute: 8 points')
     assert.equal((await read(a, 'songs/' + vid)).plays, 1)
     await new Promise(r => setTimeout(r, 5000))
-    assert.equal(await bonusOf(), start + 6, 'paid once')
+    assert.equal(await bonusOf(), start + 8, 'paid once')
     // the 거래 내역 says who listened to what (not "관리자가 지급")
     let row: { k: string; d: number; x?: string; b?: number } | undefined
     for (let i = 0; i < 40 && !row; i++) {
@@ -492,7 +492,7 @@ describe('profile and shop', () => {
       if (!row) await new Promise(r => setTimeout(r, 500))
     }
     assert.ok(row, 'a song line in the ledger')
-    assert.equal(row.d, 6)
+    assert.equal(row.d, 8)
     assert.ok(row.x?.startsWith(`${vid}|b|`), 'the line names the song and the listener: ' + row.x)
     assert.equal(Object.values((await rt(a, 'ledger/a')) ?? {}).filter((r: any) => r.k === 'grant').length, 0)
     await denied(deleteDoc(fsDoc(b, 'songs', vid)))

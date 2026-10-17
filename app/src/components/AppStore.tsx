@@ -21,7 +21,7 @@ const META: Record<StoreApp, { sub: string; caption: string; headline: string; a
   flappy: { sub: '탭해서 파이프 사이를 지나요', caption: '새로운 게임', headline: '탭 한 번으로 날아올라요', art: ['#4ec0ca', '#2a8f9a'], cat: '게임', game: true },
   dino: { sub: '선인장과 새를 뛰어넘어요', caption: '새로운 게임', headline: '와이파이가 없으면 뛰던 그 공룡', art: ['#f7f7f7', '#d9d9d9'], cat: '게임', game: true },
   bank: { sub: '이자 받는 통장과 대출', caption: '새로운 앱', headline: '포인트를 넣으면 매주 이자가 붙어요', art: ['#ffffff', '#e5e5ea'], cat: '투자' },
-  spotify: { sub: '유튜브 링크로 음악을 모아 들어요', caption: '새로운 앱', headline: '내 곡이 1분 들릴 때마다 6포인트', art: ['#1ed760', '#0b5d2a'], cat: '음악' },
+  spotify: { sub: '유튜브 링크로 음악을 모아 들어요', caption: '새로운 앱', headline: '내 곡이 1분 들릴 때마다 8포인트', art: ['#1ed760', '#0b5d2a'], cat: '음악' },
   homework: { sub: '숙제를 사진으로 올리고 같이 봐요', caption: '새로운 앱', headline: '숙제 사진을 올리고 하트와 댓글을 남겨요', art: ['#5ac8fa', '#0a84ff'], cat: '생산성' },
 }
 

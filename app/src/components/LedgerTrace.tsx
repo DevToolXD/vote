@@ -34,11 +34,11 @@ function stepsOf(r: LedgerRow, me: Node, nameOf: (id: string) => string): Step[]
   switch (r.k) {
     case 'heart': {
       const posts = uniq(es.map(e => e.parts[0]))
-      return [{ nodes: who.map(u => person(u, '❤️')) }, { nodes: posts.map(p => ({ icon: p.startsWith('homework') ? '📄' : '📸', label: p.startsWith('homework') ? '문서' : '인스타그램 사진', ref: p })), note: '하트 1개 = 3P' }, { nodes: [me], note: `+${r.d}P` }]
+      return [{ nodes: who.map(u => person(u, '❤️')) }, { nodes: posts.map(p => ({ icon: p.startsWith('homework') ? '📄' : '📸', label: p.startsWith('homework') ? '문서' : '인스타그램 사진', ref: p })), note: '하트 1개 = 2P' }, { nodes: [me], note: `+${r.d}P` }]
     }
     case 'song': {
       const songs = uniq(es.map(e => e.parts[0]))
-      return [{ nodes: who.map(u => person(u, '🎧')) }, { nodes: songs.map(v => ({ icon: '🎵', label: '노래', ref: 'song/' + v })), note: '1분 = 6P' }, { nodes: [me], note: `+${r.d}P` }]
+      return [{ nodes: who.map(u => person(u, '🎧')) }, { nodes: songs.map(v => ({ icon: '🎵', label: '노래', ref: 'song/' + v })), note: '1분 = 8P' }, { nodes: [me], note: `+${r.d}P` }]
     }
     case 'vote':
       return gain

@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { LazyImg } from './LazyImg'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
@@ -6,6 +6,7 @@ import { Avatar as ProfilePic } from './Avatar'
 import { InstaMessages } from './InstaMessages'
 import { isUnread, type ChatRow } from '../backend/messages'
 import type { Person } from '../model'
+import { rankPosts } from '../backend/feed'
 import { addPost, addPostComment, countPostView, removePost, removePostComment, setPostLiked, shrinkPhoto, watchPostComments, watchPosts, type Post, type PostComment } from '../backend/posts'
 
 // 인스타그램, laid out like the real one: 홈 (stories row + feed), 릴스 (one post per screen, swipe up),
@@ -111,6 +112,14 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
 
   useEffect(() => (db && uid ? watchPosts(db, setPosts) : undefined), [db, uid])
   const open = posts?.find(p => p.id === detail) ?? null
+  // 알고리즘 (backend/feed.ts): the order is worked out when photos come or go, not at every heart, so the feed doesn't jump under a finger
+  const idsKey = posts?.map(p => p.id).join() ?? ''
+  const order = useMemo(() => (posts ? rankPosts(posts, uid).map(r => r.post.id) : null), [idsKey, uid]) // eslint-disable-line react-hooks/exhaustive-deps
+  const ranked = useMemo(() => {
+    if (!posts || !order) return posts
+    const m = new Map(posts.map(p => [p.id, p]))
+    return order.map(id => m.get(id)).filter((p): p is Post => !!p)
+  }, [posts, order])
   useViewCount(db, uid, open, !!open, 3000)
 
   const like = async (p: Post) => {
@@ -148,7 +157,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
 
   const mine = (posts ?? []).filter(p => p.uid === uid)
   const authors = [...new Map((posts ?? []).filter(p => p.uid !== uid).map(p => [p.uid, p])).values()]
-  const found = (posts ?? []).filter(p => !q.trim() || p.caption.includes(q.trim()) || p.name.includes(q.trim()))
+  const found = (ranked ?? []).filter(p => !q.trim() || p.caption.includes(q.trim()) || p.name.includes(q.trim()))
 
   /** The like / comment row of a post (as a feed card shows it). */
   const actions = (p: Post, onComment: () => void, dark = false) => (
@@ -192,7 +201,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
         </div>
         {posts === null && <div style={css('padding:40px;text-align:center;color:#8e8e93;font-size:14px')}>불러오는 중</div>}
         {posts?.length === 0 && empty}
-        {posts?.map(p => (
+        {ranked?.map(p => (
           <article key={p.id} style={css('flex:none;padding-bottom:12px;content-visibility:auto;contain-intrinsic-size:auto 560px')}>
             <div style={css('display:flex;align-items:center;gap:10px;padding:8px 14px')}>
               <Pic who={who} uid={p.uid} name={p.name} size={34} ring />
@@ -268,7 +277,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
         <div style={css('position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:30px;color:#bbb;font-size:15px;line-height:22px')}>아직 올라온 릴스가 없어요.<br />누군가 올리면 여기에 나와요.</div>
       ) : (
         <div style={css('position:absolute;inset:0;overflow-y:scroll;scroll-snap-type:y mandatory')}>
-          {posts?.map(p => <Reel key={p.id} db={db} uid={uid} who={who} post={p} onLike={() => like(p)} onComment={() => setDetail(p.id)} />)}
+          {ranked?.map(p => <Reel key={p.id} db={db} uid={uid} who={who} post={p} onLike={() => like(p)} onComment={() => setDetail(p.id)} />)}
         </div>
       )}
       <div style={css('position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:center;padding:calc(var(--phone-top,54px) - 34px) 16px 0;pointer-events:none;z-index:2')}>

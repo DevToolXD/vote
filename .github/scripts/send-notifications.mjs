@@ -1217,7 +1217,7 @@ function creditOf(netWorth) {
 }
 // 문서 and 인스타그램: a heart from someone else pays the author HEART_POINTS. The post remembers who has been
 // paid (`paid`), so a heart taken back and given again pays nothing more, and your own hearts pay nothing.
-const HEART_POINTS = 3
+const HEART_POINTS = 2
 async function homeTick() {
   const paths = [...homeQueue]
   homeQueue.clear()
@@ -1251,7 +1251,7 @@ async function homeTick() {
 // Spotify: the app counts how long someone listens to a song (songPlays/{vid}_{listener}: `secs`, added up over
 // every play, the rules limit it to real time and never for your own song). Every full minute pays the song's
 // owner SONG_POINTS and counts as a play of the song (`plays`); `paidMin` is the minutes already paid.
-const SONG_POINTS = 6
+const SONG_POINTS = 8
 async function playTick() {
   const ids = [...playQueue]
   playQueue.clear()
