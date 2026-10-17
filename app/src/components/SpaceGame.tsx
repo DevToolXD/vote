@@ -2,38 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { css } from '../css'
 import { createEngine, type Engine, type Hud } from './spaceEngine'
+import { createTilt } from './spaceTilt'
 
 // 인터스텔라: a free 3D flight in space (the world is in spaceEngine.ts). It is played in landscape, fullscreen when the phone
-// allows it. The phone's tilt steers like a plane's stick: raised, the ship climbs, lowered, it dives; tilted right or left it
-// banks and turns. A finger on the screen, the mouse cursor (its place from the middle of the game) and the arrow keys do the same;
-// the 가속 button, the mouse button held down, or Space / Shift speed the ship up to reach what is far away.
+// allows it. The phone steers like a stick and wheel (spaceTilt.ts): turned like a steering wheel it banks and turns, its top edge
+// pulled toward you the ship climbs, pushed away it dives. A finger on the screen, the mouse cursor (its place from the middle of
+// the game) and the arrow keys do the same; the 가속 button, the mouse button held down, or Space / Shift speed the ship up.
 
 type V2 = { x: number; y: number }
 type ScreenLock = { lock?: (o: string) => Promise<void>; unlock?: () => void; angle?: number }
 
-const TILT = 22 // degrees of tilt that is a full push
-const TILT_DEAD = 2 // degrees the phone can move without anything happening (a steady hand)
 const DEAD = 0.06 // the middle of the mouse / finger range that does nothing
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 const dead = (v: number) => (Math.abs(v) < DEAD ? 0 : clamp(v, -1, 1))
 const shape = (v: number) => Math.sign(v) * Math.pow(Math.abs(v), 1.3) // finer near the middle
-const screenAngle = (): number => (screen.orientation as ScreenLock | undefined)?.angle ?? (window as unknown as { orientation?: number }).orientation ?? 0
-const tiltPush = (deg: number) => Math.sign(deg) * clamp((Math.abs(deg) - TILT_DEAD) / (TILT - TILT_DEAD), 0, 1)
-
-// The phone's tilt along the screen's own right and down, as the screen shows it: tilting the right side away from the person
-// takes the ship right, and tilting the top away (lowering the phone) takes it down. beta / gamma are in the phone's own frame,
-// so the screen's turn decides which of them is the sideways one.
-function screenTilt(db: number, dg: number, angle: number): V2 {
-  const [right, down] =
-    angle === 90 ? [db, dg] :
-    angle === -90 || angle === 270 ? [-db, -dg] :
-    Math.abs(angle) === 180 ? [-dg, db] :
-    [dg, -db]
-  return { x: tiltPush(right), y: tiltPush(down) }
-}
-
-const orientationApi = () => (window as unknown as { DeviceOrientationEvent?: { requestPermission?: () => Promise<string> } }).DeviceOrientationEvent
 
 /** The ship's icon in 게임 (a black tile with the ring). */
 export function SpaceIcon({ size = 60 }: { size?: number }) {
@@ -59,9 +42,8 @@ export function SpaceGame() {
   const engine = useRef<Engine | null>(null)
   const aim = useRef<V2 | null>(null) // the mouse, or a finger on the screen, from the middle of the game
   const touching = useRef(false)
-  const tilt = useRef<V2 | null>(null) // the phone's tilt, from how it was held when the game began (or when it was turned)
-  const tiltBase = useRef<{ b: number; g: number; a: number } | null>(null)
-  const tiltAt = useRef(0)
+  const [sensor] = useState(() => createTilt()) // the phone's tilt (spaceTilt.ts)
+  const indRef = useRef<HTMLDivElement>(null)
   const keys = useRef({ x: 0, y: 0, boost: false, held: new Set<string>() })
   const boostHeld = useRef(false) // the 가속 button or the mouse button
   const toastId = useRef(0)
@@ -76,12 +58,13 @@ export function SpaceGame() {
   const [toasts, setToasts] = useState<{ id: number; icon: string; text: string }[]>([])
   const [boosting, setBoosting] = useState(false)
 
-  // a phone with sensors: tilt steers from the start (Android), or once the person allows it (iOS asks)
+  // a phone with sensors: tilt steers from the start (Android), or once the person allows it with a tap (iOS asks)
   useEffect(() => {
-    if (!('DeviceOrientationEvent' in window) || navigator.maxTouchPoints === 0) return
-    if (typeof orientationApi()?.requestPermission === 'function') setAskTilt(true)
-    else setTiltOn(true)
-  }, [])
+    if (!sensor.available()) return
+    if (sensor.needsPermission()) setAskTilt(true)
+    else sensor.start().then(ok => { if (ok) setTiltOn(true) })
+    return () => sensor.stop()
+  }, [sensor])
   useEffect(() => { const t = setTimeout(() => setHint(false), 9000); return () => clearTimeout(t) }, [])
 
   // fullscreen: the browser's own where it exists (Android, a computer), else the game covers the whole screen (iPhone)
@@ -105,20 +88,7 @@ export function SpaceGame() {
     } catch { setFake(true) } // the phone said no: cover the screen instead
   }
 
-  useEffect(() => {
-    if (!tiltOn) return
-    const onOrient = (e: DeviceOrientationEvent) => {
-      if (e.beta == null || e.gamma == null) return
-      const a = screenAngle()
-      // turned to the other way round, the phone's angles are measured from the new place
-      if (!tiltBase.current || tiltBase.current.a !== a) tiltBase.current = { b: e.beta, g: e.gamma, a }
-      tilt.current = screenTilt(e.beta - tiltBase.current.b, e.gamma - tiltBase.current.g, a)
-      tiltAt.current = performance.now()
-    }
-    aim.current = null // with the tilt on, a finger on the screen does not steer (a thumb resting on the edge must not)
-    window.addEventListener('deviceorientation', onOrient)
-    return () => window.removeEventListener('deviceorientation', onOrient)
-  }, [tiltOn])
+  useEffect(() => { if (tiltOn) aim.current = null }, [tiltOn]) // with the tilt on, a finger on the screen does not steer (a thumb resting on the edge must not)
 
   // the keyboard: arrows or WASD steer, Space or Shift speed up
   useEffect(() => {
@@ -138,13 +108,7 @@ export function SpaceGame() {
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); k.held.clear(); apply() }
   }, [])
 
-  const allowTilt = async () => {
-    const api = orientationApi()
-    try {
-      if (api?.requestPermission && (await api.requestPermission()) !== 'granted') return
-      setAskTilt(false); tiltBase.current = null; setTiltOn(true)
-    } catch { setAskTilt(false) }
-  }
+  const allowTilt = async () => { if (await sensor.start()) { setAskTilt(false); setTiltOn(true) } }
 
   const readAim = (e: { clientX: number; clientY: number }) => {
     const r = rootRef.current?.getBoundingClientRect()
@@ -184,17 +148,14 @@ export function SpaceGame() {
       const dt = last < 0 ? 0 : Math.min(0.05, t - last)
       last = t
       // the mouse / finger, the tilt and the keys add up
-      const fresh = performance.now() - tiltAt.current < 800
-      const target = fresh ? tilt.current : null
+      const target = sensor.read()
       const k1 = Math.min(1, dt * 8)
       tn.x += ((target?.x ?? 0) - tn.x) * k1
       tn.y += ((target?.y ?? 0) - tn.y) * k1
       const a = aim.current, k = keys.current
-      eng.frame(now, {
-        sx: shape(clamp((a?.x ?? 0) + tn.x + k.x, -1, 1)),
-        sy: shape(clamp((a?.y ?? 0) + tn.y + k.y, -1, 1)),
-        boost: boostHeld.current || k.boost,
-      })
+      const sx = shape(clamp((a?.x ?? 0) + tn.x + k.x, -1, 1)), sy = shape(clamp((a?.y ?? 0) + tn.y + k.y, -1, 1))
+      if (indRef.current) indRef.current.style.transform = `translate(${(sx * 17).toFixed(1)}px,${(sy * 17).toFixed(1)}px)` // the little dot shows where the push is
+      eng.frame(now, { sx, sy, boost: boostHeld.current || k.boost })
     }
     const stop = () => { cancelAnimationFrame(raf); raf = 0 }
     const start = () => { if (!raf) { last = -1; raf = requestAnimationFrame(frame) } }
@@ -202,7 +163,7 @@ export function SpaceGame() {
     document.addEventListener('visibilitychange', onVis)
     start()
     return () => { stop(); ro.disconnect(); document.removeEventListener('visibilitychange', onVis); eng.detach() }
-  }, [fake])
+  }, [fake, sensor])
 
   // a phone held upright cannot be flown: the game asks for landscape (a computer's window is never upright here)
   const turnPhone = coarse && portrait
@@ -233,15 +194,20 @@ export function SpaceGame() {
       </div>
       <div style={css('position:absolute;right:12px;top:10px;display:flex;gap:8px')}>
         <button className="pr-96" onClick={toggleFull} style={css(BTN)}>{full || fake ? '나가기' : '전체화면'}</button>
-        {tiltOn && <button className="pr-96" onClick={() => { tiltBase.current = null }} style={css(BTN)}>가운데로</button>}
+        {tiltOn && <button className="pr-96" onClick={() => sensor.recenter()} style={css(BTN)}>가운데로</button>}
+      </div>
+      <div aria-hidden="true" style={css('position:absolute;left:18px;bottom:18px;width:56px;height:56px;border-radius:9999px;background:rgba(255,255,255,0.07);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,0.25);pointer-events:none')}>
+        <div style={css('position:absolute;left:50%;top:50%;width:1px;height:14px;margin:-7px 0 0 0;background:rgba(255,255,255,0.18)')} />
+        <div style={css('position:absolute;left:50%;top:50%;width:14px;height:1px;margin:0 0 0 -7px;background:rgba(255,255,255,0.18)')} />
+        <div ref={indRef} style={css('position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:9999px;background:#9cc3ff;box-shadow:0 0 8px rgba(120,170,255,0.9)')} />
       </div>
       <button aria-label="가속" onPointerDown={e => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); setBoost(true) }} onPointerUp={e => { e.stopPropagation(); setBoost(false) }} onPointerCancel={() => setBoost(false)}
         style={css(`position:absolute;right:22px;bottom:22px;width:68px;height:68px;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700;background:${boosting ? 'rgba(90,150,255,0.55)' : 'rgba(255,255,255,0.14)'};box-shadow:inset 0 0 0 1.5px ${boosting ? 'rgba(160,200,255,0.95)' : 'rgba(255,255,255,0.35)'};transition:background 180ms,box-shadow 180ms;touch-action:none`)}>가속</button>
       {askTilt && (
         <button className="pr-96" onClick={allowTilt} style={css('position:absolute;left:50%;bottom:64px;transform:translateX(-50%);height:40px;padding:0 18px;border-radius:9999px;background:#fff;color:#000;font-size:14px;font-weight:700;white-space:nowrap')}>기울기로 조종 켜기</button>
       )}
-      <div style={css(`position:absolute;left:0;right:100px;bottom:20px;text-align:center;color:#9aa6ba;font-size:13px;line-height:19px;pointer-events:none;transition:opacity 900ms;opacity:${hint ? 1 : 0};text-shadow:0 1px 3px rgba(0,0,0,0.8)`)}>
-        {tiltOn ? '폰을 위로 들면 위로, 내리면 아래로 · 좌우로 기울이면 방향이 바뀌어요' : '마우스를 움직여 방향을 바꾸고, 누르고 있으면 가속해요 (방향키·Space도 돼요)'}
+      <div style={css(`position:absolute;left:90px;right:100px;bottom:20px;text-align:center;color:#9aa6ba;font-size:13px;line-height:19px;pointer-events:none;transition:opacity 900ms;opacity:${hint ? 1 : 0};text-shadow:0 1px 3px rgba(0,0,0,0.8)`)}>
+        {tiltOn ? '핸들처럼 돌리면 방향이 바뀌고, 윗면을 몸쪽으로 당기면 위로·밀면 아래로 가요' : '마우스를 움직여 방향을 바꾸고, 누르고 있으면 가속해요 (방향키·Space도 돼요)'}
       </div>
       {turnPhone && (
         <div style={css('position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#000;color:#fff;font-size:16px;font-weight:600')}>
