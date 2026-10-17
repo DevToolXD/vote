@@ -7,16 +7,18 @@ import type { Person } from '../model'
 import { BlockBlast } from './BlockBlast'
 import { FlappyBird } from './FlappyBird'
 import { DinoGame } from './DinoGame'
+import { SpaceGame, SpaceIcon } from './SpaceGame'
 
 export type HomeTab = 'rank' | 'game' | 'notice'
 const SUBS = [['rank', '랭킹'], ['game', '게임'], ['notice', '공지']] as const
-type Game = 'block' | 'flappy' | 'dino'
+type Game = 'block' | 'flappy' | 'dino' | 'space'
 const GAMES: [Game, string, string][] = [
   ['block', '블록 블라스트', '블록을 놓아 줄을 지워요. 가득 차면 끝나요'],
   ['flappy', '플래피 버드', '탭해서 날아 파이프 사이를 지나가요'],
   ['dino', '공룡 점프', '선인장과 새를 뛰어넘어요. 멀리 갈수록 빨라져요'],
+  ['space', '우주 탐험', '우주선을 기울이거나 마우스로 움직여 별들 사이를 날아요'],
 ]
-const BG: Record<Game, string> = { block: 'linear-gradient(180deg,#4a6fc4 0%,#2f4f9f 55%,#2a4790 100%)', flappy: '#4ec0ca', dino: '#ffffff' }
+const BG: Record<Game, string> = { block: 'linear-gradient(180deg,#4a6fc4 0%,#2f4f9f 55%,#2a4790 100%)', flappy: '#4ec0ca', dino: '#ffffff', space: '#000000' }
 
 /** 게임 tab: the three games as a list; one opens in place, with ‹ 게임 to come back. */
 function Games({ onOpen }: { onOpen: (open: boolean) => void }) {
@@ -30,6 +32,7 @@ function Games({ onOpen }: { onOpen: (open: boolean) => void }) {
           {game === 'block' && <BlockBlast />}
           {game === 'flappy' && <FlappyBird />}
           {game === 'dino' && <DinoGame />}
+          {game === 'space' && <SpaceGame />}
         </div>
       </div>
     )
@@ -38,7 +41,7 @@ function Games({ onOpen }: { onOpen: (open: boolean) => void }) {
     <div className="anim-list" style={css('padding:8px 16px 24px;display:flex;flex-direction:column;gap:10px;background:#f2f2f7;flex:1')}>
       {GAMES.map(([g, t, d]) => (
         <button key={g} className="pr-98" onClick={() => set(g)} style={css('display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:20px;background:#fff;text-align:left;width:100%')}>
-          <AppIcon app={g} size={60} />
+          {g === 'space' ? <SpaceIcon size={60} /> : <AppIcon app={g} size={60} />}
           <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:3px')}>
             <span style={css('font-size:17px;line-height:23px;font-weight:700;color:#1d1d1f')}>{t}</span>
             <span style={css('font-size:13px;line-height:18px;color:#6e6e73')}>{d}</span>
