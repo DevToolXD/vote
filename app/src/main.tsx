@@ -7,13 +7,19 @@ import './styles.css'
 import './install'
 
 // Preview options mirror the design tool's controls: ?tab=rank&palette=swap
+// Like an app, not a site: no pinch zoom (iPhone's Safari ignores user-scalable, so its gesture events are stopped), no zoom with
+// ctrl + wheel, and no pinch with two fingers on a page. (Double-tap zoom is off through touch-action in styles.css.)
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault())
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault() }, { passive: false })
+document.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault() }, { passive: false })
+
 const params = new URLSearchParams(location.search)
 const tab = params.get('tab')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App
-      startTab={tab === 'acct' || tab === 'shop' || tab === 'msg' || tab === 'coin' || tab === 'admin' ? (tab as Tab) : 'rank'}
+      startTab={tab === 'acct' || tab === 'shop' || tab === 'msg' || tab === 'coin' || tab === 'admin' || tab === 'insta' || tab === 'spotify' || tab === 'money' ? (tab as Tab) : 'rank'}
       startSupport={params.get('support')}
       startChat={params.get('chat')}
       swapPalette={params.get('palette') === 'swap'}

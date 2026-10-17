@@ -10,7 +10,7 @@ import { TowerSkin } from './TowerSkin'
 
 // 상점, in the App Store's way (the reference screens): a big title, white rounded cards on grey,
 // category pills, and a floating bar at the bottom with the sections and a search button.
-export type ShopTab = ItemKind | 'set' | 'pass' | 'inv' | 'feat'
+export type ShopTab = ItemKind | 'set' | 'pass' | 'inv' | 'feat' | 'market'
 
 type Props = {
   loggedIn: boolean
@@ -31,6 +31,8 @@ type Props = {
   passes: Record<PassKind, boolean>
   onBuyPass: (kind: PassKind) => void
   onLogin: () => void
+  /** 당근마켓, as one more section of the shop (the page is built by App: Market.tsx). */
+  market: ReactNode
 }
 
 /** Passes sold in the 패스 tab (each bought once and kept). */
@@ -78,21 +80,22 @@ const check = (on: boolean) => on ? (
 ) : null
 
 /** The icons of the bottom bar (outline, like the App Store's). */
-const TAB_ICONS: Record<'feat' | 'set' | 'pass' | 'inv', ReactNode> = {
+const TAB_ICONS: Record<'feat' | 'set' | 'pass' | 'inv' | 'market', ReactNode> = {
   feat: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3.5l1.9 4.6 4.6 1.9-4.6 1.9L12 16.5l-1.9-4.6-4.6-1.9 4.6-1.9z" /><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" /></svg>,
   set: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 4h12l3 5-9 11L3 9z" /><path d="M3 9h18" /></svg>,
   pass: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M15.5 8.5l-2 5-5 2 2-5z" /></svg>,
   inv: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h16l-1.2 11.2a2 2 0 0 1-2 1.8H7.2a2 2 0 0 1-2-1.8z" /><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8" /></svg>,
+  market: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9.5 5.5 4h13L20 9.5" /><path d="M4 9.5a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0" /><path d="M5.5 12.5V20h13v-7.5" /></svg>,
 }
 const SEARCH_ICON = <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
 
-export const ShopScreen = memo(function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, onPoints, tab, onTab, onPick, passes, onBuyPass, onLogin, onPickSet }: Props) {
+export const ShopScreen = memo(function ShopScreen({ loggedIn, name, bio, photoCss, equipped, owned, points, onPoints, tab, onTab, onPick, passes, onBuyPass, onLogin, onPickSet, market }: Props) {
   const [q, setQ] = useState('')
   const [searching, setSearching] = useState(false)
   const [filter, setFilter] = useState<(typeof SET_FILTERS)[number][0]>('all')
   // the tabs: 추천 (featured), 장신구 (the sets), 패스, 보관함 (what I own); an older tab value opens 장신구
-  const section: 'feat' | 'set' | 'pass' | 'inv' = tab === 'feat' || tab === 'pass' || tab === 'inv' ? tab : 'set'
-  const title = section === 'feat' ? '추천' : section === 'set' ? '장신구' : section === 'pass' ? '패스' : '보관함'
+  const section: 'feat' | 'set' | 'pass' | 'inv' | 'market' = tab === 'feat' || tab === 'pass' || tab === 'inv' || tab === 'market' ? tab : 'set'
+  const title = section === 'feat' ? '추천' : section === 'set' ? '장신구' : section === 'pass' ? '패스' : section === 'market' ? '당근마켓' : '보관함'
 
   // a set is in the list when its name matches the search and it's in the filter
   const sets = FRAMES.filter(([k, l]) => k !== 'none' && (!q.trim() || l.includes(q.trim()))
@@ -183,6 +186,7 @@ export const ShopScreen = memo(function ShopScreen({ loggedIn, name, bio, photoC
           ['set', '장신구', '세트로 사면 프레임과 이름표가 함께 와요'],
           ['pass', '패스', '투표 2배권, 페이크 선물 패스'],
           ['inv', '보관함', '내가 가진 장신구를 골라 껴요'],
+          ['market', '당근마켓', '가진 장신구를 사람들과 사고팔아요'],
         ] as const).map(([v, t, d], i) => (
           <button key={v} className="pr-98" onClick={() => onTab(v)} style={css('width:100%;display:flex;align-items:center;gap:14px;padding:16px 18px;text-align:left;' + (i ? 'border-top:0.5px solid #e5e5ea' : ''))}>
             <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
@@ -253,8 +257,8 @@ export const ShopScreen = memo(function ShopScreen({ loggedIn, name, bio, photoC
     )
   })()
 
-  const TABS: ('feat' | 'set' | 'pass' | 'inv')[] = ['feat', 'set', 'pass', 'inv']
-  const TAB_LABEL = { feat: '추천', set: '장신구', pass: '패스', inv: '보관함' }
+  const TABS: ('feat' | 'set' | 'pass' | 'inv' | 'market')[] = ['feat', 'set', 'pass', 'inv', 'market']
+  const TAB_LABEL = { feat: '추천', set: '장신구', pass: '패스', inv: '보관함', market: '당근마켓' }
 
   return (
     <div data-g="clear" style={css('flex:1 1 0;min-height:0;height:100%;overflow-y:auto;display:flex;flex-direction:column;background:#f2f2f7;padding-bottom:6px')}>
@@ -268,6 +272,7 @@ export const ShopScreen = memo(function ShopScreen({ loggedIn, name, bio, photoC
         {section === 'set' && setsView}
         {section === 'pass' && passView}
         {section === 'inv' && invView}
+        {section === 'market' && market}
       </div>
 
       {/* the floating bar: the sections and the search (it only searches 장신구) */}

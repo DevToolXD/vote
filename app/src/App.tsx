@@ -18,20 +18,16 @@ import { AdminProgressOverlay } from './components/AdminProgress'
 // only the admin ever opens it: loaded on demand
 // Phone apps load only when opened, so the first screen stays small
 const StockApp = lazy(() => import('./components/StockApp').then(m => ({ default: m.StockApp })))
-const BlockBlast = lazy(() => import('./components/BlockBlast').then(m => ({ default: m.BlockBlast })))
-const FlappyBird = lazy(() => import('./components/FlappyBird').then(m => ({ default: m.FlappyBird })))
 const CoinScreen = lazy(() => import('./components/CoinScreen').then(m => ({ default: m.CoinScreen })))
-const MarketApp = lazy(() => import('./components/Market').then(m => ({ default: m.MarketApp })))
-const DinoGame = lazy(() => import('./components/DinoGame').then(m => ({ default: m.DinoGame })))
+const MarketView = lazy(() => import('./components/Market').then(m => ({ default: m.MarketView })))
 const InstaApp = lazy(() => import('./components/InstaApp').then(m => ({ default: m.InstaApp })))
 const NoticesApp = lazy(() => import('./components/NoticesApp').then(m => ({ default: m.NoticesApp })))
 const SpotifyApp = lazy(() => import('./components/SpotifyApp').then(m => ({ default: m.SpotifyApp })))
-const HomeworkApp = lazy(() => import('./components/HomeworkApp').then(m => ({ default: m.HomeworkApp })))
 const BankApp = lazy(() => import('./components/BankApp').then(m => ({ default: m.BankApp })))
 const AdminScreen = lazy(() => import('./components/AdminScreen').then(m => ({ default: m.AdminScreen })))
 import { BottomNav } from './components/BottomNav'
-import { PhoneScreen } from './components/PhoneScreen'
-import type { OpenableApp } from './backend/phone'
+import { HomeScreen, type HomeTab } from './components/HomeScreen'
+import { MoneyScreen, type InvestTab, type MoneyTab } from './components/MoneyScreen'
 import { EditProfile } from './components/EditProfile'
 import { ShopScreen, type ShopTab } from './components/ShopScreen'
 import { ChatRoom, MessagesScreen, NewChatSheet } from './components/MessagesScreen'
@@ -99,14 +95,27 @@ function loadTheme() {
 }
 
 /** Real backend: Firebase Auth for accounts, Firestore for the live leaderboard/votes/shop. See app/README.md. */
-/** 계정, 상점, 코인 and 관리 are apps inside 폰: asking for their tab opens 폰 with that app. */
-const APP_OF_TAB: Partial<Record<Tab, OpenableApp>> = { acct: 'account', shop: 'shop', coin: 'coin', admin: 'admin' }
-const navTab = (t: Tab): Tab => (APP_OF_TAB[t] ? 'phone' : t)
+/** Where a tab name leads: the five tabs themselves; 계정 and 관리 open over 홈; 상점, 코인 are in 돈. */
+type Overlay = 'account' | 'admin' | null
+function placeOf(t: Tab): { tab: Tab; overlay: Overlay; money?: MoneyTab; invest?: InvestTab } {
+  switch (t) {
+    case 'acct': return { tab: 'rank', overlay: 'account' }
+    case 'admin': return { tab: 'rank', overlay: 'admin' }
+    case 'shop': return { tab: 'money', overlay: null, money: 'shop' }
+    case 'coin': return { tab: 'money', overlay: null, money: 'invest', invest: 'coin' }
+    case 'phone': return { tab: 'rank', overlay: null }
+    default: return { tab: t, overlay: null }
+  }
+}
 
 export function App({ startTab = 'rank', startChat = null, startSupport = null, swapPalette = false }: AppProps) {
-  const [tab, setTab] = useState<Tab>(navTab(startTab))
-  /** The 폰 app on screen (its bar shows while that app's tab is up). */
-  const [phoneApp, setPhoneApp] = useState<OpenableApp | null>(APP_OF_TAB[startTab] ?? null)
+  const start = placeOf(startTab)
+  const [tab, setTab] = useState<Tab>(start.tab)
+  /** 계정 / 관리, open over 홈. */
+  const [overlay, setOverlay] = useState<Overlay>(start.overlay)
+  const [homeTab, setHomeTab] = useState<HomeTab>('rank')
+  const [moneyTab, setMoneyTab] = useState<MoneyTab>(start.money ?? 'bank')
+  const [investTab, setInvestTab] = useState<InvestTab>(start.invest ?? 'coin')
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const [sheet, setSheet] = useState<string | null>(null)
@@ -195,7 +204,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     showToast(code ? `${msg} (${code})` : msg)
   }
 
-  useEffect(() => { setTab(navTab(startTab)); setPhoneApp(APP_OF_TAB[startTab] ?? null) }, [startTab])
+  useEffect(() => { const p = placeOf(startTab); setTab(p.tab); setOverlay(p.overlay); if (p.money) setMoneyTab(p.money); if (p.invest) setInvestTab(p.invest) }, [startTab])
 
   // An anonymous login is only for 상담 (forgot password); the app treats it as signed out.
   // 중복 가입 방지 / IP 차단 (backend/ip.ts): undefined = not looked up yet
@@ -332,7 +341,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   // just the one person whose vote sheet or profile is open (1 read, not one per person).
   const voteFocus = sheet ?? profile
   /** The 계정 app is on screen (it lists all my votes). */
-  const onAcct = tab === 'phone' && phoneApp === 'account'
+  const onAcct = tab === 'rank' && overlay === 'account'
   useEffect(() => {
     if (!authUser || !db || !onAcct) return
     return subscribeMyVotes(db, authUser.uid, setVotes)
@@ -441,7 +450,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chats])
-  useEffect(() => { if (phoneApp === 'admin' && !isAdmin && authReady) setPhoneApp(null) }, [phoneApp, isAdmin, authReady])
+  useEffect(() => { if (overlay === 'admin' && !isAdmin && authReady) setOverlay(null) }, [overlay, isAdmin, authReady])
   useEffect(() => (isAdmin && db ? subscribeTickets(db, setTickets) : setTickets([])), [isAdmin])
   const openTicket = tickets.find(t => t.id === ticketId)
   const ticketAccount = openTicket ? all.find(p => p.loginId && p.loginId === openTicket.loginId) : undefined
@@ -523,13 +532,12 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     : { up: BLUE, down: RED, downWeak: 'rgba(244,67,54,0.16)', downWeakFg: '#d22030' }
 
   const go = (t: Tab) => {
-    setTab(navTab(t)); setPhoneApp(APP_OF_TAB[t] ?? null); setSheet(null); setProfile(null); setEditOpen(false)
+    const p = placeOf(t)
+    setTab(p.tab); setOverlay(p.overlay)
+    if (p.money) setMoneyTab(p.money)
+    if (p.invest) setInvestTab(p.invest)
+    setSheet(null); setProfile(null); setEditOpen(false)
     scrollPageTop()
-  }
-  /** Opens an app on the phone screen (the 당근마켓 app is the shop's market). */
-  const openApp = (app: OpenableApp) => {
-    if (app === 'shop') setShopTab('feat')
-    setPhoneApp(app)
   }
 
   /** kind = what this week's vote should become ('none' cancels it). */
@@ -692,9 +700,9 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
 
   // 🥕 당근마켓: listings are watched only while its tab is open
   useEffect(() => {
-    if (!db || phoneApp !== 'market') return
+    if (!db || tab !== 'money' || moneyTab !== 'shop' || shopTab !== 'market') return
     return subscribeMarket(db, setMarketRows)
-  }, [phoneApp])
+  }, [tab, moneyTab, shopTab])
   const marketBuy = async (l: Listing) => {
     if (!me) return
     if (tradeBanned(me)) { showToast(banText(me)); return }
@@ -860,8 +868,6 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     marketBuy: (l: Listing) => marketBuy(l),
     marketList: (kind: TradeKind, key: string, price: number) => marketList(kind, key, price),
     marketCancel: (l: Listing) => marketCancel(l),
-    openApp: (a: OpenableApp) => openApp(a),
-    closeApp: () => setPhoneApp(null),
   })
   const equipped = useMemo(() => (me ? { frame: me.frame, plate: me.plate, skin: me.skin } : { frame: 'none', plate: 'none', skin: 'none' }), [me?.frame, me?.plate, me?.skin]) // eslint-disable-line react-hooks/exhaustive-deps
   const fakePassOwned = hasFakePass(me)
@@ -872,18 +878,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   // 접속 차단 (the account or an address it used): the app never finishes loading (never the admin)
   if (access?.blocked && !isAdmin) return <EndlessLoading />   // (an account the admin blocked; the internet address alone no longer blocks anyone)
 
-  /** What an app shows on the phone screen. */
-  const appView = (app: OpenableApp) => (
-    <>
-          <Suspense fallback={null}>
-          {app === 'block' && <BlockBlast />}
-          {app === 'flappy' && <FlappyBird />}
-          {app === 'dino' && <DinoGame />}
-          {app === 'bank' && db && (
-            <BankApp db={db} uid={authUser?.uid ?? null} owned={me?.owned ?? null} points={points} onLogin={uiFns.goAcct} onToast={uiFns.toast} />
-          )}
-          {app === 'homework' && <HomeworkApp db={db} uid={authUser?.uid ?? null} name={me?.name ?? ''} isAdmin={isAdmin} onLogin={uiFns.goAcct} onToast={uiFns.toast} />}
-      {app === 'account' && (
+  /** 계정 (in 홈, from the profile) — and, when nobody is signed in, the login and sign-up page that 메시지 and 돈 show. */
+  const acctEl = (
         <AccountScreen
           openLedger={() => setLedgerOpen(true)}
           loggedIn={loggedIn}
@@ -925,28 +921,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             />
           }
         />
-      )}
-          {app === 'notice' && <NoticesApp db={db} ids={noticeIds} loggedIn={loggedIn} onLogin={uiFns.goAcct} />}
-          {app === 'spotify' && <SpotifyApp db={db} uid={authUser?.uid ?? null} me={me} byId={byId} onLogin={uiFns.goAcct} onToast={uiFns.toast} />}
-          {app === 'stock' && <StockApp db={db} uid={authUser?.uid ?? null} points={points} onLogin={uiFns.goAcct} onToast={uiFns.toast} />}
-          {app === 'shop' && (
-            <ShopScreen
-              loggedIn={loggedIn} name={me?.name ?? '내 이름'} bio={me ? bioDraft : ''} photoCss={me?.photoCss ?? 'none'}
-              equipped={equipped}
-              owned={me?.owned ?? DEFAULT_OWNED} points={points} onPoints={uiFns.earn} tab={shopTab} onPickSet={uiFns.pickSet}
-              onTab={setShopTab}
-              onPick={uiFns.pick}
-              passes={passes} onBuyPass={setPassAsk} onLogin={uiFns.goAcct}
-            />
-          )}
-          {app === 'market' && (
-            <MarketApp loggedIn={loggedIn} rows={marketRows} me={me} byId={byId} points={points} onLogin={uiFns.goAcct} onBuy={uiFns.marketBuy} onList={uiFns.marketList} onCancel={uiFns.marketCancel} />
-          )}
-          {app === 'coin' && (
-            <CoinScreen db={db} uid={authUser?.uid ?? null} points={points} onLogin={uiFns.goAcct} onToast={uiFns.toast} />
-          )}
-          </Suspense>
-          {app === 'admin' && isAdmin && authUser && (
+  )
+  const adminEl = isAdmin && authUser ? (
             <Suspense fallback={null}>
             <AdminScreen
               all={all}
@@ -979,9 +955,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
               onLogout={doLogout}
             />
             </Suspense>
-          )}
-    </>
-  )
+  ) : null
 
   return (
     <div data-theme={theme} style={css("height:100vh;height:100dvh;display:flex;justify-content:center;overflow:hidden;font-family:'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;color:#191f28;word-break:keep-all")}>
@@ -992,36 +966,79 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
         <div style={roomOpen && pageHidden ? PAGE_HIDDEN : PAGE_SHOWN}>
         <Covered covered={roomOpen}>
         <main data-scroll="page" style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch')}>
-          {tab === 'phone' && (
-            <PhoneScreen
-              db={db} uid={authUser?.uid ?? null} isAdmin={isAdmin} adminUnread={unreadTickets}
-              app={phoneApp} onOpen={uiFns.openApp} onClose={uiFns.closeApp} renderApp={appView}
-              onLogin={uiFns.goAcct} onToast={uiFns.toast}
-            />
-          )}
-          {tab === 'rank' && (
-            <RankScreen
-              all={all} query={query} onQuery={uiFns.query}
-              page={page} onPage={setPage} onOpenProfile={setProfile}
-              seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()} points={me ? points : undefined}
-              onPoints={uiFns.earn} onInstall={uiFns.install}
-              secretName={INVITE_ADMIN} onSecret={uiFns.secret}
-            />
+          {tab === 'spotify' && (
+            // Spotify is a tab: its own screens fill the page above the tab bar
+            <div data-ios="" key="spotify" style={css('flex:1;min-height:0;position:relative;display:flex;flex-direction:column;background:#121212;padding-top:env(safe-area-inset-top);padding-bottom:10px;--phone-top:0px;--phone-bottom:10px;animation:pageIn 380ms cubic-bezier(0.32,0.72,0,1) both')}>
+              <Suspense fallback={null}>
+                <SpotifyApp db={db} uid={authUser?.uid ?? null} me={me} byId={byId} onLogin={uiFns.goAcct} onToast={uiFns.toast} />
+              </Suspense>
+            </div>
           )}
           {tab === 'insta' && (
             // 인스타그램 is a tab: the app's own screens fill the page above the tab bar
-            <div style={css('flex:1;min-height:0;position:relative;--phone-top:calc(env(safe-area-inset-top) + 30px);--phone-bottom:22px')}>
+            <div key="insta" style={css('flex:1;min-height:0;position:relative;--phone-top:calc(env(safe-area-inset-top) + 30px);--phone-bottom:22px;animation:pageIn 380ms cubic-bezier(0.32,0.72,0,1) both')}>
               <Suspense fallback={null}>
                 <InstaApp db={db} uid={authUser?.uid ?? null} me={me} chats={chats} byId={byId} isAdmin={isAdmin} onLogin={uiFns.goAcct} onToast={uiFns.toast} onProfile={uiFns.goAcct} />
               </Suspense>
             </div>
           )}
-          {tab === 'msg' && (
+          {tab === 'rank' && (overlay ? (
+            // 계정 / 관리: a page over 홈 (the 홈 tab stays lit; 홈 or the back arrow closes it)
+            <div data-ios="" key={overlay} style={css('flex:1;min-height:0;display:flex;flex-direction:column;background:#ffffff;animation:pageIn 380ms cubic-bezier(0.32,0.72,0,1) both')}>
+              {overlay === 'admin' && (
+                <button className="pr-96" onClick={() => go('rank')} aria-label="뒤로 가기" style={css('flex:none;align-self:flex-start;height:44px;padding:0 14px 0 10px;display:flex;align-items:center;gap:2px;font-size:17px;font-weight:500;color:#007aff')}>
+                  <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 2 2 10l8 8" /></svg>홈
+                </button>
+              )}
+              {overlay === 'account' && acctEl}
+              {overlay === 'admin' && adminEl}
+            </div>
+          ) : (
+            <HomeScreen
+              sub={homeTab} onSub={setHomeTab} me={me} loggedIn={loggedIn} onProfile={uiFns.goAcct}
+              rank={
+                <RankScreen
+                  all={all} query={query} onQuery={uiFns.query}
+                  page={page} onPage={setPage} onOpenProfile={setProfile}
+                  seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()} points={me ? points : undefined}
+                  onPoints={uiFns.earn} onInstall={uiFns.install}
+                  secretName={INVITE_ADMIN} onSecret={uiFns.secret}
+                />
+              }
+              notice={<Suspense fallback={null}><NoticesApp db={db} ids={noticeIds} loggedIn={loggedIn} onLogin={uiFns.goAcct} bare /></Suspense>}
+            />
+          ))}
+          {tab === 'msg' && (loggedIn ? (
             <MessagesScreen
               loggedIn={loggedIn} me={me} chats={chats} byId={byId} onOpen={setChatId}
               db={db} {...msgFns}
             />
-          )}
+          ) : (
+            // not signed in: the login and sign-up page right here
+            <div data-ios="" key="auth-msg" style={css('flex:1;display:flex;flex-direction:column;background:#ffffff;animation:pageIn 380ms cubic-bezier(0.32,0.72,0,1) both')}>{acctEl}</div>
+          ))}
+          {tab === 'money' && (loggedIn ? (
+            <MoneyScreen
+              sub={moneyTab} onSub={setMoneyTab} invest={investTab} onInvest={setInvestTab}
+              points={points} loggedIn={loggedIn} onPoints={uiFns.earn}
+              bank={db ? <Suspense fallback={null}><BankApp db={db} uid={authUser?.uid ?? null} owned={me?.owned ?? null} points={points} onLogin={uiFns.goAcct} onToast={uiFns.toast} /></Suspense> : null}
+              coin={<Suspense fallback={null}><CoinScreen db={db} uid={authUser?.uid ?? null} points={points} onLogin={uiFns.goAcct} onToast={uiFns.toast} /></Suspense>}
+              stock={<Suspense fallback={null}><StockApp db={db} uid={authUser?.uid ?? null} points={points} onLogin={uiFns.goAcct} onToast={uiFns.toast} /></Suspense>}
+              shop={
+                <ShopScreen
+                  loggedIn={loggedIn} name={me?.name ?? '내 이름'} bio={me ? bioDraft : ''} photoCss={me?.photoCss ?? 'none'}
+                  equipped={equipped}
+                  owned={me?.owned ?? DEFAULT_OWNED} points={points} onPoints={uiFns.earn} tab={shopTab} onPickSet={uiFns.pickSet}
+                  onTab={setShopTab}
+                  onPick={uiFns.pick}
+                  passes={passes} onBuyPass={setPassAsk} onLogin={uiFns.goAcct}
+                  market={<Suspense fallback={null}><MarketView loggedIn={loggedIn} rows={marketRows} me={me} byId={byId} points={points} onLogin={uiFns.goAcct} onBuy={uiFns.marketBuy} onList={uiFns.marketList} onCancel={uiFns.marketCancel} /></Suspense>}
+                />
+              }
+            />
+          ) : (
+            <div data-ios="" key="auth-money" style={css('flex:1;display:flex;flex-direction:column;background:#ffffff;animation:pageIn 380ms cubic-bezier(0.32,0.72,0,1) both')}>{acctEl}</div>
+          ))}
         </main>
 
         <BottomNav tab={tab} onGo={go} isAdmin={isAdmin} unread={unreadChats} adminUnread={unreadTickets} />
@@ -1142,7 +1159,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             onCta={() => {
               setProfile(null)
               // Vote right here (the vote sheet opens over the current tab, e.g. 랭킹).
-              if (profilePerson.isMe) { setChatId(null); setTab('phone'); setPhoneApp('account'); setEditOpen(true) } else setSheet(profilePerson.id)
+              if (profilePerson.isMe) { setChatId(null); setTab('rank'); setOverlay('account'); setEditOpen(true) } else setSheet(profilePerson.id)
             }}
           />
           </div>

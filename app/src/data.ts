@@ -4,7 +4,8 @@ import prices from './shared/prices.json'
 export type Vote = -1 | 0 | 1
 export type ItemKind = 'frame' | 'plate' | 'skin'
 /** 'shop', 'acct', 'coin' and 'admin' open that app on the 폰 tab; 인스타 is a tab of its own. */
-export type Tab = 'shop' | 'acct' | 'rank' | 'coin' | 'msg' | 'admin' | 'phone' | 'insta'
+/** The five tabs are spotify · insta · rank (홈) · msg · money (돈); the others are places inside them (acct and admin open over 홈, shop and coin are in 돈). */
+export type Tab = 'spotify' | 'insta' | 'rank' | 'msg' | 'money' | 'shop' | 'acct' | 'coin' | 'admin' | 'phone'
 
 export const PER = 10
 export const FRAMES: [string, string][] = [['none','기본'],['silver','삼겹살 먹고싶다'],['chroma','크로마틱 삼겹살'],['gargantua','가르강튀아'],['korea','대한민국'],['matrix','매트릭스'],['aura','아우라'],['neon','네온'],['crown','왕관'],['sakura','벚꽃'],['cat','고양이'],['stars','별빛'],['flame','불꽃'],['ocean','파도'],['bunny','토끼'],['halo','천사'],['devil','악마'],['butterfly','나비']]

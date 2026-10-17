@@ -7,7 +7,7 @@ const EASE = 'cubic-bezier(0.22,1,0.36,1)'
 const dateOf = (n: Notice) => (n.createdAt ? n.createdAt.toDate().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) : '')
 
 /** 공지 (on every phone): every notice that was posted, newest first; a tap opens it. */
-export function NoticesApp({ db, ids, loggedIn, onLogin }: { db: Firestore | null; ids: string[]; loggedIn: boolean; onLogin: () => void }) {
+export function NoticesApp({ db, ids, loggedIn, onLogin, bare = false }: { db: Firestore | null; ids: string[]; loggedIn: boolean; onLogin: () => void; bare?: boolean }) {
   const [list, setList] = useState<Notice[] | null>(null)
   const [open, setOpen] = useState<string | null>(null)
   const key = ids.join()
@@ -19,7 +19,7 @@ export function NoticesApp({ db, ids, loggedIn, onLogin }: { db: Firestore | nul
   }, [db, key, loggedIn]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div style={css('flex:1;min-height:0;overflow-y:auto;background:#f2f4f6;padding:8px 16px calc(24px + env(safe-area-inset-bottom))')}>
-      <div style={css('padding:8px 4px 12px;font-size:28px;line-height:36px;font-weight:700;color:#191f28')}>공지</div>
+      {!bare && <div style={css('padding:8px 4px 12px;font-size:28px;line-height:36px;font-weight:700;color:#191f28')}>공지</div>}
       {!loggedIn && (
         <div style={css('padding:40px 0;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;font-size:15px;color:#6b7684')}>
           로그인하면 공지를 볼 수 있어요
