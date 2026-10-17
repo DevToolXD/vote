@@ -115,7 +115,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
   const [older, setOlder] = useState<Post[]>([])
   const [more, setMore] = useState(true)
   const loadingMore = useRef(false)
-  const posts = useMemo(() => (live ? [...live, ...older.filter(o => !live.some(l => l.id === o.id))] : null), [live, older])
+  const posts = useMemo(() => (live ? [...live, ...older.filter(o => !live.some(l => l.id === o.id))].sort((a, b) => b.at - a.at) : null), [live, older])
   const [tab, setTab] = useState<Tab>('home')
   const [detail, setDetail] = useState<string | null>(null)
   const [upload, setUpload] = useState(false)
@@ -125,7 +125,17 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
   const [q, setQ] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => (db && uid ? watchPosts(db, setLive, page) : undefined), [db, uid]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => (db && uid ? watchPosts(db, onLive, page) : undefined), [db, uid]) // eslint-disable-line react-hooks/exhaustive-deps
+  // a photo that slides out of the live window (newer ones came) is kept, not lost; one that was deleted (it is newer than the
+  // window's oldest but gone) is dropped
+  const onLive = (next: Post[]) => setLive(prev => {
+    if (prev && next.length) {
+      const oldest = Math.min(...next.map(p => p.at)), ids = new Set(next.map(p => p.id))
+      const slid = prev.filter(p => !ids.has(p.id) && p.at < oldest)
+      if (slid.length) setOlder(o => [...o, ...slid.filter(x => !o.some(y => y.id === x.id))])
+    }
+    return next
+  })
   const loadMore = async () => {
     const last = posts?.[posts.length - 1]
     if (!db || !last || !more || loadingMore.current) return

@@ -985,7 +985,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
           {tab === 'rank' && (overlay ? (
             // 계정 / 관리: a page over 홈 (the 홈 tab stays lit; 홈 or the back arrow closes it)
             <div data-ios="" key={overlay} style={css('flex:1;min-height:0;display:flex;flex-direction:column;background:#ffffff;animation:pageIn 380ms cubic-bezier(0.32,0.72,0,1) both')}>
-              {overlay === 'admin' && (
+              {(
                 <button className="pr-96" onClick={() => go('rank')} aria-label="뒤로 가기" style={css('flex:none;align-self:flex-start;height:44px;padding:0 14px 0 10px;display:flex;align-items:center;gap:2px;font-size:17px;font-weight:500;color:#007aff')}>
                   <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 2 2 10l8 8" /></svg>홈
                 </button>
