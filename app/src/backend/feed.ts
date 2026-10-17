@@ -2,7 +2,8 @@ import type { Post } from './posts'
 
 // 인스타그램 알고리즘: the order the feed, 검색 and 릴스 show the photos in. It is worked out on the phone from
 // the photos it has (no server): newer photos first, people whose photos I heart a lot come up more, people whose
-// photos I keep passing by come up less, and a photo that has been posted before is shown 96% less.
+// photos I keep passing by come up less, and a photo that has been posted before is shown 96% less, and still less when its poster keeps doing it and the hearts
+// are fewer than they usually get.
 
 /** A photo's fingerprint: its length and a few thousand characters spread over it (the same file gives the same one). */
 export function photoKey(photo: string): string {
@@ -16,7 +17,13 @@ export function photoKey(photo: string): string {
 /** What a photo that was posted before is worth: 4% (96% less shown). */
 export const REPOST_WEIGHT = 0.04
 
-export type Ranked = { post: Post; score: number; repost: boolean; affinity: number }
+/**
+ * A repost from someone who keeps reposting (3 or more) and whose hearts on it are fewer than their photos usually get:
+ * shown half as much again for every repost beyond the second (down to 1/16).
+ */
+export const spamWeight = (reposts: number) => (reposts >= 3 ? Math.pow(0.5, Math.min(reposts - 2, 4)) : 1)
+
+export type Ranked = { post: Post; score: number; repost: boolean; affinity: number; spam: boolean }
 
 /** The photos in the order to show them, best first. `me` is whose taste it is (null: nobody's, only freshness counts). */
 export function rankPosts(posts: Post[], me: string | null, now = Date.now()): Ranked[] {
@@ -25,6 +32,14 @@ export function rankPosts(posts: Post[], me: string | null, now = Date.now()): R
   for (const p of [...posts].sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1))) {
     const k = photoKey(p.photo)
     if (!first.has(k)) first.set(k, p.id)
+  }
+  const repostOf = (p: Post) => first.get(photoKey(p.photo)) !== p.id
+  // per person: how many reposts, and the hearts their photos usually get (the originals)
+  const habit = new Map<string, { reposts: number; likes: number; n: number }>()
+  for (const p of posts) {
+    const h = habit.get(p.uid) ?? { reposts: 0, likes: 0, n: 0 }
+    if (repostOf(p)) h.reposts++; else { h.likes += p.likes.length; h.n++ }
+    habit.set(p.uid, h)
   }
   // my taste: per person, the share of their photos I have hearted
   const seen = new Map<string, { n: number; h: number }>()
@@ -42,7 +57,10 @@ export function rankPosts(posts: Post[], me: string | null, now = Date.now()): R
     const fresh = Math.pow(0.5, ageH / 36)
     const person = 0.45 + 1.8 * affinity
     const crowd = 1 + 0.25 * Math.log2(1 + post.likes.length)
-    const repost = first.get(photoKey(post.photo)) !== post.id
-    return { post, affinity, repost, score: fresh * person * crowd * (repost ? REPOST_WEIGHT : 1) }
+    const repost = repostOf(post)
+    const h = habit.get(post.uid)!
+    const usual = h.n ? h.likes / h.n : 0
+    const spam = repost && h.reposts >= 3 && post.likes.length < usual
+    return { post, affinity, repost, spam, score: fresh * person * crowd * (repost ? REPOST_WEIGHT * (spam ? spamWeight(h.reposts) : 1) : 1) }
   }).sort((a, b) => b.score - a.score || b.post.at - a.post.at)
 }
