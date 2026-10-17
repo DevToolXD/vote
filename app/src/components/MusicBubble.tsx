@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { css } from '../css'
-import { thumbOf } from '../backend/songs'
+import { songArt } from '../backend/songs'
 import { musicTime, nextMusic, prevMusic, seekMusic, stopMusic, toggleMusic, useMusic } from '../music'
 
 // The round music picture that stays on every screen while a song is loaded: drag it anywhere, tap
@@ -115,7 +115,7 @@ export function MusicBubble() {
       {/* the circle: the song's picture, turning while it plays */}
       <button aria-label="음악 열기" tabIndex={open ? -1 : 0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(true) } }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
         style={{ ...css('position:absolute;left:0;top:0;padding:0;background:none;border:0;display:block;touch-action:none'), width: SIZE, height: SIZE, opacity: open ? 0 : 1, pointerEvents: open ? 'none' : 'auto', transition: `opacity 200ms ease` }}>
-        <span className="music-disc" style={{ ...css('position:absolute;inset:0;border-radius:9999px;background-size:cover;background-position:center'), backgroundImage: `url(${thumbOf(song.id)})`, animationPlayState: playing ? 'running' : 'paused' }} />
+        <span className="music-disc" style={{ ...css('position:absolute;inset:0;border-radius:9999px;background-size:cover;background-position:center'), backgroundImage: `url(${songArt(song)})`, animationPlayState: playing ? 'running' : 'paused' }} />
         <span aria-hidden="true" style={css('position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:9999px;background:#181818;box-shadow:0 0 0 2px rgba(255,255,255,0.25)')} />
         <span aria-hidden="true" style={css('position:absolute;inset:0;border-radius:9999px;box-shadow:inset 0 0 0 2px rgba(255,255,255,0.3)')} />
       </button>
@@ -123,10 +123,10 @@ export function MusicBubble() {
       {/* the open card */}
       <div style={{ ...css('position:absolute;left:0;top:0;right:0;bottom:0;padding:14px 14px 10px;display:flex;flex-direction:column;gap:8px'), opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none', transition: open ? `opacity 240ms ease 120ms` : 'opacity 120ms ease' }}>
         <div style={css('display:flex;align-items:center;gap:12px')}>
-          <span style={{ ...css('flex:none;width:56px;height:56px;border-radius:12px;background-size:cover;background-position:center;box-shadow:0 2px 8px rgba(0,0,0,0.4)'), backgroundImage: `url(${thumbOf(song.id)})` }} />
+          <span style={{ ...css('flex:none;width:56px;height:56px;border-radius:12px;background-size:cover;background-position:center;box-shadow:0 2px 8px rgba(0,0,0,0.4)'), backgroundImage: `url(${songArt(song)})` }} />
           <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
             <span style={css('font-size:15px;line-height:19px;font-weight:700;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden')}>{song.title}</span>
-            <span style={css('font-size:13px;line-height:17px;color:#b3b3b3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{m.ad ? '광고가 끝나면 시작돼요 · 소리 꺼짐' : m.artist ? `${m.artist} 님이 추가` : 'Spotify'}</span>
+            <span style={css('font-size:13px;line-height:17px;color:#b3b3b3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{m.ad ? '광고가 끝나면 시작돼요 · 소리 꺼짐' : song.src === 'au' ? `${m.artist} · 광고 없음` : m.artist ? `${m.artist} 님이 추가` : 'Spotify'}</span>
           </span>
           <button aria-label="음악 접기" onClick={() => setOpen(false)} style={css('flex:none;align-self:flex-start;width:32px;height:32px;margin:-6px 0 0 0;display:flex;align-items:center;justify-content:center;color:#b3b3b3;background:none')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { Firestore } from 'firebase/firestore'
-import { FALLBACK_TITLE, countListen, fixSongTitle, thumbOf, type Song } from './backend/songs'
+import { FALLBACK_TITLE, countListen, fixSongTitle, songArt, type Song } from './backend/songs'
 
 // The one player of the whole app (Spotify's songs play here, whatever screen is up): YouTube's player
 // (IFrame API) in a hidden element that stays on the page, a queue, and the listen count that
@@ -69,7 +69,7 @@ function adPlaying(): boolean {
   } catch { return false }
 }
 function checkAd() {
-  if (!player || state.status === 'idle' || state.status === 'paused' || adGaveUp) return
+  if (isAu() || !player || state.status === 'idle' || state.status === 'paused' || adGaveUp) return
   let ad = adPlaying()
   // never stay silent for good because of a wrong guess: after 90 s it is treated as the song
   if (ad && adSince && Date.now() - adSince > 90_000) { ad = false; adGaveUp = true }
@@ -102,6 +102,27 @@ function loadApi(): Promise<void> {
 
 const current = () => state.queue[state.index] as Song | undefined
 
+// Songs from Audius play in a plain audio element (no YouTube, so no ads): the same queue, controls and lock-screen buttons.
+let audio: HTMLAudioElement | null = null
+const isAu = () => current()?.src === 'au'
+function ensureAudio(): HTMLAudioElement {
+  if (audio) return audio
+  const a = new Audio()
+  a.preload = 'auto'
+  a.setAttribute('playsinline', '')
+  a.addEventListener('playing', () => { if (isAu()) set({ status: 'playing' }) })
+  a.addEventListener('pause', () => { if (isAu() && !a.ended && state.status === 'playing') set({ status: 'paused' }) })
+  a.addEventListener('waiting', () => { if (isAu() && state.status === 'playing') set({ status: 'loading' }) })
+  a.addEventListener('ended', () => {
+    if (!isAu()) return
+    if (state.index < state.queue.length - 1) nextMusic()
+    else set({ status: 'paused' })
+  })
+  a.addEventListener('error', () => { if (isAu() && a.src) onError() })
+  audio = a
+  return a
+}
+
 const FLUSH_EVERY = 15, MAX_OWED = 150
 async function flushListen(all = false) {
   if (flushing || !setup.db || !setup.uid) return
@@ -124,7 +145,7 @@ function startListenClock() {
     const now = Date.now(), dt = Math.min(now - lastTick, 2500)
     lastTick = now
     const song = current()
-    if (state.status !== 'playing' || !song || !setup.uid || song.uid === setup.uid) return
+    if (state.status !== 'playing' || !song || !song.uid || song.src === 'au' || !setup.uid || song.uid === setup.uid) return
     owed.set(song.id, (owed.get(song.id) ?? 0) + dt)
     if ((owed.get(song.id) ?? 0) >= FLUSH_EVERY * 1000) flushListen()
   }, 1000)
@@ -140,7 +161,7 @@ function mediaSession() {
   const ms = (navigator as Navigator & { mediaSession?: MediaSession }).mediaSession
   if (!ms || !song) return
   try {
-    ms.metadata = new MediaMetadata({ title: song.title, artist: state.artist || 'Spotify', artwork: [{ src: thumbOf(song.id, true), sizes: '480x360', type: 'image/jpeg' }] })
+    ms.metadata = new MediaMetadata({ title: song.title, artist: state.artist || 'Spotify', artwork: [{ src: songArt(song, true), sizes: '480x360', type: 'image/jpeg' }] })
     ms.setActionHandler('play', () => resumeMusic())
     ms.setActionHandler('pause', () => pauseMusic())
     ms.setActionHandler('previoustrack', () => prevMusic())
@@ -209,8 +230,18 @@ function load(index: number) {
   flushListen(true)
   if (mutedByUs) { try { player?.unMute?.() } catch { /* */ } mutedByUs = false }
   adSince = 0; adGaveUp = false
-  set({ index, status: 'loading', artist: setup.nameOf(song.uid), ad: false })
+  set({ index, status: 'loading', artist: song.src === 'au' ? (song.artist ?? 'Audius') : setup.nameOf(song.uid), ad: false })
   mediaSession()
+  if (song.src === 'au') {
+    // from Audius: stop the YouTube player, play the audio file
+    try { player?.pauseVideo() } catch { /* the player is gone */ }
+    clearTimeout(guard)
+    const a = ensureAudio()
+    a.src = song.url ?? ''
+    a.play().catch(() => { if (current()?.id === song.id) set({ status: 'paused' }) })
+    return
+  }
+  audio?.pause()
   ensurePlayer().then(p => {
     // the song may have been changed while the player was getting ready
     if (current()?.id !== song.id) return
@@ -230,11 +261,13 @@ export function playMusic(queue: Song[], index: number) {
   load(index)
 }
 export function resumeMusic() {
+  if (isAu()) { audio?.play().catch(() => {}); set({ status: 'playing' }); return }
   if (!player || !current()) return
   player.playVideo()
   set({ status: state.ad ? 'loading' : 'playing' })
 }
 export function pauseMusic() {
+  if (isAu()) { audio?.pause(); set({ status: 'paused' }); return }
   if (!player) return
   player.pauseVideo()
   set({ status: 'paused' })
@@ -242,29 +275,38 @@ export function pauseMusic() {
 }
 export function toggleMusic() {
   if (state.status === 'playing' || state.status === 'loading') pauseMusic()
-  else if (player && state.status === 'paused') resumeMusic()
+  else if ((isAu() ? audio : player) && state.status === 'paused') resumeMusic()
   else if (current()) load(state.index)
 }
 export function nextMusic() { if (state.index < state.queue.length - 1) load(state.index + 1) }
 /** Back to the start of the song, or to the one before it when it has only just begun. */
 export function prevMusic() {
-  if (player && player.getCurrentTime() > 3) { player.seekTo(0, true); return }
+  if (isAu() && audio && audio.currentTime > 3) { audio.currentTime = 0; return }
+  if (!isAu() && player && player.getCurrentTime() > 3) { player.seekTo(0, true); return }
   if (state.index > 0) load(state.index - 1)
+  else if (isAu() && audio) audio.currentTime = 0
   else player?.seekTo(0, true)
 }
-export function seekMusic(seconds: number) { player?.seekTo(Math.max(0, seconds), true) }
+export function seekMusic(seconds: number) {
+  if (isAu()) { if (audio) audio.currentTime = Math.max(0, seconds); return }
+  player?.seekTo(Math.max(0, seconds), true)
+}
 /** Turns the music off and takes the circle away. */
 export function stopMusic() {
   flushListen(true)
   clearInterval(listenTimer); clearTimeout(guard)
   try { player?.pauseVideo() } catch { /* the player is gone */ }
+  audio?.pause()
   const ms = (navigator as Navigator & { mediaSession?: MediaSession }).mediaSession
   try { if (ms) ms.metadata = null } catch { /* no media session */ }
   if (mutedByUs) { try { player?.unMute?.() } catch { /* */ } mutedByUs = false }
   state = IDLE
   subs.forEach(f => f())
 }
-export const musicTime = () => ({ t: player?.getCurrentTime?.() ?? 0, d: player?.getDuration?.() ?? 0 })
+export const musicTime = () => {
+  if (isAu()) return { t: audio?.currentTime ?? 0, d: Number.isFinite(audio?.duration) ? audio!.duration : 0 }
+  return { t: player?.getCurrentTime?.() ?? 0, d: player?.getDuration?.() ?? 0 }
+}
 
 export function useMusic(): MusicState {
   return useSyncExternalStore(f => { subs.add(f); return () => { subs.delete(f) } }, () => state)

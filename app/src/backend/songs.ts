@@ -4,7 +4,11 @@ import { collection, deleteDoc, doc, getDoc, increment, limit, onSnapshot, order
 // video id, so a song can only be added once); songPlays/{videoId}_{listener} adds up the seconds someone
 // has listened (every play, however short), and the background worker pays the song's owner 6 points for
 // each full minute.
-export type Song = { id: string; title: string; uid: string; at: number; plays: number }
+export type Song = {
+  id: string; title: string; uid: string; at: number; plays: number
+  /** 'au': a track from Audius (no YouTube, no ads, nobody earns points): played from `url`, with its own picture and artist */
+  src?: 'au'; url?: string; art?: string; artist?: string
+}
 
 const ms = (t: unknown) => (t as Timestamp | null)?.toMillis?.() ?? Date.now()
 
@@ -27,6 +31,7 @@ export function youtubeId(input: string): string | null {
 }
 
 /** The picture of a video: the small 16:9 one (about 8 KB) for lists, the big one (about 25 KB) for the lock screen. */
+export const songArt = (s: Pick<Song, 'id' | 'art'>, big = false) => s.art ?? thumbOf(s.id, big)
 export const thumbOf = (id: string, big = false) => `https://i.ytimg.com/vi/${id}/${big ? 'hqdefault' : 'mqdefault'}.jpg`
 
 export function watchSongs(db: Firestore, cb: (songs: Song[]) => void): Unsubscribe {

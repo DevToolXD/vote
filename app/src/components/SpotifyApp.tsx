@@ -1,7 +1,8 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
-import { addSong, removeSong, thumbOf, watchSongs, type Song } from '../backend/songs'
+import { addSong, removeSong, songArt, watchSongs, type Song } from '../backend/songs'
+import { searchAudius, trendingAudius } from '../backend/audius'
 import type { Person } from '../model'
 import { playMusic, toggleMusic, useMusic } from '../music'
 
@@ -31,8 +32,8 @@ function Bars() {
   )
 }
 
-const Thumb = ({ id, size, r = 6 }: { id: string; size: number; r?: number }) => (
-  <img src={thumbOf(id)} alt="" loading="lazy" decoding="async" draggable={false} style={{ ...css('flex:none;object-fit:cover;background:#2a2a2a;display:block'), width: size, height: size, borderRadius: r }} />
+const Thumb = ({ s, size, r = 6 }: { s: Pick<Song, 'id' | 'art'>; size: number; r?: number }) => (
+  <img src={songArt(s)} alt="" loading="lazy" decoding="async" draggable={false} style={{ ...css('flex:none;object-fit:cover;background:#2a2a2a;display:block'), width: size, height: size, borderRadius: r }} />
 )
 
 /** A song in a list: its picture, title and who added it; the one playing is green. */
@@ -40,12 +41,12 @@ const Row = memo(function Row({ s, who, active, playing, onPlay, onMore, sub }: 
   return (
     <div style={css('display:flex;align-items:center;gap:12px;padding:6px 0;content-visibility:auto;contain-intrinsic-size:auto 68px')}>
       <button className="pr-dim" onClick={onPlay} aria-label={`${s.title} 재생`} style={css('flex:1;min-width:0;display:flex;align-items:center;gap:12px;text-align:left;color:#fff;background:none')}>
-        <Thumb id={s.id} size={56} />
+        <Thumb s={s} size={56} />
         <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:3px')}>
           <span style={css(`font-size:16px;line-height:20px;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:${active ? GREEN : '#fff'}`)}>{s.title}</span>
           <span style={css(`display:flex;align-items:center;gap:6px;font-size:13px;line-height:17px;color:${SEC};white-space:nowrap;overflow:hidden`)}>
             {active && playing && <Bars />}
-            <span style={css('overflow:hidden;text-overflow:ellipsis')}>{sub ?? `${who} · 들은 횟수 ${s.plays}회`}</span>
+            <span style={css('overflow:hidden;text-overflow:ellipsis')}>{sub ?? (s.src === 'au' ? s.artist : `${who} · 들은 횟수 ${s.plays}회`)}</span>
           </span>
         </span>
       </button>
@@ -64,11 +65,24 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
   const [link, setLink] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  // 광고 없는 음악: Audius (backend/audius.ts) — trending when the search is empty, results while typing
+  const [au, setAu] = useState<Song[] | null>(null)
+  const [auErr, setAuErr] = useState(false)
   const music = useMusic()
   const nowId = music.queue[music.index]?.id
   const playing = music.status === 'playing' || music.status === 'loading'
 
   useEffect(() => (db && uid ? watchSongs(db, setSongs) : undefined), [db, uid])
+  useEffect(() => {
+    if (tab !== 'search') return
+    const t = q.trim()
+    let live = true
+    setAuErr(false)
+    const timer = setTimeout(() => {
+      (t.length >= 2 ? searchAudius(t) : trendingAudius()).then(r => { if (live) setAu(r) }).catch(() => { if (live) { setAu([]); setAuErr(true) } })
+    }, t ? 450 : 0)
+    return () => { live = false; clearTimeout(timer) }
+  }, [tab, q])
   const who = (u: string) => byId.get(u)?.name ?? '알 수 없음'
   const mine = useMemo(() => (songs ?? []).filter(s => s.uid === uid), [songs, uid])
   const popular = useMemo(() => [...(songs ?? [])].filter(s => s.plays > 0).sort((a, b) => b.plays - a.plays).slice(0, 10), [songs])
@@ -139,7 +153,7 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
                   <div style={css('display:flex;gap:14px;margin:0 -18px;padding:0 18px 6px;overflow-x:auto;scrollbar-width:none')}>
                     {songs.slice(0, 12).map(s => (
                       <button key={s.id} className="pr-96" onClick={() => play(songs, s)} aria-label={`${s.title} 재생`} style={css('flex:none;width:140px;display:flex;flex-direction:column;gap:8px;text-align:left;color:#fff;background:none')}>
-                        <Thumb id={s.id} size={140} r={8} />
+                        <Thumb s={s} size={140} r={8} />
                         <span style={css(`font-size:14px;line-height:18px;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:${s.id === nowId ? GREEN : '#fff'}`)}>{s.title}</span>
                         <span style={css(`font-size:12px;color:${SEC};white-space:nowrap;overflow:hidden;text-overflow:ellipsis`)}>{who(s.uid)}</span>
                       </button>
@@ -169,7 +183,13 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
               </label>
             </div>
             <div style={css('flex:1;min-height:0;overflow-y:auto;padding:0 18px 24px')}>
-              {songs !== null && songs.length === 0 ? empty : found.length === 0 ? <div style={css(`padding:44px;text-align:center;color:${SEC}`)}>찾는 곡이 없어요</div>
+              <h2 style={css('margin:6px 0 2px;font-size:20px;line-height:26px;font-weight:800')}>{q.trim().length >= 2 ? '광고 없는 음악' : '지금 인기 있는 음악'}</h2>
+              <div style={css(`margin:0 0 6px;font-size:12px;line-height:17px;color:${SEC}`)}>Audius의 독립 아티스트 음악이에요. 광고 없이 누구나 들을 수 있고, 포인트는 쌓이지 않아요.</div>
+              {au === null ? <div style={css(`padding:24px;text-align:center;color:${SEC}`)}>불러오는 중</div>
+                : au.length === 0 ? <div style={css(`padding:24px;text-align:center;color:${SEC}`)}>{auErr ? '음악을 불러오지 못했어요. 인터넷을 확인해 주세요' : '찾는 곡이 없어요'}</div>
+                : au.map(s => <Row key={s.id} s={s} who="" active={s.id === nowId} playing={playing} onPlay={() => play(au, s)} />)}
+              <h2 style={css('margin:22px 0 6px;font-size:20px;line-height:26px;font-weight:800')}>친구들이 추가한 곡</h2>
+              {songs !== null && songs.length === 0 ? <div style={css(`padding:24px;text-align:center;color:${SEC}`)}>아직 추가된 곡이 없어요</div> : found.length === 0 ? <div style={css(`padding:24px;text-align:center;color:${SEC}`)}>찾는 곡이 없어요</div>
                 : found.map(s => <Row key={s.id} s={s} who={who(s.uid)} active={s.id === nowId} playing={playing} onPlay={() => play(found, s)} />)}
             </div>
           </>
