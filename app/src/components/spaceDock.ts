@@ -10,9 +10,10 @@ const scale = (a: V, k: number): V => [a[0] * k, a[1] * k, a[2] * k]
 const len = (a: V) => Math.hypot(a[0], a[1], a[2])
 const cross = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 
-export const NOSE = 14.2 // from the Ranger's centre to the tip of its docking collar
+export const RS = 1.5 // how much bigger the Ranger is drawn and flown than its model
+export const NOSE = 14.2 * RS // from the Ranger's centre to the tip of its docking collar
 export const PORT_Z = 42 // the Endurance's port face, along its axis from its centre
-export const LIMITS = { axisDeg: 7, offset: 1.8, closing: 1.0, side: 0.5, rollDeg: 10, rollRate: 0.1 }
+export const LIMITS = { axisDeg: 10.5, offset: 2.7, closing: 1.5, side: 0.75, rollDeg: 15, rollRate: 0.15 } // one and a half times as forgiving as it was
 
 export type DockIn = {
   ship: V; f: V; u: V; vel: V // the Ranger's centre, nose direction, up and velocity

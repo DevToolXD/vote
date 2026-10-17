@@ -2,14 +2,21 @@
 // Sizes are real (a moon 1 700 km across its radius ... Jupiter 70 000 km): a world unit is a metre.
 
 export type Kind = 'earth' | 'moon' | 'mars' | 'jupiter' | 'saturn' | 'neptune' | 'hole'
+  | 'mercury' | 'venus' | 'io' | 'europa' | 'titan' | 'pluto' | 'lava' | 'ocean' | 'desert' | 'jungle' | 'ice' | 'uranus' | 'pink'
 
 /** Radius in metres. */
 export const KIND_RADIUS: Record<Kind, [number, number]> = {
   moon: [1.5e6, 2.0e6], mars: [3.2e6, 3.6e6], earth: [6.2e6, 6.6e6],
   neptune: [2.3e7, 2.6e7], jupiter: [6.6e7, 7.2e7], saturn: [5.6e7, 6.2e7], hole: [5.5e7, 6.5e7],
+  mercury: [2.3e6, 2.6e6], venus: [5.8e6, 6.2e6], io: [1.7e6, 1.9e6], europa: [1.4e6, 1.7e6], titan: [2.5e6, 2.8e6], pluto: [1.1e6, 1.3e6],
+  lava: [4.5e6, 5.5e6], ocean: [5.5e6, 6.5e6], desert: [5.0e6, 6.0e6], jungle: [6.0e6, 7.0e6], ice: [4.0e6, 5.0e6],
+  uranus: [2.4e7, 2.6e7], pink: [3.0e7, 5.0e7],
 }
+/** Worlds with a surface to land on (not the gas giants, not a hole). */
+export const LANDABLE: Partial<Record<Kind, true>> = { moon: true, mars: true, earth: true, mercury: true, venus: true, io: true, europa: true, titan: true, pluto: true, lava: true, ocean: true, desert: true, jungle: true, ice: true }
 /** The colour of a planet's air at its edge (r, g, b), or null for none. */
-export const ATMOSPHERE: Record<Kind, string | null> = { earth: '110,170,255', moon: null, mars: '230,150,100', jupiter: '230,205,170', saturn: '235,215,170', neptune: '110,150,255', hole: null }
+export const ATMOSPHERE: Record<Kind, string | null> = { earth: '110,170,255', moon: null, mars: '230,150,100', jupiter: '230,205,170', saturn: '235,215,170', neptune: '110,150,255', hole: null,
+  mercury: null, venus: '240,210,140', io: null, europa: null, titan: '230,160,60', pluto: null, lava: '255,110,40', ocean: '120,180,255', desert: '240,190,130', jungle: '130,220,170', ice: '200,230,255', uranus: '150,230,235', pink: '240,170,210' }
 /** Saturn's rings, as fractions of the planet's radius: [from, to, opacity]. */
 export const SATURN_RINGS: [number, number, number][] = [
   [1.24, 1.38, 0.1], [1.38, 1.52, 0.22], [1.52, 1.66, 0.62], [1.66, 1.8, 0.82], [1.8, 1.95, 0.7],
@@ -41,7 +48,7 @@ export function fbm(x: number, y: number, z: number, oct = 4) {
   for (let i = 0; i < oct; i++) { a += s * vnoise(x * f, y * f, z * f); tot += s; f *= 2; s *= 0.5 }
   return a / tot
 }
-type RGB = [number, number, number]
+export type RGB = [number, number, number]
 const mix = (a: RGB, b: RGB, t: number): RGB => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
 
@@ -132,6 +139,113 @@ function surface(kind: Kind, seed: number): (X: number, Y: number, Z: number) =>
       return mix(mix([226, 205, 156], [196, 168, 118], b), [238, 222, 184], smooth(0.5, 0.7, turb) * 0.5)
     }
   }
+  if (kind === 'mercury') {
+    return (X, Y, Z) => {
+      let v = (0.74 + 0.26 * fbm(X * 7 + o, Y * 7, Z * 7, 4)) * craters(X, Y, Z, 4, o) * craters(X, Y, Z, 10, o2) * craters(X, Y, Z, 24, o)
+      v *= lerp(1, 0.7, smooth(0.5, 0.6, fbm(X * 2 + o2, Y * 2, Z * 2, 3)))
+      const g = 150 * v
+      return [g * 1.06, g * 0.98, g * 0.9]
+    }
+  }
+  if (kind === 'venus') {
+    return (X, Y, Z) => {
+      const w = fbm(X * 2 + o, Y * 3, Z * 2, 3)
+      const sw = fbm(X * 3 + w * 1.6 + o2, Y * 6 + Math.sin(Y * 9 + w * 5) * 0.4, Z * 3 + w * 1.6, 5)
+      return mix(mix([208, 162, 84], [248, 226, 164], sw), [176, 130, 70], smooth(0.62, 0.8, fbm(X * 8, Y * 14, Z * 8 + o, 3)) * 0.5)
+    }
+  }
+  if (kind === 'io') {
+    return (X, Y, Z) => {
+      let c = mix([228, 196, 66], [240, 226, 130], fbm(X * 4 + o, Y * 4, Z * 4, 4))
+      c = mix(c, [206, 104, 36], smooth(0.5, 0.66, fbm(X * 3 + o2, Y * 3, Z * 3, 4)) * 0.8)
+      c = mix(c, [244, 244, 236], smooth(0.64, 0.74, fbm(X * 5 + o, Y * 5 + 7, Z * 5, 3)) * 0.7)
+      return mix(c, [36, 28, 24], smooth(0.74, 0.78, fbm(X * 11 + o2, Y * 11, Z * 11, 2)) * 0.95) // dark volcanic spots
+    }
+  }
+  if (kind === 'europa') {
+    return (X, Y, Z) => {
+      let c = mix([214, 224, 234], [238, 242, 246], fbm(X * 5 + o, Y * 5, Z * 5, 4))
+      c = mix(c, [190, 206, 226], smooth(0.5, 0.65, fbm(X * 2 + o2, Y * 2, Z * 2, 3)) * 0.6)
+      const crack = Math.abs(fbm(X * 6 + o, Y * 6, Z * 6, 3) - 0.5) < 0.014 || Math.abs(fbm(X * 9 + o2, Y * 9, Z * 9, 3) - 0.5) < 0.01
+      return crack ? [150, 98, 70] : c
+    }
+  }
+  if (kind === 'titan') {
+    return (X, Y, Z) => {
+      const b = 0.5 + 0.5 * Math.sin(Y * 8 + fbm(X * 2 + o, Y * 3, Z * 2, 3) * 2)
+      return mix(mix([196, 124, 40], [236, 178, 84], fbm(X * 3 + o2, Y * 4, Z * 3, 5)), [150, 90, 36], b * 0.35)
+    }
+  }
+  if (kind === 'pluto') {
+    return (X, Y, Z) => {
+      let c = mix([200, 172, 140], [120, 88, 68], smooth(0.4, 0.7, fbm(X * 3 + o, Y * 3, Z * 3, 5)))
+      const e = ((X - 0.45) / 0.45) ** 2 + (Y / 0.4) ** 2 + (Z < 0 ? 4 : 0)
+      if (e < 1) c = mix(c, [246, 238, 230], smooth(1, 0.3, e))
+      return mix(c, [0.8 * c[0], 0.8 * c[1], 0.8 * c[2]], 1 - craters(X, Y, Z, 14, o))
+    }
+  }
+  if (kind === 'lava') {
+    return (X, Y, Z) => {
+      const crust = mix([20, 16, 16], [70, 54, 48], fbm(X * 5 + o, Y * 5, Z * 5, 5))
+      const r = Math.min(Math.abs(fbm(X * 3.5 + o, Y * 3.5, Z * 3.5, 4) - 0.5), Math.abs(fbm(X * 7 + o2, Y * 7, Z * 7, 3) - 0.5) * 1.6)
+      const glow = smooth(0.05, 0, r)
+      return mix(crust, mix([255, 70, 10], [255, 190, 70], glow), glow)
+    }
+  }
+  if (kind === 'ocean') {
+    return (X, Y, Z) => {
+      const waves = fbm(X * 22 + o, Y * 22, Z * 22, 3)
+      let c = mix([6, 40, 100], [34, 112, 168], fbm(X * 3 + o2, Y * 3, Z * 3, 4))
+      c = mix(c, [210, 232, 248], smooth(0.64, 0.8, waves) * 0.6)
+      return mix(c, [252, 252, 255], smooth(0.66, 0.8, fbm(X * 3 + o, Y * 6, Z * 3 + o2, 4)) * 0.5)
+    }
+  }
+  if (kind === 'desert') {
+    return (X, Y, Z) => {
+      const dune = 0.5 + 0.5 * Math.sin((X * 1.3 + Z * 0.7) * 22 + fbm(X * 3 + o, Y * 3, Z * 3, 4) * 8)
+      let c = mix([200, 142, 84], [240, 200, 130], dune * 0.7 + 0.3 * fbm(X * 6 + o2, Y * 6, Z * 6, 3))
+      c = mix(c, [112, 70, 48], smooth(0.56, 0.7, fbm(X * 2.2 + o2, Y * 2.2, Z * 2.2, 5)) * 0.85)
+      return mix(c, [246, 240, 232], smooth(0.92, 0.97, Math.abs(Y)))
+    }
+  }
+  if (kind === 'jungle') {
+    return (X, Y, Z) => {
+      const warp = fbm(X * 1.5 + o, Y * 1.5, Z * 1.5, 3)
+      const h = fbm(X * 2 + warp * 0.9 + o, Y * 2 + warp, Z * 2, 6)
+      let c: RGB
+      if (h < 0.4) c = mix([6, 70, 96], [30, 150, 160], clamp01((0.4 - h) * 3))
+      else {
+        c = mix([22, 100, 48], [86, 160, 70], fbm(X * 6 + o2, Y * 6, Z * 6, 4))
+        c = mix(c, [120, 100, 70], smooth(0.66, 0.74, h))
+        c = mix(c, [236, 240, 244], smooth(0.78, 0.84, h))
+      }
+      const cl = smooth(0.58, 0.76, fbm(X * 3 + o2 + warp, Y * 5, Z * 3, 5))
+      return mix(c, [250, 252, 252], cl * 0.7)
+    }
+  }
+  if (kind === 'ice') {
+    return (X, Y, Z) => {
+      let c = mix([214, 230, 246], [246, 250, 255], fbm(X * 4 + o, Y * 4, Z * 4, 5))
+      c = mix(c, [130, 176, 226], smooth(0.5, 0.7, fbm(X * 2 + o2, Y * 2, Z * 2, 4)) * 0.75)
+      c = mix(c, [86, 130, 196], smooth(0.012, 0, Math.abs(fbm(X * 7 + o, Y * 7, Z * 7, 3) - 0.5)) * 0.8)
+      return [c[0] * craters(X, Y, Z, 9, o), c[1] * craters(X, Y, Z, 9, o), c[2] * craters(X, Y, Z, 9, o)]
+    }
+  }
+  if (kind === 'uranus') {
+    return (X, Y, Z) => {
+      const b = 0.5 + 0.5 * Math.sin(Y * 9 + fbm(X * 2 + o, Y * 3, Z * 2, 3))
+      return mix(mix([126, 206, 216], [170, 232, 236], b * 0.6 + 0.4 * fbm(X * 3 + o2, Y * 12, Z * 3, 3)), [214, 246, 246], smooth(0.7, 0.95, Y) * 0.5)
+    }
+  }
+  if (kind === 'pink') {
+    const stops: RGB[] = [[244, 214, 224], [214, 140, 184], [130, 80, 146], [248, 236, 238]]
+    return (X, Y, Z) => {
+      const turb = fbm(X * 6 + o, Y * 30, Z * 6, 4)
+      const b = 0.5 + 0.5 * Math.sin(Y * 20 + 3 * fbm(X * 2.2 + o2, Y * 6, Z * 2.2, 4) + (turb - 0.5) * 3)
+      const t = b * 3, i = Math.min(2, Math.floor(t))
+      return mix(stops[i], stops[i + 1], t - i)
+    }
+  }
   // neptune: deep blue with bands, faint streaks of cloud and a dark storm
   return (X, Y, Z) => {
     const b = 0.5 + 0.5 * Math.sin(Y * 12 + 1.2 * fbm(X * 2 + o, Y * 4, Z * 2, 3))
@@ -145,7 +259,7 @@ function surface(kind: Kind, seed: number): (X: number, Y: number, Z: number) =>
 }
 
 /** A planet's picture, painted a few rows at a time. */
-export type Sprite = { cv: HTMLCanvasElement; done: boolean; step(ms: number): void }
+export type Sprite = { cv: HTMLCanvasElement; done: boolean; avg: RGB; step(ms: number): void }
 
 export function planetSprite(kind: Kind, seed: number, N = 256): Sprite {
   const cv = document.createElement('canvas')
@@ -153,9 +267,11 @@ export function planetSprite(kind: Kind, seed: number, N = 256): Sprite {
   const cx = cv.getContext('2d')
   const img = cx?.createImageData(N, N)
   const f = surface(kind, seed)
-  let row = 0
+  const tr = rngOf(seed + 99), tint: RGB = [0.9 + 0.2 * tr(), 0.9 + 0.2 * tr(), 0.9 + 0.2 * tr()] // every world a little its own colour
+  let row = 0, n = 0
+  const sum: RGB = [0, 0, 0]
   const sp: Sprite = {
-    cv, done: !cx || !img,
+    cv, done: !cx || !img, avg: [120, 120, 120],
     step(ms) {
       if (sp.done || !cx || !img) return
       const t0 = performance.now(), d = img.data
@@ -165,6 +281,8 @@ export function planetSprite(kind: Kind, seed: number, N = 256): Sprite {
           if (rr > 1) continue
           const nz = Math.sqrt(1 - rr)
           const c = f(nx, -ny, nz)
+          c[0] *= tint[0]; c[1] *= tint[1]; c[2] *= tint[2]
+          sum[0] += c[0]; sum[1] += c[1]; sum[2] += c[2]; n++
           // limb darkening: the edge is a little darker
           const limb = 0.62 + 0.38 * Math.pow(nz, 0.55)
           const a = clamp01((1 - Math.sqrt(rr)) * N * 0.5)
@@ -173,7 +291,7 @@ export function planetSprite(kind: Kind, seed: number, N = 256): Sprite {
         }
         row++
       }
-      if (row >= N) { cx.putImageData(img, 0, 0); sp.done = true }
+      if (row >= N) { cx.putImageData(img, 0, 0); sp.avg = n ? [sum[0] / n, sum[1] / n, sum[2] / n] : sp.avg; sp.done = true }
     },
   }
   return sp

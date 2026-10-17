@@ -59,6 +59,7 @@ export function SpaceGame() {
   const speedRef = useRef<HTMLDivElement>(null)
   const planetRef = useRef<HTMLDivElement>(null)
   const hullRef = useRef<HTMLDivElement>(null)
+  const noteRef = useRef<HTMLDivElement>(null)
   const engine = useRef<Engine | null>(null)
   const aim = useRef<V2 | null>(null) // the mouse, or a finger on the screen, from the middle of the game
   const touching = useRef(false)
@@ -145,6 +146,7 @@ export function SpaceGame() {
       hud: h => {
         if (speedRef.current) speedRef.current.textContent = `속도 ${fmtSpeed(h.speed)}`
         if (planetRef.current) planetRef.current.textContent = `행성까지 ${fmtDistance(h.planet)}`
+        if (noteRef.current) noteRef.current.textContent = h.note
         if (hullRef.current) { // shown once the hull is hurt
           hullRef.current.textContent = h.hull < 100 ? `내구도 ${Math.max(0, Math.ceil(h.hull))}%` : ''
           hullRef.current.style.color = h.hull < 35 ? '#ff6b5e' : '#fff'
@@ -213,6 +215,7 @@ export function SpaceGame() {
         <div ref={speedRef}>속도 0.00 m/s</div>
         <div ref={planetRef}>행성까지 -</div>
         <div ref={hullRef} />
+        <div ref={noteRef} style={css('color:#8ecbff')} />
       </div>
       <div style={css('position:absolute;right:12px;top:10px;display:flex;gap:8px')}>
         <button className="pr-96" onClick={toggleFull} style={css(BTN)}>{full || fake ? '나가기' : '전체화면'}</button>

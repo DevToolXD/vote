@@ -118,6 +118,19 @@ export function rangerModel(): Face[] {
 }
 const NOSE_TIP = 14.2
 
+/** The Ranger's landing gear, drawn at full length with the hull's underside at y = 0 and the feet at y = -1: the game stretches it as it comes down. */
+let GEAR: Face[] | null = null
+export function gearModel(): Face[] {
+  if (GEAR) return GEAR
+  const b = new Builder(), ax: [P3, P3, P3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+  for (const [x, z] of [[-3.2, 6], [3.2, 6], [-3.7, -8], [3.7, -8]] as [number, number][]) {
+    b.box([x, -0.5, z], ax, [0.2, 0.5, 0.2], GRAY)
+    b.box([x, -0.97, z], ax, [0.8, 0.03, 1.0], BLACK)
+  }
+  GEAR = b.faces
+  return GEAR
+}
+
 /** The picture of the Ranger's top: a white plate in a black frame, black glazing set in it, a hatch behind, seams and grime. */
 export function rangerTexture(): HTMLCanvasElement {
   const W = 384, H = 768, S = 32 // 32 pixels to the metre
