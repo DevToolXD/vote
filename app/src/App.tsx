@@ -4,6 +4,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { Covered, useStableFns } from './stable'
 import { configureMusic } from './music'
 import { MusicBubble } from './components/MusicBubble'
+import { stopPosts } from './backend/postStore'
 import { accessOf, blockedUsers, myIp, recordIp, setAccess, watchAccess, watchIp, type Access, type IpDoc } from './backend/ip'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, revokeItem, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
@@ -238,6 +239,9 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   const seasonKey = boardSeason ? JSON.stringify(boardSeason) : ''
   useEffect(() => { if (boardSeason) setSeason(boardSeason) }, [seasonKey]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => (db && !boardSeason ? subscribeSeason(db, setSeason) : undefined), [!boardSeason]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 인스타그램 photos are kept while the app is open; signing out lets them go
+  useEffect(() => { if (!authUser) stopPosts() }, [authUser])
 
   // 공지: signed-in people see each new notice full-screen, once.
   useEffect(() => {

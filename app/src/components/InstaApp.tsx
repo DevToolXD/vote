@@ -8,7 +8,8 @@ import { InstaMessages } from './InstaMessages'
 import { isUnread, type ChatRow } from '../backend/messages'
 import type { Person } from '../model'
 import { rankPosts } from '../backend/feed'
-import { POSTS_PAGE, addPost, addPostComment, countPostView, loadOlderPosts, removePost, removePostComment, setPostLiked, shrinkPhoto, watchPostComments, watchPosts, type Post, type PostComment } from '../backend/posts'
+import { POSTS_PAGE, addPost, addPostComment, countPostView, removePost, removePostComment, setPostLiked, shrinkPhoto, watchPostComments, type Post, type PostComment } from '../backend/posts'
+import { dropPost, morePosts, patchPost, startPosts, usePostStore } from '../backend/postStore'
 
 // 인스타그램, laid out like the real one: 홈 (stories row + feed), 릴스 (one post per screen, swipe up),
 // 검색 (a grid with the views), 메시지 (Instagram-style, on the app's own chats), 프로필 (my posts), and the
@@ -73,11 +74,11 @@ function Comments({ db, post, uid, name, who, isAdmin, onToast }: { db: Firestor
   const send = async () => {
     const t = text.trim()
     if (!t) return
-    try { await addPostComment(db, post.id, { uid, name: name.slice(0, 30), text: t.slice(0, 300) }); setText('') } catch { onToast('댓글을 달지 못했어요') }
+    try { await addPostComment(db, post.id, { uid, name: name.slice(0, 30), text: t.slice(0, 300) }); patchPost(post.id, q => ({ ...q, comments: q.comments + 1 })); setText('') } catch { onToast('댓글을 달지 못했어요') }
   }
   const drop = async (c: PostComment) => {
     if (!window.confirm('이 댓글을 지울까요?')) return
-    try { await removePostComment(db, post.id, c.id, post.comments > 0) } catch { onToast('지우지 못했어요') }
+    try { await removePostComment(db, post.id, c.id, post.comments > 0); if (post.comments > 0) patchPost(post.id, q => ({ ...q, comments: Math.max(0, q.comments - 1) })) } catch { onToast('지우지 못했어요') }
   }
   return (
     <div style={css('padding:0 14px;display:flex;flex-direction:column;gap:10px')}>
@@ -111,10 +112,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
   const who: Who = { byId }
   // the newest photos live, older pages one at a time as the end of the list comes near (every photo carries its picture: a long list is a lot of data)
   const page = slowNet() ? 8 : POSTS_PAGE
-  const [live, setLive] = useState<Post[] | null>(null)
-  const [older, setOlder] = useState<Post[]>([])
-  const [more, setMore] = useState(true)
-  const loadingMore = useRef(false)
+  const { live, older, more } = usePostStore()
   const posts = useMemo(() => (live ? [...live, ...older.filter(o => !live.some(l => l.id === o.id))].sort((a, b) => b.at - a.at) : null), [live, older])
   const [tab, setTab] = useState<Tab>('home')
   const [detail, setDetail] = useState<string | null>(null)
@@ -125,27 +123,8 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
   const [q, setQ] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => (db && uid ? watchPosts(db, onLive, page) : undefined), [db, uid]) // eslint-disable-line react-hooks/exhaustive-deps
-  // a photo that slides out of the live window (newer ones came) is kept, not lost; one that was deleted (it is newer than the
-  // window's oldest but gone) is dropped
-  const onLive = (next: Post[]) => setLive(prev => {
-    if (prev && next.length) {
-      const oldest = Math.min(...next.map(p => p.at)), ids = new Set(next.map(p => p.id))
-      const slid = prev.filter(p => !ids.has(p.id) && p.at < oldest)
-      if (slid.length) setOlder(o => [...o, ...slid.filter(x => !o.some(y => y.id === x.id))])
-    }
-    return next
-  })
-  const loadMore = async () => {
-    const last = posts?.[posts.length - 1]
-    if (!db || !last || !more || loadingMore.current) return
-    loadingMore.current = true
-    try {
-      const got = await loadOlderPosts(db, last, page)
-      setOlder(o => [...o, ...got.filter(g => !o.some(x => x.id === g.id))])
-      if (got.length < page) setMore(false)
-    } catch { /* offline: tried again when the end comes near again */ } finally { loadingMore.current = false }
-  }
+  useEffect(() => { if (db && uid) startPosts(db, uid, page) }, [db, uid]) // eslint-disable-line react-hooks/exhaustive-deps
+  const loadMore = () => { if (db) morePosts(db, page) }
   const open = posts?.find(p => p.id === detail) ?? null
   // 알고리즘 (backend/feed.ts): the order is worked out when new photos come or go, not at every heart, so the feed doesn't
   // jump under a finger; an older page that is loaded goes after what is already there
@@ -176,7 +155,11 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
 
   const like = async (p: Post) => {
     if (!db || !uid) return
-    try { await setPostLiked(db, p.id, uid, !p.likes.includes(uid)) } catch { onToast('하트를 누르지 못했어요') }
+    // shown at once, also on a photo that is not in the live page (those only change here); put back if the server says no
+    const liked = !p.likes.includes(uid)
+    const set = (on: boolean) => patchPost(p.id, q => ({ ...q, likes: on ? (q.likes.includes(uid) ? q.likes : [...q.likes, uid]) : q.likes.filter(x => x !== uid) }))
+    set(liked)
+    try { await setPostLiked(db, p.id, uid, liked) } catch { set(!liked); onToast('하트를 누르지 못했어요') }
   }
   const pick = async (f: File | undefined) => {
     if (!f) return
@@ -194,7 +177,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
   const remove = async (p: Post) => {
     if (!db) return
     if (!window.confirm('이 게시물을 지울까요?\n지우면 다시 볼 수 없어요.')) return
-    try { await removePost(db, p.id); setDetail(null) } catch { onToast('지우지 못했어요') }
+    try { await removePost(db, p.id); dropPost(p.id); setDetail(null) } catch { onToast('지우지 못했어요') }
   }
 
   if (!uid) {
