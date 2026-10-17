@@ -51,20 +51,27 @@ function Games({ onOpen }: { onOpen: (open: boolean) => void }) {
 }
 
 /**
- * 홈 tab: 랭킹 · 게임 · 공지 under one title, the profile at the top right (it opens 계정).
+ * 홈 tab: 랭킹 · 게임 · 공지 under one title, the profile at the top right (it opens 계정); for the admin, 관리 just left of it.
  * The content is given in `rank` and `notice`; 게임 is here.
  */
-export function HomeScreen({ sub, onSub, me, loggedIn, onProfile, rank, notice }: { sub: HomeTab; onSub: (t: HomeTab) => void; me?: Person; loggedIn: boolean; onProfile: () => void; rank: ReactNode; notice: ReactNode }) {
+export function HomeScreen({ sub, onSub, me, loggedIn, onProfile, onAdmin, rank, notice }: { sub: HomeTab; onSub: (t: HomeTab) => void; me?: Person; loggedIn: boolean; onProfile: () => void; onAdmin?: () => void; rank: ReactNode; notice: ReactNode }) {
   const [playing, setPlaying] = useState(false)
   return (
     <div data-ios="" style={css('flex:1;min-height:0;display:flex;flex-direction:column;background:#fff')}>
       <header style={css('flex:none;padding:10px 20px 8px;display:flex;align-items:center;justify-content:space-between;gap:12px')}>
         <span style={css('font-size:30px;line-height:38px;font-weight:800;letter-spacing:-0.6px;color:#191f28')}>홈</span>
-        <button className="pr-94" onClick={onProfile} aria-label={loggedIn ? '내 계정' : '로그인'} style={css('flex:none;display:flex;align-items:center;justify-content:center;min-width:40px;height:40px;border-radius:9999px')}>
-          {loggedIn && me
-            ? <span style={css('display:block;width:36px;height:36px')}><Avatar frame={me.frame} photo={me.photoCss} size={36} /></span>
-            : <span style={css('height:34px;padding:0 14px;border-radius:9999px;background:#3182f6;color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center')}>로그인</span>}
-        </button>
+        <div style={css('flex:none;display:flex;align-items:center;gap:8px')}>
+          {onAdmin && (
+            <button className="pr-94" onClick={onAdmin} aria-label="관리" style={css('flex:none;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:9999px;background:#f2f4f6;color:#191f28')}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.5 7.5 9.5 4.4-1 7.5-4.9 7.5-9.5V6z" /><path d="m9 12 2 2 4-4" /></svg>
+            </button>
+          )}
+          <button className="pr-94" onClick={onProfile} aria-label={loggedIn ? '내 계정' : '로그인'} style={css('flex:none;display:flex;align-items:center;justify-content:center;min-width:40px;height:40px;border-radius:9999px')}>
+            {loggedIn && me
+              ? <span style={css('display:block;width:36px;height:36px')}><Avatar frame={me.frame} photo={me.photoCss} size={36} /></span>
+              : <span style={css('height:34px;padding:0 14px;border-radius:9999px;background:#3182f6;color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center')}>로그인</span>}
+          </button>
+        </div>
       </header>
       {!(sub === 'game' && playing) && <div style={css('flex:none;padding:0 20px 10px')}><Segmented label="홈" items={SUBS} value={sub} onChange={t => { onSub(t); if (t !== 'game') setPlaying(false) }} /></div>}
       <div key={sub} style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;animation:pageIn 380ms cubic-bezier(0.32,0.72,0,1) both')}>

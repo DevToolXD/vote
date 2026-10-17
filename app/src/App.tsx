@@ -999,7 +999,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             </div>
           ) : (
             <HomeScreen
-              sub={homeTab} onSub={setHomeTab} me={me} loggedIn={loggedIn} onProfile={uiFns.goAcct}
+              sub={homeTab} onSub={setHomeTab} me={me} loggedIn={loggedIn} onProfile={uiFns.goAcct} onAdmin={isAdmin ? () => go('admin') : undefined}
               rank={
                 <RankScreen
                   all={all} query={query} onQuery={uiFns.query}
