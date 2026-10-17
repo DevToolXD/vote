@@ -255,9 +255,7 @@ export function createEngine(base: string, cb: { hud: (h: Hud) => void; toast: (
     makeBody('s-earth', 'earth', 1500, 350, 7600, 900, salt + 1, '프록시마-b'),
     makeBody('s-sun', 'sun', -11000, 2600, 17000, 3000, salt + 2, '알데바란-402'),
     makeBody('s-hole', 'hole', 11500, -1600, 21000, 800, salt + 3, '가르강튀아'),
-    makeBody('s-gas', 'gas', -3200, -900, 12500, 1700, salt + 4, '카이퍼-731c'),
   ]
-  start[3].ring = { nx: 0.22, ny: 0.95, nz: 0.2, a: 1.4, b: 2.3, hue: '226,208,170' }
   let list: Body[] = []
   let secKey = ''
   const sectorOf = (v: number) => Math.round(v / SECTOR)
@@ -270,7 +268,7 @@ export function createEngine(base: string, cb: { hud: (h: Hud) => void; toast: (
       const sx = ix + a, sy = iy + b, sz = iz + c, k = `${sx},${sy},${sz}`
       if (sectors.has(k)) continue
       const rnd = rngOf(hash3(sx, sy, sz) * 4294967296 + salt)
-      const out: Body[] = [], q = rnd(), n = q < 0.5 ? 0 : q < 0.92 ? 1 : 2
+      const out: Body[] = [], q = rnd(), n = q < 0.72 ? 0 : q < 0.96 ? 1 : 2
       for (let i = 0; i < n; i++) {
         const kind = pickKind(rnd()), r = lerp(RADIUS[kind][0], RADIUS[kind][1], rnd())
         const x = (sx + (rnd() - 0.5) * 0.8) * SECTOR, y = (sy + (rnd() - 0.5) * 0.8) * SECTOR, z = (sz + (rnd() - 0.5) * 0.8) * SECTOR
@@ -394,15 +392,7 @@ export function createEngine(base: string, cb: { hud: (h: Hud) => void; toast: (
             shakeT = Math.max(shakeT, 6)
             once(b, 'push', 6, () => toast('🔥', '복사열 폭풍에 밀려났어요'))
           }
-          if (d < R * 10) once(b, 'flare', 9 + (b.seed % 7), () => {
-            toast('🌞', '태양 플레어 발생!')
-            ship.flash = Math.max(ship.flash, 0.35); flashWhite = false
-            for (let i = 0; i < 70; i++) {
-              const u = randDir()
-              emit(b.x + u.x * R, b.y + u.y * R, b.z + u.z * R, u.x * (500 + rnd() * 1500), u.y * (500 + rnd() * 1500), u.z * (500 + rnd() * 1500), 2.5 + rnd() * 2, 40 + rnd() * 60, '255,170,60')
-            }
-          })
-        } else if (b.kind === 'earth') {
+                } else if (b.kind === 'earth') {
           if (d < R * 3.4) once(b, 'signal', 60, () => { toast('📡', '생명 신호를 수신했어요'); pulses.push({ t: 0, id: b.id }) })
           if (d < R * 5 && Math.floor(elapsed / 1.4) !== Math.floor((elapsed - dt) / 1.4)) pulses.push({ t: 0, id: b.id })
         } else if (b.kind === 'lava') {
