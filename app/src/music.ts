@@ -36,11 +36,24 @@ export type MusicState = {
   ad: boolean
   /** a song from a YouTube link that is playing as its ad-free version from Audius: that version's title (else '') */
   adFree: string
+  /** the YouTube player is on screen (the person asked for it, or an ad is playing: so its 건너뛰기 can be pressed) */
+  video: boolean
 }
-const IDLE: MusicState = { queue: [], index: -1, status: 'idle', artist: '', ad: false, adFree: '' }
+const IDLE: MusicState = { queue: [], index: -1, status: 'idle', artist: '', ad: false, adFree: '', video: false }
 let state = IDLE
 const subs = new Set<() => void>()
-const set = (p: Partial<MusicState>) => { state = { ...state, ...p }; subs.forEach(f => f()) }
+const set = (p: Partial<MusicState>) => { state = { ...state, ...p }; syncHost(); subs.forEach(f => f()) }
+/** The YouTube player's box: 2 px and unseen, or on screen (the song's video, or an ad that has to be seen to be skipped). */
+function syncHost() {
+  const host = typeof document === 'undefined' ? null : document.getElementById('music-host')
+  if (!host) return
+  const on = (state.video || state.ad) && state.status !== 'idle' && !usingAudio()
+  host.classList.toggle('music-host-on', on)
+  const cap = host.querySelector('.cap')
+  if (cap) cap.textContent = state.ad ? '광고예요 · 건너뛰기가 나오면 눌러 주세요 (소리는 꺼져 있어요)' : ''
+}
+/** Shows or hides the YouTube player (a YouTube-link song only). */
+export function showVideo(on: boolean) { set({ video: on }) }
 
 type Setup = { db: Firestore | null; uid: string | null; nameOf: (uid: string) => string; toast: (msg: string) => void }
 let setup: Setup = { db: null, uid: null, nameOf: () => '', toast: () => {} }
@@ -220,9 +233,11 @@ async function ensurePlayer(): Promise<YTPlayer> {
   const host = document.createElement('div')
   host.id = 'music-host'
   host.setAttribute('aria-hidden', 'true')
-  host.style.cssText = 'position:fixed;left:0;bottom:0;width:2px;height:2px;overflow:hidden;opacity:0.01;pointer-events:none;z-index:-1'
   const inner = document.createElement('div')
   host.appendChild(inner)
+  const cap = document.createElement('div')
+  cap.className = 'cap'
+  host.appendChild(cap)
   document.body.appendChild(host)
   return new Promise<YTPlayer>((ok) => {
     const p = new window.YT!.Player(inner, {
@@ -263,6 +278,7 @@ function load(index: number) {
 
 /** Plays a track from an open catalogue in the audio element (the YouTube player is stopped). */
 function playAudio(track: Song, forId: string) {
+  syncHost()
   try { player?.pauseVideo() } catch { /* the player is gone */ }
   clearTimeout(guard)
   const a = ensureAudio()
@@ -272,6 +288,7 @@ function playAudio(track: Song, forId: string) {
 
 function startYouTube(song: Song) {
   alt = null
+  syncHost()
   audio?.pause()
   ensurePlayer().then(p => {
     // the song may have been changed while the player was getting ready
@@ -340,6 +357,7 @@ export function stopMusic() {
   if (mutedByUs) { try { player?.unMute?.() } catch { /* */ } mutedByUs = false }
   alt = null
   state = IDLE
+  syncHost()
   subs.forEach(f => f())
 }
 export const musicTime = () => {

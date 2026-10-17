@@ -345,3 +345,13 @@ html,body{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manip
 input,textarea,[contenteditable="true"]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 img{-webkit-user-drag:none}
 @media (prefers-reduced-motion: reduce){[style*="pageIn"]{animation:none !important}}
+
+/* The YouTube player of the music: 2 px and unseen; on screen (.music-host-on) when its video is asked for or an ad plays (so the
+   ad's 건너뛰기 can be pressed). The iframe fills the box. */
+#music-host{position:fixed;left:0;bottom:0;width:2px;height:2px;overflow:hidden;opacity:0.01;pointer-events:none;z-index:-1}
+#music-host iframe{display:block;width:100%;height:100%;border:0}
+#music-host .cap{display:none}
+#music-host.music-host-on{left:50%;bottom:auto;top:calc(env(safe-area-inset-top) + 12px);width:min(94vw,380px);height:auto;aspect-ratio:16/9;margin-left:calc(min(94vw,380px) / -2);overflow:visible;opacity:1;pointer-events:auto;z-index:400;border-radius:14px;background:#000;box-shadow:0 14px 44px rgba(0,0,0,0.5);animation:pageIn 320ms cubic-bezier(0.32,0.72,0,1) both}
+#music-host.music-host-on iframe{border-radius:14px}
+#music-host.music-host-on .cap{display:block;position:absolute;left:50%;top:100%;transform:translateX(-50%);margin-top:10px;width:max-content;max-width:100%;box-sizing:border-box;padding:7px 12px;border-radius:12px;background:rgba(0,0,0,0.82);text-align:center;color:#fff;font:600 13px/18px system-ui,'Apple SD Gothic Neo','Noto Sans KR',sans-serif}
+#music-host.music-host-on .cap:empty{display:none}
