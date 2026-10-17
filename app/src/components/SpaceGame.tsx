@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { css } from '../css'
 
 // 인터스텔라: a ship shaped like the rotating ring of the Interstellar ship (boxy modules around a hub, the ring turning)
@@ -117,8 +118,8 @@ export function SpaceGame() {
   const [hint, setHint] = useState(true)
   const [coarse] = useState(() => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) // a touch screen: a phone
   const [portrait, setPortrait] = useState(false)
-  const [full, setFull] = useState(false)
-  const [canFull, setCanFull] = useState(false)
+  const [full, setFull] = useState(false) // the browser's own fullscreen
+  const [fake, setFake] = useState(false) // where the browser has no fullscreen (iPhone): the game covers the whole screen instead
 
   // a phone with sensors: tilt steers from the start (Android), or once the person allows it (iOS asks)
   useEffect(() => {
@@ -128,9 +129,8 @@ export function SpaceGame() {
   }, [])
   useEffect(() => { const t = setTimeout(() => setHint(false), 6000); return () => clearTimeout(t) }, [])
 
-  // fullscreen where the phone allows it (Android, a computer); the game is played turned, so it is locked to landscape there
+  // fullscreen: the browser's own where it exists (Android, a computer), else the game covers the whole screen (iPhone)
   useEffect(() => {
-    setCanFull(!!rootRef.current && typeof rootRef.current.requestFullscreen === 'function')
     const onChange = () => setFull(!!document.fullscreenElement)
     document.addEventListener('fullscreenchange', onChange)
     return () => {
@@ -141,12 +141,13 @@ export function SpaceGame() {
   }, [])
   const toggleFull = async () => {
     const root = rootRef.current
-    if (!root) return
+    if (document.fullscreenElement) { await document.exitFullscreen().catch(() => {}); return }
+    if (fake) { setFake(false); return }
+    if (!root?.requestFullscreen) { setFake(true); return }
     try {
-      if (document.fullscreenElement) { await document.exitFullscreen(); return }
       await root.requestFullscreen()
       await (screen.orientation as ScreenLock | undefined)?.lock?.('landscape')
-    } catch { /* the phone said no: the game still plays turned */ }
+    } catch { setFake(true) } // the phone said no: cover the screen instead
   }
 
   useEffect(() => {
@@ -159,6 +160,7 @@ export function SpaceGame() {
       tilt.current = screenTilt(e.beta - tiltBase.current.b, e.gamma - tiltBase.current.g, a)
       tiltAt.current = performance.now()
     }
+    aim.current = null // with the tilt on, a finger on the screen does not steer (a thumb resting on the edge must not)
     window.addEventListener('deviceorientation', onOrient)
     return () => window.removeEventListener('deviceorientation', onOrient)
   }, [tiltOn])
@@ -178,6 +180,7 @@ export function SpaceGame() {
   }
   const endTouch = () => { touching.current = false; aim.current = null }
 
+  // the game loop starts again when the game moves between the page and the full screen cover (its canvas is a new one)
   useEffect(() => {
     const root = rootRef.current, canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
@@ -296,15 +299,15 @@ export function SpaceGame() {
     document.addEventListener('visibilitychange', onVis)
     start()
     return () => { stop(); ro.disconnect(); document.removeEventListener('visibilitychange', onVis) }
-  }, [])
+  }, [fake])
 
   // a phone held upright cannot be flown: the game asks for landscape (a computer's window is never upright here)
   const turnPhone = coarse && portrait
-
-  return (
+  const touchSteers = !tiltOn // with the tilt on, the screen is only touched for the buttons
+  const game = (
     <div ref={rootRef} style={css('position:relative;flex:1;min-height:0;overflow:hidden;background:#000;touch-action:none;user-select:none')}
-      onPointerMove={e => { if (e.pointerType !== 'touch' || touching.current) readAim(e) }}
-      onPointerDown={e => { if (e.pointerType === 'touch') { touching.current = true; readAim(e) } }}
+      onPointerMove={e => { if (e.pointerType !== 'touch' || (touching.current && touchSteers)) readAim(e) }}
+      onPointerDown={e => { if (e.pointerType === 'touch' && touchSteers) { touching.current = true; readAim(e) } }}
       onPointerUp={e => { if (e.pointerType === 'touch') endTouch() }}
       onPointerCancel={endTouch}
       onPointerLeave={() => { if (!touching.current) aim.current = null }}>
@@ -313,14 +316,14 @@ export function SpaceGame() {
         <b style={css('font-weight:700;color:#fff')}>인터스텔라</b> · <span ref={hudRef}>0 km</span>
       </div>
       <div style={css('position:absolute;right:12px;top:10px;display:flex;gap:8px')}>
-        {canFull && <button className="pr-96" onClick={toggleFull} style={css(BTN)}>{full ? '나가기' : '전체화면'}</button>}
+        <button className="pr-96" onClick={toggleFull} style={css(BTN)}>{full || fake ? '나가기' : '전체화면'}</button>
         {tiltOn && <button className="pr-96" onClick={() => { tiltBase.current = null }} style={css(BTN)}>가운데로</button>}
       </div>
       {askTilt && (
         <button className="pr-96" onClick={allowTilt} style={css('position:absolute;left:50%;bottom:64px;transform:translateX(-50%);height:40px;padding:0 18px;border-radius:9999px;background:#fff;color:#000;font-size:14px;font-weight:700;white-space:nowrap')}>기울기로 조종 켜기</button>
       )}
       <div style={css(`position:absolute;left:0;right:0;bottom:20px;text-align:center;color:#9aa6ba;font-size:13px;line-height:19px;pointer-events:none;transition:opacity 900ms;opacity:${hint ? 1 : 0}`)}>
-        기울이거나, 화면을 누르고 끌거나, 마우스를 움직여 조종해요
+        {tiltOn ? '폰을 기울여 조종해요' : '화면을 누르고 끌거나, 마우스를 움직여 조종해요'}
       </div>
       {turnPhone && (
         <div style={css('position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#000;color:#fff;font-size:16px;font-weight:600')}>
@@ -330,4 +333,6 @@ export function SpaceGame() {
       )}
     </div>
   )
+  if (!fake) return game
+  return createPortal(<div style={css('position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;background:#000')}>{game}</div>, document.body)
 }
