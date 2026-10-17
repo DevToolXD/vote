@@ -15,7 +15,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore'
 import { seriesItems, seriesMissing, type ItemKind } from '../data'
-import { FAKE_PASS_PRICE, PASS_PRICE, SPEED_PASS_PRICE, VOTE_EVERY_MS, type CandidateDoc, type MyVote, type PassKind, type VoteDoc, type WeekKind } from './types'
+import { FAKE_PASS_PRICE, PASS_PRICE, VOTE_EVERY_MS, type CandidateDoc, type MyVote, type PassKind, type VoteDoc, type WeekKind } from './types'
 
 // Every function takes the Firestore instance so the rules tests (app/tests) run
 // this exact code against the emulator.
@@ -144,10 +144,9 @@ export async function castVote(db: Firestore, myUid: string, candidateId: string
 
 /** A pass, kept for good (firestore.rules: passBuy / fakePassBuy). */
 export async function buyPass(db: Firestore, myUid: string, kind: PassKind = 'pass2x') {
-  await updateDoc(doc(db, 'candidates', myUid), { [kind]: true, spent: increment(kind === 'passFake' ? FAKE_PASS_PRICE : kind === 'passSpeed' ? SPEED_PASS_PRICE : PASS_PRICE) })
+  await updateDoc(doc(db, 'candidates', myUid), { [kind]: true, spent: increment(kind === 'passFake' ? FAKE_PASS_PRICE : PASS_PRICE) })
 }
 export const hasFakePass = (c?: { passFake?: boolean }) => !!c?.passFake
-export const hasSpeedPass = (c?: { passSpeed?: boolean }) => !!c?.passSpeed
 export const hasPass = (c?: { pass2x?: boolean | number }) => !!c?.pass2x
 
 /** Points available to spend: 10P per vote ever received (earned; older docs: their 추천) + admin/season bonus − spent. */

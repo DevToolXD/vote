@@ -31,7 +31,7 @@ export function subscribeAlerts(rtdb: Database, cb: (a: Alert[]) => void) {
 export const dismissAlert = (rtdb: Database, uid: string) => remove(ref(rtdb, `alerts/${uid}`))
 
 export const ITEM_KIND: Record<string, string> = { frame: '프레임', plate: '이름표', skin: '막대 스킨', pass: '', set: '세트' }
-export const itemName = (kind: string, key: string) => kind === 'set' ? FRAMES.find(([k]) => k === key)?.[1] ?? key : kind === 'pass' ? (key === 'pass2x' ? '투표 2배권' : key === 'passSpeed' ? '속력 5배 패스' : '페이크 선물 패스') : (kind === 'skin' ? SKINS : FRAMES).find(([k]) => k === key)?.[1] ?? key
+export const itemName = (kind: string, key: string) => kind === 'set' ? FRAMES.find(([k]) => k === key)?.[1] ?? key : kind === 'pass' ? (key === 'pass2x' ? '투표 2배권' : '페이크 선물 패스') : (kind === 'skin' ? SKINS : FRAMES).find(([k]) => k === key)?.[1] ?? key
 
 /** One line of 거래 내역 in words, and an emoji for it. */
 export function describe(r: LedgerRow, nameOf: (uid: string) => string): { icon: string; text: string; sub?: string } {
@@ -53,7 +53,7 @@ export function describe(r: LedgerRow, nameOf: (uid: string) => string): { icon:
     case 'giftCancel': return { icon: '↩️', text: '선물 취소 · 돌려받음' }
     case 'buy': return { icon: '🛒', text: (r.x ?? '').split(',').filter(Boolean).map(s => { const [k, key] = s.split(':'); return `${ITEM_KIND[k] ?? ''} ${itemName(k, key)}` }).join(', ') + ' 구매' }
     case 'revoke': return { icon: '📦', text: (r.x ?? '').split(',').filter(Boolean).map(s => { if (s === 'pass2x') return '투표 2배권'; if (s === 'passFake') return '페이크 선물 패스'; const [k, key] = s.split(':'); return `${ITEM_KIND[k] ?? ''} ${itemName(k, key)}` }).join(', ') + ' 관리자가 수거' }
-    case 'pass': return { icon: r.x === 'passFake' ? '🤡' : r.x === 'passSpeed' ? '🚀' : '×2', text: (r.x === 'passFake' ? '페이크 선물 패스' : r.x === 'passSpeed' ? '속력 5배 패스' : '투표 2배권') + ' 구매' }
+    case 'pass': return { icon: r.x === 'passFake' ? '🤡' : '×2', text: (r.x === 'passFake' ? '페이크 선물 패스' : '투표 2배권') + ' 구매' }
     case 'grant': return { icon: '🛠️', text: r.d > 0 ? '관리자가 지급' : '관리자가 회수' }
     case 'season': return { icon: '🏆', text: '시즌 보상' }
     case 'app': return { icon: '📱', text: '앱 설치 보너스' }

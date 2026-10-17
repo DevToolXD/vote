@@ -43,8 +43,6 @@ export type CandidateDoc = {
   pass2x?: boolean | number
   /** 페이크 선물 패스, bought once and kept. */
   passFake?: boolean
-  /** 속력 5배 패스, bought once and kept. */
-  passSpeed?: boolean
   /** 거래 정지 (admin) until this time, in ms: no sending or taking 포인트 선물. */
   tradeBan?: number
   /** Points from votes received (10 each, 추천 or 비추천); never goes down. Missing on older docs (then `up`). */
@@ -83,9 +81,7 @@ export type MyVote = { ups: number; downs: number; weekEndsAt: number; weekKind:
 export const PASS_PRICE = 5000
 /** 페이크 선물 패스: lets you send 페이크 선물 in chats. */
 export const FAKE_PASS_PRICE = 299
-/** 속력 5배 패스: the engines of 인터스텔라 push five times as hard. */
-export const SPEED_PASS_PRICE = 500
-export type PassKind = 'pass2x' | 'passFake' | 'passSpeed'
+export type PassKind = 'pass2x' | 'passFake'
 
 export type PodiumEntry = { id: string; name: string; score: number; frame: string }
 export type Season = {

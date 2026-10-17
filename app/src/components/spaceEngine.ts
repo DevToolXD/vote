@@ -12,7 +12,7 @@ import { ATMOSPHERE, KIND_RADIUS, SATURN_RINGS, hash3, planetSprite, rngOf, smoo
 import { ENDURANCE_RING, LIGHT_COLORS, LIGHT_RING, LIGHT_STROBE, MATS, drawPicture, enduranceModel, rangerModel, rangerTexture, type Face } from './spaceModels'
 import { NOSE, PORT_Z, dockMetrics, dockVerdict, keyDir, wrapPi, type V } from './spaceDock'
 
-export type Input = { yaw: number; pitch: number; roll: number; rollStop: boolean; thrust: boolean; brake: boolean; power: number }
+export type Input = { yaw: number; pitch: number; roll: number; rollStop: boolean; thrust: boolean; brake: boolean }
 export type Engine = {
   attach(back: HTMLCanvasElement, front: HTMLCanvasElement, layer: HTMLElement): void
   detach(): void
@@ -20,8 +20,8 @@ export type Engine = {
   frame(now: number, inp: Input): void
   debug(): unknown
 }
-/** What the screen writes: the speed (m/s) and the distance to the nearest planet's surface (m). */
-export type Callbacks = { hud: (h: { speed: number; planet: number }) => void; haptic: (pattern: number[]) => void }
+/** What the screen writes: the speed (m/s), the distance to the nearest planet's surface (m) and the hull (100 = whole). */
+export type Callbacks = { hud: (h: { speed: number; planet: number; hull: number }) => void; haptic: (pattern: number[]) => void }
 
 type Body = { id: string; kind: Kind; x: number; y: number; z: number; r: number; seed: number; sprite: Sprite | null; ring: V | null }
 
@@ -43,7 +43,11 @@ const SECTOR = 1.5e9 // the world is cut into cubes this wide; each is filled by
 const CAM_BACK = 36, CAM_RISE = 17 // the camera, behind and above the Ranger (metres)
 const PITCH_MAX = 0.7, YAW_MAX = 0.7 // rad/s at a full push (the ship holds its attitude when let go)
 const ROLL_ACC = 0.4 // rad/s² while a roll button is held (a tap of a tenth of a second is a few hundredths of a rad/s: fine enough to match the port's turn); the roll then goes on (nothing slows it)
-const VMAX_CAP = 6e6 // the fastest the engines will take it (m/s), far from everything
+const VMAX_CAP = 6e6 // what the engines add per second at most, far from everything
+const VMAX = 1.5e6 // top speed (m/s): fast, but a planet can still be seen coming
+const CRASH_V = 12 // into a planet faster than this (m/s) and the Ranger blows up
+const RING_REACH = 40 // how close to Saturn's ring plane the ship must be to be hit by the rings (m)
+const MAX_ST = 35 // Endurances alive at once
 const HOLE_G = 1.5e7 // m/s² at a black hole's edge
 const SHIP_R = 7 // the Ranger's body, for hitting things
 const MAXN = 8
@@ -55,7 +59,6 @@ function makeStation(p: V, z0: V, spin: number, w: number, id: number): Station 
   const z = norm(z0), x = norm(cross(Math.abs(z[1]) > 0.98 ? [1, 0, 0] : [0, 1, 0], z))
   return { p, x, y: cross(z, x), z, spin, w, id }
 }
-const SPEED_SAFE = 1e13 // (not a limit anyone will meet: only so the numbers never run away)
 
 function makeBody(id: string, kind: Kind, p: V, r: number, seed: number): Body {
   const rnd = rngOf(seed)
@@ -85,9 +88,17 @@ export function createEngine(base: string, cb: Callbacks): Engine {
   const stations: Station[] = [makeStation([3400, 900, 22000], [-0.3, 0.2, -0.93], 0, 0.12, 0)]
   let stationId = 1, spawnT = 0
   const dock = { on: false, st: null as Station | null, t: 0, from: { p: [0, 0, 0] as V, f: [0, 0, 1] as V, u: [0, 1, 0] as V }, cool: 0, rollPrev: 0, rollT: 0, rate: 0, haveRoll: false, lights: [false, false, false, false] }
-  let mode: 'fly' | 'swallow' = 'fly'
+  let mode: 'fly' | 'swallow' | 'dead' = 'fly'
   const sw = { t: 0, rel: [0, 0, 0] as V, k: [0, 1, 0] as V, hole: null as Body | null, p: 0 }
   let elapsed = 0, hudAt = 0, lastTs = 1, flash = 0, shake = 0
+  // the hull: 100 whole; each hit takes some, and pieces of the Ranger come off as it goes down
+  let hull = 100, deadT = 0, ringT = 0, camSp = 0, emitAcc = 0
+  const rgFaces = rangerModel()
+  const gone = new Uint8Array(rgFaces.length)
+  const breakAt = new Float32Array(rgFaces.length) // the damage (0..1) at which each piece comes off: the small fittings first, the armour last
+  for (let i = 0; i < rgFaces.length; i++) { const x = Math.sin(i * 12.9898) * 43758.5453; breakAt[i] = i < 8 ? 0.8 + 0.02 * i : 0.06 + 0.7 * (x - Math.floor(x)) }
+  type Bit = { p: V; v: V; life: number; max: number; s: number; kind: 0 | 1 | 2; c?: number } // a shard, a spark, a puff of smoke
+  const bits: Bit[] = []
 
   // ---- the sky: stars at infinity (a band of them along a plane, for the Milky Way) ----
   const STARS = 1700
@@ -106,9 +117,10 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     }
   }
   // dust round the ship: it shows how fast, and which way, the ship is moving (there is nothing else to show it)
-  const DUST = 150, DUST_BOX = 240
-  const dust = new Float32Array(DUST * 3)
-  { const r = rngOf(salt + 5); for (let i = 0; i < DUST * 3; i++) dust[i] = (r() * 2 - 1) * DUST_BOX }
+  // in layers, each box twelve times wider than the last: whatever the speed, one of them goes by at a pace the eye can follow
+  const DUST_L = 7, DUST_N = 70, DUST_BOX = (k: number) => 240 * Math.pow(12, k)
+  const dust = new Float32Array(DUST_L * DUST_N * 3)
+  { const r = rngOf(salt + 5); for (let k = 0; k < DUST_L; k++) for (let i = 0; i < DUST_N * 3; i++) dust[k * DUST_N * 3 + i] = (r() * 2 - 1) * DUST_BOX(k) }
 
   // ---- bodies: placed by hand around the start (none in view at first), the rest sparsely by sector ----
   const sectors = new Map<string, Body[]>()
@@ -195,7 +207,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
   function segHit(p0: V, p1: V, c: V, rad: number) {
     const d = sub(p1, p0), m = sub(p0, c)
     const c0 = dot(m, m) - rad * rad
-    if (c0 <= 0) return 0
+    if (c0 <= 0) return dot(m, d) < 0 ? 0 : -1 // already inside: hit only if going further in (going out is free, so the ship can never be caught)
     const a = dot(d, d)
     if (a < 1e-12) return -1
     const b = dot(m, d), disc = b * b - a * c0
@@ -204,7 +216,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     return t >= 0 && t <= 1 ? t : -1
   }
 
-  /** Attitude and engines. There is no top speed: the push grows with the speed (and is `power` times as hard with the 속력 5배 패스). */
+  /** Attitude and engines: the push grows with the speed, up to the top speed. */
   function stepControl(inp: Input, dt: number) {
     const kp = 1 - Math.exp(-dt * 5)
     ship.wp += (-inp.pitch * PITCH_MAX - ship.wp) * kp // pushed down = nose down
@@ -213,22 +225,23 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     else ship.wr = clamp(ship.wr + inp.roll * ROLL_ACC * dt, -1.5, 1.5)
     turnShip(ship.wp * dt, ship.wy * dt, ship.wr * dt)
 
-    // near things the engines push gently, so a docking can be done by hand; the push grows with the speed, so far from everything it climbs without end
+    // near things the engines push gently, so a docking can be done by hand; the push grows with the speed, so far from everything it climbs to the top speed
     const aT = clamp(0.6 * clamp(0.08 * nearest(), 0.35, VMAX_CAP), 0.5, 5e6)
     ship.thr += ((inp.thrust ? 1 : 0) - ship.thr) * (1 - Math.exp(-dt * 6))
-    if (inp.thrust) ship.v = add(ship.v, mul(ship.f, (aT + 0.35 * len(ship.v)) * inp.power * dt))
+    if (inp.thrust) { const s0 = len(ship.v); ship.v = add(ship.v, mul(ship.f, (aT + 0.35 * s0 * Math.max(0, 1 - s0 / VMAX)) * dt)) }
     if (inp.brake) {
       const sp = len(ship.v)
       if (sp > 0) ship.v = mul(ship.v, 1 - Math.min(sp, Math.max(aT, 0.6 * sp) * dt) / sp)
     }
     // flight assist: the velocity turns round to follow the nose (forward or backward, whichever it is nearer) without losing speed
     const sp = len(ship.v)
+    if (sp > VMAX) ship.v = mul(ship.v, VMAX / sp)
     if (sp > 1e-4) {
       const vf = dot(ship.v, ship.f), tgt = mul(ship.f, vf >= 0 ? sp : -sp)
       const k = 1 - Math.exp(-dt / 2)
       const nv = add(mul(ship.v, 1 - k), mul(tgt, k))
       const nl = len(nv)
-      if (nl > 0) ship.v = mul(nv, Math.min(sp, SPEED_SAFE) / nl)
+      if (nl > 0) ship.v = mul(nv, Math.min(sp, VMAX) / nl)
     }
   }
 
@@ -241,6 +254,18 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       if (d < b.r * 8 && d > 0) ship.v = add(ship.v, mul(norm(d3), HOLE_G * Math.pow(b.r / d, 2) * dt))
     }
     const p1 = add(p0, mul(ship.v, dt))
+    // Saturn's rings: only close to them, and only a little at a time
+    if (elapsed > ringT) {
+      for (const b of list) {
+        if (!b.ring) continue
+        const c: V = [b.x, b.y, b.z], h0 = dot(sub(p0, c), b.ring), h1 = dot(sub(p1, c), b.ring)
+        if (Math.abs(h1) > RING_REACH && h0 * h1 >= 0) continue
+        const q = h0 * h1 < 0 ? add(p0, mul(sub(p1, p0), h0 / (h0 - h1))) : p1
+        const rel = sub(q, c), rho = len(sub(rel, mul(b.ring, dot(rel, b.ring)))) / b.r
+        if (SATURN_RINGS.some(([from, to, op]) => rho >= from && rho < to && op >= 0.2)) { ringT = elapsed + 0.45; hurt(3 + Math.random() * 2, null); break }
+      }
+      if (mode !== 'fly') return
+    }
     let hit: { t: number; b: Body } | null = null
     for (const b of list) {
       const t = segHit(p0, p1, [b.x, b.y, b.z], b.kind === 'hole' ? b.r * 1.35 : b.r + 12)
@@ -257,27 +282,74 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       return
     }
     // a planet is solid: the ship stops on its surface and is thrown back
-    const n = norm(sub(pt, c))
-    ship.p = add(c, mul(n, b.r + 12))
+    const n = norm(sub(pt, c)), into = -dot(ship.v, n)
+    ship.p = add(c, mul(n, b.r + 14)) // out past the hit distance, so the next step starts free of it
+    if (into > CRASH_V) { explode(); return }
     bump(n, 2)
     ship.v = mul(ship.v, 0.6)
+    if (into > 2) hurt(5 + into * 0.4, n)
   }
 
-  /** The Endurances appear as the Ranger flies: always one within 60 km, and now and then another further out. */
+  /** A hit on the hull: some of the hull goes, and every piece whose time has come breaks off. */
+  function hurt(amount: number, n: V | null) {
+    if (mode !== 'fly') return
+    hull = Math.max(0, hull - amount)
+    shake = Math.max(shake, 0.5 + amount * 0.04)
+    cb.haptic([50])
+    const dmg = 1 - hull / 100
+    for (let i = 0; i < rgFaces.length; i++) {
+      if (gone[i] || breakAt[i] >= dmg) continue
+      gone[i] = 1
+      const fc = rgFaces[i]
+      let x = 0, y = 0, z = 0
+      for (let j = 0; j < fc.k; j++) { x += fc.p[j * 3]; y += fc.p[j * 3 + 1]; z += fc.p[j * 3 + 2] }
+      x /= fc.k; y /= fc.k; z /= fc.k
+      const w = add(add(add(ship.p, mul(ship.r, x)), mul(ship.u, y)), mul(ship.f, z))
+      const out = n ? mul(n, 8) : [0, 0, 0] as V
+      bits.push({ p: w, v: add(add(ship.v, out), [(Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14]), life: 4, max: 4, s: 0.3 + Math.random() * 0.7, kind: 0, c: fc.mat })
+    }
+    if (hull <= 0) explode()
+  }
+  function explode() {
+    if (mode !== 'fly') return
+    mode = 'dead'; deadT = 0; hull = 0
+    for (let i = 0; i < 70; i++) {
+      const d = norm([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]), sp = 6 + Math.random() * 60
+      bits.push({ p: add(ship.p, mul(d, Math.random() * 6)), v: mul(d, sp), life: 4.5, max: 4.5, s: 0.4 + Math.random() * 1.4, kind: i % 4 ? 0 : 1, c: i % 3 })
+    }
+    ship.v = [0, 0, 0]; ship.wp = ship.wy = ship.wr = 0; dock.on = false
+    flash = 1.1; shake = 2.2
+    cb.haptic([120, 50, 200])
+  }
+  /** After the blast the Ranger is whole again, at the start. */
+  function respawn() {
+    hull = 100; gone.fill(0); bits.length = 0; ringT = 0
+    ship.p = [0, 0, 0]; ship.v = [0, 0, 0]; ship.f = [0, 0, 1]; ship.u = [0, 1, 0]; ship.r = [1, 0, 0]; ship.wp = ship.wy = ship.wr = 0; ship.thr = 0
+    cam.f = ship.f; cam.u = ship.u; cam.roll = 0
+    stations.length = 0
+    stations.push(makeStation([3400, 900, 22000], [-0.3, 0.2, -0.93], 0, 0.12, 0))
+    stationId = 1; spawnT = 0; elapsed = 0
+    dock.on = false; dock.st = null; dock.lights = [false, false, false, false]; dock.haveRoll = false
+    secKey = ''; ensureSectors()
+    flash = 1; mode = 'fly'
+  }
+
+  /** The Endurances appear as the Ranger flies: always one close, and a crowd of them further out (all that is spread wider the faster it goes). */
   function manageStations(dt: number) {
     spawnT += dt
-    if (spawnT < 2 || elapsed < 15) return
+    if (spawnT < 1 || elapsed < 15) return
     spawnT = 0
-    for (let i = stations.length - 1; i >= 0; i--) if (stations[i] !== dock.st && len(sub(stations[i].p, ship.p)) > 500000) stations.splice(i, 1)
+    const sc = 1 + len(ship.v) / 3000
+    for (let i = stations.length - 1; i >= 0; i--) if (stations[i] !== dock.st && len(sub(stations[i].p, ship.p)) > 500000 * sc) stations.splice(i, 1)
     let near = Infinity
     for (const S of stations) near = Math.min(near, len(sub(S.p, ship.p)))
     const spawn = (lo: number, hi: number) => {
       const r = () => Math.random() * 2 - 1
       const dir = norm(add(ship.f, mul(norm([r(), r(), r()]), 0.9))) // mostly ahead, where it is seen
-      stations.push(makeStation(add(ship.p, mul(dir, lo + Math.random() * (hi - lo))), [r(), r(), r()], Math.random() * TAU, 0.08 + Math.random() * 0.08, stationId++))
+      stations.push(makeStation(add(ship.p, mul(dir, (lo + Math.random() * (hi - lo)) * sc)), [r(), r(), r()], Math.random() * TAU, 0.08 + Math.random() * 0.08, stationId++))
     }
-    if (near > 60000) spawn(20000, 45000)
-    else if (stations.length < 5 && Math.random() < 0.3) spawn(30000, 90000)
+    if (near > 60000 * sc) spawn(20000, 45000)
+    if (stations.length < MAX_ST) spawn(30000, 180000)
   }
 
   /** The Endurance: its docking test, the lights, and the hits. */
@@ -367,6 +439,9 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         for (let i = 0; i < steps && mode === 'fly' && !dock.on; i++) { stepMove(dt / steps); if (close && ns && mode === 'fly') stepStation(ns.S, dt / steps) }
         if (!close && dock.st) { dock.lights = [false, false, false, false]; dock.haveRoll = false }
       }
+    } else if (mode === 'dead') {
+      deadT += dt
+      if (deadT > 3.6) respawn()
     } else if (sw.hole) {
       // falling in: a spiral that tightens, the ship turned to face the hole and stretched along its fall
       const h = sw.hole, hp: V = [h.x, h.y, h.z]
@@ -396,7 +471,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         ensureSectors()
       }
     }
-    if (flash > 0 && mode === 'fly') flash = Math.max(0, flash - dt * 0.9)
+    if (flash > 0 && mode !== 'swallow') flash = Math.max(0, flash - dt * 0.9)
     shake = Math.max(0, shake - dt * 2.2)
 
     // ---- the camera follows: its direction turns after the ship's, a moment later ----
@@ -405,7 +480,9 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     cam.u = add(mul(cam.u, 1 - kc), mul(ship.u, kc))
     cam.u = norm(sub(cam.u, mul(cam.f, dot(cam.f, cam.u))))
     const intro = ease(elapsed / 2.4)
-    const back0 = lerp(CAM_BACK * 14, CAM_BACK, intro)
+    // the faster it goes, the further back the camera hangs and the wider the view, so the speed is felt
+    camSp += (clamp(Math.log10(1 + len(ship.v) / 30) / 4.5, 0, 1) - camSp) * (1 - Math.exp(-dt * 2))
+    const back0 = lerp(CAM_BACK * 14, CAM_BACK, intro) * (1 + 0.7 * camSp)
     cam.p = add(sub(ship.p, mul(cam.f, back0)), mul(cam.u, CAM_RISE * (0.4 + 0.6 * intro)))
     // it looks at a point a little ahead of the ship, so the ship sits low in the view but not at its edge
     cam.fv = norm(sub(add(ship.p, mul(cam.f, 30)), cam.p))
@@ -413,7 +490,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     // the view may be rolled (falling into a hole)
     const cR = Math.cos(cam.roll), sR = Math.sin(cam.roll)
     cam.r = add(mul(camR0, cR), mul(camU0, -sR)); cam.uR = add(mul(camU0, cR), mul(camR0, sR))
-    const F = Math.min(W, H) * 0.95
+    const F = Math.min(W, H) * 0.95 * (1 - 0.16 * camSp)
     const shx = (Math.random() - 0.5) * shake * 3, shy = (Math.random() - 0.5) * shake * 3
     const cx = W / 2 + shx, cy = H / 2 + shy
     const CR = cam.r, CU = cam.uR, CF = cam.fv
@@ -550,33 +627,39 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     fx.setTransform(dpr, 0, 0, dpr, 0, 0)
     fx.clearRect(0, 0, W, H)
 
-    // dust: it stays where it is while the ship goes by, so it streaks as fast as the ship goes
+    // dust: it stays where it is while the ship goes by, so it streaks as fast as the ship goes; the layer that goes by at a pace the eye can follow shows most
     {
       fx.lineCap = 'round'
-      const vmag = len(ship.v)
-      for (let i = 0; i < DUST; i++) {
-        const wx = ((((dust[i * 3] - cam.p[0] + DUST_BOX) % (2 * DUST_BOX)) + 2 * DUST_BOX) % (2 * DUST_BOX)) - DUST_BOX
-        const wy = ((((dust[i * 3 + 1] - cam.p[1] + DUST_BOX) % (2 * DUST_BOX)) + 2 * DUST_BOX) % (2 * DUST_BOX)) - DUST_BOX
-        const wz = ((((dust[i * 3 + 2] - cam.p[2] + DUST_BOX) % (2 * DUST_BOX)) + 2 * DUST_BOX) % (2 * DUST_BOX)) - DUST_BOX
-        const zc = wx * CF[0] + wy * CF[1] + wz * CF[2]
-        if (zc < 4) continue
-        const x = cx + ((wx * CR[0] + wy * CR[1] + wz * CR[2]) * F) / zc, y = cy - ((wx * CU[0] + wy * CU[1] + wz * CU[2]) * F) / zc
-        if (x < 0 || x > W || y < 0 || y > H) continue
-        // where it was a frame ago (the ship has moved, and the camera with it)
-        const px = wx + ship.v[0] * dt, py = wy + ship.v[1] * dt, pz = wz + ship.v[2] * dt
-        const pzc = px * CF[0] + py * CF[1] + pz * CF[2]
-        const alpha = 0.5 * clamp(1 - zc / 380, 0, 1)
-        if (alpha <= 0) continue
-        fx.strokeStyle = `rgba(210,220,235,${alpha})`
-        fx.lineWidth = 1
-        fx.beginPath()
-        if (vmag > 0.05 && pzc > 4) {
-          const qx = cx + ((px * CR[0] + py * CR[1] + pz * CR[2]) * F) / pzc, qy = cy - ((px * CU[0] + py * CU[1] + pz * CU[2]) * F) / pzc
-          const l = Math.hypot(qx - x, qy - y), cap = Math.min(1, 90 / (l || 1))
-          fx.moveTo(x + (qx - x) * cap, y + (qy - y) * cap)
-        } else fx.moveTo(x, y)
-        fx.lineTo(x + 0.01, y)
-        fx.stroke()
+      const vmag = len(ship.v), trail = 0.06
+      for (let k = 0; k < DUST_L; k++) {
+        const B = DUST_BOX(k), u = Math.log10(B / Math.max(vmag, 1e-6)) // seconds to cross half the box (log)
+        const wgt = (k === 0 ? 1 : smooth(0, 0.5, u)) * (1 - smooth(1.7, 2.4, u))
+        if (wgt < 0.02) continue
+        const base = k * DUST_N * 3, B2 = 2 * B, zmin = 4 + B * 0.01
+        for (let i = 0; i < DUST_N; i++) {
+          const wx = ((((dust[base + i * 3] - cam.p[0] + B) % B2) + B2) % B2) - B
+          const wy = ((((dust[base + i * 3 + 1] - cam.p[1] + B) % B2) + B2) % B2) - B
+          const wz = ((((dust[base + i * 3 + 2] - cam.p[2] + B) % B2) + B2) % B2) - B
+          const zc = wx * CF[0] + wy * CF[1] + wz * CF[2]
+          if (zc < zmin) continue
+          const x = cx + ((wx * CR[0] + wy * CR[1] + wz * CR[2]) * F) / zc, y = cy - ((wx * CU[0] + wy * CU[1] + wz * CU[2]) * F) / zc
+          if (x < 0 || x > W || y < 0 || y > H) continue
+          const alpha = 0.55 * wgt * clamp(1.6 - zc / B, 0, 1)
+          if (alpha <= 0.01) continue
+          fx.strokeStyle = `rgba(215,225,240,${alpha})`
+          fx.lineWidth = 1 + 0.12 * k
+          fx.beginPath()
+          // where it was a moment ago (the ship has moved, and the camera with it)
+          const px = wx + ship.v[0] * trail, py = wy + ship.v[1] * trail, pz = wz + ship.v[2] * trail
+          const pzc = px * CF[0] + py * CF[1] + pz * CF[2]
+          if (vmag > 0.05 && pzc > zmin * 0.5) {
+            const qx = cx + ((px * CR[0] + py * CR[1] + pz * CR[2]) * F) / pzc, qy = cy - ((px * CU[0] + py * CU[1] + pz * CU[2]) * F) / pzc
+            const l = Math.hypot(qx - x, qy - y), cap = Math.min(1, 140 / (l || 1))
+            fx.moveTo(x + (qx - x) * cap, y + (qy - y) * cap)
+          } else fx.moveTo(x, y)
+          fx.lineTo(x + 0.01, y)
+          fx.stroke()
+        }
       }
     }
 
@@ -597,7 +680,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       const out = [0, 0, 0]
 
       // one object's pieces on their way to the screen: its axes in the world, its place, a turn about its own z (the Endurance's spin)
-      const place = (faces: Face[], off: number, ax: V, ay: V, az: V, pos: V, spin: number, stretch: number, squeeze: number) => {
+      const place = (faces: Face[], off: number, ax: V, ay: V, az: V, pos: V, spin: number, stretch: number, squeeze: number, broken?: Uint8Array) => {
         const R00 = dot(CR, ax), R01 = dot(CR, ay), R02 = dot(CR, az)
         const R10 = dot(CU, ax), R11 = dot(CU, ay), R12 = dot(CU, az)
         const R20 = dot(CF, ax), R21 = dot(CF, ay), R22 = dot(CF, az)
@@ -613,6 +696,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
           out[2] = R20 * x + R21 * y + R22 * z0 + (normal ? 0 : t2)
         }
         for (let fi = 0; fi < faces.length; fi++) {
+          if (broken && broken[fi]) continue
           const fc = faces[fi], id = off + fi
           let sx0 = 0, sy0 = 0, sz0 = 0
           for (let i = 0; i < fc.k; i++) {
@@ -633,13 +717,29 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         }
       }
       const stretch = mode === 'swallow' ? 1 + 3.5 * sw.p * sw.p : 1, squeeze = mode === 'swallow' ? Math.max(0.25, 1 - 0.75 * sw.p) : 1
-      place(rg, 0, ship.r, ship.u, ship.f, ship.p, 0, stretch, squeeze)
+      if (mode !== 'dead') place(rg, 0, ship.r, ship.u, ship.f, ship.p, 0, stretch, squeeze, gone)
       meshes.forEach((S, k) => place(eg, nR + k * eg.length, S.x, S.y, S.z, S.p, S.spin, 1, 1))
       vis.sort((p, q) => dep[q] - dep[p])
 
       const tex = scratch.tex ?? (scratch.tex = rangerTexture())
       const alphaShip = mode === 'swallow' ? 1 - smooth(0.82, 1, sw.p) : 1
       fx.lineJoin = 'round'
+      const dmgR = 1 - hull / 100
+      const h01 = (n: number) => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x) }
+      // scorched armour: cracks across a big piece, more of them the worse the hull
+      const cracks = (o: number, k: number, id: number, diag: number) => {
+        if (dmgR < 0.2 || diag < 14) return
+        let ccx = 0, ccy = 0
+        for (let i = 0; i < k; i++) { ccx += P[o + i * 2]; ccy += P[o + i * 2 + 1] }
+        ccx /= k; ccy /= k
+        fx.strokeStyle = 'rgba(0,0,0,0.6)'; fx.lineWidth = 1; fx.beginPath()
+        for (let c = 0, n = Math.min(5, 1 + ((dmgR * 7) | 0)); c < n; c++) {
+          const a = h01(id * 7 + c) * TAU, l = diag * (0.2 + 0.3 * h01(id * 3 + c))
+          const mx = ccx + Math.cos(a) * l * 0.5 + Math.sin(a) * l * 0.12, my = ccy + Math.sin(a) * l * 0.5 - Math.cos(a) * l * 0.12
+          fx.moveTo(ccx, ccy); fx.lineTo(mx, my); fx.lineTo(ccx + Math.cos(a) * l, ccy + Math.sin(a) * l)
+        }
+        fx.stroke()
+      }
       for (const id of vis) {
         const isR = id < nR
         const fc = isR ? rg[id] : eg[(id - nR) % eg.length], o = id * MAXN * 2
@@ -667,7 +767,8 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         const spec = lit > 0 ? Math.pow(Math.max(0, nx * hx + ny * hy + nz * hz), mt.shin) * mt.spec : 0
         // a hard sun, a very dark shadow: the sky gives a little cool light
         const sun = 1.8 * lit, amb = 0.035
-        const rgb = (m: number) => `rgb(${clamp((mt.c[0] * (amb + sun) + spec * 255 + 6) * m, 0, 255) | 0},${clamp((mt.c[1] * (amb + sun) + spec * 255 + 8) * m, 0, 255) | 0},${clamp((mt.c[2] * (amb + sun) + spec * 255 + 14) * m, 0, 255) | 0})`
+        const dk = isR ? 1 - 0.55 * dmgR : 1 // soot
+        const rgb = (m0: number) => { const m = m0 * dk; return `rgb(${clamp((mt.c[0] * (amb + sun) + spec * 255 + 6) * m, 0, 255) | 0},${clamp((mt.c[1] * (amb + sun) + spec * 255 + 8) * m, 0, 255) | 0},${clamp((mt.c[2] * (amb + sun) + spec * 255 + 14) * m, 0, 255) | 0})` }
         const diag = fc.k >= 4 ? Math.hypot(P[o + 4] - P[o], P[o + 5] - P[o + 1]) : 0
         if (diag < 1.2 && fc.k <= 4) continue
         if (fc.uv && diag > 5) {
@@ -676,7 +777,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
           fx.beginPath(); fx.moveTo(P[o], P[o + 1])
           for (let i = 1; i < fc.k; i++) fx.lineTo(P[o + i * 2], P[o + i * 2 + 1])
           fx.closePath()
-          fx.fillStyle = `rgba(2,4,9,${clamp(1 - (0.05 + 1.9 * lit), 0, 0.97)})`
+          fx.fillStyle = `rgba(2,4,9,${clamp(Math.max(1 - (0.05 + 1.9 * lit), isR ? dmgR * 0.6 : 0), 0, 0.97)})`
           fx.fill()
           if (spec > 0.02) {
             const sg = fx.createLinearGradient(P[o], P[o + 1], P[o + 4], P[o + 5])
@@ -684,6 +785,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
             fx.fillStyle = sg; fx.fill()
           }
           fx.strokeStyle = 'rgba(210,216,228,0.25)'; fx.lineWidth = 0.8; fx.stroke()
+          if (isR) cracks(o, fc.k, id, diag)
           continue
         }
         fx.beginPath(); fx.moveTo(P[o], P[o + 1])
@@ -696,6 +798,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         } else fx.fillStyle = rgb(1)
         fx.fill()
         if (diag > 5) { fx.strokeStyle = `rgba(215,222,235,${0.1 + 0.3 * lit})`; fx.lineWidth = 0.7; fx.stroke() }
+        if (isR) cracks(o, fc.k, id, diag)
         if (fc.k === 4 && diag > 38) {
           // a panel set into the face
           const ccx = (P[o] + P[o + 2] + P[o + 4] + P[o + 6]) / 4, ccy = (P[o + 1] + P[o + 3] + P[o + 5] + P[o + 7]) / 4
@@ -719,8 +822,8 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       }
       fx.globalAlpha = 1
 
-      // the Ranger's engines: three small glows at the tail, brighter with the push
-      {
+      // the Ranger's engines: three small glows at the tail, brighter with the push, and a flame streaming back
+      if (mode !== 'dead') {
         const d = sub(ship.p, cam.p)
         const b0 = dot(d, CR), b1 = dot(d, CU), b2 = dot(d, CF)
         for (const nxm of [-2.6, 0, 2.6]) {
@@ -734,6 +837,72 @@ export function createEngine(base: string, cb: Callbacks): Engine {
           fx.globalCompositeOperation = 'lighter'
           fx.fillStyle = g
           fx.beginPath(); fx.arc(x, y, r, 0, TAU); fx.fill()
+          if (ship.thr > 0.05) {
+            const tl = add(lp, mul(ship.f, -(5 + 34 * ship.thr) * (0.9 + 0.1 * Math.sin(t * 55 + nxm))))
+            const zt = b2 + dot(tl, CF)
+            if (zt > 1) {
+              const tx = cx + ((b0 + dot(tl, CR)) * F) / zt, ty = cy - ((b1 + dot(tl, CU)) * F) / zt
+              const fg = fx.createLinearGradient(x, y, tx, ty)
+              fg.addColorStop(0, `rgba(170,215,255,${0.7 * ship.thr})`); fg.addColorStop(1, 'rgba(80,130,255,0)')
+              fx.strokeStyle = fg; fx.lineWidth = Math.max(1.2, r * 0.7); fx.lineCap = 'round'
+              fx.beginPath(); fx.moveTo(x, y); fx.lineTo(tx, ty); fx.stroke()
+            }
+          }
+          fx.globalCompositeOperation = 'source-over'
+        }
+      }
+      // smoke and sparks off a hurt hull
+      if (mode === 'fly' && dmgR > 0.25) {
+        emitAcc += dt * (dmgR * 14)
+        while (emitAcc >= 1) {
+          emitAcc -= 1
+          const fi = (Math.random() * rgFaces.length) | 0
+          if (gone[fi]) continue
+          const fc = rgFaces[fi]
+          const w = add(add(add(ship.p, mul(ship.r, fc.p[0])), mul(ship.u, fc.p[1])), mul(ship.f, fc.p[2]))
+          const spark = dmgR > 0.45 && Math.random() < 0.4
+          bits.push({ p: w, v: add(add(ship.v, mul(ship.f, spark ? -2 : -6)), [(Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4]), life: spark ? 0.5 : 2.4, max: spark ? 0.5 : 2.4, s: spark ? 0.5 : 0.5 + Math.random() * 0.7, kind: spark ? 1 : 2 })
+        }
+      }
+      if (bits.length > 400) bits.splice(0, bits.length - 400)
+      for (let i = bits.length - 1; i >= 0; i--) {
+        const q = bits[i]
+        q.life -= dt
+        if (q.life <= 0) { bits.splice(i, 1); continue }
+        q.p = add(q.p, mul(q.v, dt))
+        proj(q.p, sp)
+        if (sp[2] < 1 || sp[0] < -20 || sp[0] > W + 20 || sp[1] < -20 || sp[1] > H + 20) continue
+        const px = (q.s * F) / sp[2], a = clamp(q.life / q.max, 0, 1)
+        if (q.kind === 0) { // a shard, tumbling
+          const r = clamp(px, 1.2, 16), an = q.life * 5 + i
+          fx.globalAlpha = Math.min(1, a * 3)
+          const mc = MATS[q.c ?? 1].c; fx.fillStyle = `rgb(${mc[0] * 0.7 | 0},${mc[1] * 0.7 | 0},${mc[2] * 0.72 | 0})`
+          fx.beginPath()
+          fx.moveTo(sp[0] + Math.cos(an) * r, sp[1] + Math.sin(an) * r)
+          fx.lineTo(sp[0] + Math.cos(an + 2.3) * r * 0.7, sp[1] + Math.sin(an + 2.3) * r * 0.7)
+          fx.lineTo(sp[0] + Math.cos(an + 4.1) * r * 0.5, sp[1] + Math.sin(an + 4.1) * r * 0.5)
+          fx.closePath(); fx.fill()
+          fx.globalAlpha = 1
+        } else if (q.kind === 1) { // a spark
+          fx.globalCompositeOperation = 'lighter'
+          fx.fillStyle = `rgba(255,${150 + 80 * a | 0},60,${a})`
+          fx.beginPath(); fx.arc(sp[0], sp[1], Math.max(1, px), 0, TAU); fx.fill()
+          fx.globalCompositeOperation = 'source-over'
+        } else { // smoke, spreading
+          const r = Math.max(1.5, (px * (1 + (1 - a) * 2.5)))
+          fx.fillStyle = `rgba(70,72,80,${0.2 * a})`
+          fx.beginPath(); fx.arc(sp[0], sp[1], r, 0, TAU); fx.fill()
+        }
+      }
+      if (mode === 'dead') { // the fireball
+        proj(ship.p, sp)
+        if (sp[2] > 1) {
+          const p = clamp(deadT / 2.4, 0, 1), r = ((10 + 110 * ease(p)) * F) / sp[2], a = Math.pow(1 - p, 1.5)
+          const g = fx.createRadialGradient(sp[0], sp[1], 0, sp[0], sp[1], r)
+          g.addColorStop(0, `rgba(255,245,210,${a})`); g.addColorStop(0.35, `rgba(255,170,60,${0.8 * a})`); g.addColorStop(1, 'rgba(255,80,20,0)')
+          fx.globalCompositeOperation = 'lighter'
+          fx.fillStyle = g
+          fx.beginPath(); fx.arc(sp[0], sp[1], r, 0, TAU); fx.fill()
           fx.globalCompositeOperation = 'source-over'
         }
       }
@@ -801,7 +970,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       hudAt = t
       let planet = Infinity
       for (const b of list) planet = Math.min(planet, Math.max(0, len(sub(ship.p, [b.x, b.y, b.z])) - b.r))
-      cb.hud({ speed: dock.on ? 0 : len(ship.v), planet })
+      cb.hud({ speed: dock.on ? 0 : len(ship.v), planet, hull })
     }
   }
 
@@ -836,6 +1005,6 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       if (front) { front.width = Math.round(w * d); front.height = Math.round(h * d) }
     },
     frame,
-    debug: () => { const S = dock.st ?? nearStation()?.S ?? stations[0]; return { ship, E: { pos: S.p, x: S.x, y: S.y, z: S.z, spin: S.spin }, stations: stations.map(x => ({ id: x.id, p: x.p })), dock, metrics: dockMetrics({ ship: ship.p, f: ship.f, u: ship.u, vel: ship.v, e: S.p, ex: S.x, ey: S.y, ez: S.z, spin: S.spin }), mode, bodies: list.map(b => ({ id: b.id, kind: b.kind, x: b.x, y: b.y, z: b.z, r: b.r })) } },
+    debug: () => { const S = dock.st ?? nearStation()?.S ?? stations[0]; return { hull, hurt: (a: number) => hurt(a, null), ship, E: { pos: S.p, x: S.x, y: S.y, z: S.z, spin: S.spin }, stations: stations.map(x => ({ id: x.id, p: x.p })), dock, metrics: dockMetrics({ ship: ship.p, f: ship.f, u: ship.u, vel: ship.v, e: S.p, ex: S.x, ey: S.y, ez: S.z, spin: S.spin }), mode, bodies: list.map(b => ({ id: b.id, kind: b.kind, x: b.x, y: b.y, z: b.z, r: b.r, ring: b.ring })) } },
   }
 }

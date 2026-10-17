@@ -379,17 +379,6 @@ service cloud.firestore {
         && d.spent <= d.get('earned', d.up) + d.get('bonus', 0);
     }
 
-    // 속력 5배 패스: 500P once, kept for good (the 인터스텔라 game's engines push five times as hard).
-    function speedPassBuy() {
-      let d = request.resource.data;
-      let o = resource.data;
-      return request.auth.uid == o.ownerUid
-        && d.diff(o).affectedKeys().hasOnly(['spent', 'passSpeed'])
-        && o.get('passSpeed', false) == false && d.passSpeed == true && canTrade(o)
-        && d.spent == o.spent + 500
-        && d.spent <= d.get('earned', d.up) + d.get('bonus', 0);
-    }
-
     // ---- 몰래 도박장: bet any amount of points; 1 bet in 3 pays back double ----
     // The points leave in the same write that creates the bet doc (named in lastBet). Whether it
     // won comes from the server time the bet landed (at == request.time), which nobody knows
@@ -693,7 +682,7 @@ service cloud.firestore {
             // 선물 writes (they name the gift in lastGift, or a cancel gives points back) likewise
             : (request.resource.data.get('lastGift', '') != resource.data.get('lastGift', '') || request.resource.data.get('spent', 0) < resource.data.get('spent', 0))
               ? (giftSend() || giftClaim() || giftClaimItem() || giftClaimSet() || giftClaimPass() || giftCancel())
-              : (ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || speedPassBuy() || loginIdBackfill() || gambleBet() || gamblePay())
+              : (ownerEdit() || voteTally(candidateId) || appBonusClaim() || passBuy() || fakePassBuy() || loginIdBackfill() || gambleBet() || gamblePay())
       );
 
       allow delete: if adminOp('deleteAccount') && lock().payload.target == candidateId;

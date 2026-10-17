@@ -1086,17 +1086,6 @@ describe('포인트 선물', () => {
     await assert.rejects(cancelGift(a, 'a', gid)) // already taken
     assert.equal(await points(a, 'a'), 80)
   })
-  test('속력 5배 패스: 500P, once, exactly that price', async () => {
-    const a = await signUp('a'); const admin = dbAs(ADMIN)
-    await assert.rejects(buyPass(a, 'a', 'passSpeed')) // 0P
-    await grantPoints(admin, ADMIN.uid, 'a', 600)
-    await denied(updateDoc(doc(a, 'candidates', 'a'), { passSpeed: true, spent: increment(1) })) // must pay 500
-    await denied(updateDoc(doc(a, 'candidates', 'a'), { passSpeed: 5, spent: increment(500) })) // the plain pass only
-    await buyPass(a, 'a', 'passSpeed')
-    assert.equal(await points(a, 'a'), 100)
-    assert.equal((await read(a, 'candidates/a')).passSpeed, true)
-    await assert.rejects(buyPass(a, 'a', 'passSpeed')) // only once
-  })
   test('페이크 선물: needs the 299P 패스 (mirrored to perks/); a chat message only, points untouched', async () => {
     const a = await signUp('a'); await signUp('b'); const admin = dbAs(ADMIN)
     const id = await openDm(a, 'a', 'b')

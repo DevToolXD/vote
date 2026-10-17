@@ -51,15 +51,14 @@ const Arrow = ({ flip }: { flip?: boolean }) => (
 )
 
 /** 인터스텔라: fly the Ranger 1. */
-export function SpaceGame({ speedPass = false }: { speedPass?: boolean }) {
+export function SpaceGame() {
   const rootRef = useRef<HTMLDivElement>(null)
   const backRef = useRef<HTMLCanvasElement>(null)
   const frontRef = useRef<HTMLCanvasElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
   const speedRef = useRef<HTMLDivElement>(null)
   const planetRef = useRef<HTMLDivElement>(null)
-  const powerRef = useRef(1)
-  powerRef.current = speedPass ? 5 : 1 // the 속력 5배 패스: the engines push five times as hard
+  const hullRef = useRef<HTMLDivElement>(null)
   const engine = useRef<Engine | null>(null)
   const aim = useRef<V2 | null>(null) // the mouse, or a finger on the screen, from the middle of the game
   const touching = useRef(false)
@@ -146,6 +145,10 @@ export function SpaceGame({ speedPass = false }: { speedPass?: boolean }) {
       hud: h => {
         if (speedRef.current) speedRef.current.textContent = `속도 ${fmtSpeed(h.speed)}`
         if (planetRef.current) planetRef.current.textContent = `행성까지 ${fmtDistance(h.planet)}`
+        if (hullRef.current) { // shown once the hull is hurt
+          hullRef.current.textContent = h.hull < 100 ? `내구도 ${Math.max(0, Math.ceil(h.hull))}%` : ''
+          hullRef.current.style.color = h.hull < 35 ? '#ff6b5e' : '#fff'
+        }
       },
       haptic: p => { try { navigator.vibrate?.(p) } catch { /* no vibration */ } },
     }))
@@ -181,7 +184,6 @@ export function SpaceGame({ speedPass = false }: { speedPass?: boolean }) {
         rollStop: cw && ccw,
         thrust: b.thrust || b.mouse || k.held.has('Space') || k.held.has('ShiftLeft') || k.held.has('ShiftRight'),
         brake: b.brake || k.held.has('KeyX') || k.held.has('KeyC') || k.held.has('ControlLeft'),
-        power: powerRef.current,
       })
     }
     const stop = () => { cancelAnimationFrame(raf); raf = 0 }
@@ -210,6 +212,7 @@ export function SpaceGame({ speedPass = false }: { speedPass?: boolean }) {
       <div style={css('position:absolute;left:16px;top:12px;color:#fff;font-size:14px;font-weight:600;line-height:19px;font-variant-numeric:tabular-nums;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.8)')}>
         <div ref={speedRef}>속도 0.00 m/s</div>
         <div ref={planetRef}>행성까지 -</div>
+        <div ref={hullRef} />
       </div>
       <div style={css('position:absolute;right:12px;top:10px;display:flex;gap:8px')}>
         <button className="pr-96" onClick={toggleFull} style={css(BTN)}>{full || fake ? '나가기' : '전체화면'}</button>
