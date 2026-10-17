@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { FALLBACK_TITLE, countListen, fixSongTitle, isOpen, songArt, type Song } from './backend/songs'
-import { adFreeOf, adFreeOn } from './backend/adfree'
 
 // The one player of the whole app (Spotify's songs play here, whatever screen is up): YouTube's player
 // (IFrame API) in a hidden element that stays on the page, a queue, and the listen count that
@@ -34,12 +33,10 @@ export type MusicState = {
   artist: string
   /** YouTube is playing an ad: the sound is off, nothing is counted, and the circle shows it is loading */
   ad: boolean
-  /** a song from a YouTube link that is playing as its ad-free version from Audius: that version's title (else '') */
-  adFree: string
   /** the YouTube player is on screen (the person asked for it, or an ad is playing: so its 건너뛰기 can be pressed) */
   video: boolean
 }
-const IDLE: MusicState = { queue: [], index: -1, status: 'idle', artist: '', ad: false, adFree: '', video: false }
+const IDLE: MusicState = { queue: [], index: -1, status: 'idle', artist: '', ad: false, video: false }
 let state = IDLE
 const subs = new Set<() => void>()
 const set = (p: Partial<MusicState>) => { state = { ...state, ...p }; syncHost(); subs.forEach(f => f()) }
@@ -124,12 +121,9 @@ function loadApi(): Promise<void> {
 const current = () => state.queue[state.index] as Song | undefined
 
 // Songs from the open catalogues (Audius, Internet Archive) play in a plain audio element (no YouTube, so no ads): the same
-// queue, controls and lock-screen buttons. A YouTube-link song whose ad-free version was found plays there too (`alt`).
+// queue, controls and lock-screen buttons.
 let audio: HTMLAudioElement | null = null
-let alt: Song | null = null
-/** YouTube songs the person sent back to YouTube (this time) */
-const original = new Set<string>()
-const usingAudio = () => isOpen(current()) || !!alt
+const usingAudio = () => isOpen(current())
 function ensureAudio(): HTMLAudioElement {
   if (audio) return audio
   const a = new Audio()
@@ -145,9 +139,6 @@ function ensureAudio(): HTMLAudioElement {
   })
   a.addEventListener('error', () => {
     if (!usingAudio() || !a.src) return
-    // the ad-free copy won't play: back to the YouTube song itself
-    const song = current()
-    if (alt && song) { alt = null; original.add(song.id); set({ adFree: '' }); startYouTube(song); return }
     onError()
   })
   audio = a
@@ -267,21 +258,11 @@ function load(index: number) {
   flushListen(true)
   if (mutedByUs) { try { player?.unMute?.() } catch { /* */ } mutedByUs = false }
   adSince = 0; adGaveUp = false
-  alt = null
-  set({ index, status: 'loading', artist: isOpen(song) ? (song.artist ?? (song.src === 'ia' ? '인터넷 아카이브' : 'Audius')) : setup.nameOf(song.uid), ad: false, adFree: '' })
+  set({ index, status: 'loading', artist: isOpen(song) ? (song.artist ?? (song.src === 'ia' ? '인터넷 아카이브' : 'Audius')) : setup.nameOf(song.uid), ad: false })
   mediaSession()
   if (isOpen(song)) { playAudio(song, song.id); return }
   audio?.pause()
-  // a YouTube-link song: its ad-free version first (when there is one), else YouTube
-  if (!adFreeOn() || original.has(song.id)) { startYouTube(song); return }
-  adFreeOf(song).then(m => {
-    if (current()?.id !== song.id) return
-    if (!m) { startYouTube(song); return }
-    alt = m
-    set({ adFree: `${m.title}${m.artist ? ` · ${m.artist}` : ''}` })
-    playAudio(m, song.id)
-    startListenClock()
-  }).catch(() => { if (current()?.id === song.id) startYouTube(song) })
+  startYouTube(song)
 }
 
 /** Plays a track from an open catalogue in the audio element (the YouTube player is stopped). */
@@ -295,7 +276,6 @@ function playAudio(track: Song, forId: string) {
 }
 
 function startYouTube(song: Song) {
-  alt = null
   syncHost()
   audio?.pause()
   ensurePlayer().then(p => {
@@ -349,13 +329,6 @@ export function seekMusic(seconds: number) {
   if (usingAudio()) { if (audio) audio.currentTime = Math.max(0, seconds); return }
   player?.seekTo(Math.max(0, seconds), true)
 }
-/** The song that is playing as its ad-free version goes back to YouTube (its own ads, but the real video), this time. */
-export function playOriginal() {
-  const song = current()
-  if (!song || !alt) return
-  original.add(song.id)
-  load(state.index)
-}
 /** Turns the music off and takes the circle away. */
 export function stopMusic() {
   flushListen(true)
@@ -365,7 +338,6 @@ export function stopMusic() {
   const ms = (navigator as Navigator & { mediaSession?: MediaSession }).mediaSession
   try { if (ms) ms.metadata = null } catch { /* no media session */ }
   if (mutedByUs) { try { player?.unMute?.() } catch { /* */ } mutedByUs = false }
-  alt = null
   state = IDLE
   syncHost()
   subs.forEach(f => f())

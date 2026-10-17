@@ -4,7 +4,6 @@ import { css } from '../css'
 import { addSong, isOpen, removeSong, songArt, watchSongs, type Song } from '../backend/songs'
 import { searchAudius, trendingAudius } from '../backend/audius'
 import { archiveTracks, searchArchive, type Album } from '../backend/archive'
-import { adFreeOn, setAdFree } from '../backend/adfree'
 import type { Person } from '../model'
 import { playMusic, toggleMusic, useMusic } from '../music'
 
@@ -73,7 +72,6 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
   // 인터넷 아카이브: free public music (no key, no ads), found by name; an album plays as a queue of its tracks
   const [ia, setIa] = useState<Album[] | null>(null)
   const [iaBusy, setIaBusy] = useState<string | null>(null)
-  const [adFree, setAdFreeState] = useState(adFreeOn)
   const music = useMusic()
   const nowId = music.queue[music.index]?.id
   const playing = music.status === 'playing' || music.status === 'loading'
@@ -245,16 +243,6 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
                 내가 추가한 곡을 다른 사람이 들으면 <b style={css('color:#fff')}>1분마다</b> {SONG_POINTS}포인트를 받아요. 다시 들어도, 10초씩 나눠 들어도 같은 사람이 들은 시간이 쌓여요.
                 {mine.length > 0 && <div style={css('margin-top:4px;color:#fff;font-weight:600')}>내 곡 {mine.length}개 · 들은 시간 {listens}분 · {(listens * SONG_POINTS).toLocaleString()}P</div>}
               </div>
-              <button className="pr-96" onClick={() => { const v = !adFree; setAdFree(v); setAdFreeState(v) }} role="switch" aria-checked={adFree} aria-label="광고 없는 버전 우선"
-                style={css(`width:100%;margin:0 0 8px;padding:12px 14px;border-radius:10px;background:${CARD};display:flex;align-items:center;gap:12px;text-align:left;color:#fff`)}>
-                <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:3px')}>
-                  <span style={css('font-size:15px;line-height:20px;font-weight:700')}>광고 없는 버전 먼저 찾기</span>
-                  <span style={css(`font-size:12px;line-height:17px;color:${SEC}`)}>유튜브 링크로 추가한 곡과 같은 곡이 Audius(광고 없는 무료 음악)에 있으면 그걸로 들려줘요. 없으면 유튜브로 재생돼요 (유튜브가 붙이는 광고는 앱이 막을 수 없어요).</span>
-                </span>
-                <span aria-hidden="true" style={css(`flex:none;width:46px;height:28px;border-radius:14px;padding:2px;box-sizing:border-box;background:${adFree ? GREEN : '#535353'};transition:background 250ms`)}>
-                  <span style={css(`display:block;width:24px;height:24px;border-radius:12px;background:#fff;transition:transform 300ms cubic-bezier(0.32,0.72,0,1);transform:translateX(${adFree ? 18 : 0}px)`)} />
-                </span>
-              </button>
               {songs === null ? <div style={css(`padding:40px;text-align:center;color:${SEC}`)}>불러오는 중</div> : mine.length === 0 ? (
                 <div style={css(`padding:44px 24px;text-align:center;color:${SEC};font-size:15px;line-height:23px`)}>아직 추가한 곡이 없어요.<br />위의 ＋를 눌러 유튜브 링크를 붙여 넣어 보세요.</div>
               ) : mine.map(s => <Row key={s.id} s={s} who={who(s.uid)} active={s.id === nowId} playing={playing} onPlay={() => play(mine, s)} onMore={() => drop(s)} sub={`내가 추가한 곡 · 들은 횟수 ${s.plays}회`} />)}

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { css } from '../css'
 import { isOpen, songArt } from '../backend/songs'
-import { musicTime, nextMusic, playOriginal, prevMusic, seekMusic, showVideo, stopMusic, toggleMusic, useMusic } from '../music'
+import { musicTime, nextMusic, prevMusic, seekMusic, showVideo, stopMusic, toggleMusic, useMusic } from '../music'
 
 // The round music picture that stays on every screen while a song is loaded: drag it anywhere, tap
 // it and it opens (smoothly) into the song's title and the controls, tap outside to fold it back.
@@ -127,9 +127,8 @@ export function MusicBubble() {
           <span style={css('flex:1;min-width:0;display:flex;flex-direction:column;gap:2px')}>
             <span style={css('font-size:15px;line-height:19px;font-weight:700;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden')}>{song.title}</span>
             <span style={css('font-size:13px;line-height:17px;color:#b3b3b3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>{m.ad ? '광고가 끝나면 시작돼요 · 소리 꺼짐' : isOpen(song) ? `${m.artist} · 광고 없음` : m.artist ? `${m.artist} 님이 추가` : 'Spotify'}</span>
-            {m.adFree && <button className="pr-dim" onClick={playOriginal} aria-label="유튜브 원본으로 듣기" style={css('align-self:flex-start;max-width:100%;padding:0;background:none;color:#1ed760;font-size:12px;line-height:16px;font-weight:600;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis')}>광고 없는 버전 · {m.adFree} ›원본</button>}
           </span>
-          {!isOpen(song) && !m.adFree && (
+          {!isOpen(song) && (
             <button aria-label={m.video ? '영상 숨기기' : '영상 보기'} aria-pressed={m.video} onClick={() => showVideo(!m.video)} style={css(`flex:none;align-self:flex-start;width:32px;height:32px;margin:-6px 0 0 0;display:flex;align-items:center;justify-content:center;background:none;color:${m.video || m.ad ? '#1ed760' : '#b3b3b3'}`)}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="3" /><path d="m10.5 9.5 4 2.5-4 2.5z" fill="currentColor" /></svg>
             </button>
