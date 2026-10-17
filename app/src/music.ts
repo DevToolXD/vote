@@ -49,6 +49,7 @@ function syncHost() {
   if (!host) return
   const on = (state.video || state.ad) && state.status !== 'idle' && !usingAudio()
   host.classList.toggle('music-host-on', on)
+  host.classList.toggle('music-host-ad', state.ad && on)
   const cap = host.querySelector('.cap')
   if (cap) cap.textContent = state.ad ? '광고예요 · 건너뛰기가 나오면 눌러 주세요 (소리는 꺼져 있어요)' : ''
 }
@@ -242,6 +243,9 @@ async function ensurePlayer(): Promise<YTPlayer> {
   const cap = document.createElement('div')
   cap.className = 'cap'
   host.appendChild(cap)
+  const hint = document.createElement('div')   // a ring where an ad's 건너뛰기 shows up (it can't be pressed for you: the player is YouTube's)
+  hint.className = 'hint'
+  host.appendChild(hint)
   document.body.appendChild(host)
   return new Promise<YTPlayer>((ok) => {
     const p = new window.YT!.Player(inner, {

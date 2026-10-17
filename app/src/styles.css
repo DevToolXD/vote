@@ -355,3 +355,6 @@ img{-webkit-user-drag:none}
 #music-host.music-host-on iframe{border-radius:14px}
 #music-host.music-host-on .cap{display:block;position:absolute;left:50%;top:100%;transform:translateX(-50%);margin-top:10px;width:max-content;max-width:100%;box-sizing:border-box;padding:7px 12px;border-radius:12px;background:rgba(0,0,0,0.82);text-align:center;color:#fff;font:600 13px/18px system-ui,'Apple SD Gothic Neo','Noto Sans KR',sans-serif}
 #music-host.music-host-on .cap:empty{display:none}
+#music-host .hint{display:none}
+#music-host.music-host-ad .hint{display:block;position:absolute;right:4px;bottom:46px;width:112px;height:40px;border-radius:10px;pointer-events:none;opacity:0;box-shadow:0 0 0 3px #1ed760;animation:hintPulse 1.2s ease-in-out 5s infinite}
+@keyframes hintPulse{0%,100%{opacity:0.25}50%{opacity:1}}
