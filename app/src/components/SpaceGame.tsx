@@ -1,22 +1,29 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { css } from '../css'
-import { createEngine, type Engine, type Hud } from './spaceEngine'
+import { createEngine, type Engine } from './spaceEngine'
 import { createTilt } from './spaceTilt'
 
-// 인터스텔라: a free 3D flight in space (the world is in spaceEngine.ts). It is played in landscape, fullscreen when the phone
-// allows it. The phone steers like a stick and wheel (spaceTilt.ts): turned like a steering wheel it banks and turns, its top edge
-// pulled toward you the ship climbs, pushed away it dives. A finger on the screen, the mouse cursor (its place from the middle of
-// the game) and the arrow keys do the same; the 가속 button, the mouse button held down, or Space / Shift speed the ship up.
+// 인터스텔라: the Ranger 1 in space (the world and the flight are in spaceEngine.ts). It is played in landscape, fullscreen when the
+// phone allows it. The phone steers (spaceTilt.ts): turned like a steering wheel the nose goes right or left, its top edge pulled
+// toward you the nose goes up, pushed away down; a finger on the screen, the mouse cursor (its place from the middle of the game)
+// and the arrow keys do the same. Buttons: 가속 (engine), 감속 (retro), and roll left / right (the roll goes on until it is stopped
+// with both together). The only thing written on the screen is the speed.
 
 type V2 = { x: number; y: number }
 type ScreenLock = { lock?: (o: string) => Promise<void>; unlock?: () => void; angle?: number }
 
 const DEAD = 0.06 // the middle of the mouse / finger range that does nothing
-
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 const dead = (v: number) => (Math.abs(v) < DEAD ? 0 : clamp(v, -1, 1))
-const shape = (v: number) => Math.sign(v) * Math.pow(Math.abs(v), 1.3) // finer near the middle
+const shape = (v: number) => Math.sign(v) * Math.pow(Math.abs(v), 1.6) // fine near the middle: the last degrees of an approach are small pushes
+
+/** A speed in words: metres a second when slow, kilometres a second when fast. */
+export function fmtSpeed(v: number) {
+  if (v < 1000) return `${v < 10 ? v.toFixed(2) : v < 100 ? v.toFixed(1) : Math.round(v)} m/s`
+  const k = v / 1000
+  return `${k < 100 ? k.toFixed(1) : Math.round(k).toLocaleString('ko-KR')} km/s`
+}
 
 /** The ship's icon in 게임 (a black tile with the ring). */
 export function SpaceIcon({ size = 60 }: { size?: number }) {
@@ -32,31 +39,40 @@ export function SpaceIcon({ size = 60 }: { size?: number }) {
 
 const BTN = 'height:32px;padding:0 12px;border-radius:9999px;background:rgba(255,255,255,0.14);color:#fff;font-size:13px;font-weight:600;white-space:nowrap'
 const STEER_KEYS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0], ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1] }
+const OTHER_KEYS = ['Space', 'ShiftLeft', 'ShiftRight', 'KeyX', 'KeyC', 'ControlLeft', 'KeyQ', 'KeyE']
 
-/** 인터스텔라: fly the ring ship through space. */
+/** A round button that is held down (a finger, or a mouse button). */
+function Hold({ label, size, style, on, children }: { label: string; size: number; style: string; on: (down: boolean) => void; children: ReactNode }) {
+  const [down, setDown] = useState(false)
+  const set = (d: boolean) => { setDown(d); on(d) }
+  return (
+    <button aria-label={label} onPointerDown={e => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); set(true) }} onPointerUp={e => { e.stopPropagation(); set(false) }} onPointerCancel={() => set(false)} onContextMenu={e => e.preventDefault()}
+      style={css(`position:absolute;${style};width:${size}px;height:${size}px;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;background:${down ? 'rgba(90,150,255,0.55)' : 'rgba(255,255,255,0.13)'};box-shadow:inset 0 0 0 1.5px ${down ? 'rgba(160,200,255,0.95)' : 'rgba(255,255,255,0.32)'};transition:background 160ms,box-shadow 160ms;touch-action:none`)}>{children}</button>
+  )
+}
+const Arrow = ({ flip }: { flip?: boolean }) => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={flip ? { transform: 'scaleX(-1)' } : undefined}><path d="M20 12a8 8 0 1 1-2.6-5.9" /><path d="M20 4v5h-5" /></svg>
+)
+
+/** 인터스텔라: fly the Ranger 1. */
 export function SpaceGame() {
   const rootRef = useRef<HTMLDivElement>(null)
   const backRef = useRef<HTMLCanvasElement>(null)
   const frontRef = useRef<HTMLCanvasElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
+  const speedRef = useRef<HTMLDivElement>(null)
   const engine = useRef<Engine | null>(null)
   const aim = useRef<V2 | null>(null) // the mouse, or a finger on the screen, from the middle of the game
   const touching = useRef(false)
   const [sensor] = useState(() => createTilt()) // the phone's tilt (spaceTilt.ts)
-  const indRef = useRef<HTMLDivElement>(null)
-  const keys = useRef({ x: 0, y: 0, boost: false, held: new Set<string>() })
-  const boostHeld = useRef(false) // the 가속 button or the mouse button
-  const toastId = useRef(0)
+  const keys = useRef({ x: 0, y: 0, held: new Set<string>() })
+  const btn = useRef({ thrust: false, brake: false, cw: false, ccw: false, mouse: false })
   const [tiltOn, setTiltOn] = useState(false)
   const [askTilt, setAskTilt] = useState(false) // iOS: the tilt is allowed with a tap
-  const [hint, setHint] = useState(true)
   const [coarse] = useState(() => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) // a touch screen: a phone
   const [portrait, setPortrait] = useState(false)
   const [full, setFull] = useState(false) // the browser's own fullscreen
   const [fake, setFake] = useState(false) // where the browser has no fullscreen (iPhone): the game covers the whole screen instead
-  const [hud, setHud] = useState<Hud | null>(null)
-  const [toasts, setToasts] = useState<{ id: number; icon: string; text: string }[]>([])
-  const [boosting, setBoosting] = useState(false)
 
   // a phone with sensors: tilt steers from the start (Android), or once the person allows it with a tap (iOS asks)
   useEffect(() => {
@@ -65,7 +81,6 @@ export function SpaceGame() {
     else sensor.start().then(ok => { if (ok) setTiltOn(true) })
     return () => sensor.stop()
   }, [sensor])
-  useEffect(() => { const t = setTimeout(() => setHint(false), 9000); return () => clearTimeout(t) }, [])
 
   // fullscreen: the browser's own where it exists (Android, a computer), else the game covers the whole screen (iPhone)
   useEffect(() => {
@@ -90,16 +105,16 @@ export function SpaceGame() {
 
   useEffect(() => { if (tiltOn) aim.current = null }, [tiltOn]) // with the tilt on, a finger on the screen does not steer (a thumb resting on the edge must not)
 
-  // the keyboard: arrows or WASD steer, Space or Shift speed up
+  // the keyboard: arrows or WASD steer, Q / E roll, Space or Shift push, X or Ctrl brake
   useEffect(() => {
     const k = keys.current
     const apply = () => {
-      k.x = 0; k.y = 0; k.boost = k.held.has('Space') || k.held.has('ShiftLeft') || k.held.has('ShiftRight')
+      k.x = 0; k.y = 0
       for (const c of k.held) { const s = STEER_KEYS[c]; if (s) { k.x += s[0]; k.y += s[1] } }
     }
     const typing = (e: KeyboardEvent) => e.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)
     const down = (e: KeyboardEvent) => {
-      if (typing(e) || !(e.code in STEER_KEYS || e.code === 'Space' || e.code.startsWith('Shift'))) return
+      if (typing(e) || !(e.code in STEER_KEYS || OTHER_KEYS.includes(e.code))) return
       e.preventDefault(); k.held.add(e.code); apply()
     }
     const up = (e: KeyboardEvent) => { k.held.delete(e.code); apply() }
@@ -116,24 +131,19 @@ export function SpaceGame() {
     aim.current = { x: dead((e.clientX - r.left - r.width / 2) / (r.width / 2)), y: dead((e.clientY - r.top - r.height / 2) / (r.height / 2)) }
   }
   const endTouch = () => { touching.current = false; aim.current = null }
-  const setBoost = (on: boolean) => { boostHeld.current = on; setBoosting(on) }
 
   // the game loop starts again when the game moves between the page and the full screen cover (its canvases are new ones)
   useEffect(() => {
     const root = rootRef.current, back = backRef.current, front = frontRef.current, layer = layerRef.current
     if (!root || !back || !front || !layer) return
     const eng = engine.current ?? (engine.current = createEngine(import.meta.env.BASE_URL, {
-      hud: setHud,
-      toast: t => {
-        const id = ++toastId.current
-        setToasts(l => [...l.slice(-2), { id, ...t }])
-        setTimeout(() => setToasts(l => l.filter(x => x.id !== id)), 4200)
-      },
+      speed: v => { if (speedRef.current) speedRef.current.textContent = `속도 ${fmtSpeed(v)}` },
+      haptic: p => { try { navigator.vibrate?.(p) } catch { /* no vibration */ } },
     }))
     eng.attach(back, front, layer)
     if (new URLSearchParams(location.search).has('spacedebug')) (window as unknown as { __space?: Engine }).__space = eng // for testing
     const fit = () => {
-      eng.resize(root.clientWidth, root.clientHeight, Math.min(window.devicePixelRatio || 1, 2))
+      eng.resize(root.clientWidth, root.clientHeight, Math.min(window.devicePixelRatio || 1, 1.5)) // (sharper than that costs a lot to draw on a phone)
       setPortrait(root.clientWidth < root.clientHeight)
     }
     fit()
@@ -152,10 +162,16 @@ export function SpaceGame() {
       const k1 = Math.min(1, dt * 8)
       tn.x += ((target?.x ?? 0) - tn.x) * k1
       tn.y += ((target?.y ?? 0) - tn.y) * k1
-      const a = aim.current, k = keys.current
-      const sx = shape(clamp((a?.x ?? 0) + tn.x + k.x, -1, 1)), sy = shape(clamp((a?.y ?? 0) + tn.y + k.y, -1, 1))
-      if (indRef.current) indRef.current.style.transform = `translate(${(sx * 17).toFixed(1)}px,${(sy * 17).toFixed(1)}px)` // the little dot shows where the push is
-      eng.frame(now, { sx, sy, boost: boostHeld.current || k.boost })
+      const a = aim.current, k = keys.current, b = btn.current
+      const cw = b.cw || k.held.has('KeyE'), ccw = b.ccw || k.held.has('KeyQ')
+      eng.frame(now, {
+        yaw: shape(clamp((a?.x ?? 0) + tn.x + k.x, -1, 1)),
+        pitch: shape(clamp((a?.y ?? 0) + tn.y + k.y, -1, 1)),
+        roll: (cw ? 1 : 0) - (ccw ? 1 : 0),
+        rollStop: cw && ccw,
+        thrust: b.thrust || b.mouse || k.held.has('Space') || k.held.has('ShiftLeft') || k.held.has('ShiftRight'),
+        brake: b.brake || k.held.has('KeyX') || k.held.has('KeyC') || k.held.has('ControlLeft'),
+      })
     }
     const stop = () => { cancelAnimationFrame(raf); raf = 0 }
     const start = () => { if (!raf) { last = -1; raf = requestAnimationFrame(frame) } }
@@ -173,42 +189,26 @@ export function SpaceGame() {
       onPointerMove={e => { if (e.pointerType !== 'touch' || (touching.current && touchSteers)) readAim(e) }}
       onPointerDown={e => {
         if (e.pointerType === 'touch' && touchSteers) { touching.current = true; readAim(e) }
-        if (e.pointerType === 'mouse' && e.button === 0) setBoost(true)
+        if (e.pointerType === 'mouse' && e.button === 0) btn.current.mouse = true
       }}
-      onPointerUp={e => { if (e.pointerType === 'touch') endTouch(); if (e.pointerType === 'mouse') setBoost(false) }}
-      onPointerCancel={() => { endTouch(); setBoost(false) }}
-      onPointerLeave={e => { if (!touching.current) aim.current = null; if (e.pointerType === 'mouse') setBoost(false) }}>
+      onPointerUp={e => { if (e.pointerType === 'touch') endTouch(); if (e.pointerType === 'mouse') btn.current.mouse = false }}
+      onPointerCancel={() => { endTouch(); btn.current.mouse = false }}
+      onPointerLeave={e => { if (!touching.current) aim.current = null; if (e.pointerType === 'mouse') btn.current.mouse = false }}>
       <canvas ref={backRef} style={css('position:absolute;left:0;top:0;width:100%;height:100%;display:block')} />
       <div ref={layerRef} style={css('position:absolute;left:0;top:0;width:100%;height:100%;overflow:hidden;pointer-events:none')} />
       <canvas ref={frontRef} style={css('position:absolute;left:0;top:0;width:100%;height:100%;display:block')} />
-      <div style={css('position:absolute;left:16px;top:12px;color:#dfe6f3;font-size:12px;line-height:17px;font-variant-numeric:tabular-nums;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.8)')}>
-        <div><b style={css('font-weight:700;color:#fff;font-size:13px')}>인터스텔라</b> · 이동 {Math.floor(hud?.dist ?? 0).toLocaleString('ko-KR')} 만km</div>
-        <div>속도 광속 ×{Math.round(hud?.c ?? 14)} · 발견 {hud?.found ?? 0}</div>
-        {hud?.near && <div style={css('color:#aebbd0')}>{hud.near.name} · {hud.near.kind} · {Math.round(hud.near.d).toLocaleString('ko-KR')} 만km</div>}
-        {hud?.warn && <div style={css('color:#ffb35a;font-weight:600')}>{hud.warn}</div>}
-      </div>
-      <div style={css('position:absolute;left:0;right:0;top:12px;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none')}>
-        {toasts.map(t => (
-          <div key={t.id} style={css('max-width:70%;padding:7px 14px;border-radius:9999px;background:rgba(20,24,36,0.78);color:#fff;font-size:13px;font-weight:600;animation:pageIn 320ms cubic-bezier(0.32,0.72,0,1) both;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)')}>{t.icon} {t.text}</div>
-        ))}
-      </div>
+      <div ref={speedRef} style={css('position:absolute;left:16px;top:12px;color:#fff;font-size:14px;font-weight:600;line-height:18px;font-variant-numeric:tabular-nums;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.8)')}>속도 0.00 m/s</div>
       <div style={css('position:absolute;right:12px;top:10px;display:flex;gap:8px')}>
         <button className="pr-96" onClick={toggleFull} style={css(BTN)}>{full || fake ? '나가기' : '전체화면'}</button>
         {tiltOn && <button className="pr-96" onClick={() => sensor.recenter()} style={css(BTN)}>가운데로</button>}
       </div>
-      <div aria-hidden="true" style={css('position:absolute;left:18px;bottom:18px;width:56px;height:56px;border-radius:9999px;background:rgba(255,255,255,0.07);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,0.25);pointer-events:none')}>
-        <div style={css('position:absolute;left:50%;top:50%;width:1px;height:14px;margin:-7px 0 0 0;background:rgba(255,255,255,0.18)')} />
-        <div style={css('position:absolute;left:50%;top:50%;width:14px;height:1px;margin:0 0 0 -7px;background:rgba(255,255,255,0.18)')} />
-        <div ref={indRef} style={css('position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:9999px;background:#9cc3ff;box-shadow:0 0 8px rgba(120,170,255,0.9)')} />
-      </div>
-      <button aria-label="가속" onPointerDown={e => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); setBoost(true) }} onPointerUp={e => { e.stopPropagation(); setBoost(false) }} onPointerCancel={() => setBoost(false)}
-        style={css(`position:absolute;right:22px;bottom:22px;width:68px;height:68px;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700;background:${boosting ? 'rgba(90,150,255,0.55)' : 'rgba(255,255,255,0.14)'};box-shadow:inset 0 0 0 1.5px ${boosting ? 'rgba(160,200,255,0.95)' : 'rgba(255,255,255,0.35)'};transition:background 180ms,box-shadow 180ms;touch-action:none`)}>가속</button>
+      <Hold label="왼쪽으로 구르기" size={56} style="left:16px;bottom:18px" on={d => { btn.current.ccw = d }}><Arrow flip /></Hold>
+      <Hold label="오른쪽으로 구르기" size={56} style="left:80px;bottom:18px" on={d => { btn.current.cw = d }}><Arrow /></Hold>
+      <Hold label="감속" size={56} style="right:100px;bottom:18px" on={d => { btn.current.brake = d }}>감속</Hold>
+      <Hold label="가속" size={72} style="right:18px;bottom:18px" on={d => { btn.current.thrust = d }}>가속</Hold>
       {askTilt && (
         <button className="pr-96" onClick={allowTilt} style={css('position:absolute;left:50%;bottom:64px;transform:translateX(-50%);height:40px;padding:0 18px;border-radius:9999px;background:#fff;color:#000;font-size:14px;font-weight:700;white-space:nowrap')}>기울기로 조종 켜기</button>
       )}
-      <div style={css(`position:absolute;left:90px;right:100px;bottom:20px;text-align:center;color:#9aa6ba;font-size:13px;line-height:19px;pointer-events:none;transition:opacity 900ms;opacity:${hint ? 1 : 0};text-shadow:0 1px 3px rgba(0,0,0,0.8)`)}>
-        {tiltOn ? '핸들처럼 돌리면 방향이 바뀌고, 윗면을 몸쪽으로 당기면 위로·밀면 아래로 가요' : '마우스를 움직여 방향을 바꾸고, 누르고 있으면 가속해요 (방향키·Space도 돼요)'}
-      </div>
       {turnPhone && (
         <div style={css('position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#000;color:#fff;font-size:16px;font-weight:600')}>
           <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.4" /><path d="M11.5 18.5h1" /></svg>

@@ -16,7 +16,7 @@ const GAMES: [Game, string, string][] = [
   ['block', '블록 블라스트', '블록을 놓아 줄을 지워요. 가득 차면 끝나요'],
   ['flappy', '플래피 버드', '탭해서 날아 파이프 사이를 지나가요'],
   ['dino', '공룡 점프', '선인장과 새를 뛰어넘어요. 멀리 갈수록 빨라져요'],
-  ['space', '인터스텔라', '가로로 돌려 폰을 기울여 우주를 자유롭게 날아요. 행성·태양·블랙홀을 만나요'],
+  ['space', '인터스텔라', '레인저 1호로 우주를 날아 인듀어런스호를 찾아 도킹해요. 폰을 가로로 돌려 기울이면 돼요'],
 ]
 const BG: Record<Game, string> = { block: 'linear-gradient(180deg,#4a6fc4 0%,#2f4f9f 55%,#2a4790 100%)', flappy: '#4ec0ca', dino: '#ffffff', space: '#000000' }
 
