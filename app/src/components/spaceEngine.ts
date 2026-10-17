@@ -12,7 +12,7 @@ import { ATMOSPHERE, KIND_RADIUS, SATURN_RINGS, hash3, planetSprite, rngOf, smoo
 import { ENDURANCE_RING, LIGHT_COLORS, LIGHT_RING, LIGHT_STROBE, MATS, drawPicture, enduranceModel, rangerModel, rangerTexture, type Face } from './spaceModels'
 import { NOSE, PORT_Z, dockMetrics, dockVerdict, keyDir, wrapPi, type V } from './spaceDock'
 
-export type Input = { yaw: number; pitch: number; roll: number; rollStop: boolean; thrust: boolean; brake: boolean }
+export type Input = { yaw: number; pitch: number; roll: number; rollStop: boolean; thrust: boolean; brake: boolean; power: number }
 export type Engine = {
   attach(back: HTMLCanvasElement, front: HTMLCanvasElement, layer: HTMLElement): void
   detach(): void
@@ -20,7 +20,8 @@ export type Engine = {
   frame(now: number, inp: Input): void
   debug(): unknown
 }
-export type Callbacks = { speed: (metresPerSecond: number) => void; haptic: (pattern: number[]) => void }
+/** What the screen writes: the speed (m/s) and the distance to the nearest planet's surface (m). */
+export type Callbacks = { hud: (h: { speed: number; planet: number }) => void; haptic: (pattern: number[]) => void }
 
 type Body = { id: string; kind: Kind; x: number; y: number; z: number; r: number; seed: number; sprite: Sprite | null; ring: V | null }
 
@@ -45,15 +46,16 @@ const ROLL_ACC = 0.4 // rad/s² while a roll button is held (a tap of a tenth of
 const VMAX_CAP = 6e6 // the fastest the engines will take it (m/s), far from everything
 const HOLE_G = 1.5e7 // m/s² at a black hole's edge
 const SHIP_R = 7 // the Ranger's body, for hitting things
-const E_SPIN = 0.12 // the Endurance's turn (rad/s)
 const MAXN = 8
 const HOLE_IMG = { w: 600, h: 360, cx: 300, cy: 180 } // the film's picture: its size and the centre of the hole in it
 
-// the Endurance: where, and the axes of its own frame (ez out of its docking port, pointing back toward where the Ranger starts)
-const E_POS: V = [3400, 900, 22000]
-const E_Z = norm([-0.3, 0.2, -0.93])
-const E_X = norm(cross([0, 1, 0], E_Z))
-const E_Y = cross(E_Z, E_X)
+/** An Endurance: where, the axes of its own frame (z out of its docking port) and how far it has turned. */
+type Station = { p: V; x: V; y: V; z: V; spin: number; w: number; id: number }
+function makeStation(p: V, z0: V, spin: number, w: number, id: number): Station {
+  const z = norm(z0), x = norm(cross(Math.abs(z[1]) > 0.98 ? [1, 0, 0] : [0, 1, 0], z))
+  return { p, x, y: cross(z, x), z, spin, w, id }
+}
+const SPEED_SAFE = 1e13 // (not a limit anyone will meet: only so the numbers never run away)
 
 function makeBody(id: string, kind: Kind, p: V, r: number, seed: number): Body {
   const rnd = rngOf(seed)
@@ -79,8 +81,10 @@ export function createEngine(base: string, cb: Callbacks): Engine {
   // ---- the Ranger ----
   const ship = { p: [0, 0, 0] as V, v: [0, 0, 0] as V, f: [0, 0, 1] as V, u: [0, 1, 0] as V, r: [1, 0, 0] as V, wp: 0, wy: 0, wr: 0, thr: 0 }
   const cam = { p: [0, 0, -CAM_BACK] as V, f: [0, 0, 1] as V, u: [0, 1, 0] as V, roll: 0, r: [1, 0, 0] as V, uR: [0, 1, 0] as V, fv: [0, 0, 1] as V }
-  const E = { spin: 0 }
-  const dock = { on: false, t: 0, from: { p: [0, 0, 0] as V, f: [0, 0, 1] as V, u: [0, 1, 0] as V }, cool: 0, rollPrev: 0, rollT: 0, rate: 0, haveRoll: false, lights: [false, false, false, false] }
+  // the first Endurance, ahead of the start with its port facing back toward it; more appear as the Ranger flies on
+  const stations: Station[] = [makeStation([3400, 900, 22000], [-0.3, 0.2, -0.93], 0, 0.12, 0)]
+  let stationId = 1, spawnT = 0
+  const dock = { on: false, st: null as Station | null, t: 0, from: { p: [0, 0, 0] as V, f: [0, 0, 1] as V, u: [0, 1, 0] as V }, cool: 0, rollPrev: 0, rollT: 0, rate: 0, haveRoll: false, lights: [false, false, false, false] }
   let mode: 'fly' | 'swallow' = 'fly'
   const sw = { t: 0, rel: [0, 0, 0] as V, k: [0, 1, 0] as V, hole: null as Body | null, p: 0 }
   let elapsed = 0, hudAt = 0, lastTs = 1, flash = 0, shake = 0
@@ -163,11 +167,20 @@ export function createEngine(base: string, cb: Callbacks): Engine {
   // ---- flight ----
   /** The distance to the nearest thing that matters (metres). */
   function nearest() {
-    // the Endurance's hull: the spine (a rod) and the ring (a ring of modules), not its centre
-    const d3 = sub(ship.p, E_POS), lx = dot(d3, E_X), ly = dot(d3, E_Y), lz = dot(d3, E_Z), rho = Math.hypot(lx, ly)
-    let d = Math.max(3, Math.min(Math.hypot(rho, lz - clamp(lz, -36, PORT_Z + 2)) - 6.3, Math.hypot(rho - ENDURANCE_RING, lz) - 11))
+    let d = Infinity
+    // each Endurance's hull: the spine (a rod) and the ring (a ring of modules), not its centre
+    for (const S of stations) {
+      const d3 = sub(ship.p, S.p), lx = dot(d3, S.x), ly = dot(d3, S.y), lz = dot(d3, S.z), rho = Math.hypot(lx, ly)
+      d = Math.min(d, Math.max(3, Math.min(Math.hypot(rho, lz - clamp(lz, -36, PORT_Z + 2)) - 6.3, Math.hypot(rho - ENDURANCE_RING, lz) - 11)))
+    }
     for (const b of list) d = Math.min(d, Math.max(5, len(sub(ship.p, [b.x, b.y, b.z])) - b.r))
     return d
+  }
+  /** The nearest Endurance and how far its centre is. */
+  function nearStation(): { S: Station; d: number } | null {
+    let best: { S: Station; d: number } | null = null
+    for (const S of stations) { const d = len(sub(ship.p, S.p)); if (!best || d < best.d) best = { S, d } }
+    return best
   }
   const bump = (n: V, strength = 1) => {
     // a hard touch: kicked off, turning a little, the phone buzzes
@@ -178,8 +191,21 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     cb.haptic([70])
   }
 
-  function stepFlight(inp: Input, dt: number) {
-    // attitude
+  /** Where the segment p0 -> p1 first comes within `rad` of c: the fraction along it, or -1. */
+  function segHit(p0: V, p1: V, c: V, rad: number) {
+    const d = sub(p1, p0), m = sub(p0, c)
+    const c0 = dot(m, m) - rad * rad
+    if (c0 <= 0) return 0
+    const a = dot(d, d)
+    if (a < 1e-12) return -1
+    const b = dot(m, d), disc = b * b - a * c0
+    if (disc < 0) return -1
+    const t = (-b - Math.sqrt(disc)) / a
+    return t >= 0 && t <= 1 ? t : -1
+  }
+
+  /** Attitude and engines. There is no top speed: the push grows with the speed (and is `power` times as hard with the 속력 5배 패스). */
+  function stepControl(inp: Input, dt: number) {
     const kp = 1 - Math.exp(-dt * 5)
     ship.wp += (-inp.pitch * PITCH_MAX - ship.wp) * kp // pushed down = nose down
     ship.wy += (inp.yaw * YAW_MAX - ship.wy) * kp
@@ -187,15 +213,10 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     else ship.wr = clamp(ship.wr + inp.roll * ROLL_ACC * dt, -1.5, 1.5)
     turnShip(ship.wp * dt, ship.wy * dt, ship.wr * dt)
 
-    // engines: the flight computer caps the speed by what is near, and sets how hard the engines push
-    const dmin = nearest()
-    const vmax = clamp(0.08 * dmin, 0.35, VMAX_CAP)
-    const aT = clamp(0.6 * vmax, 0.5, 5e6)
+    // near things the engines push gently, so a docking can be done by hand; the push grows with the speed, so far from everything it climbs without end
+    const aT = clamp(0.6 * clamp(0.08 * nearest(), 0.35, VMAX_CAP), 0.5, 5e6)
     ship.thr += ((inp.thrust ? 1 : 0) - ship.thr) * (1 - Math.exp(-dt * 6))
-    if (inp.thrust) {
-      const vf = dot(ship.v, ship.f)
-      if (vf < vmax) ship.v = add(ship.v, mul(ship.f, Math.min(aT * dt, vmax - vf)))
-    }
+    if (inp.thrust) ship.v = add(ship.v, mul(ship.f, (aT + 0.35 * len(ship.v)) * inp.power * dt))
     if (inp.brake) {
       const sp = len(ship.v)
       if (sp > 0) ship.v = mul(ship.v, 1 - Math.min(sp, Math.max(aT, 0.6 * sp) * dt) / sp)
@@ -207,42 +228,64 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       const k = 1 - Math.exp(-dt / 2)
       const nv = add(mul(ship.v, 1 - k), mul(tgt, k))
       const nl = len(nv)
-      if (nl > 0) ship.v = mul(nv, sp / nl)
-    }
-
-    // a black hole pulls
-    for (const b of list) {
-      if (b.kind !== 'hole') continue
-      const d3 = sub([b.x, b.y, b.z], ship.p), d = len(d3)
-      if (d < b.r * 8) ship.v = add(ship.v, mul(norm(d3), HOLE_G * Math.pow(b.r / d, 2) * dt))
-      if (d < b.r * 1.35 && mode === 'fly') { // past the point of no return: it takes the ship in
-        mode = 'swallow'
-        sw.t = 0; sw.hole = b; sw.rel = sub(ship.p, [b.x, b.y, b.z])
-        const k = cross(sw.rel, [0, 1, 0])
-        sw.k = len(k) < 1e-3 * len(sw.rel) ? [1, 0, 0] : norm(k)
-      }
-    }
-    ship.p = add(ship.p, mul(ship.v, dt))
-
-    // solid things: planets
-    for (const b of list) {
-      if (b.kind === 'hole') continue
-      const d3 = sub(ship.p, [b.x, b.y, b.z]), d = len(d3)
-      if (d < b.r + 12) {
-        const n = norm(d3)
-        ship.p = add([b.x, b.y, b.z], mul(n, b.r + 12))
-        bump(n, 2)
-        ship.v = mul(ship.v, 0.6)
-      }
+      if (nl > 0) ship.v = mul(nv, Math.min(sp, SPEED_SAFE) / nl)
     }
   }
 
+  /** Moving: a black hole pulls; the path is tested whole, so even at a speed with no name the ship cannot skip through a planet. */
+  function stepMove(dt: number) {
+    const p0 = ship.p
+    for (const b of list) {
+      if (b.kind !== 'hole') continue
+      const d3 = sub([b.x, b.y, b.z], p0), d = len(d3)
+      if (d < b.r * 8 && d > 0) ship.v = add(ship.v, mul(norm(d3), HOLE_G * Math.pow(b.r / d, 2) * dt))
+    }
+    const p1 = add(p0, mul(ship.v, dt))
+    let hit: { t: number; b: Body } | null = null
+    for (const b of list) {
+      const t = segHit(p0, p1, [b.x, b.y, b.z], b.kind === 'hole' ? b.r * 1.35 : b.r + 12)
+      if (t >= 0 && (!hit || t < hit.t)) hit = { t, b }
+    }
+    if (!hit) { ship.p = p1; return }
+    const b = hit.b, c: V = [b.x, b.y, b.z], pt = add(p0, mul(sub(p1, p0), hit.t))
+    if (b.kind === 'hole') { // past the point of no return: it takes the ship in
+      ship.p = pt
+      mode = 'swallow'
+      sw.t = 0; sw.hole = b; sw.rel = sub(pt, c)
+      const k = cross(sw.rel, [0, 1, 0])
+      sw.k = len(k) < 1e-3 * len(sw.rel) ? [1, 0, 0] : norm(k)
+      return
+    }
+    // a planet is solid: the ship stops on its surface and is thrown back
+    const n = norm(sub(pt, c))
+    ship.p = add(c, mul(n, b.r + 12))
+    bump(n, 2)
+    ship.v = mul(ship.v, 0.6)
+  }
+
+  /** The Endurances appear as the Ranger flies: always one within 60 km, and now and then another further out. */
+  function manageStations(dt: number) {
+    spawnT += dt
+    if (spawnT < 2 || elapsed < 15) return
+    spawnT = 0
+    for (let i = stations.length - 1; i >= 0; i--) if (stations[i] !== dock.st && len(sub(stations[i].p, ship.p)) > 500000) stations.splice(i, 1)
+    let near = Infinity
+    for (const S of stations) near = Math.min(near, len(sub(S.p, ship.p)))
+    const spawn = (lo: number, hi: number) => {
+      const r = () => Math.random() * 2 - 1
+      const dir = norm(add(ship.f, mul(norm([r(), r(), r()]), 0.9))) // mostly ahead, where it is seen
+      stations.push(makeStation(add(ship.p, mul(dir, lo + Math.random() * (hi - lo))), [r(), r(), r()], Math.random() * TAU, 0.08 + Math.random() * 0.08, stationId++))
+    }
+    if (near > 60000) spawn(20000, 45000)
+    else if (stations.length < 5 && Math.random() < 0.3) spawn(30000, 90000)
+  }
+
   /** The Endurance: its docking test, the lights, and the hits. */
-  function stepEndurance(dt: number) {
-    E.spin += E_SPIN * dt
+  function stepStation(S: Station, dt: number) {
     dock.cool = Math.max(0, dock.cool - dt)
-    if (len(sub(ship.p, E_POS)) > 600) { dock.lights = [false, false, false, false]; dock.haveRoll = false; return }
-    const m = dockMetrics({ ship: ship.p, f: ship.f, u: ship.u, vel: ship.v, e: E_POS, ex: E_X, ey: E_Y, ez: E_Z, spin: E.spin })
+    if (len(sub(ship.p, S.p)) > 600) { if (dock.st === S) { dock.lights = [false, false, false, false]; dock.haveRoll = false } return }
+    if (dock.st !== S) { dock.st = S; dock.haveRoll = false }
+    const m = dockMetrics({ ship: ship.p, f: ship.f, u: ship.u, vel: ship.v, e: S.p, ex: S.x, ey: S.y, ez: S.z, spin: S.spin })
     // how fast the two keys are turning against each other: the change over a quarter of a second, so the noise of single frames does not count
     if (!dock.haveRoll) { dock.rate = 0; dock.rollPrev = m.roll; dock.rollT = elapsed; dock.haveRoll = true }
     else if (elapsed - dock.rollT >= 0.25) { dock.rate = wrapPi(m.roll - dock.rollPrev) / (elapsed - dock.rollT); dock.rollPrev = m.roll; dock.rollT = elapsed }
@@ -257,23 +300,23 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         ship.v = [0, 0, 0]; ship.wp = ship.wy = ship.wr = 0
         cb.haptic([30, 40, 30])
       } else {
-        ship.p = add(ship.p, mul(E_Z, 0.7 - m.h))
-        bump(E_Z, 1)
+        ship.p = add(ship.p, mul(S.z, 0.7 - m.h))
+        bump(S.z, 1)
       }
       return
     }
     // the hull: the spine, and the ring's modules (the ship as a ball at its centre)
-    const d3 = sub(ship.p, E_POS), lx = dot(d3, E_X), ly = dot(d3, E_Y), lz = dot(d3, E_Z)
+    const d3 = sub(ship.p, S.p), lx = dot(d3, S.x), ly = dot(d3, S.y), lz = dot(d3, S.z)
     const rho = Math.hypot(lx, ly)
     let n: V | null = null, over = 0
     if (lz > -36 && lz < PORT_Z + 2 && rho < 6.3 + SHIP_R) {
       const rr = rho || 1e-6
-      n = add(mul(E_X, lx / rr), mul(E_Y, ly / rr)); over = 6.3 + SHIP_R - rho
+      n = add(mul(S.x, lx / rr), mul(S.y, ly / rr)); over = 6.3 + SHIP_R - rho
     } else {
       const dr = Math.hypot(rho - ENDURANCE_RING, lz)
       if (dr < 11 + SHIP_R && rho > 20) {
         const rr = rho || 1e-6, q = dr || 1e-6
-        n = add(add(mul(E_X, (lx / rr) * ((rho - ENDURANCE_RING) / q)), mul(E_Y, (ly / rr) * ((rho - ENDURANCE_RING) / q))), mul(E_Z, lz / q))
+        n = add(add(mul(S.x, (lx / rr) * ((rho - ENDURANCE_RING) / q)), mul(S.y, (ly / rr) * ((rho - ENDURANCE_RING) / q))), mul(S.z, lz / q))
         over = 11 + SHIP_R - dr
       }
     }
@@ -281,11 +324,12 @@ export function createEngine(base: string, cb: Callbacks): Engine {
   }
 
   function stepDocked(inp: Input, dt: number) {
-    E.spin += E_SPIN * dt
+    const S = dock.st
+    if (!S) { dock.on = false; return }
     dock.t = Math.min(1, dock.t + dt / 0.9)
     const k = ease(dock.t)
     // where it ends up: the nose tip at the port's face, the Ranger's key on the port's key
-    const toP = add(E_POS, mul(E_Z, PORT_Z + NOSE)), toF = mul(E_Z, -1), toU = keyDir(E_X, E_Y, E.spin)
+    const toP = add(S.p, mul(S.z, PORT_Z + NOSE)), toF = mul(S.z, -1), toU = keyDir(S.x, S.y, S.spin)
     ship.p = dock.t < 1 ? add(mul(dock.from.p, 1 - k), mul(toP, k)) : toP
     const f = norm(add(mul(dock.from.f, 1 - k), mul(toF, k))), uu = add(mul(dock.from.u, 1 - k), mul(toU, k))
     const r = norm(cross(sub(uu, mul(f, dot(uu, f))), f))
@@ -295,8 +339,8 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     // pushing the engine lets go: a slow push away along the axis, still turning with the Endurance
     if (inp.thrust && dock.t >= 1) {
       dock.on = false; dock.cool = 4
-      ship.v = mul(E_Z, 1.5)
-      const du = mul(add(mul(E_X, -Math.cos(E.spin)), mul(E_Y, -Math.sin(E.spin))), E_SPIN)
+      ship.v = mul(S.z, 1.5)
+      const du = mul(add(mul(S.x, -Math.cos(S.spin)), mul(S.y, -Math.sin(S.spin))), S.w)
       ship.wr = dot(du, ship.r)
     }
   }
@@ -311,11 +355,19 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     elapsed += dt
     ensureSectors()
 
+    for (const S of stations) S.spin += S.w * dt
     if (mode === 'fly') {
+      manageStations(dt)
       if (dock.on) stepDocked(inp, dt)
-      else { stepFlight(inp, dt); stepEndurance(dt) }
+      else {
+        stepControl(inp, dt)
+        // near an Endurance the move is cut into steps a few metres long, so a fast ship cannot pass through it
+        const ns = nearStation(), close = !!ns && ns.d < 900
+        const steps = close ? clamp(Math.ceil((len(ship.v) * dt) / 3), 1, 80) : 1
+        for (let i = 0; i < steps && mode === 'fly' && !dock.on; i++) { stepMove(dt / steps); if (close && ns && mode === 'fly') stepStation(ns.S, dt / steps) }
+        if (!close && dock.st) { dock.lights = [false, false, false, false]; dock.haveRoll = false }
+      }
     } else if (sw.hole) {
-      E.spin += E_SPIN * dt
       // falling in: a spiral that tightens, the ship turned to face the hole and stretched along its fall
       const h = sw.hole, hp: V = [h.x, h.y, h.z]
       sw.t += dt
@@ -529,17 +581,17 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     }
 
     // ---- the ships ----
-    const lightOn = (id: number) => (id === LIGHT_STROBE ? t % 2 < 0.22 : true)
-    const ringGood = dock.lights
-    const lightColor = (id: number): [number, number, number] => (id >= LIGHT_RING && id < LIGHT_RING + 4 ? (ringGood[id - LIGHT_RING] ? [70, 255, 110] : [255, 60, 50]) : LIGHT_COLORS[id])
+    // each strobe flashes on its own beat; only the Endurance the Ranger is lining up on has its rings lit by how the approach goes
+    const lightOn = (id: number, S: Station | null) => (id === LIGHT_STROBE ? (t + (S ? S.id * 0.37 : 0)) % 2 < 0.22 : true)
+    const lightColor = (id: number, S: Station | null): [number, number, number] => (id >= LIGHT_RING && id < LIGHT_RING + 4 ? (S && dock.st === S && dock.lights[id - LIGHT_RING] ? [70, 255, 110] : [255, 60, 50]) : LIGHT_COLORS[id])
     const glows: { x: number; y: number; r: number; c: [number, number, number] }[] = []
-    const eDepth = dot(sub(E_POS, cam.p), CF)
+    // the Endurances drawn piece by piece: the two nearest that are more than a speck; the others are specks
+    const depthOf = (S: Station) => dot(sub(S.p, cam.p), CF)
+    const meshes = stations.filter(S => { const z = depthOf(S); return z > 1 && (ENDURANCE_RING * 1.3 * F) / z > 2.2 }).sort((a, b) => depthOf(a) - depthOf(b)).slice(0, 2)
     {
       const rg = rangerModel(), eg = enduranceModel()
-      // the Endurance is drawn piece by piece once it is more than a speck
-      const drawEndurance = eDepth > 1 && (ENDURANCE_RING * 1.3 * F) / eDepth > 2.2
-      const nR = rg.length
-      const P = scratch.P(rg.length + eg.length), dep = scratch.dep(rg.length + eg.length), nrm = scratch.nrm(rg.length + eg.length), cen = scratch.cen(rg.length + eg.length)
+      const nR = rg.length, tot = rg.length + 2 * eg.length
+      const P = scratch.P(tot), dep = scratch.dep(tot), nrm = scratch.nrm(tot), cen = scratch.cen(tot)
       const vis = scratch.vis
       vis.length = 0
       const out = [0, 0, 0]
@@ -582,7 +634,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       }
       const stretch = mode === 'swallow' ? 1 + 3.5 * sw.p * sw.p : 1, squeeze = mode === 'swallow' ? Math.max(0.25, 1 - 0.75 * sw.p) : 1
       place(rg, 0, ship.r, ship.u, ship.f, ship.p, 0, stretch, squeeze)
-      if (drawEndurance) place(eg, nR, E_X, E_Y, E_Z, E_POS, E.spin, 1, 1)
+      meshes.forEach((S, k) => place(eg, nR + k * eg.length, S.x, S.y, S.z, S.p, S.spin, 1, 1))
       vis.sort((p, q) => dep[q] - dep[p])
 
       const tex = scratch.tex ?? (scratch.tex = rangerTexture())
@@ -590,12 +642,13 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       fx.lineJoin = 'round'
       for (const id of vis) {
         const isR = id < nR
-        const fc = isR ? rg[id] : eg[id - nR], o = id * MAXN * 2
+        const fc = isR ? rg[id] : eg[(id - nR) % eg.length], o = id * MAXN * 2
+        const owner = isR ? null : meshes[Math.floor((id - nR) / eg.length)]
         fx.globalAlpha = isR ? alphaShip : 1
         const nx = nrm[id * 3], ny = nrm[id * 3 + 1], nz = nrm[id * 3 + 2]
         if (fc.light >= 0) {
-          if (!lightOn(fc.light)) continue
-          const col = lightColor(fc.light)
+          if (!lightOn(fc.light, owner)) continue
+          const col = lightColor(fc.light, owner)
           fx.beginPath(); fx.moveTo(P[o], P[o + 1])
           for (let i = 1; i < fc.k; i++) fx.lineTo(P[o + i * 2], P[o + i * 2 + 1])
           fx.closePath()
@@ -692,13 +745,14 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         fx.fillStyle = g
         fx.beginPath(); fx.arc(gl.x, gl.y, gl.r, 0, TAU); fx.fill()
       }
-      // the Endurance far off: a speck in the sun, with its strobe
-      if (!drawEndurance && eDepth > 1) {
-        proj(E_POS, sp)
+      // the Endurances far off: a speck in the sun, with a strobe
+      for (const S of stations) {
+        if (meshes.includes(S) || depthOf(S) <= 1) continue
+        proj(S.p, sp)
         if (sp[0] > -10 && sp[0] < W + 10 && sp[1] > -10 && sp[1] < H + 10) {
           fx.fillStyle = 'rgba(225,232,255,0.9)'
           fx.beginPath(); fx.arc(sp[0], sp[1], 1.5, 0, TAU); fx.fill()
-          if (t % 2 < 0.22) {
+          if ((t + S.id * 0.37) % 2 < 0.22) {
             const g = fx.createRadialGradient(sp[0], sp[1], 0, sp[0], sp[1], 9)
             g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(1, 'rgba(255,255,255,0)')
             fx.fillStyle = g
@@ -743,7 +797,12 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     }
     if (flash > 0.01) { fx.fillStyle = `rgba(255,255,255,${clamp(flash, 0, 1)})`; fx.fillRect(0, 0, W, H) }
 
-    if (t - hudAt > 0.1) { hudAt = t; cb.speed(dock.on ? 0 : len(ship.v)) }
+    if (t - hudAt > 0.1) {
+      hudAt = t
+      let planet = Infinity
+      for (const b of list) planet = Math.min(planet, Math.max(0, len(sub(ship.p, [b.x, b.y, b.z])) - b.r))
+      cb.hud({ speed: dock.on ? 0 : len(ship.v), planet })
+    }
   }
 
   // buffers for drawing the ships, made once for the models
@@ -777,6 +836,6 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       if (front) { front.width = Math.round(w * d); front.height = Math.round(h * d) }
     },
     frame,
-    debug: () => ({ ship, E: { pos: E_POS, x: E_X, y: E_Y, z: E_Z, spin: E.spin }, dock, metrics: dockMetrics({ ship: ship.p, f: ship.f, u: ship.u, vel: ship.v, e: E_POS, ex: E_X, ey: E_Y, ez: E_Z, spin: E.spin }), mode, bodies: list.map(b => ({ id: b.id, kind: b.kind, x: b.x, y: b.y, z: b.z, r: b.r })) }),
+    debug: () => { const S = dock.st ?? nearStation()?.S ?? stations[0]; return { ship, E: { pos: S.p, x: S.x, y: S.y, z: S.z, spin: S.spin }, stations: stations.map(x => ({ id: x.id, p: x.p })), dock, metrics: dockMetrics({ ship: ship.p, f: ship.f, u: ship.u, vel: ship.v, e: S.p, ex: S.x, ey: S.y, ez: S.z, spin: S.spin }), mode, bodies: list.map(b => ({ id: b.id, kind: b.kind, x: b.x, y: b.y, z: b.z, r: b.r })) } },
   }
 }

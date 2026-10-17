@@ -61,18 +61,21 @@ export type TiltSensor = {
   stop(): void
   /** The phone's way of being held now becomes the middle. */
   recenter(): void
+  /** Reads the tilt as if the screen were turned this way (null: as the browser says): for a game drawn turned on a phone held upright. */
+  setAngle(angle: number | null): void
   /** The latest push (x: right, y: down), or null when nothing is coming. */
   read(): Tilt | null
 }
 
 export function createTilt(): TiltSensor {
   let on = false
+  let forced: number | null = null
   let base: { roll: number; nod: number; angle: number } | null = null
   let roll = 0, nod = 0, have = false, at = 0, push2: Tilt = { x: 0, y: 0 }
 
   const onOrient = (e: DeviceOrientationEvent) => {
     if (e.beta == null || e.gamma == null) return
-    const angle = screenAngle()
+    const angle = forced ?? screenAngle()
     const r = rollAndNod(upOnScreen(e.beta, e.gamma, angle))
     // a little smoothing, so the sensor's noise does not reach the ship
     if (!have) { roll = r.roll; nod = r.nod; have = true } else { roll += (r.roll - roll) * 0.4; nod += wrap180(r.nod - nod) * 0.4 }
@@ -97,6 +100,7 @@ export function createTilt(): TiltSensor {
     },
     stop() { window.removeEventListener('deviceorientation', onOrient); on = false; base = null; have = false },
     recenter() { base = null },
+    setAngle(angle) { forced = angle; base = null },
     read: () => (on && performance.now() - at < FRESH_MS ? push2 : null),
   }
 }

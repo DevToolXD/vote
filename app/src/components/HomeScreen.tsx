@@ -24,7 +24,7 @@ const GAMES: [Game, string, string][] = [
 const BG: Record<Game, string> = { block: 'linear-gradient(180deg,#4a6fc4 0%,#2f4f9f 55%,#2a4790 100%)', flappy: '#4ec0ca', dino: '#ffffff', space: '#000000' }
 
 /** 게임 tab: the three games as a list; one opens in place, with ‹ 게임 to come back. */
-function Games({ onOpen }: { onOpen: (open: boolean) => void }) {
+function Games({ onOpen, speedPass }: { onOpen: (open: boolean) => void; speedPass: boolean }) {
   const [game, setGame] = useState<Game | null>(null)
   const set = (g: Game | null) => { setGame(g); onOpen(g !== null) }
   if (game) {
@@ -35,7 +35,7 @@ function Games({ onOpen }: { onOpen: (open: boolean) => void }) {
           {game === 'block' && <BlockBlast />}
           {game === 'flappy' && <FlappyBird />}
           {game === 'dino' && <DinoGame />}
-          {game === 'space' && <Suspense fallback={<div style={css('flex:1;background:#000')} />}><SpaceGame /></Suspense>}
+          {game === 'space' && <Suspense fallback={<div style={css('flex:1;background:#000')} />}><SpaceGame speedPass={speedPass} /></Suspense>}
         </div>
       </div>
     )
@@ -60,7 +60,7 @@ function Games({ onOpen }: { onOpen: (open: boolean) => void }) {
  * 홈 tab: 랭킹 · 게임 · 공지 under one title, the profile at the top right (it opens 계정); for the admin, 관리 just left of it.
  * The content is given in `rank` and `notice`; 게임 is here.
  */
-export function HomeScreen({ sub, onSub, me, loggedIn, onProfile, onAdmin, rank, notice }: { sub: HomeTab; onSub: (t: HomeTab) => void; me?: Person; loggedIn: boolean; onProfile: () => void; onAdmin?: () => void; rank: ReactNode; notice: ReactNode }) {
+export function HomeScreen({ sub, onSub, me, loggedIn, onProfile, onAdmin, speedPass = false, rank, notice }: { speedPass?: boolean; sub: HomeTab; onSub: (t: HomeTab) => void; me?: Person; loggedIn: boolean; onProfile: () => void; onAdmin?: () => void; rank: ReactNode; notice: ReactNode }) {
   const [playing, setPlaying] = useState(false)
   return (
     <div data-ios="" style={css('flex:1;min-height:0;display:flex;flex-direction:column;background:#fff')}>
@@ -82,7 +82,7 @@ export function HomeScreen({ sub, onSub, me, loggedIn, onProfile, onAdmin, rank,
       {!(sub === 'game' && playing) && <div style={css('flex:none;padding:0 20px 10px')}><Segmented label="홈" items={SUBS} value={sub} onChange={t => { onSub(t); if (t !== 'game') setPlaying(false) }} /></div>}
       <div key={sub} style={css('flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;animation:pageIn 380ms cubic-bezier(0.32,0.72,0,1) both')}>
         {sub === 'rank' && rank}
-        {sub === 'game' && <Games onOpen={setPlaying} />}
+        {sub === 'game' && <Games onOpen={setPlaying} speedPass={speedPass} />}
         {sub === 'notice' && notice}
       </div>
     </div>

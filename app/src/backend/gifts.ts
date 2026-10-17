@@ -4,7 +4,7 @@ import {
 } from 'firebase/firestore'
 import { postGift, type ChatRow } from './messages'
 import { FRAMES, SKINS, priceOf, seriesItems, seriesPrice, type ItemKind } from '../data'
-import { FAKE_PASS_PRICE, PASS_PRICE, type PassKind } from './types'
+import { FAKE_PASS_PRICE, PASS_PRICE, SPEED_PASS_PRICE, type PassKind } from './types'
 
 /** What can be traded one by one (당근마켓): a single piece, or a pass. */
 export type TradeKind = ItemKind | 'pass'
@@ -13,10 +13,10 @@ export type TradeKind = ItemKind | 'pass'
  * Single pieces were giftable before; gifts like that already sent can still be taken.
  */
 export type GiftKind = TradeKind | 'set'
-const PASS_NAME: Record<PassKind, string> = { pass2x: '투표 2배권', passFake: '페이크 선물 패스' }
-export const giftPrice = (kind: GiftKind, key: string) => (kind === 'pass' ? (key === 'pass2x' ? PASS_PRICE : FAKE_PASS_PRICE) : kind === 'set' ? seriesPrice(key) : priceOf(kind, key))
+const PASS_NAME: Record<PassKind, string> = { pass2x: '투표 2배권', passFake: '페이크 선물 패스', passSpeed: '속력 5배 패스' }
+export const giftPrice = (kind: GiftKind, key: string) => (kind === 'pass' ? (key === 'pass2x' ? PASS_PRICE : key === 'passSpeed' ? SPEED_PASS_PRICE : FAKE_PASS_PRICE) : kind === 'set' ? seriesPrice(key) : priceOf(kind, key))
 /** Does this person already have it? (then they can't take it) */
-export const hasGift = (who: { owned?: Partial<Record<ItemKind, string[]>>; pass2x?: boolean | number; passFake?: boolean } | undefined, kind: GiftKind, key: string) =>
+export const hasGift = (who: { owned?: Partial<Record<ItemKind, string[]>>; pass2x?: boolean | number; passFake?: boolean; passSpeed?: boolean } | undefined, kind: GiftKind, key: string) =>
   !!who && (kind === 'pass' ? !!who[key as PassKind] : kind === 'set' ? seriesItems(key).every(([k, x]) => !!who.owned?.[k]?.includes(x)) : !!who.owned?.[kind]?.includes(key))
 
 // 포인트 선물 in chats. Sending holds the points (spent += amount); in a 1:1 only

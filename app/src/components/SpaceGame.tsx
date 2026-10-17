@@ -18,6 +18,14 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 const dead = (v: number) => (Math.abs(v) < DEAD ? 0 : clamp(v, -1, 1))
 const shape = (v: number) => Math.sign(v) * Math.pow(Math.abs(v), 1.6) // fine near the middle: the last degrees of an approach are small pushes
 
+/** A distance in words: metres when near, kilometres when not. */
+export function fmtDistance(m: number) {
+  if (!Number.isFinite(m)) return '-'
+  if (m < 1000) return `${Math.round(m)} m`
+  const k = m / 1000
+  return `${k < 100 ? k.toFixed(1) : Math.round(k).toLocaleString('ko-KR')} km`
+}
+
 /** A speed in words: metres a second when slow, kilometres a second when fast. */
 export function fmtSpeed(v: number) {
   if (v < 1000) return `${v < 10 ? v.toFixed(2) : v < 100 ? v.toFixed(1) : Math.round(v)} m/s`
@@ -43,12 +51,15 @@ const Arrow = ({ flip }: { flip?: boolean }) => (
 )
 
 /** 인터스텔라: fly the Ranger 1. */
-export function SpaceGame() {
+export function SpaceGame({ speedPass = false }: { speedPass?: boolean }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const backRef = useRef<HTMLCanvasElement>(null)
   const frontRef = useRef<HTMLCanvasElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
   const speedRef = useRef<HTMLDivElement>(null)
+  const planetRef = useRef<HTMLDivElement>(null)
+  const powerRef = useRef(1)
+  powerRef.current = speedPass ? 5 : 1 // the 속력 5배 패스: the engines push five times as hard
   const engine = useRef<Engine | null>(null)
   const aim = useRef<V2 | null>(null) // the mouse, or a finger on the screen, from the middle of the game
   const touching = useRef(false)
@@ -58,7 +69,11 @@ export function SpaceGame() {
   const [tiltOn, setTiltOn] = useState(false)
   const [askTilt, setAskTilt] = useState(false) // iOS: the tilt is allowed with a tap
   const [coarse] = useState(() => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) // a touch screen: a phone
-  const [portrait, setPortrait] = useState(false)
+  const [box, setBox] = useState({ w: 0, h: 0 }) // the area the game has, as the page gives it
+  // On a phone held upright the game is drawn turned a quarter, so it is in landscape from the first moment, whatever the phone's rotation lock
+  // says, and nothing stops when the phone is turned. (A computer's window is never turned.)
+  const rotated = coarse && box.h > box.w
+  useEffect(() => { sensor.setAngle(rotated ? 90 : null) }, [rotated, sensor]) // the content's top is the phone's right edge: the same as the screen turned to 90
   const [full, setFull] = useState(false) // the browser's own fullscreen
   const [fake, setFake] = useState(false) // where the browser has no fullscreen (iPhone): the game covers the whole screen instead
 
@@ -116,7 +131,10 @@ export function SpaceGame() {
   const readAim = (e: { clientX: number; clientY: number }) => {
     const r = rootRef.current?.getBoundingClientRect()
     if (!r) return
-    aim.current = { x: dead((e.clientX - r.left - r.width / 2) / (r.width / 2)), y: dead((e.clientY - r.top - r.height / 2) / (r.height / 2)) }
+    if (rotated) { // the game's right is the screen's down, its down the screen's left
+      const u = e.clientY - r.top, v = r.width - (e.clientX - r.left)
+      aim.current = { x: dead((u - r.height / 2) / (r.height / 2)), y: dead((v - r.width / 2) / (r.width / 2)) }
+    } else aim.current = { x: dead((e.clientX - r.left - r.width / 2) / (r.width / 2)), y: dead((e.clientY - r.top - r.height / 2) / (r.height / 2)) }
   }
   const endTouch = () => { touching.current = false; aim.current = null }
 
@@ -125,14 +143,18 @@ export function SpaceGame() {
     const root = rootRef.current, back = backRef.current, front = frontRef.current, layer = layerRef.current
     if (!root || !back || !front || !layer) return
     const eng = engine.current ?? (engine.current = createEngine(import.meta.env.BASE_URL, {
-      speed: v => { if (speedRef.current) speedRef.current.textContent = `속도 ${fmtSpeed(v)}` },
+      hud: h => {
+        if (speedRef.current) speedRef.current.textContent = `속도 ${fmtSpeed(h.speed)}`
+        if (planetRef.current) planetRef.current.textContent = `행성까지 ${fmtDistance(h.planet)}`
+      },
       haptic: p => { try { navigator.vibrate?.(p) } catch { /* no vibration */ } },
     }))
     eng.attach(back, front, layer)
     if (new URLSearchParams(location.search).has('spacedebug')) (window as unknown as { __space?: Engine }).__space = eng // for testing
     const fit = () => {
-      eng.resize(root.clientWidth, root.clientHeight, Math.min(window.devicePixelRatio || 1, 1.5)) // (sharper than that costs a lot to draw on a phone)
-      setPortrait(root.clientWidth < root.clientHeight)
+      const w = root.clientWidth, h = root.clientHeight, turned = coarse && h > w
+      eng.resize(turned ? h : w, turned ? w : h, Math.min(window.devicePixelRatio || 1, 1.5)) // (sharper than that costs a lot to draw on a phone)
+      setBox(b => (b.w === w && b.h === h ? b : { w, h }))
     }
     fit()
     const ro = new ResizeObserver(fit)
@@ -159,6 +181,7 @@ export function SpaceGame() {
         rollStop: cw && ccw,
         thrust: b.thrust || b.mouse || k.held.has('Space') || k.held.has('ShiftLeft') || k.held.has('ShiftRight'),
         brake: b.brake || k.held.has('KeyX') || k.held.has('KeyC') || k.held.has('ControlLeft'),
+        power: powerRef.current,
       })
     }
     const stop = () => { cancelAnimationFrame(raf); raf = 0 }
@@ -167,10 +190,8 @@ export function SpaceGame() {
     document.addEventListener('visibilitychange', onVis)
     start()
     return () => { stop(); ro.disconnect(); document.removeEventListener('visibilitychange', onVis); eng.detach() }
-  }, [fake, sensor])
+  }, [fake, sensor, coarse])
 
-  // a phone held upright cannot be flown: the game asks for landscape (a computer's window is never upright here)
-  const turnPhone = coarse && portrait
   const touchSteers = !tiltOn // with the tilt on, the screen is only touched for the buttons
   const game = (
     <div ref={rootRef} style={css('position:relative;flex:1;min-height:0;overflow:hidden;background:#000;touch-action:none;user-select:none')}
@@ -182,10 +203,14 @@ export function SpaceGame() {
       onPointerUp={e => { if (e.pointerType === 'touch') endTouch(); if (e.pointerType === 'mouse') btn.current.mouse = false }}
       onPointerCancel={() => { endTouch(); btn.current.mouse = false }}
       onPointerLeave={e => { if (!touching.current) aim.current = null; if (e.pointerType === 'mouse') btn.current.mouse = false }}>
+      <div style={css(rotated ? `position:absolute;left:100%;top:0;width:${box.h}px;height:${box.w}px;transform-origin:0 0;transform:rotate(90deg);overflow:hidden` : 'position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden')}>
       <canvas ref={backRef} style={css('position:absolute;left:0;top:0;width:100%;height:100%;display:block')} />
       <div ref={layerRef} style={css('position:absolute;left:0;top:0;width:100%;height:100%;overflow:hidden;pointer-events:none')} />
       <canvas ref={frontRef} style={css('position:absolute;left:0;top:0;width:100%;height:100%;display:block')} />
-      <div ref={speedRef} style={css('position:absolute;left:16px;top:12px;color:#fff;font-size:14px;font-weight:600;line-height:18px;font-variant-numeric:tabular-nums;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.8)')}>속도 0.00 m/s</div>
+      <div style={css('position:absolute;left:16px;top:12px;color:#fff;font-size:14px;font-weight:600;line-height:19px;font-variant-numeric:tabular-nums;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.8)')}>
+        <div ref={speedRef}>속도 0.00 m/s</div>
+        <div ref={planetRef}>행성까지 -</div>
+      </div>
       <div style={css('position:absolute;right:12px;top:10px;display:flex;gap:8px')}>
         <button className="pr-96" onClick={toggleFull} style={css(BTN)}>{full || fake ? '나가기' : '전체화면'}</button>
         {tiltOn && <button className="pr-96" onClick={() => sensor.recenter()} style={css(BTN)}>가운데로</button>}
@@ -197,12 +222,7 @@ export function SpaceGame() {
       {askTilt && (
         <button className="pr-96" onClick={allowTilt} style={css('position:absolute;left:50%;bottom:64px;transform:translateX(-50%);height:40px;padding:0 18px;border-radius:9999px;background:#fff;color:#000;font-size:14px;font-weight:700;white-space:nowrap')}>기울기로 조종 켜기</button>
       )}
-      {turnPhone && (
-        <div style={css('position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#000;color:#fff;font-size:16px;font-weight:600')}>
-          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.4" /><path d="M11.5 18.5h1" /></svg>
-          폰을 가로로 돌려 주세요
-        </div>
-      )}
+      </div>
     </div>
   )
   if (!fake) return game
