@@ -140,7 +140,7 @@ function mediaSession() {
   const ms = (navigator as Navigator & { mediaSession?: MediaSession }).mediaSession
   if (!ms || !song) return
   try {
-    ms.metadata = new MediaMetadata({ title: song.title, artist: state.artist || 'Spotify', artwork: [{ src: thumbOf(song.id), sizes: '480x360', type: 'image/jpeg' }] })
+    ms.metadata = new MediaMetadata({ title: song.title, artist: state.artist || 'Spotify', artwork: [{ src: thumbOf(song.id, true), sizes: '480x360', type: 'image/jpeg' }] })
     ms.setActionHandler('play', () => resumeMusic())
     ms.setActionHandler('pause', () => pauseMusic())
     ms.setActionHandler('previoustrack', () => prevMusic())

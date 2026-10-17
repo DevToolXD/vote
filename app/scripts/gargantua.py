@@ -4,7 +4,7 @@
 disk, the way the film's picture is made (light bends round the hole, so the far side of the disk shows
 up over the top and again, thinner, under it; the photon ring; the near side crossing in front).
 
-  python3 scripts/gargantua.py            writes public/garg/gargantua.v4.webp (an animated, transparent loop)
+  python3 scripts/gargantua.py            writes public/garg/gargantua.v5.webp (an animated, transparent loop)
   python3 scripts/gargantua.py preview    writes preview PNGs next to it in the scratch dir given by $OUT
 
 How it works (M = 1, the hole's shadow has radius b_c = 3√3):
@@ -279,10 +279,11 @@ if __name__ == '__main__':
     frames = []
     for i in range(FRAMES):
         f = frame(geo, i)
-        f[f[..., 3] == 0, :3] = 0
+        # the faintest haze (alpha under 12) is cut: it costs a lot of bytes and shows as blotches in the clear centre
+        f[f[..., 3] < 12, :] = 0
         frames.append(Image.fromarray(f, 'RGBA'))
         print('frame', i, flush=True)
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, 'gargantua.v4.webp')
-    frames[0].save(path, save_all=True, append_images=frames[1:], duration=MS, loop=0, lossless=False, quality=88, method=5, minimize_size=False)
+    path = os.path.join(out_dir, 'gargantua.v5.webp')
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=MS, loop=0, lossless=False, quality=66, alpha_quality=72, method=4, minimize_size=False)   # (760 KB; the alpha channel is most of the size)
     print(path, os.path.getsize(path) // 1024, 'KB')

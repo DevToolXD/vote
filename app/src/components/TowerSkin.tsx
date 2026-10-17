@@ -282,7 +282,7 @@ function GargantuaBar({ flip }: { flip: boolean }) {
       {/* the hole at the tip: its black shadow, and over it the disk's picture (clear where the light falls in) */}
       <span style={css('position:absolute;left:50%;top:0;width:0;height:0')}>
         <span style={{ position: 'absolute', left: -SHADOW, top: -SHADOW, width: SHADOW * 2, height: SHADOW * 2, borderRadius: '50%', background: '#000' }} />
-        <span style={{ position: 'absolute', left: -SPRITE_W / 2, top: -SPRITE_H / 2, width: SPRITE_W, height: SPRITE_H, backgroundImage: 'url(garg/gargantua.v4.webp)', backgroundSize: '100% 100%', ...GA_TAIL_FADE }} />
+        <span style={{ position: 'absolute', left: -SPRITE_W / 2, top: -SPRITE_H / 2, width: SPRITE_W, height: SPRITE_H, backgroundImage: 'url(garg/gargantua.v5.webp)', backgroundSize: '100% 100%', ...GA_TAIL_FADE }} />
       </span>
       {GA_MOTES.map(([left, dur, delay, c]) => (
         <span key={left} className="aura-spark" style={{ ...css('position:absolute;bottom:8%;width:2px;height:2px;margin-left:-1px;border-radius:50%;opacity:0'), left, background: c, boxShadow: `0 0 4px ${c},0 0 8px rgba(255,190,120,0.8)`, animation: `auraSpark ${dur}s ease-out ${delay}s infinite` }} />

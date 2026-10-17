@@ -26,7 +26,8 @@ export function youtubeId(input: string): string | null {
   return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null
 }
 
-export const thumbOf = (id: string) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`
+/** The picture of a video: the small 16:9 one (about 8 KB) for lists, the big one (about 25 KB) for the lock screen. */
+export const thumbOf = (id: string, big = false) => `https://i.ytimg.com/vi/${id}/${big ? 'hqdefault' : 'mqdefault'}.jpg`
 
 export function watchSongs(db: Firestore, cb: (songs: Song[]) => void): Unsubscribe {
   return onSnapshot(query(collection(db, 'songs'), orderBy('at', 'desc'), limit(300)), snap => {

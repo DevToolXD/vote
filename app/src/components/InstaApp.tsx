@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { LazyImg } from './LazyImg'
+import { LazyImg, useNear } from './LazyImg'
+import { slowNet } from '../net'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
 import { Avatar as ProfilePic } from './Avatar'
@@ -7,7 +8,7 @@ import { InstaMessages } from './InstaMessages'
 import { isUnread, type ChatRow } from '../backend/messages'
 import type { Person } from '../model'
 import { rankPosts } from '../backend/feed'
-import { addPost, addPostComment, countPostView, removePost, removePostComment, setPostLiked, shrinkPhoto, watchPostComments, watchPosts, type Post, type PostComment } from '../backend/posts'
+import { POSTS_PAGE, addPost, addPostComment, countPostView, loadOlderPosts, removePost, removePostComment, setPostLiked, shrinkPhoto, watchPostComments, watchPosts, type Post, type PostComment } from '../backend/posts'
 
 // 인스타그램, laid out like the real one: 홈 (stories row + feed), 릴스 (one post per screen, swipe up),
 // 검색 (a grid with the views), 메시지 (Instagram-style, on the app's own chats), 프로필 (my posts), and the
@@ -97,10 +98,24 @@ function Comments({ db, post, uid, name, who, isAdmin, onToast }: { db: Firestor
   )
 }
 
+/** At the end of a list: when it comes near, the next page is asked for (one per page, so it is made again each time). */
+function MoreSentinel({ onNear }: { onNear: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const near = useNear(ref, 1400)
+  useEffect(() => { if (near) onNear() }, [near]) // eslint-disable-line react-hooks/exhaustive-deps
+  return <div ref={ref} style={css('height:1px;flex:none')} />
+}
+
 export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdmin = false, onLogin, onToast, onProfile }: Props) {
   const name = me?.name ?? ''
   const who: Who = { byId }
-  const [posts, setPosts] = useState<Post[] | null>(null)
+  // the newest photos live, older pages one at a time as the end of the list comes near (every photo carries its picture: a long list is a lot of data)
+  const page = slowNet() ? 8 : POSTS_PAGE
+  const [live, setLive] = useState<Post[] | null>(null)
+  const [older, setOlder] = useState<Post[]>([])
+  const [more, setMore] = useState(true)
+  const loadingMore = useRef(false)
+  const posts = useMemo(() => (live ? [...live, ...older.filter(o => !live.some(l => l.id === o.id))] : null), [live, older])
   const [tab, setTab] = useState<Tab>('home')
   const [detail, setDetail] = useState<string | null>(null)
   const [upload, setUpload] = useState(false)
@@ -110,11 +125,38 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
   const [q, setQ] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => (db && uid ? watchPosts(db, setPosts) : undefined), [db, uid])
+  useEffect(() => (db && uid ? watchPosts(db, setLive, page) : undefined), [db, uid]) // eslint-disable-line react-hooks/exhaustive-deps
+  const loadMore = async () => {
+    const last = posts?.[posts.length - 1]
+    if (!db || !last || !more || loadingMore.current) return
+    loadingMore.current = true
+    try {
+      const got = await loadOlderPosts(db, last, page)
+      setOlder(o => [...o, ...got.filter(g => !o.some(x => x.id === g.id))])
+      if (got.length < page) setMore(false)
+    } catch { /* offline: tried again when the end comes near again */ } finally { loadingMore.current = false }
+  }
   const open = posts?.find(p => p.id === detail) ?? null
-  // 알고리즘 (backend/feed.ts): the order is worked out when photos come or go, not at every heart, so the feed doesn't jump under a finger
-  const idsKey = posts?.map(p => p.id).join() ?? ''
-  const order = useMemo(() => (posts ? rankPosts(posts, uid).map(r => r.post.id) : null), [idsKey, uid]) // eslint-disable-line react-hooks/exhaustive-deps
+  // 알고리즘 (backend/feed.ts): the order is worked out when new photos come or go, not at every heart, so the feed doesn't
+  // jump under a finger; an older page that is loaded goes after what is already there
+  const liveKey = live?.map(p => p.id).join() ?? ''
+  const orderRef = useRef<{ liveKey: string; ids: string[]; n: number }>({ liveKey: '', ids: [], n: 0 })
+  const order = useMemo(() => {
+    if (!posts || !live) return null
+    const o = orderRef.current
+    if (o.liveKey !== liveKey || older.length < o.n) {
+      const ids = rankPosts(posts, uid).map(r => r.post.id)
+      orderRef.current = { liveKey, ids, n: older.length }
+      return ids
+    }
+    if (older.length > o.n) {
+      const known = new Set(o.ids)
+      const ids = [...o.ids, ...rankPosts(posts, uid).map(r => r.post.id).filter(id => !known.has(id))]
+      orderRef.current = { liveKey, ids, n: older.length }
+      return ids
+    }
+    return o.ids
+  }, [liveKey, older, uid]) // eslint-disable-line react-hooks/exhaustive-deps
   const ranked = useMemo(() => {
     if (!posts || !order) return posts
     const m = new Map(posts.map(p => [p.id, p]))
@@ -216,6 +258,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
             {p.caption && <p style={css('margin:8px 14px 0;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}><b>{nameOf(who, p.uid, p.name)}</b> {p.caption}</p>}
           </article>
         ))}
+        {more && ranked && ranked.length > 0 && <MoreSentinel key={`${liveKey}${older.length}`} onNear={loadMore} />}
       </div>
     </>
   )
@@ -238,6 +281,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
             </button>
           ))}
         </div>
+        {more && !q.trim() && found.length > 0 && <MoreSentinel key={`${liveKey}${older.length}`} onNear={loadMore} />}
       </div>
     </>
   )
@@ -278,6 +322,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
       ) : (
         <div style={css('position:absolute;inset:0;overflow-y:scroll;scroll-snap-type:y mandatory')}>
           {ranked?.map(p => <Reel key={p.id} db={db} uid={uid} who={who} post={p} onLike={() => like(p)} onComment={() => setDetail(p.id)} />)}
+          {more && <MoreSentinel key={`${liveKey}${older.length}`} onNear={loadMore} />}
         </div>
       )}
       <div style={css('position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:center;padding:calc(var(--phone-top,54px) - 34px) 16px 0;pointer-events:none;z-index:2')}>

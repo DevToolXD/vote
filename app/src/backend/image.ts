@@ -31,8 +31,8 @@ export function fileToPhotoDataUrl(file: File, maxDim = 128, quality = 0.7): Pro
 export const MAX_CHAT_IMAGE = 700_000
 
 /**
- * Chat photos: keeps the aspect ratio, shrinks the long side to ≤1280px and
- * lowers quality until the JPEG data URL fits MAX_CHAT_IMAGE.
+ * Chat photos: keeps the aspect ratio and is made small to save data (the sender's and everyone who opens the chat):
+ * the long side ≤1024px, lowered until the JPEG data URL is about 150 KB (it only has to fit MAX_CHAT_IMAGE at the very least).
  */
 export function fileToChatImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -43,7 +43,8 @@ export function fileToChatImage(file: File): Promise<string> {
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d')
       if (!ctx) { reject(new Error('canvas-unsupported')); return }
-      for (const [side, q] of [[1280, 0.75], [1024, 0.68], [800, 0.6], [640, 0.55]] as const) {
+      let last = ''
+      for (const [side, q] of [[1024, 0.72], [900, 0.64], [800, 0.58], [640, 0.52], [512, 0.5]] as const) {
         const k = Math.min(1, side / Math.max(img.width, img.height))
         canvas.width = Math.round(img.width * k)
         canvas.height = Math.round(img.height * k)
@@ -51,9 +52,11 @@ export function fileToChatImage(file: File): Promise<string> {
         ctx.fillRect(0, 0, canvas.width, canvas.height)
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
         const out = canvas.toDataURL('image/jpeg', q)
-        if (out.length <= MAX_CHAT_IMAGE) { resolve(out); return }
+        last = out
+        if (out.length <= 150_000) { resolve(out); return }
       }
-      reject(new Error('image-too-large'))
+      if (last.length <= MAX_CHAT_IMAGE) resolve(last)
+      else reject(new Error('image-too-large'))
     }
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image-decode-failed')) }
     img.src = url

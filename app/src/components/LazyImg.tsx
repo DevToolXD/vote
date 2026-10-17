@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
+import { slowNet } from '../net'
 
 const EASE = 'cubic-bezier(0.22,1,0.36,1)'
 const scroller = (el: HTMLElement | null) => {
@@ -20,7 +21,9 @@ export function useNear(ref: RefObject<HTMLElement | null>, margin = 900) {
     const el = ref.current
     if (!el || near) return
     if (typeof IntersectionObserver === 'undefined') { setNear(true); return }
-    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { setNear(true); io.disconnect() } }, { root: scroller(el), rootMargin: `${margin}px 0px ${margin}px 0px` })
+    // on a slow or metered connection only what is about to show is fetched (a third of the usual lead)
+    const m = slowNet() ? Math.round(margin / 3) : margin
+    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { setNear(true); io.disconnect() } }, { root: scroller(el), rootMargin: `${m}px 0px ${m}px 0px` })
     io.observe(el)
     return () => io.disconnect()
   }, [ref, near, margin])
