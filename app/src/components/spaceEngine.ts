@@ -1332,24 +1332,26 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       }
     }
 
-    // the names and distances of the worlds, written on the worlds themselves
+    // each world marked with a ring round it, and its name and the distance to its surface beside the ring
     if (mode === 'fly' || mode === 'dead') {
-      const cand = seen.filter(sn => sn.zc > 1 && sn.d - sn.b.r > 0.12 * sn.b.r).sort((p, q) => p.d - p.b.r - (q.d - q.b.r))  .slice(0, 3)
-      fx.textAlign = 'center'; fx.textBaseline = 'middle'
+      const cand = seen.filter(sn => sn.zc > 1 && sn.d - sn.b.r > 0.12 * sn.b.r).sort((p, q) => p.d - p.b.r - (q.d - q.b.r)).slice(0, 4)
       for (const sn of cand) {
-        const m = 46, mv = 30, rp = sn.rpx
+        const rp = sn.rpx
         if (Math.abs(sn.x - W / 2) - rp > W / 2 || Math.abs(sn.y - H / 2) - rp > H / 2) continue // not on the screen at all
-        const lx = clamp(sn.x, m, W - m), ly = clamp(sn.y + (rp < 9 ? 22 : 0), mv, H - mv)
+        const m = 16
+        const lx = clamp(sn.x, m, W - m), ly = clamp(sn.y, m, H - m), clamped = lx !== sn.x || ly !== sn.y
+        const rr = clamped ? 11 : clamp(rp + 7, 12, Math.min(W, H) * 0.42) // the ring: a little wider than the world, never wider than the view
+        fx.strokeStyle = 'rgba(255,255,255,0.8)'; fx.lineWidth = 1.5
+        if (sn.b.kind === 'hole') fx.strokeRect(lx - rr, ly - rr, rr * 2, rr * 2); else { fx.beginPath(); fx.arc(lx, ly, rr, 0, TAU); fx.stroke() }
         const l1 = sn.b.name, l2 = fmtDist(sn.d - sn.b.r)
         fx.font = '600 12px -apple-system, "Noto Sans KR", sans-serif'
-        const w1 = fx.measureText(l1).width
-        fx.font = '500 11px -apple-system, "Noto Sans KR", sans-serif'
-        const w = Math.max(w1, fx.measureText(l2).width) + 14
-        if (rp < 9) { fx.strokeStyle = 'rgba(255,255,255,0.55)'; fx.lineWidth = 1; fx.beginPath(); fx.arc(sn.x, sn.y, 9, 0, TAU); fx.stroke() }
-        fx.fillStyle = 'rgba(0,0,0,0.5)'
-        fx.beginPath(); fx.roundRect(lx - w / 2, ly - 18, w, 36, 8); fx.fill()
-        fx.fillStyle = '#fff'; fx.font = '600 12px -apple-system, "Noto Sans KR", sans-serif'; fx.fillText(l1, lx, ly - 6)
-        fx.fillStyle = '#9fd0ff'; fx.font = '500 11px -apple-system, "Noto Sans KR", sans-serif'; fx.fillText(l2, lx, ly + 8)
+        const w = Math.max(fx.measureText(l1).width, fx.measureText(l2).width)
+        const right = lx + rr + 8 + w < W - 6, tx = right ? lx + rr + 8 : lx - rr - 8
+        fx.textAlign = right ? 'left' : 'right'; fx.textBaseline = 'middle'
+        fx.shadowColor = 'rgba(0,0,0,0.85)'; fx.shadowBlur = 3
+        fx.fillStyle = '#fff'; fx.fillText(l1, tx, ly - 8)
+        fx.fillStyle = '#9fd0ff'; fx.fillText(l2, tx, ly + 8)
+        fx.shadowBlur = 0
       }
       fx.textAlign = 'start'; fx.textBaseline = 'alphabetic'
     }
