@@ -105,7 +105,7 @@ export function MusicBubble() {
   const ratio = time.d > 0 ? Math.min(1, time.t / time.d) : 0
 
   return (
-    <div ref={root} role="region" aria-label="음악 재생"
+    <div ref={root} role="region" aria-label="음악 재생" className="music-bubble"
       style={{
         ...css(`position:fixed;z-index:260;overflow:hidden;background:#181818;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,0.35),0 0 0 1px rgba(255,255,255,0.08);touch-action:${open ? 'auto' : 'none'};font-family:'Toss Product Sans',Pretendard,'Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;word-break:keep-all`),
         left, top, width: open ? W : SIZE, height: open ? CARD_H : SIZE, borderRadius: open ? 28 : SIZE / 2,

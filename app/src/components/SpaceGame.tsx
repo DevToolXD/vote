@@ -140,6 +140,7 @@ export function SpaceGame({ speedPass = false }: { speedPass?: boolean }) {
   }
   const endTouch = () => { touching.current = false; aim.current = null }
 
+  useEffect(() => { document.documentElement.dataset.gaming = '1'; return () => { delete document.documentElement.dataset.gaming } }, []) // (the music disc hides while the game is open)
   // the game loop starts again when the game moves between the page and the full screen cover (its canvases are new ones)
   useEffect(() => {
     const root = rootRef.current, back = backRef.current, front = frontRef.current, layer = layerRef.current

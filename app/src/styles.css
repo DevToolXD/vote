@@ -358,3 +358,6 @@ img{-webkit-user-drag:none}
 #music-host .hint{display:none}
 #music-host.music-host-ad .hint{display:block;position:absolute;right:4px;bottom:46px;width:112px;height:40px;border-radius:10px;pointer-events:none;opacity:0;box-shadow:0 0 0 3px #1ed760;animation:hintPulse 1.2s ease-in-out 5s infinite}
 @keyframes hintPulse{0%,100%{opacity:0.25}50%{opacity:1}}
+
+/* the music disc is out of the way while the 인터스텔라 game is open (the music goes on) */
+html[data-gaming] .music-bubble { display: none !important; }
