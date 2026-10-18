@@ -14,6 +14,7 @@ import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type Notif
 import { DEFAULT_OWNED, DEFAULT_SEASON, FAKE_PASS_PRICE, PASS_PRICE, SPEED_PASS_PRICE, type PassKind, type MyVote, type Season, type WeekKind } from './backend/types'
 import { deviceRegistered, disablePush, enablePush, pushAskLater, pushErrorMessage, pushOnOpen, pushSupport, refreshPush, setPushOptOut } from './push'
 import { fileToChatImage, fileToPhotoDataUrl } from './backend/image'
+import { RankWithMusic } from './components/MusicRank'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
 import { AdminProgressOverlay } from './components/AdminProgress'
 // only the admin ever opens it: loaded on demand
@@ -1002,13 +1003,15 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             <HomeScreen
               sub={homeTab} onSub={setHomeTab} me={me} loggedIn={loggedIn} onProfile={uiFns.goAcct} onAdmin={isAdmin ? () => go('admin') : undefined} speedPass={speedPassOwned}
               rank={
-                <RankScreen
-                  all={all} query={query} onQuery={uiFns.query}
-                  page={page} onPage={setPage} onOpenProfile={setProfile}
-                  seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()} points={me ? points : undefined}
-                  onPoints={uiFns.earn} onInstall={uiFns.install}
-                  secretName={INVITE_ADMIN} onSecret={uiFns.secret}
-                />
+                <RankWithMusic db={db ?? null} loggedIn={loggedIn} byId={byId} onOpenProfile={setProfile}>
+                  <RankScreen
+                    all={all} query={query} onQuery={uiFns.query}
+                    page={page} onPage={setPage} onOpenProfile={setProfile}
+                    seasonName={season.name} seasonEndsAt={season.endsAt?.toMillis()} points={me ? points : undefined}
+                    onPoints={uiFns.earn} onInstall={uiFns.install}
+                    secretName={INVITE_ADMIN} onSecret={uiFns.secret}
+                  />
+                </RankWithMusic>
               }
               notice={<Suspense fallback={null}><NoticesApp db={db} ids={noticeIds} loggedIn={loggedIn} onLogin={uiFns.goAcct} bare /></Suspense>}
             />
