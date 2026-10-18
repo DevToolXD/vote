@@ -160,7 +160,9 @@ export function createEngine(base: string, cb: Callbacks): Engine {
   let back: HTMLCanvasElement | null = null, front: HTMLCanvasElement | null = null, layer: HTMLElement | null = null
   // the two canvases' pens; they are only used while the canvases are attached (frame checks that)
   let bx = null as unknown as CanvasRenderingContext2D, fx = null as unknown as CanvasRenderingContext2D
-  let W = 1, H = 1, dpr = 1
+  let W = 1, H = 1, dpr = 1, baseDpr = 1
+  // the picture is drawn smaller (and stretched by the page) when the phone cannot keep up, and sharper again when it can
+  let quality = 1, qualityCap = 1, frameEma = 16.7, qualityT = 0, goodRuns = 0, raisedAt = -99, realT = 0
   const holeNodes: HTMLDivElement[] = []
 
   // ---- the Ranger ----
@@ -202,6 +204,8 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       sb[i] = Math.pow(r(), i < 1100 ? 5 : 3) * (i < 1100 ? 1 : 0.5)
     }
   }
+  const starBuckets: number[][] = Array.from({ length: 12 }, () => [])
+  for (let i = 0; i < STARS; i++) starBuckets[(sb[i] > 0.6 ? 6 : 0) + Math.min(5, Math.floor(sb[i] * 6))].push(i)
   // dust round the ship: it shows how fast, and which way, the ship is moving (there is nothing else to show it)
   // in layers, each box twelve times wider than the last: whatever the speed, one of them goes by at a pace the eye can follow
   const DUST_L = 7, DUST_N = 70, DUST_BOX = (k: number) => 240 * Math.pow(12, k)
@@ -490,7 +494,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     shake = Math.max(shake, 0.35 + Math.min(0.5, 0.03 * -dot(ship.v, n)))
     ship.p = add([b.x, b.y, b.z], mul(n, b.r + HOVER)); ship.v = [0, 0, 0]; ship.wp = ship.wy = ship.wr = 0
     touch = 0
-    puffGround(b, n, 36)
+    puffGround(b, n, 24)
     cb.haptic([40, 30, 40])
     if (gear < 0.9) hurt(10, null) // down on its belly
   }
@@ -696,8 +700,22 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     if (!back || !front) return
     const t = now / 1000
     if (lastTs === 1) { lastTs = t; return }
+    const rawMs = (t - lastTs) * 1000
     const dt = Math.min(0.05, Math.max(0, t - lastTs))
     lastTs = t
+    if (rawMs > 0 && rawMs < 250) frameEma += (rawMs - frameEma) * 0.06
+    realT += dt
+    qualityT += dt
+    if (qualityT > 1.2) {
+      qualityT = 0
+      if (frameEma > 26 && quality > 0.5) { // slower than about 40 frames a second: draw smaller
+        quality = Math.max(0.5, quality - 0.12); goodRuns = 0
+        if (realT - raisedAt < 9) qualityCap = quality // it was the last rise that was too much
+        applyQuality()
+      } else if (frameEma < 18 && quality < qualityCap) {
+        if (++goodRuns >= 4) { goodRuns = 0; quality = Math.min(qualityCap, quality + 0.06); raisedAt = realT; applyQuality() }
+      } else goodRuns = 0
+    }
     elapsed += dt
     ensureSectors()
     vmul = Math.max(1, inp.speedMul || 1)
@@ -761,7 +779,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       touch = Math.min(1, touch + dt / 0.7)
       // the engines blow dust off the ground under the ship when it is close
       if (retro > 0.1 && hb && hAlt < 90 && !dock.on) {
-        emitDust += dt * retro * clamp(1 - hAlt / 90, 0, 1) * 70
+        emitDust += dt * retro * clamp(1 - hAlt / 90, 0, 1) * 40
         if (emitDust >= 1) { const n = Math.floor(emitDust); emitDust -= n; puffGround(hb, norm(sub(ship.p, [hb.x, hb.y, hb.z])), n) }
       }
     }
@@ -831,31 +849,46 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     bx.setTransform(dpr, 0, 0, dpr, 0, 0)
     bx.fillStyle = '#000'
     bx.fillRect(0, 0, W, H)
-    for (let i = 0; i < STARS; i++) {
-      const dx = sd[i * 3], dy = sd[i * 3 + 1], dz = sd[i * 3 + 2]
-      const zc = dx * CF[0] + dy * CF[1] + dz * CF[2]
-      if (zc < 0.05) continue
-      let x = cx + ((dx * CR[0] + dy * CR[1] + dz * CR[2]) * F) / zc, y = cy - ((dx * CU[0] + dy * CU[1] + dz * CU[2]) * F) / zc
-      if (x < -3 || x > W + 3 || y < -3 || y > H + 3) continue
-      if (lens) { // light bends round a black hole
-        const ddx = x - lens.x, ddy = y - lens.y, rho = Math.hypot(ddx, ddy)
-        if (rho > lens.r * 0.95 && rho < lens.r * 5) { const k = 1 + (lens.r * lens.r * 1.3) / (rho * rho); x = lens.x + ddx * k; y = lens.y + ddy * k }
-      }
-      const b = sb[i]
-      bx.fillStyle = `rgba(${b > 0.6 ? '255,248,235' : '215,225,255'},${0.14 + 0.86 * b})`
-      bx.beginPath(); bx.arc(x, y, 0.45 + b * 1.1, 0, TAU); bx.fill()
-    }
-
-    // the sky of a world with air: it hides the stars, the thinner the higher the ship is
+    // the sky of a world with air hides the stars, the thinner the higher the ship is
+    let skyA = 0, skyRGB: [number, number, number] = [0, 0, 0]
     if (hb && hb.atm && hAlt < SKY_H && mode !== 'swallow') {
       const nu = norm(sub(ship.p, [hb.x, hb.y, hb.z])), day = clamp(dot(nu, SUN) * 1.6 + 0.35, 0, 1)
-      const a = Math.pow(1 - Math.max(0, hAlt) / SKY_H, 1.5) * day
-      if (a > 0.01) {
-        const [r0, g0, b0] = hb.atm.split(',').map(Number)
-        const sg = bx.createLinearGradient(0, 0, 0, H)
-        sg.addColorStop(0, `rgba(${r0 * 0.35 | 0},${g0 * 0.35 | 0},${b0 * 0.45 | 0},${a})`); sg.addColorStop(1, `rgba(${r0},${g0},${b0},${a * 0.95})`)
-        bx.fillStyle = sg; bx.fillRect(0, 0, W, H)
+      skyA = Math.pow(1 - Math.max(0, hAlt) / SKY_H, 1.5) * day
+      const [r0, g0, b0] = hb.atm.split(',').map(Number)
+      skyRGB = [r0, g0, b0]
+    }
+    if (skyA < 0.9) { // (the stars drawn in a few batches, by how bright they are)
+      const xs = scratch.sx, ys = scratch.sy
+      for (let i = 0; i < STARS; i++) {
+        const dx = sd[i * 3], dy = sd[i * 3 + 1], dz = sd[i * 3 + 2]
+        const zc = dx * CF[0] + dy * CF[1] + dz * CF[2]
+        xs[i] = NaN
+        if (zc < 0.05) continue
+        let x = cx + ((dx * CR[0] + dy * CR[1] + dz * CR[2]) * F) / zc, y = cy - ((dx * CU[0] + dy * CU[1] + dz * CU[2]) * F) / zc
+        if (x < -3 || x > W + 3 || y < -3 || y > H + 3) continue
+        if (lens) { // light bends round a black hole
+          const ddx = x - lens.x, ddy = y - lens.y, rho = Math.hypot(ddx, ddy)
+          if (rho > lens.r * 0.95 && rho < lens.r * 5) { const k = 1 + (lens.r * lens.r * 1.3) / (rho * rho); x = lens.x + ddx * k; y = lens.y + ddy * k }
+        }
+        xs[i] = x; ys[i] = y
       }
+      for (let bk = 0; bk < 12; bk++) {
+        const list = starBuckets[bk]
+        if (!list.length) continue
+        const bm = ((bk % 6) + 0.5) / 6
+        bx.fillStyle = `rgba(${bk >= 6 ? '255,248,235' : '215,225,255'},${0.14 + 0.86 * bm})`
+        bx.beginPath()
+        const rr = 0.45 + bm * 1.1
+        for (let k = 0; k < list.length; k++) { const i = list[k]; if (xs[i] === xs[i]) { bx.moveTo(xs[i] + rr, ys[i]); bx.arc(xs[i], ys[i], rr, 0, TAU) } }
+        bx.fill()
+      }
+    }
+
+    if (skyA > 0.01) {
+      const [r0, g0, b0] = skyRGB
+      const sg = bx.createLinearGradient(0, 0, 0, H)
+      sg.addColorStop(0, `rgba(${r0 * 0.35 | 0},${g0 * 0.35 | 0},${b0 * 0.45 | 0},${skyA})`); sg.addColorStop(1, `rgba(${r0},${g0},${b0},${skyA * 0.95})`)
+      bx.fillStyle = sg; bx.fillRect(0, 0, W, H)
     }
 
     // the ground of a world seen from close: the horizon, and marks on it that go by with the ship
@@ -867,7 +900,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       const kh = Math.sqrt(Math.max(0, 1 - (R / (R + Math.max(hc, 0))) ** 2)) // the horizon: the directions whose dot with 'up' is -kh
       const A = dot(nc, CR), B = dot(nc, CU), C = dot(nc, CF)
       const gnd = (X: number, Y: number) => (A * X + B * Y + C) / Math.sqrt(X * X + Y * Y + 1) + kh // < 0: looking at the ground
-      const STEP = 6, tops: number[] = [], bots: number[] = []
+      const STEP = 10, tops: number[] = [], bots: number[] = []
       for (let sx = 0; sx <= W + STEP; sx += STEP) {
         const X = (sx - cx) / F
         const g0 = gnd(X, cy / F) < 0, g1 = gnd(X, (cy - H) / F) < 0
@@ -881,10 +914,16 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       bx.globalAlpha = alpha
       bx.fillStyle = `rgb(${avg[0] * 0.8 * day | 0},${avg[1] * 0.8 * day | 0},${avg[2] * 0.8 * day | 0})`
       bx.beginPath()
-      for (let i = 0; i < tops.length - 1; i++) {
-        if (tops[i] < 0 || tops[i + 1] < 0) continue
-        const x = i * STEP
-        bx.moveTo(x, tops[i]); bx.lineTo(x + STEP, tops[i + 1]); bx.lineTo(x + STEP, bots[i + 1]); bx.lineTo(x, bots[i])
+      {
+        // the ground as one shape: along the horizon from left to right, then back along the other edge of it
+        let first = -1, last = -1
+        for (let i = 0; i < tops.length; i++) if (tops[i] >= 0) { if (first < 0) first = i; last = i }
+        if (first >= 0) {
+          bx.moveTo(first * STEP, tops[first])
+          for (let i = first + 1; i <= last; i++) bx.lineTo(i * STEP, tops[i])
+          for (let i = last; i >= first; i--) bx.lineTo(i * STEP, bots[i])
+          bx.closePath()
+        }
       }
       bx.fill()
       const atm = b.atm
@@ -909,9 +948,9 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         for (let k = 0; k < 7; k++) {
           const g = 4 * Math.pow(6, k), lg = Math.log10(g / Math.max(hc, 2))
           const w = smooth(-1.6, -1.2, lg) * (1 - smooth(0.1, 0.6, lg))
-          if (w < 0.03) continue
+          if (w < 0.1) continue
           const ci = Math.floor(u0 / g), cj = Math.floor(v0 / g)
-          for (let di = -7; di <= 7; di++) for (let dj = -7; dj <= 7; dj++) {
+          for (let di = -5; di <= 5; di++) for (let dj = -5; dj <= 5; dj++) {
             const ii = ci + di, jj = cj + dj, seedH = k * 7 + ax * 3 + (sg > 0 ? 0 : 50)
             const r1 = hash3(ii, jj, seedH + 100)
             if (r1 > 0.42) continue
@@ -925,8 +964,8 @@ export function createEngine(base: string, cb: Callbacks): Engine {
             if (sp[2] < 1 || px < 1.2 || sp[0] < -px || sp[0] > W + px || sp[1] < -px || sp[1] > H + px) continue
             bx.beginPath()
             let ok = true
-            for (let t = 0; t < 9; t++) {
-              const an = (t / 9) * TAU
+            for (let t = 0; t < 7; t++) {
+              const an = (t / 7) * TAU
               if (!surf(cu + Math.cos(an) * rad, cv + Math.sin(an) * rad, pt)) { ok = false; break }
               proj(pt, sp)
               if (sp[2] < 1) { ok = false; break }
@@ -996,7 +1035,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         const S = clamp(Math.ceil((rpx * 2) / 32) * 32, 32, 256)
         const ez = norm(sub(cam.p, [b.x, b.y, b.z]))
         const old = b.ball
-        if (!old || old.S !== S || dot(old.ez, ez) < 0.99997 || dot(old.cr, CR) < 0.99997) {
+        if (gAlpha < 0.4 && (!old || old.S !== S || dot(old.ez, ez) < 0.99997 || dot(old.cr, CR) < 0.99997)) {
           if (old ? ballBudget > 0 : firstBudget > 0) {
             if (old) ballBudget--; else firstBudget--
             const ex = norm(sub(CR, mul(ez, dot(CR, ez))))
@@ -1004,7 +1043,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
             renderBall(b, S, ex, norm(e1), ez)
           }
         }
-        if (b.ball) bx.drawImage(b.ball.cv, X - rpx, Y - rpx, rpx * 2, rpx * 2)
+        if (b.ball && gAlpha < 0.95) bx.drawImage(b.ball.cv, X - rpx, Y - rpx, rpx * 2, rpx * 2) // (under the ground there is nothing to see)
         ringHalf(true)
       }
       if (gAlpha > 0) drawGround(b, hcam, gAlpha, ready ? b.tex : null)
@@ -1052,6 +1091,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         const wgt = (k === 0 ? 1 : smooth(0, 0.5, u)) * (1 - smooth(1.7, 2.4, u))
         if (wgt < 0.02) continue
         const base = k * DUST_N * 3, B2 = 2 * B, zmin = 4 + B * 0.01
+        const lv: number[][] = [[], [], []] // the streaks in three strengths, each drawn in one go
         for (let i = 0; i < DUST_N; i++) {
           const wx = ((((dust[base + i * 3] - cam.p[0] + B) % B2) + B2) % B2) - B
           const wy = ((((dust[base + i * 3 + 1] - cam.p[1] + B) % B2) + B2) % B2) - B
@@ -1060,20 +1100,25 @@ export function createEngine(base: string, cb: Callbacks): Engine {
           if (zc < zmin) continue
           const x = cx + ((wx * CR[0] + wy * CR[1] + wz * CR[2]) * F) / zc, y = cy - ((wx * CU[0] + wy * CU[1] + wz * CU[2]) * F) / zc
           if (x < 0 || x > W || y < 0 || y > H) continue
-          const alpha = 0.55 * wgt * clamp(1.6 - zc / B, 0, 1)
-          if (alpha <= 0.01) continue
-          fx.strokeStyle = `rgba(215,225,240,${alpha})`
-          fx.lineWidth = 1 + 0.12 * k
-          fx.beginPath()
+          const fade = clamp(1.6 - zc / B, 0, 1)
+          if (fade <= 0.02) continue
           // where it was a moment ago (the ship has moved, and the camera with it)
           const px = wx + ship.v[0] * trail, py = wy + ship.v[1] * trail, pz = wz + ship.v[2] * trail
           const pzc = px * CF[0] + py * CF[1] + pz * CF[2]
+          let mx = x, my = y
           if (vmag > 0.05 && pzc > zmin * 0.5) {
             const qx = cx + ((px * CR[0] + py * CR[1] + pz * CR[2]) * F) / pzc, qy = cy - ((px * CU[0] + py * CU[1] + pz * CU[2]) * F) / pzc
             const l = Math.hypot(qx - x, qy - y), cap = Math.min(1, 140 / (l || 1))
-            fx.moveTo(x + (qx - x) * cap, y + (qy - y) * cap)
-          } else fx.moveTo(x, y)
-          fx.lineTo(x + 0.01, y)
+            mx = x + (qx - x) * cap; my = y + (qy - y) * cap
+          }
+          lv[fade < 0.4 ? 0 : fade < 0.8 ? 1 : 2].push(mx, my, x + 0.01, y)
+        }
+        fx.lineWidth = 1 + 0.12 * k
+        for (let q = 0; q < 3; q++) {
+          if (!lv[q].length) continue
+          fx.strokeStyle = `rgba(215,225,240,${0.55 * wgt * (q === 0 ? 0.25 : q === 1 ? 0.6 : 0.95)})`
+          fx.beginPath()
+          for (let i = 0; i < lv[q].length; i += 4) { fx.moveTo(lv[q][i], lv[q][i + 1]); fx.lineTo(lv[q][i + 2], lv[q][i + 3]) }
           fx.stroke()
         }
       }
@@ -1185,8 +1230,10 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       const dmgR = 1 - hull / 100
       const h01 = (n: number) => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x) }
       // scorched armour: cracks across a big piece, more of them the worse the hull
+      let gxc = fx
       const cracks = (o: number, k: number, id: number, diag: number) => {
         if (dmgR < 0.2 || diag < 14) return
+        const fx = gxc
         let ccx = 0, ccy = 0
         for (let i = 0; i < k; i++) { ccx += P[o + i * 2]; ccy += P[o + i * 2 + 1] }
         ccx /= k; ccy /= k
@@ -1198,22 +1245,23 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         }
         fx.stroke()
       }
-      for (const id of vis) {
+      const drawFace = (id: number, gx: CanvasRenderingContext2D) => {
+        gxc = gx
         const isR = id < nR, isC = id >= cOff, isG = id >= gOff && !isC, isS = isR || isG
         const fc = isR ? rg[id] : isC ? cg[(id - cOff) % cg.length] : isG ? gg[id - gOff] : eg[(id - nR) % eg.length], o = id * MAXN * 2, kn = kk[id]
         const owner = isS ? null : meshes[isC ? Math.floor((id - cOff) / (4 * cg.length)) : Math.floor((id - nR) / eg.length)]
-        fx.globalAlpha = isS ? alphaShip : 1
+        gx.globalAlpha = isS ? alphaShip : 1
         const nx = nrm[id * 3], ny = nrm[id * 3 + 1], nz = nrm[id * 3 + 2]
         if (fc.light >= 0) {
-          if (!lightOn(fc.light, owner)) continue
+          if (!lightOn(fc.light, owner)) return
           const col = lightColor(fc.light, owner)
-          fx.beginPath(); fx.moveTo(P[o], P[o + 1])
-          for (let i = 1; i < kn; i++) fx.lineTo(P[o + i * 2], P[o + i * 2 + 1])
-          fx.closePath()
-          fx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`
-          fx.fill()
+          gx.beginPath(); gx.moveTo(P[o], P[o + 1])
+          for (let i = 1; i < kn; i++) gx.lineTo(P[o + i * 2], P[o + i * 2 + 1])
+          gx.closePath()
+          gx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`
+          gx.fill()
           if (kn >= 3 && !clip[id]) glows.push({ x: (P[o] + P[o + 4]) / 2, y: (P[o + 1] + P[o + 5]) / 2, r: Math.max(2.5, Math.hypot(P[o + 4] - P[o], P[o + 5] - P[o + 1]) * 0.9), c: col })
-          continue
+          return
         }
         const cx3 = cen[id * 3], cy3 = cen[id * 3 + 1], cz3 = cen[id * 3 + 2], cl = Math.hypot(cx3, cy3, cz3) || 1
         const vx3 = -cx3 / cl, vy3 = -cy3 / cl, vz3 = -cz3 / cl
@@ -1228,36 +1276,36 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         const dk = isS ? 1 - 0.55 * dmgR : 1 // soot
         const rgb = (m0: number) => { const m = m0 * dk; return `rgb(${clamp((mt.c[0] * (amb + sun) + spec * 255 + 6) * m, 0, 255) | 0},${clamp((mt.c[1] * (amb + sun) + spec * 255 + 8) * m, 0, 255) | 0},${clamp((mt.c[2] * (amb + sun) + spec * 255 + 14) * m, 0, 255) | 0})` }
         const diag = kn >= 4 ? Math.hypot(P[o + 4] - P[o], P[o + 5] - P[o + 1]) : 0
-        if (diag < 1.2 && kn <= 4) continue
+        if (diag < 2.2 && kn <= 4) return
         if (fc.uv && diag > 5 && !clip[id]) {
           // the picture, then the sun on it
-          drawPicture(fx, tex, P, o, fc.uv, kn)
-          fx.beginPath(); fx.moveTo(P[o], P[o + 1])
-          for (let i = 1; i < kn; i++) fx.lineTo(P[o + i * 2], P[o + i * 2 + 1])
-          fx.closePath()
-          fx.fillStyle = `rgba(2,4,9,${clamp(Math.max(1 - (0.05 + 1.9 * lit), isR ? dmgR * 0.6 : 0), 0, 0.97)})`
-          fx.fill()
+          drawPicture(gx, tex, P, o, fc.uv, kn)
+          gx.beginPath(); gx.moveTo(P[o], P[o + 1])
+          for (let i = 1; i < kn; i++) gx.lineTo(P[o + i * 2], P[o + i * 2 + 1])
+          gx.closePath()
+          gx.fillStyle = `rgba(2,4,9,${clamp(Math.max(1 - (0.05 + 1.9 * lit), isR ? dmgR * 0.6 : 0), 0, 0.97)})`
+          gx.fill()
           if (spec > 0.02) {
-            const sg = fx.createLinearGradient(P[o], P[o + 1], P[o + 4], P[o + 5])
+            const sg = gx.createLinearGradient(P[o], P[o + 1], P[o + 4], P[o + 5])
             sg.addColorStop(0, `rgba(255,255,255,${Math.min(0.35, spec * 0.4)})`); sg.addColorStop(1, 'rgba(255,255,255,0)')
-            fx.fillStyle = sg; fx.fill()
+            gx.fillStyle = sg; gx.fill()
           }
-          fx.strokeStyle = 'rgba(210,216,228,0.25)'; fx.lineWidth = 0.8; fx.stroke()
+          gx.strokeStyle = 'rgba(210,216,228,0.25)'; gx.lineWidth = 0.8; gx.stroke()
           if (isR) cracks(o, kn, id, diag)
-          continue
+          return
         }
-        fx.beginPath(); fx.moveTo(P[o], P[o + 1])
-        for (let i = 1; i < kn; i++) fx.lineTo(P[o + i * 2], P[o + i * 2 + 1])
-        fx.closePath()
-        if (diag > 26) {
-          const gr = fx.createLinearGradient(P[o], P[o + 1], P[o + 4], P[o + 5])
+        gx.beginPath(); gx.moveTo(P[o], P[o + 1])
+        for (let i = 1; i < kn; i++) gx.lineTo(P[o + i * 2], P[o + i * 2 + 1])
+        gx.closePath()
+        if (diag > 70) {
+          const gr = gx.createLinearGradient(P[o], P[o + 1], P[o + 4], P[o + 5])
           gr.addColorStop(0, rgb(1.12)); gr.addColorStop(1, rgb(0.86))
-          fx.fillStyle = gr
-        } else fx.fillStyle = rgb(1)
-        fx.fill()
-        if (diag > 5) { fx.strokeStyle = `rgba(215,222,235,${0.1 + 0.3 * lit})`; fx.lineWidth = 0.7; fx.stroke() }
+          gx.fillStyle = gr
+        } else gx.fillStyle = rgb(1)
+        gx.fill()
+        if (diag > 9) { gx.strokeStyle = `rgba(215,222,235,${0.1 + 0.3 * lit})`; gx.lineWidth = 0.7; gx.stroke() }
         if (isR) cracks(o, kn, id, diag)
-        if (fc.k === 4 && kn === 4 && !clip[id] && diag > 70 && fc.mat !== 4) {
+        if (fc.k === 4 && kn === 4 && !clip[id] && diag > (isS ? 120 : 70) && fc.mat !== 4) {
           // the face as a sheet of plates: seams between them, and each plate a little lighter or darker than its neighbours
           const sc = isS ? RS : 1
           const du = Math.hypot(fc.p[3] - fc.p[0], fc.p[4] - fc.p[1], fc.p[5] - fc.p[2]) * sc, dv = Math.hypot(fc.p[9] - fc.p[0], fc.p[10] - fc.p[1], fc.p[11] - fc.p[2]) * sc
@@ -1271,36 +1319,68 @@ export function createEngine(base: string, cb: Callbacks): Engine {
           for (let i = 0; i < nU; i++) for (let j = 0; j < nV; j++) {
             const hh = h01(id * 13 + i * 7 + j * 3)
             if (hh > 0.18 && hh < 0.62) continue
-            fx.fillStyle = hh >= 0.62 ? `rgba(0,0,0,${0.05 + 0.1 * hh})` : 'rgba(255,255,255,0.05)'
+            gx.fillStyle = hh >= 0.62 ? `rgba(0,0,0,${0.05 + 0.1 * hh})` : 'rgba(255,255,255,0.05)'
             const u0 = i / nU, u1 = (i + 1) / nU, v0 = j / nV, v1 = (j + 1) / nV
-            fx.beginPath(); fx.moveTo(pt(u0, v0, 0), pt(u0, v0, 1)); fx.lineTo(pt(u1, v0, 0), pt(u1, v0, 1)); fx.lineTo(pt(u1, v1, 0), pt(u1, v1, 1)); fx.lineTo(pt(u0, v1, 0), pt(u0, v1, 1)); fx.closePath(); fx.fill()
+            gx.beginPath(); gx.moveTo(pt(u0, v0, 0), pt(u0, v0, 1)); gx.lineTo(pt(u1, v0, 0), pt(u1, v0, 1)); gx.lineTo(pt(u1, v1, 0), pt(u1, v1, 1)); gx.lineTo(pt(u0, v1, 0), pt(u0, v1, 1)); gx.closePath(); gx.fill()
           }
-          fx.strokeStyle = `rgba(0,0,0,${0.16 + 0.1 * (1 - lit)})`; fx.lineWidth = 0.7
-          fx.beginPath()
-          for (let i = 1; i < nU; i++) { fx.moveTo(pt(i / nU, 0, 0), pt(i / nU, 0, 1)); fx.lineTo(pt(i / nU, 1, 0), pt(i / nU, 1, 1)) }
-          for (let j = 1; j < nV; j++) { fx.moveTo(pt(0, j / nV, 0), pt(0, j / nV, 1)); fx.lineTo(pt(1, j / nV, 0), pt(1, j / nV, 1)) }
-          fx.stroke()
+          gx.strokeStyle = `rgba(0,0,0,${0.16 + 0.1 * (1 - lit)})`; gx.lineWidth = 0.7
+          gx.beginPath()
+          for (let i = 1; i < nU; i++) { gx.moveTo(pt(i / nU, 0, 0), pt(i / nU, 0, 1)); gx.lineTo(pt(i / nU, 1, 0), pt(i / nU, 1, 1)) }
+          for (let j = 1; j < nV; j++) { gx.moveTo(pt(0, j / nV, 0), pt(0, j / nV, 1)); gx.lineTo(pt(1, j / nV, 0), pt(1, j / nV, 1)) }
+          gx.stroke()
         }
         if (fc.k === 4 && kn === 4 && diag > 38) {
           // a panel set into the face
           const ccx = (P[o] + P[o + 2] + P[o + 4] + P[o + 6]) / 4, ccy = (P[o + 1] + P[o + 3] + P[o + 5] + P[o + 7]) / 4
-          fx.beginPath()
-          for (let i = 0; i < 4; i++) { const x = ccx + (P[o + i * 2] - ccx) * 0.78, y = ccy + (P[o + i * 2 + 1] - ccy) * 0.78; if (i === 0) fx.moveTo(x, y); else fx.lineTo(x, y) }
-          fx.closePath()
-          fx.fillStyle = 'rgba(0,0,0,0.14)'; fx.fill()
-          fx.strokeStyle = 'rgba(255,255,255,0.07)'; fx.lineWidth = 0.6; fx.stroke()
+          gx.beginPath()
+          for (let i = 0; i < 4; i++) { const x = ccx + (P[o + i * 2] - ccx) * 0.78, y = ccy + (P[o + i * 2 + 1] - ccy) * 0.78; if (i === 0) gx.moveTo(x, y); else gx.lineTo(x, y) }
+          gx.closePath()
+          gx.fillStyle = 'rgba(0,0,0,0.14)'; gx.fill()
+          gx.strokeStyle = 'rgba(255,255,255,0.07)'; gx.lineWidth = 0.6; gx.stroke()
           if (fc.win && diag > 44) { // a row of lit windows
             const ux = P[o + 2] - P[o], uy = P[o + 3] - P[o + 1], vx2 = P[o + 6] - P[o], vy2 = P[o + 7] - P[o + 1]
-            fx.fillStyle = 'rgba(255,208,140,0.55)'
+            gx.fillStyle = 'rgba(255,208,140,0.55)'
             for (const u of [0.2, 0.4, 0.6, 0.8]) {
               const wx = P[o] + ux * u + vx2 * 0.5, wy = P[o + 1] + uy * u + vy2 * 0.5
-              fx.beginPath()
-              fx.moveTo(wx - ux * 0.03 - vx2 * 0.07, wy - uy * 0.03 - vy2 * 0.07); fx.lineTo(wx + ux * 0.03 - vx2 * 0.07, wy + uy * 0.03 - vy2 * 0.07)
-              fx.lineTo(wx + ux * 0.03 + vx2 * 0.07, wy + uy * 0.03 + vy2 * 0.07); fx.lineTo(wx - ux * 0.03 + vx2 * 0.07, wy - uy * 0.03 + vy2 * 0.07)
-              fx.closePath(); fx.fill()
+              gx.beginPath()
+              gx.moveTo(wx - ux * 0.03 - vx2 * 0.07, wy - uy * 0.03 - vy2 * 0.07); gx.lineTo(wx + ux * 0.03 - vx2 * 0.07, wy + uy * 0.03 - vy2 * 0.07)
+              gx.lineTo(wx + ux * 0.03 + vx2 * 0.07, wy + uy * 0.03 + vy2 * 0.07); gx.lineTo(wx - ux * 0.03 + vx2 * 0.07, wy - uy * 0.03 + vy2 * 0.07)
+              gx.closePath(); gx.fill()
             }
           }
         }
+      }
+
+      // the Ranger is drawn as one block (its pieces are together in the order); while it looks the same as it did, the picture of it is kept
+      const sc = scratch.ship
+      let vi = 0
+      while (vi < vis.length) {
+        const id0 = vis[vi]
+        if (grp[id0] !== 1) { drawFace(id0, fx); vi++; continue }
+        let vj = vi
+        while (vj < vis.length && grp[vis[vj]] === 1) vj++
+        const tR = (a: V) => [dot(CR, a), dot(CU, a), dot(CF, a)]
+        const sr = tR(ship.r), su = tR(ship.u), sf = tR(ship.f), dd = sub(ship.p, cam.p), t2 = dot(dd, CF)
+        const key = [sr[0], sr[1], sr[2], su[0], su[1], su[2], sf[0], sf[1], sf[2], Lc[0], Lc[1], Lc[2], cx + (dot(dd, CR) * F) / t2, cy - (dot(dd, CU) * F) / t2, F / t2, gear, touch, hull, stretch, squeeze, alphaShip, dpr, vj - vi]
+        const same = sc.ok && sc.key.length === key.length && key.every((v, k) => Math.abs(v - sc.key[k]) < (k < 12 ? 0.0012 : k < 14 ? 0.3 : k === 14 ? 0.002 * Math.abs(v) : 1e-4))
+        if (same) { for (const g of sc.glows) glows.push(g) } else {
+          let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9
+          for (let k = vi; k < vj; k++) { const i2 = vis[k], oo = i2 * MAXN * 2; for (let c = 0; c < kk[i2]; c++) { x0 = Math.min(x0, P[oo + c * 2]); x1 = Math.max(x1, P[oo + c * 2]); y0 = Math.min(y0, P[oo + c * 2 + 1]); y1 = Math.max(y1, P[oo + c * 2 + 1]) } }
+          x0 = Math.floor(clamp(x0, -60, W + 60)) - 4; y0 = Math.floor(clamp(y0, -60, H + 60)) - 4; x1 = Math.ceil(clamp(x1, -60, W + 60)) + 4; y1 = Math.ceil(clamp(y1, -60, H + 60)) + 4
+          const wC = Math.max(1, Math.ceil((x1 - x0) * dpr)), hC = Math.max(1, Math.ceil((y1 - y0) * dpr))
+          if (sc.cv.width < wC || sc.cv.height < hC) { sc.cv.width = Math.max(sc.cv.width, wC); sc.cv.height = Math.max(sc.cv.height, hC) }
+          const cc = sc.cv.getContext('2d') as CanvasRenderingContext2D
+          cc.setTransform(1, 0, 0, 1, 0, 0); cc.clearRect(0, 0, sc.cv.width, sc.cv.height)
+          cc.setTransform(dpr, 0, 0, dpr, -x0 * dpr, -y0 * dpr)
+          cc.lineJoin = 'round'
+          const g0 = glows.length
+          for (let k = vi; k < vj; k++) drawFace(vis[k], cc)
+          sc.glows = glows.slice(g0)
+          sc.key = key; sc.ok = true; sc.x = x0; sc.y = y0; sc.w = wC; sc.h = hC
+        }
+        fx.globalAlpha = 1
+        fx.drawImage(sc.cv, 0, 0, sc.w, sc.h, sc.x, sc.y, sc.w / dpr, sc.h / dpr)
+        vi = vj
       }
       fx.globalAlpha = 1
 
@@ -1374,7 +1454,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
           bits.push({ p: w, v: add(add(ship.v, mul(ship.f, spark ? -2 : -6)), [(Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4]), life: spark ? 0.5 : 2.4, max: spark ? 0.5 : 2.4, s: spark ? 0.5 : 0.5 + Math.random() * 0.7, kind: spark ? 1 : 2 })
         }
       }
-      if (bits.length > 400) bits.splice(0, bits.length - 400)
+      if (bits.length > 160) bits.splice(0, bits.length - 160)
       for (let i = bits.length - 1; i >= 0; i--) {
         const q = bits[i]
         q.life -= dt
@@ -1399,7 +1479,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
           fx.beginPath(); fx.arc(sp[0], sp[1], Math.max(1, px), 0, TAU); fx.fill()
           fx.globalCompositeOperation = 'source-over'
         } else if (q.kind === 3) { // dust off the ground
-          const r = Math.max(1.5, px * (1 + (1 - a) * 3))
+          const r = Math.min(60, Math.max(1.5, px * (1 + (1 - a) * 3)))
           fx.fillStyle = `rgba(${q.col},${0.3 * a})`
           fx.beginPath(); fx.arc(sp[0], sp[1], r, 0, TAU); fx.fill()
         } else { // smoke, spreading
@@ -1516,9 +1596,18 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       grp: (n: number) => (grp ??= new Uint8Array(n)),
       c: Array.from({ length: 6 }, () => new Float64Array(MAXN)),
       vis: [] as number[],
+      sx: new Float32Array(1700),
+      sy: new Float32Array(1700),
       tex: null as HTMLCanvasElement | null,
+      ship: { cv: document.createElement('canvas'), key: [] as number[], ok: false, x: 0, y: 0, w: 1, h: 1, glows: [] as { x: number; y: number; r: number; c: [number, number, number] }[] },
     }
   })()
+
+  function applyQuality() {
+    dpr = baseDpr * quality
+    if (back) { back.width = Math.round(W * dpr); back.height = Math.round(H * dpr) }
+    if (front) { front.width = Math.round(W * dpr); front.height = Math.round(H * dpr) }
+  }
 
   ensureSectors()
   return {
@@ -1533,11 +1622,10 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       back = front = layer = null
     },
     resize(w, h, d) {
-      W = w; H = h; dpr = d
-      if (back) { back.width = Math.round(w * d); back.height = Math.round(h * d) }
-      if (front) { front.width = Math.round(w * d); front.height = Math.round(h * d) }
+      W = w; H = h; baseDpr = d
+      applyQuality()
     },
     frame,
-    debug: () => { const S = dock.st ?? nearStation()?.S ?? stations[0]; return { hull, gear, retro, landed: !!landedOn, heat, hurt: (a: number) => hurt(a, null), ship, E: { pos: S.p, x: S.x, y: S.y, z: S.z, spin: S.spin }, stations: stations.map(x => ({ id: x.id, p: x.p })), dock, metrics: dockMetrics({ ship: ship.p, f: ship.f, u: ship.u, vel: ship.v, e: S.p, ex: S.x, ey: S.y, ez: S.z, spin: S.spin }), mode, bodies: list.map(b => ({ id: b.id, kind: b.kind, x: b.x, y: b.y, z: b.z, r: b.r, ring: b.ring, name: b.name, ready: !!b.tex?.ready })) } },
+    debug: () => { const S = dock.st ?? nearStation()?.S ?? stations[0]; return { quality, hull, gear, retro, landed: !!landedOn, heat, hurt: (a: number) => hurt(a, null), ship, E: { pos: S.p, x: S.x, y: S.y, z: S.z, spin: S.spin }, stations: stations.map(x => ({ id: x.id, p: x.p })), dock, metrics: dockMetrics({ ship: ship.p, f: ship.f, u: ship.u, vel: ship.v, e: S.p, ex: S.x, ey: S.y, ez: S.z, spin: S.spin }), mode, bodies: list.map(b => ({ id: b.id, kind: b.kind, x: b.x, y: b.y, z: b.z, r: b.r, ring: b.ring, name: b.name, ready: !!b.tex?.ready })) } },
   }
 }
