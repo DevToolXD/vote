@@ -22,7 +22,7 @@ export type Engine = {
   debug(): unknown
 }
 /** What the screen writes: the speed (m/s), the distance to the nearest planet's surface (m) and the hull (100 = whole). */
-export type Callbacks = { hud: (h: { speed: number; planet: number; hull: number; note: string; docked: boolean }) => void; haptic: (pattern: number[]) => void }
+export type Callbacks = { hud: (h: { speed: number; planet: number; hull: number; note: string; action: string }) => void; haptic: (pattern: number[]) => void }
 
 /** A world drawn as a ball: its picture (lit by the sun, seen from where the camera is), kept until the view has turned enough to need a new one. */
 type Ball = { cv: HTMLCanvasElement; img: ImageData; px32: Uint32Array; S: number; ez: V; cr: V }
@@ -179,6 +179,9 @@ export function createEngine(base: string, cb: Callbacks): Engine {
   let hull = 100, deadT = 0, ringT = 0, camSp = 0, emitAcc = 0
   let hAlt = Infinity, hb: Body | null = null // the nearest world and the height above it
   let deathWhy = ''
+  // after landing, the pilot can climb out: a stick figure that walks about on the ground and gets back in
+  const walker = { on: false, x: 0, y: 0, ph: 0, face: 1, wr: [1, 0, 0] as V, wf: [0, 0, 1] as V, up: [0, 1, 0] as V }
+  let prevAct = false, camWalk = 0, lastWP: V = [0, 0, 0]
   let camCap = 0, emitDust = 0, vmul = 1, retro = 0, touch = 1, landCam = 0, camDock = 0
   let gear = 0, heat = 0, landedOn: Body | null = null // the landing gear (0 up .. 1 down), the glow of the air, the world it stands on
   const gg = gearModel()
@@ -499,11 +502,36 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     cb.haptic([40, 30, 40])
     if (gear < 0.9) hurt(10, null) // down on its belly
   }
+  /** Where the figure stands: on the ground, from where the ship stands. */
+  function walkerPos(): V {
+    const b = landedOn
+    if (!b) return lastWP
+    const c: V = [b.x, b.y, b.z], p = add(add(add(c, mul(walker.up, b.r)), mul(walker.wr, walker.x)), mul(walker.wf, walker.y))
+    lastWP = add(c, mul(norm(sub(p, c)), b.r))
+    return lastWP
+  }
   /** Standing on a world: the ship settles level; pushing the engines lifts it off. */
   function stepLanded(inp: Input, dt: number) {
     const b = landedOn
     if (!b) return
     const c: V = [b.x, b.y, b.z], n = norm(sub(ship.p, c))
+    const edge = !!inp.undock && !prevAct
+    prevAct = !!inp.undock
+    if (edge) {
+      if (!walker.on) { // climbing out, on the ship's right side
+        walker.on = true; walker.up = n
+        walker.wr = norm(sub(ship.r, mul(n, dot(ship.r, n)))); walker.wf = norm(sub(ship.f, mul(n, dot(ship.f, n))))
+        walker.x = 14; walker.y = 0; walker.ph = 0; walker.face = 1
+        cb.haptic([20])
+      } else if (Math.hypot(walker.x, walker.y) < 24) { walker.on = false; cb.haptic([20]) }
+    }
+    if (walker.on) {
+      const dx = inp.yaw * 3.4 * dt, dy = -inp.pitch * 3.4 * dt
+      walker.x = clamp(walker.x + dx, -90, 90); walker.y = clamp(walker.y + dy, -90, 90)
+      if (Math.abs(walker.x) < 10.5 && Math.abs(walker.y) < 19) walker.x = walker.x >= 0 ? 10.5 : -10.5 // not through the ship
+      walker.ph += Math.hypot(dx, dy) * 2.6
+      if (Math.abs(dx) > 1e-4) walker.face = Math.sign(dx)
+    }
     ship.p = add(c, mul(n, b.r + HOVER)); ship.v = [0, 0, 0]; ship.wp = ship.wy = ship.wr = 0
     ship.thr += ((inp.thrust ? 1 : 0) - ship.thr) * (1 - Math.exp(-dt * 6))
     let fh = sub(ship.f, mul(n, dot(ship.f, n)))
@@ -511,7 +539,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     const k = 1 - Math.exp(-dt * 3)
     const level = (f0: V, u0: V) => { const f = norm(f0), r = norm(cross(u0, f)); ship.f = f; ship.r = r; ship.u = cross(f, r) }
     level(add(mul(ship.f, 1 - k), mul(norm(fh), k)), add(mul(ship.u, 1 - k), mul(n, k)))
-    if (inp.thrust) {
+    if (inp.thrust && !walker.on) {
       landedOn = null
       ship.v = mul(n, 12)
       level(add(ship.f, mul(n, 0.55)), n)
@@ -558,7 +586,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     cam.f = ship.f; cam.u = ship.u; cam.roll = 0
     stations.length = 0
     stations.push(makeStation([3400, 900, 22000], [-0.3, 0.2, -0.93], 0, 0.12, 0))
-    stationId = 1; spawnT = 0; elapsed = 0; gear = 0; heat = 0; landedOn = null; retro = 0; camDock = 0; landCam = 0; camCap = 0
+    stationId = 1; spawnT = 0; elapsed = 0; gear = 0; heat = 0; landedOn = null; retro = 0; camDock = 0; landCam = 0; camCap = 0; walker.on = false; camWalk = 0
     dock.on = false; dock.st = null; dock.lights = [false, false, false, false]; dock.haveRoll = false
     secKey = ''; ensureSectors()
     flash = 1; mode = 'fly'
@@ -810,14 +838,17 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     cam.u = slerpTo(cam.u, tu, SD ? 1 - Math.exp(-dt * 2.2) : kc, cam.f)
     cam.u = norm(sub(cam.u, mul(cam.f, dot(cam.f, cam.u))))
     const anchor = SD ? add(mul(ship.p, 1 - camDock), mul(add(SD.p, mul(SD.z, PL / 2)), camDock)) : ship.p
+    const WP = walker.on && landedOn ? walkerPos() : null
+    camWalk += ((WP ? 1 : 0) - camWalk) * (1 - Math.exp(-dt * 2.5))
+    const anchor2 = camWalk > 0.001 ? add(mul(anchor, 1 - camWalk), mul(WP ?? lastWP, camWalk)) : anchor
     const intro = ease(elapsed / 2.4)
     // the faster it goes, the further back the camera hangs and the wider the view, so the speed is felt
     camSp += (clamp(Math.log10(1 + len(ship.v) / 30) / 4.5, 0, 1) - camSp) * (1 - Math.exp(-dt * 2))
     const back0 = (lerp(CAM_BACK * 14, CAM_BACK, intro) * (1 + 0.7 * camSp) * (1 - 0.25 * landCam)) * (1 - camDock) + 175 * ES * camDock
-    const rise0 = CAM_RISE * (0.4 + 0.6 * intro) * (1 - 0.55 * landCam) * (1 - camDock) + 40 * ES * camDock
-    cam.p = add(sub(anchor, mul(cam.f, back0)), mul(cam.u, rise0))
+    const rise0 = (CAM_RISE * (0.4 + 0.6 * intro) * (1 - 0.55 * landCam) * (1 - camDock) + 40 * ES * camDock) * (1 - camWalk) + 8 * camWalk
+    cam.p = add(sub(anchor2, mul(cam.f, back0 * (1 - camWalk) + 20 * camWalk)), mul(cam.u, rise0))
     // it looks at a point a little ahead of the ship, so the ship sits low in the view but not at its edge
-    cam.fv = norm(sub(add(anchor, mul(cam.f, (30 * RS) * (1 - camDock) + 80 * ES * camDock)), cam.p))
+    cam.fv = norm(sub(add(anchor2, mul(cam.f, ((30 * RS) * (1 - camDock) + 80 * ES * camDock) * (1 - camWalk) + 8 * camWalk)), cam.p))
     if (SD && camCap > 0.001) {
       // while the Ranger is drawn in and the clamps close, the camera cuts to the side of the port, as in the film
       const pa = add(SD.p, mul(SD.z, PORT_Z + 10)), cp = add(add(add(pa, mul(SD.x, 85)), mul(SD.y, 25)), mul(SD.z, 20))
@@ -1562,6 +1593,41 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       }
     }
 
+    // the pilot on the ground: a stick figure
+    if (walker.on && landedOn && mode === 'fly') {
+      const wp = walkerPos()
+      proj(wp, sp)
+      const fx0 = sp[0], fy0 = sp[1], fz = sp[2]
+      if (fz > 1) {
+        proj(add(wp, mul(walker.up, 1.8)), sp)
+        const m = (Math.hypot(sp[0] - fx0, sp[1] - fy0) / 1.8) * 1.7 // pixels to the metre (drawn a little larger than life, so he can be seen)
+        const ul = Math.hypot(sp[0] - fx0, sp[1] - fy0) || 1, ux = (sp[0] - fx0) / ul, uy = (sp[1] - fy0) / ul, sxx = -uy * walker.face, syy = ux * walker.face // up on the screen, and across (the way he faces)
+        const pt = (s2: number, u2: number): [number, number] => [fx0 + (sxx * s2 + ux * u2) * m, fy0 + (syy * s2 + uy * u2) * m]
+        const sw = Math.sin(walker.ph) * 0.32, lift = Math.max(0, Math.cos(walker.ph)) * 0.12, lift2 = Math.max(0, -Math.cos(walker.ph)) * 0.12
+        fx.save()
+        fx.fillStyle = 'rgba(0,0,0,0.3)'; fx.beginPath(); fx.ellipse(fx0, fy0, Math.max(3, 0.5 * m), Math.max(1.5, 0.16 * m), 0, 0, TAU); fx.fill() // his shadow
+        const limbs = (col: string, w: number) => {
+          fx.strokeStyle = col; fx.lineWidth = w; fx.lineCap = 'round'; fx.lineJoin = 'round'
+          fx.beginPath()
+          const hip = pt(0, 0.92), sh = pt(0, 1.45), hd = pt(0, 1.62)
+          fx.moveTo(hip[0], hip[1]); fx.lineTo(sh[0], sh[1]); fx.moveTo(sh[0], sh[1]); fx.lineTo(hd[0], hd[1]) // body and neck
+          const l1 = pt(sw, lift), l2 = pt(-sw, lift2) // feet
+          fx.moveTo(hip[0], hip[1]); fx.lineTo(...pt(sw * 0.5, 0.45 + lift * 0.5)); fx.lineTo(l1[0], l1[1])
+          fx.moveTo(hip[0], hip[1]); fx.lineTo(...pt(-sw * 0.5, 0.45 + lift2 * 0.5)); fx.lineTo(l2[0], l2[1])
+          const a1 = pt(-sw * 0.9, 0.98), a2 = pt(sw * 0.9, 0.98) // hands
+          fx.moveTo(sh[0], sh[1] - 0.04 * m); fx.lineTo(...pt(-sw * 0.5, 1.2)); fx.lineTo(a1[0], a1[1])
+          fx.moveTo(sh[0], sh[1] - 0.04 * m); fx.lineTo(...pt(sw * 0.5, 1.2)); fx.lineTo(a2[0], a2[1])
+          fx.stroke()
+        }
+        limbs('rgba(0,0,0,0.75)', Math.max(3, 0.13 * m))
+        limbs('#fff', Math.max(1.6, 0.075 * m))
+        const hc = pt(0, 1.7), hr = Math.max(1.8, 0.2 * m)
+        fx.fillStyle = 'rgba(0,0,0,0.75)'; fx.beginPath(); fx.arc(hc[0], hc[1], hr + 1.2, 0, TAU); fx.fill()
+        fx.fillStyle = '#fff'; fx.beginPath(); fx.arc(hc[0], hc[1], hr, 0, TAU); fx.fill()
+        fx.restore()
+      }
+    }
+
     // the glow of air at speed
     if (heat > 0.03 && mode === 'fly') {
       const hg = fx.createRadialGradient(W / 2, H * 0.62, H * 0.1, W / 2, H * 0.62, Math.max(W, H) * 0.75)
@@ -1586,7 +1652,8 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       for (const b of list) planet = Math.min(planet, Math.max(0, len(sub(ship.p, [b.x, b.y, b.z])) - b.r))
       let note = ''
       if (mode === 'dead') note = deathWhy
-      else if (landedOn) note = '착륙 완료 · 가속하면 이륙해요'
+      else if (walker.on) note = Math.hypot(walker.x, walker.y) < 24 ? '우주선 가까이 왔어요 · 타기를 누르면 들어가요' : '내렸어요 · 화면을 움직이면 걸어요'
+      else if (landedOn) note = '착륙 완료 · 내리기를 누르거나 가속하면 이륙해요'
       else if (dock.on && dock.t < 0.55) note = '도킹: 포트로 끌려 들어가는 중'
       else if (dock.on && dock.t < 1) note = '도킹: 고정 장치가 잠기는 중'
       else if (dock.on) note = '도킹 완료 · 같이 날아가요 (최대속도 2배)'
@@ -1597,7 +1664,8 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       else if (hb && LANDABLE[hb.kind] && hAlt < 20000 && gear < 0.5) note = `착륙할 수 있는 행성 · 고도 ${fmtDist(Math.max(0, hAlt))}`
       else if (heat > 0.25) note = '대기권 진입 중'
       else if (gear > 0.5) note = '착륙 장치 내려감'
-      cb.hud({ speed: len(ship.v), planet, hull, note, docked: dock.on && dock.t >= 1 })
+      const action = dock.on && dock.t >= 1 ? '분리' : walker.on ? (Math.hypot(walker.x, walker.y) < 24 ? '타기' : '') : landedOn ? '내리기' : ''
+      cb.hud({ speed: len(ship.v), planet, hull, note, action })
     }
   }
 

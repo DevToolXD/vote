@@ -1,5 +1,5 @@
 // Paints a world's picture (as a map of its whole surface, longitude across and latitude down) off the page's own thread.
-import { surfaceTinted } from './spacePlanets'
+import { LANDABLE, surfaceTinted } from './spacePlanets'
 import type { Kind } from './spacePlanets'
 
 type Job = { id: number; kind: Kind; seed: number; w: number; h: number }
@@ -17,6 +17,18 @@ ctx.onmessage = e => {
       const i = (y * w + x) * 4
       buf[i] = c[0]; buf[i + 1] = c[1]; buf[i + 2] = c[2]; buf[i + 3] = 255
       r += c[0] * cl; g += c[1] * cl; b += c[2] * cl; n += cl
+    }
+  }
+  if (LANDABLE[kind] && kind !== 'venus' && kind !== 'titan') {
+    // relief: the lightness taken as height and lit from one side, so craters, ridges and cracks stand out of the surface
+    const L = new Float32Array(w * h)
+    for (let i = 0; i < w * h; i++) L[i] = buf[i * 4] * 0.3 + buf[i * 4 + 1] * 0.59 + buf[i * 4 + 2] * 0.11
+    for (let y = 1; y < h - 1; y++) for (let x = 0; x < w; x++) {
+      const xl = (x + w - 1) % w, xr = (x + 1) % w
+      const rel = (L[(y - 1) * w + xl] - L[(y + 1) * w + xr]) * 0.012
+      const k = 1 + Math.max(-0.28, Math.min(0.28, rel))
+      const i = (y * w + x) * 4
+      buf[i] *= k; buf[i + 1] *= k; buf[i + 2] *= k
     }
   }
   ctx.postMessage({ id, buf: buf.buffer, avg: [r / n, g / n, b / n] }, [buf.buffer])

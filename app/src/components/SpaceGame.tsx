@@ -57,7 +57,7 @@ export function SpaceGame({ speedPass = false }: { speedPass?: boolean }) {
   const frontRef = useRef<HTMLCanvasElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
   const speedRef = useRef<HTMLDivElement>(null)
-  const [docked, setDocked] = useState(false)
+  const [action, setAction] = useState('') // what the button in the middle does: 분리 (undock), 내리기 (get out), 타기 (get in)
   const hullRef = useRef<HTMLDivElement>(null)
   const speedMulRef = useRef(1)
   speedMulRef.current = speedPass ? 3 : 1 // the 최대속도 3배 패스
@@ -147,7 +147,7 @@ export function SpaceGame({ speedPass = false }: { speedPass?: boolean }) {
     const eng = engine.current ?? (engine.current = createEngine(import.meta.env.BASE_URL, {
       hud: h => {
         if (speedRef.current) speedRef.current.textContent = `속도 ${fmtSpeed(h.speed)}`
-        setDocked(d => (d === h.docked ? d : h.docked))
+        setAction(a => (a === h.action ? a : h.action))
         if (noteRef.current) noteRef.current.textContent = h.note
         if (hullRef.current) { // shown once the hull is hurt
           hullRef.current.textContent = h.hull < 100 ? `내구도 ${Math.max(0, Math.ceil(h.hull))}%` : ''
@@ -227,7 +227,7 @@ export function SpaceGame({ speedPass = false }: { speedPass?: boolean }) {
       <Hold label="왼쪽으로 구르기" size={56} style="left:16px;bottom:18px" on={d => { btn.current.ccw = d }}><Arrow flip /></Hold>
       <Hold label="오른쪽으로 구르기" size={56} style="left:80px;bottom:18px" on={d => { btn.current.cw = d }}><Arrow /></Hold>
       <Hold label="감속" size={56} style="right:100px;bottom:18px" on={d => { btn.current.brake = d }}>감속</Hold>
-      {docked && <Hold label="분리" size={56} style="left:50%;margin-left:-28px;bottom:18px" on={d => { btn.current.undock = d }}>분리</Hold>}
+      {action && <Hold label={action} size={64} style="left:50%;margin-left:-32px;bottom:18px" on={d => { btn.current.undock = d }}>{action}</Hold>}
       <Hold label="가속" size={72} style="right:18px;bottom:18px" on={d => { btn.current.thrust = d }}>가속</Hold>
       {askTilt && (
         <button className="pr-96" onClick={allowTilt} style={css('position:absolute;left:50%;bottom:64px;transform:translateX(-50%);height:40px;padding:0 18px;border-radius:9999px;background:#fff;color:#000;font-size:14px;font-weight:700;white-space:nowrap')}>기울기로 조종 켜기</button>

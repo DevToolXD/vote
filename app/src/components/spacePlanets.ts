@@ -374,5 +374,11 @@ function procSurface(kind: 'rock' | 'gas', seed: number): (X: number, Y: number,
 export function surfaceTinted(kind: Kind, seed: number): (X: number, Y: number, Z: number) => RGB {
   const f = kind === 'rock' || kind === 'gas' ? procSurface(kind, seed) : surface(kind, seed)
   const tr = rngOf(seed + 99), tint: RGB = [0.9 + 0.2 * tr(), 0.9 + 0.2 * tr(), 0.9 + 0.2 * tr()]
-  return (X, Y, Z) => { const c = f(X, Y, Z); return [c[0] * tint[0], c[1] * tint[1], c[2] * tint[2]] }
+  // fine grain over everything (rock, ice, cloud tops), so that close up a world is not smooth
+  const gas = !LANDABLE[kind], amp = gas ? 0.1 : 0.3, o3 = (seed % 97) * 0.7
+  return (X, Y, Z) => {
+    const c = f(X, Y, Z)
+    const k = 1 - amp / 2 + amp * (0.65 * fbm(X * 62 + o3, Y * 62, Z * 62, 3) + 0.35 * fbm(X * 150 + o3, Y * 150, Z * 150, 2))
+    return [c[0] * tint[0] * k, c[1] * tint[1] * k, c[2] * tint[2] * k]
+  }
 }
