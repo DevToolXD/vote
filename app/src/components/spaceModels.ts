@@ -2,7 +2,8 @@
 // glazing set in black armour) and the Endurance (twelve white modules with black bands round a spine, a docking port at the
 // front with four rings of lights). x right, y up, z forward (the Ranger's nose; the Endurance's port).
 
-import { PORT_Z } from './spaceDock'
+import { ES, PORT_Z as PORT_Z_BIG } from './spaceDock'
+const PORT_Z = PORT_Z_BIG / ES // (the model is made at its own size; enduranceModel() scales it up at the end)
 
 export type Face = {
   p: Float32Array // corners, x y z each
@@ -188,7 +189,8 @@ export function rangerTexture(): HTMLCanvasElement {
 
 // ---------------- the Endurance ----------------
 
-export const ENDURANCE_RING = 62 // the ring's radius
+const RING_BASE = 62
+export const ENDURANCE_RING = RING_BASE * ES // the ring's radius
 const MODULES = 12
 
 let ENDURANCE: Face[] | null = null
@@ -225,7 +227,7 @@ export function enduranceModel(): Face[] {
     const a = (i / MODULES) * Math.PI * 2
     const r: P3 = [Math.cos(a), Math.sin(a), 0], t: P3 = [-Math.sin(a), Math.cos(a), 0]
     const axes: [P3, P3, P3] = [t, r, Z]
-    const R = ENDURANCE_RING
+    const R = RING_BASE
     b.box(mul3(r, R), axes, [12, 6.5, 6], WHITE, 2)
     for (const z of [-3.2, 3.2]) b.box([r[0] * R, r[1] * R, z], axes, [12.06, 6.56, 0.38], BLACK)
     b.box(mul3(r, R - 6.5 - 1.1), axes, [5, 1.1, 3.4], GRAY)
@@ -240,6 +242,7 @@ export function enduranceModel(): Face[] {
     if (i === 0) b.poly([[R + 0.4, -0.5, 6.05], [R + 0.4, 0.5, 6.05], [R - 0.4, 0.5, 6.05], [R - 0.4, -0.5, 6.05]], WHITE, { n: Z, light: LIGHT_RED })
     if (i === 6) b.poly([[-R + 0.4, -0.5, 6.05], [-R + 0.4, 0.5, 6.05], [-R - 0.4, 0.5, 6.05], [-R - 0.4, -0.5, 6.05]], WHITE, { n: Z, light: LIGHT_GREEN })
   }
+  for (const fc of b.faces) for (let i = 0; i < fc.p.length; i++) fc.p[i] *= ES
   ENDURANCE = b.faces
   return ENDURANCE
 }

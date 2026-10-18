@@ -11,7 +11,7 @@
 import { KIND_RADIUS, LANDABLE, hash3, rngOf, smooth, worldOf, type Kind, type RGB } from './spacePlanets'
 import { TEX_H, TEX_W, requestTexture, type Tex } from './spaceTexture'
 import { ENDURANCE_RING, LIGHT_COLORS, LIGHT_RING, LIGHT_STROBE, MATS, drawPicture, enduranceModel, gearModel, rangerModel, rangerTexture, type Face } from './spaceModels'
-import { NOSE, PORT_Z, RS, dockMetrics, dockVerdict, keyDir, wrapPi, type V } from './spaceDock'
+import { ES, NOSE, PORT_Z, RS, dockMetrics, dockVerdict, keyDir, wrapPi, type V } from './spaceDock'
 
 export type Input = { yaw: number; pitch: number; roll: number; rollStop: boolean; thrust: boolean; brake: boolean; speedMul: number; undock: boolean }
 export type Engine = {
@@ -285,7 +285,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     for (const S of stations) {
       if (S === skip) continue
       const d3 = sub(ship.p, S.p), lx = dot(d3, S.x), ly = dot(d3, S.y), lz = dot(d3, S.z), rho = Math.hypot(lx, ly)
-      d = Math.min(d, Math.max(3, Math.min(Math.hypot(rho, lz - clamp(lz, -36, PORT_Z + 2)) - 6.3, Math.hypot(rho - ENDURANCE_RING, lz) - 11)))
+      d = Math.min(d, Math.max(3, Math.min(Math.hypot(rho, lz - clamp(lz, -36 * ES, PORT_Z + 2)) - 6.3 * ES, Math.hypot(rho - ENDURANCE_RING, lz) - 11 * ES)))
     }
     for (const b of list) d = Math.min(d, Math.max(5, len(sub(ship.p, [b.x, b.y, b.z])) - b.r))
     return d
@@ -532,7 +532,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
   /** The Endurance: its docking test, the lights, and the hits. */
   function stepStation(S: Station, dt: number) {
     dock.cool = Math.max(0, dock.cool - dt)
-    if (len(sub(ship.p, S.p)) > 600) { if (dock.st === S) { dock.lights = [false, false, false, false]; dock.haveRoll = false } return }
+    if (len(sub(ship.p, S.p)) > 600 * ES) { if (dock.st === S) { dock.lights = [false, false, false, false]; dock.haveRoll = false } return }
     if (dock.st !== S) { dock.st = S; dock.haveRoll = false }
     const m = dockMetrics({ ship: ship.p, f: ship.f, u: ship.u, vel: ship.v, e: S.p, ex: S.x, ey: S.y, ez: S.z, spin: S.spin })
     // how fast the two keys are turning against each other: the change over a quarter of a second, so the noise of single frames does not count
@@ -558,15 +558,15 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     const d3 = sub(ship.p, S.p), lx = dot(d3, S.x), ly = dot(d3, S.y), lz = dot(d3, S.z)
     const rho = Math.hypot(lx, ly)
     let n: V | null = null, over = 0
-    if (lz > -36 && lz < PORT_Z + 2 && rho < 6.3 + SHIP_R) {
+    if (lz > -36 * ES && lz < PORT_Z + 2 && rho < 6.3 * ES + SHIP_R) {
       const rr = rho || 1e-6
-      n = add(mul(S.x, lx / rr), mul(S.y, ly / rr)); over = 6.3 + SHIP_R - rho
+      n = add(mul(S.x, lx / rr), mul(S.y, ly / rr)); over = 6.3 * ES + SHIP_R - rho
     } else {
       const dr = Math.hypot(rho - ENDURANCE_RING, lz)
-      if (dr < 11 + SHIP_R && rho > 20) {
+      if (dr < 11 * ES + SHIP_R && rho > 20 * ES) {
         const rr = rho || 1e-6, q = dr || 1e-6
         n = add(add(mul(S.x, (lx / rr) * ((rho - ENDURANCE_RING) / q)), mul(S.y, (ly / rr) * ((rho - ENDURANCE_RING) / q))), mul(S.z, lz / q))
-        over = 11 + SHIP_R - dr
+        over = 11 * ES + SHIP_R - dr
       }
     }
     if (n) { const nn = norm(n); ship.p = add(ship.p, mul(nn, over + 0.05)); bump(nn, 1) }
@@ -645,7 +645,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       else {
         stepControl(inp, dt)
         // near an Endurance the move is cut into steps a few metres long, so a fast ship cannot pass through it
-        const ns = nearStation(), close = !!ns && ns.d < 900
+        const ns = nearStation(), close = !!ns && ns.d < 900 * ES
         const steps = close ? clamp(Math.ceil((len(ship.v) * dt) / 3), 1, 80) : 1
         for (let i = 0; i < steps && mode === 'fly' && !dock.on; i++) { stepMove(dt / steps); if (close && ns && mode === 'fly') stepStation(ns.S, dt / steps) }
         if (!close && dock.st) { dock.lights = [false, false, false, false]; dock.haveRoll = false }
@@ -713,11 +713,11 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     const intro = ease(elapsed / 2.4)
     // the faster it goes, the further back the camera hangs and the wider the view, so the speed is felt
     camSp += (clamp(Math.log10(1 + len(ship.v) / 30) / 4.5, 0, 1) - camSp) * (1 - Math.exp(-dt * 2))
-    const back0 = (lerp(CAM_BACK * 14, CAM_BACK, intro) * (1 + 0.7 * camSp) * (1 - 0.25 * landCam)) * (1 - camDock) + 175 * camDock
-    const rise0 = CAM_RISE * (0.4 + 0.6 * intro) * (1 - 0.55 * landCam) * (1 - camDock) + 40 * camDock
+    const back0 = (lerp(CAM_BACK * 14, CAM_BACK, intro) * (1 + 0.7 * camSp) * (1 - 0.25 * landCam)) * (1 - camDock) + 175 * ES * camDock
+    const rise0 = CAM_RISE * (0.4 + 0.6 * intro) * (1 - 0.55 * landCam) * (1 - camDock) + 40 * ES * camDock
     cam.p = add(sub(anchor, mul(cam.f, back0)), mul(cam.u, rise0))
     // it looks at a point a little ahead of the ship, so the ship sits low in the view but not at its edge
-    cam.fv = norm(sub(add(anchor, mul(cam.f, (30 * RS) * (1 - camDock) + 80 * camDock)), cam.p))
+    cam.fv = norm(sub(add(anchor, mul(cam.f, (30 * RS) * (1 - camDock) + 80 * ES * camDock)), cam.p))
     const camR0 = norm(cross(cam.u, cam.fv)), camU0 = cross(cam.fv, camR0)
     // the view may be rolled (falling into a hole)
     const cR = Math.cos(cam.roll), sR = Math.sin(cam.roll)
@@ -1005,7 +1005,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
 
     // ---- the ships ----
     // each strobe flashes on its own beat; only the Endurance the Ranger is lining up on has its rings lit by how the approach goes
-    const lightOn = (id: number, S: Station | null) => (id === LIGHT_STROBE ? (t * 0.9 + (S ? S.id * 0.37 : 0)) % 1 < 0.5 : true)
+    const lightOn = (id: number, S: Station | null) => (id === LIGHT_STROBE ? (t / 1.2 + (S ? S.id * 0.37 : 0)) % 1 < 0.5 : true)
     const lightColor = (id: number, S: Station | null): [number, number, number] => (id >= LIGHT_RING && id < LIGHT_RING + 4 ? (S && dock.st === S && dock.lights[id - LIGHT_RING] ? [70, 255, 110] : [255, 60, 50]) : LIGHT_COLORS[id])
     const glows: { x: number; y: number; r: number; c: [number, number, number] }[] = []
     // the Endurances drawn piece by piece: the two nearest that are more than a speck; the others are specks
@@ -1184,9 +1184,9 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       }
       if (mode !== 'dead' && dock.on && dock.st && ship.thr > 0.05) { // docked: the Endurance's engines glow at its far end
         const S = dock.st
-        proj(add(S.p, mul(S.z, -40)), sp)
+        proj(add(S.p, mul(S.z, -40 * ES)), sp)
         if (sp[2] > 1) {
-          const r = ((14 + 26 * ship.thr) * F) / sp[2], g = fx.createRadialGradient(sp[0], sp[1], 0, sp[0], sp[1], r)
+          const r = ((14 + 26 * ship.thr) * ES * F) / sp[2], g = fx.createRadialGradient(sp[0], sp[1], 0, sp[0], sp[1], r)
           g.addColorStop(0, `rgba(210,235,255,${0.9 * ship.thr})`); g.addColorStop(0.4, `rgba(110,170,255,${0.5 * ship.thr})`); g.addColorStop(1, 'rgba(80,130,255,0)')
           fx.globalCompositeOperation = 'lighter'
           fx.fillStyle = g
@@ -1294,17 +1294,10 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         if (meshes.includes(S) || depthOf(S) <= 1) continue
         proj(S.p, sp)
         if (sp[0] > -10 && sp[0] < W + 10 && sp[1] > -10 && sp[1] < H + 10) {
-          const on = (t * 0.9 + S.id * 0.37) % 1 < 0.5 // blinks: half a second lit, half dark, so it can be told from the stars at any distance
-          fx.fillStyle = on ? 'rgba(255,255,255,1)' : 'rgba(200,210,240,0.2)'
-          fx.beginPath(); fx.arc(sp[0], sp[1], on ? 2.4 : 1.1, 0, TAU); fx.fill()
-          if (on) {
-            const g = fx.createRadialGradient(sp[0], sp[1], 0, sp[0], sp[1], 34)
-            g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.15, 'rgba(255,235,200,0.6)'); g.addColorStop(1, 'rgba(255,200,140,0)')
-            fx.fillStyle = g
-            fx.beginPath(); fx.arc(sp[0], sp[1], 34, 0, TAU); fx.fill()
-            fx.strokeStyle = 'rgba(255,245,225,0.75)'; fx.lineWidth = 1.2 // a cross of light
-            fx.beginPath(); fx.moveTo(sp[0] - 30, sp[1]); fx.lineTo(sp[0] + 30, sp[1]); fx.moveTo(sp[0], sp[1] - 30); fx.lineTo(sp[0], sp[1] + 30); fx.stroke()
-          }
+          // looks like any star but swells to 1.7 times its size and back every 1.2 seconds, so it can be told from the stars at any distance
+          const pulse = 1 + 0.7 * (0.5 - 0.5 * Math.cos(((t + S.id * 0.37) / 1.2) * TAU))
+          fx.fillStyle = 'rgb(255,255,255)'
+          fx.beginPath(); fx.arc(sp[0], sp[1], 1.4 * pulse, 0, TAU); fx.fill()
         }
       }
       fx.globalCompositeOperation = 'source-over'
