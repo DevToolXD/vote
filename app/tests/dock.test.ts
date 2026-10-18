@@ -28,17 +28,17 @@ test('a good approach reads right everywhere', () => {
 test('each fault is found by its own light', () => {
   const u: V = keyDir([1, 0, 0], [0, 1, 0], 0.4)
   const good = base({ u })
-  // off the axis by 5 m at the tip
-  assert.equal(dockVerdict(dockMetrics({ ...good, ship: [5, 0, PORT_Z + NOSE + 3] }), 0).offset, false)
-  // the nose turned 20 degrees
-  const a = (20 * Math.PI) / 180
+  // off the axis by 8 m at the tip
+  assert.equal(dockVerdict(dockMetrics({ ...good, ship: [8, 0, PORT_Z + NOSE + 3] }), 0).offset, false)
+  // the nose turned 30 degrees
+  const a = (30 * Math.PI) / 180
   assert.equal(dockVerdict(dockMetrics({ ...good, f: [Math.sin(a), 0, -Math.cos(a)] }), 0).axis, false)
   // the keys a quarter turn apart, and turning against each other
   assert.equal(dockVerdict(dockMetrics(base({ u: [1, 0, 0] })), 0).roll, false)
-  assert.equal(dockVerdict(dockMetrics(good), 0.3).roll, false)
+  assert.equal(dockVerdict(dockMetrics(good), 0.5).roll, false)
   // too fast, or drifting sideways
-  assert.equal(dockVerdict(dockMetrics({ ...good, vel: [0, 0, -2.5] }), 0).speed, false)
-  assert.equal(dockVerdict(dockMetrics({ ...good, vel: [1.5, 0, -0.4] }), 0).speed, false)
+  assert.equal(dockVerdict(dockMetrics({ ...good, vel: [0, 0, -4] }), 0).speed, false)
+  assert.equal(dockVerdict(dockMetrics({ ...good, vel: [2.4, 0, -0.4] }), 0).speed, false)
   // backing away is not "closing"
   assert.equal(dockVerdict(dockMetrics({ ...good, vel: [0, 0, 0.5] }), 0).speed, false)
 })

@@ -14,7 +14,7 @@ export const RS = 1.5 // how much bigger the Ranger is drawn and flown than its 
 export const NOSE = 14.2 * RS // from the Ranger's centre to the tip of its docking collar
 export const ES = 4.6 // how much bigger the Endurance is drawn and flown than its model
 export const PORT_Z = 42 * ES // the Endurance's port face, along its axis from its centre
-export const LIMITS = { axisDeg: 15.75, offset: 4.05, closing: 2.25, side: 1.125, rollDeg: 22.5, rollRate: 0.225 } // two and a quarter times as forgiving as it first was
+export const LIMITS = { axisDeg: 23.6, offset: 6.1, closing: 3.4, side: 1.7, rollDeg: 33, rollRate: 0.34 } // three and three quarters times as forgiving as it first was
 
 export type DockIn = {
   ship: V; f: V; u: V; vel: V // the Ranger's centre, nose direction, up and velocity

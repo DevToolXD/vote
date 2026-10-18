@@ -588,11 +588,23 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     // how fast the two keys are turning against each other: the change over a quarter of a second, so the noise of single frames does not count
     if (!dock.haveRoll) { dock.rate = 0; dock.rollPrev = m.roll; dock.rollT = elapsed; dock.haveRoll = true }
     else if (elapsed - dock.rollT >= 0.25) { dock.rate = wrapPi(m.roll - dock.rollPrev) / (elapsed - dock.rollT); dock.rollPrev = m.roll; dock.rollT = elapsed }
-    const v = dockVerdict(m, dock.rate)
+    // docking assist: near the port and roughly lined up, the flight computer eases the nose onto the axis, the key onto the port's key and
+    // the sideways drift to nothing, so the last metres need only a steady push
+    if (dock.cool <= 0 && m.h < 60 && m.h > -2 && m.axisDeg < 40 && m.offset < 30) {
+      const k = 1 - Math.exp(-dt * 0.9), toward = mul(S.z, -1)
+      ship.f = slerpTo(ship.f, toward, k, ship.u)
+      const key = keyDir(S.x, S.y, S.spin), kp = sub(key, mul(ship.f, dot(key, ship.f)))
+      if (len(kp) > 1e-3) ship.u = slerpTo(sub(ship.u, mul(ship.f, dot(ship.u, ship.f))), norm(kp), k, ship.f)
+      ship.f = norm(ship.f); ship.u = norm(sub(ship.u, mul(ship.f, dot(ship.u, ship.f)))); ship.r = norm(cross(ship.u, ship.f)); ship.u = cross(ship.f, ship.r)
+      const vz = dot(ship.v, S.z), side = sub(ship.v, mul(S.z, vz))
+      ship.v = sub(ship.v, mul(side, 1 - Math.exp(-dt * 1.4)))
+      ship.p = sub(ship.p, mul(sub(sub(ship.p, S.p), mul(S.z, dot(sub(ship.p, S.p), S.z))), 1 - Math.exp(-dt * 0.25))) // and toward the axis a little
+    }
+    const v = dockVerdict(dockMetrics({ ship: ship.p, f: ship.f, u: ship.u, vel: ship.v, e: S.p, ex: S.x, ey: S.y, ez: S.z, spin: S.spin }), dock.rate)
     dock.lights = [v.axis, v.offset, v.roll, v.speed]
     if (dock.cool > 0) return
     // the nose at the port's face: lock if all four are right, else it bounces off
-    if (m.h < 0.6 && m.h > -6 && m.offset < 7.8) {
+    if (m.h < 0.6 && m.h > -6 && m.offset < 12) {
       if (v.all) {
         dock.on = true; dock.t = 0
         dock.from = { p: ship.p, f: ship.f, u: ship.u }
