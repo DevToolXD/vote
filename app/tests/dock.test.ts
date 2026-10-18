@@ -43,7 +43,7 @@ test('each fault is found by its own light', () => {
   assert.equal(dockVerdict(dockMetrics({ ...good, vel: [0, 0, 0.5] }), 0).speed, false)
 })
 
-import { affine, enduranceModel, rangerModel } from '../src/components/spaceModels'
+import { affine, clampModel, enduranceModel, gearModel, rangerModel } from '../src/components/spaceModels'
 
 test('the picture map takes the picture corners to the screen corners', () => {
   // a made-up map: x = 3u + 2v + 5, y = -u + 4v + 7
@@ -58,10 +58,10 @@ test('the picture map takes the picture corners to the screen corners', () => {
 })
 
 test('the models are made of flat pieces with sound normals', () => {
-  for (const faces of [rangerModel(), enduranceModel()]) {
-    assert.ok(faces.length > 50)
+  for (const faces of [rangerModel(), enduranceModel(), clampModel(), gearModel()]) {
+    assert.ok(faces.length > 25)
     for (const f of faces) {
-      assert.ok(f.k >= 3 && f.k <= 8)
+      assert.ok(f.k >= 3 && f.k <= 10) // (the draw buffers take 12 corners: a piece with 10, cut at the near plane, has 11)
       assert.ok(Math.abs(Math.hypot(f.n[0], f.n[1], f.n[2]) - 1) < 1e-4)
       for (let i = 0; i < f.k * 3; i++) assert.ok(Number.isFinite(f.p[i]))
     }

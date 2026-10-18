@@ -71,6 +71,14 @@ class Builder {
       }
     }
   }
+  /** A square bar from p0 to p1, `h` half its thickness. */
+  bar(p0: P3, p1: P3, h: number, mat: number) {
+    const d = sub(p1, p0), l = Math.hypot(d[0], d[1], d[2]) || 1e-6, u = mul3(d, 1 / l)
+    const ref: P3 = Math.abs(u[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]
+    const cr = (a: P3, c: P3): P3 => [a[1] * c[2] - a[2] * c[1], a[2] * c[0] - a[0] * c[2], a[0] * c[1] - a[1] * c[0]]
+    const v = norm(cr(u, ref)), w = cr(u, v)
+    this.box(mul3(add3(p0, p1), 0.5), [u, v, w], [l / 2, h, h], mat)
+  }
   /** A prism along z, `sides` sided, closed at both ends. */
   prism(cx: number, cy: number, rad: number, z0: number, z1: number, mat: number, sides = 8, capMat = mat) {
     const ang = (i: number) => (i / sides) * Math.PI * 2
@@ -114,6 +122,37 @@ export function rangerModel(): Face[] {
   b.prism(0, 0.1, 1.35, 12, NOSE_TIP, LIGHTM, 8, GRAY)
   b.box([0, 1.58, 13.1], [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [0.11, 0.07, 0.95], BLACK)
   b.poly([[-0.09, 1.66, 12.2], [0.09, 1.66, 12.2], [0.09, 1.66, 14.0], [-0.09, 1.66, 14.0]], WHITE, { n: [0, 1, 0], light: LIGHT_KEY })
+  // ---- the finer work ----
+  // black frames round the plate's edges, standing a little proud
+  for (let i = 0; i < 6; i++) { const j = (i + 1) % 6; b.bar([top[i][0] * 0.99, top[i][1] + 0.07, top[i][2] * 0.99], [top[j][0] * 0.99, top[j][1] + 0.07, top[j][2] * 0.99], 0.09, BLACK) }
+  // ribs of armour down the sloping sides
+  for (let i = 0; i < 6; i++) {
+    const j = (i + 1) % 6
+    const out = (x: number, z: number): P3 => { const l = Math.hypot(x, z * 0.4) || 1; return [x / l, 0, (z * 0.4) / l] }
+    for (const f of [0.18, 0.42, 0.66, 0.9]) {
+      const tx = top[i][0] + (top[j][0] - top[i][0]) * f, tz = top[i][2] + (top[j][2] - top[i][2]) * f, ty = top[i][1] + (top[j][1] - top[i][1]) * f
+      const bx = bot[i][0] + (bot[j][0] - bot[i][0]) * f, bz = bot[i][2] + (bot[j][2] - bot[i][2]) * f
+      const o = out((tx + bx) / 2, (tz + bz) / 2)
+      b.bar([tx + o[0] * 0.06, ty, tz + o[2] * 0.06], [bx + o[0] * 0.06, Y_BOT + 0.05, bz + o[2] * 0.06], 0.07, GRAY)
+    }
+  }
+  // the engines: a ring round each bell, the dark inside it, a heat shield plate behind the three
+  for (const x of [-2.6, 0, 2.6]) {
+    b.prism(x, 0.45, 1.32, -12.3, -11.8, GRAY, 8, BLACK)
+    b.prism(x, 0.45, 0.62, -14.05, -13.78, BLACK, 8)
+  }
+  b.box([0, 0.45, -11.7], [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [4.4, 1.0, 0.12], BLACK)
+  // the belly: hatches for the gear and a long keel plate
+  for (const [x, z] of [[-3.2, 6], [3.2, 6], [-3.7, -8], [3.7, -8]] as [number, number][]) b.box([x, Y_BOT - 0.02, z], [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [0.9, 0.03, 1.1], BLACK)
+  b.box([0, Y_BOT - 0.05, -1], [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [0.5, 0.05, 9], GRAY)
+  // an antenna mast and its small dish at the rear, a sensor boom at the front
+  b.bar([2.8, 1.5, -10], [2.8, 3.3, -10.4], 0.05, GRAY)
+  b.prism(2.8, 3.45, 0.55, -10.5, -10.2, LIGHTM, 8, GRAY)
+  b.bar([-1.2, 1.62, 11.4], [-1.2, 2.3, 11.9], 0.04, GRAY)
+  // navigation lights at the wing tips (red to port, green to starboard) and two lamps by the collar
+  b.poly([[-5.95, 1.0, -11.2], [-5.95, 1.0, -11.9], [-5.95, 0.75, -11.9], [-5.95, 0.75, -11.2]], WHITE, { n: [-1, 0, 0], light: LIGHT_RED })
+  b.poly([[5.95, 1.0, -11.9], [5.95, 1.0, -11.2], [5.95, 0.75, -11.2], [5.95, 0.75, -11.9]], WHITE, { n: [1, 0, 0], light: LIGHT_GREEN })
+  for (const x of [-0.95, 0.95]) b.poly([[x - 0.12, 1.5, 12.2], [x + 0.12, 1.5, 12.2], [x + 0.12, 1.5, 12.5], [x - 0.12, 1.5, 12.5]], WHITE, { n: [0, 1, 0], light: LIGHT_WINDOW })
   RANGER = b.faces
   return RANGER
 }
@@ -134,11 +173,12 @@ export function gearModel(): Face[] {
 
 /** The picture of the Ranger's top: a white plate in a black frame, black glazing set in it, a hatch behind, seams and grime. */
 export function rangerTexture(): HTMLCanvasElement {
-  const W = 384, H = 768, S = 32 // 32 pixels to the metre
+  const W = 384, H = 768, S = 32 // 32 units to the metre (drawn on a canvas twice as big, so it is sharp)
   const cv = document.createElement('canvas')
-  cv.width = W; cv.height = H
+  cv.width = W * 2; cv.height = H * 2
   const g = cv.getContext('2d')
   if (!g) return cv
+  g.scale(2, 2)
   const at = (x: number, z: number): [number, number] => [(x + 6) * S, (12 - z) * S]
   const path = (pts: [number, number][]) => { g.beginPath(); pts.forEach(([x, z], i) => { const [u, v] = at(x, z); if (i) g.lineTo(u, v); else g.moveTo(u, v) }); g.closePath() }
   let seed = 7
@@ -176,13 +216,19 @@ export function rangerTexture(): HTMLCanvasElement {
     g.fillStyle = gl; g.fill()
     g.strokeStyle = 'rgba(160,168,184,0.55)'; g.lineWidth = 1.4; g.stroke()
   }
+  // rivets along the seams, a hazard stripe by the hatch, the ship's name
+  g.fillStyle = 'rgba(70,74,82,0.55)'
+  for (let z = 11; z > -12; z -= 2.2) for (let x = -5.6; x < 5.7; x += 0.42) { const [u, v] = at(x, z); g.beginPath(); g.arc(u, v + 1.5, 0.55, 0, Math.PI * 2); g.fill() }
+  g.save(); g.translate(...at(-4.9, -11.2)); g.rotate(-Math.PI / 2); g.fillStyle = 'rgba(40,44,54,0.8)'; g.font = '700 15px monospace'; g.fillText('RANGER 1', 0, 0); g.restore()
+  g.fillStyle = 'rgba(30,32,38,0.75)'
+  for (let i = 0; i < 9; i++) { const [u, v] = at(-3.3 + i * 0.75, 0.2); g.save(); g.translate(u, v); g.rotate(0.6); g.fillRect(-1.5, -9, 6, 14); g.restore() }
   // grime: streaks along the flight, speckle, a darker run at the seams
   for (let i = 0; i < 60; i++) {
     const x = (r() * 12 - 6), z0 = r() * 24 - 12, [u, v] = at(x, z0)
     g.strokeStyle = `rgba(60,64,72,${0.04 + r() * 0.06})`; g.lineWidth = 0.6 + r() * 1.6
     g.beginPath(); g.moveTo(u, v); g.lineTo(u + (r() - 0.5) * 6, v + 20 + r() * 90); g.stroke()
   }
-  for (let i = 0; i < 2200; i++) { g.fillStyle = `rgba(${r() < 0.5 ? '40,44,52' : '255,255,255'},${0.03 + r() * 0.08})`; g.fillRect(r() * W, r() * H, 1 + r() * 1.5, 1 + r() * 1.5) }
+  for (let i = 0; i < 4200; i++) { g.fillStyle = `rgba(${r() < 0.5 ? '40,44,52' : '255,255,255'},${0.03 + r() * 0.08})`; g.fillRect(r() * W, r() * H, 1 + r() * 1.5, 1 + r() * 1.5) }
   g.restore()
   return cv
 }
@@ -218,6 +264,25 @@ export function enduranceModel(): Face[] {
       b.poly([[Math.cos(a0) * (rad - 0.17), Math.sin(a0) * (rad - 0.17), PORT_Z + 0.07], [Math.cos(a1) * (rad - 0.17), Math.sin(a1) * (rad - 0.17), PORT_Z + 0.07], [Math.cos(a1) * (rad + 0.17), Math.sin(a1) * (rad + 0.17), PORT_Z + 0.07], [Math.cos(a0) * (rad + 0.17), Math.sin(a0) * (rad + 0.17), PORT_Z + 0.07]], WHITE, { n: Z, light: LIGHT_RING + ring })
     }
   }
+  // flanges on the spine, the big hub the ring and spokes hang from, six tanks along the spine, the engines at the rear
+  for (const z of [-16, 16]) b.prism(0, 0, 7.0, z - 0.5, z + 0.5, GRAY, 8, BLACK)
+  b.prism(0, 0, 8.2, -3.4, 3.4, WHITE, 8, BLACK)
+  for (const z of [-3.9, 3.9]) b.prism(0, 0, 8.8, z - 0.3, z + 0.3, GRAY, 8, BLACK)
+  for (let k = 0; k < 6; k++) {
+    const a = (k * Math.PI) / 3 + Math.PI / 6, tx = Math.cos(a) * 8.6, ty = Math.sin(a) * 8.6
+    b.prism(tx, ty, 1.9, 6, 24, WHITE, 8, GRAY)
+    for (const z of [8, 15, 22]) b.prism(tx, ty, 2.05, z - 0.3, z + 0.3, BLACK, 8)
+    b.bar([tx * 0.55, ty * 0.55, 15], [tx, ty, 15], 0.3, GRAY)
+  }
+  b.prism(0, 0, 7.4, -31, -30, GRAY, 8, BLACK)
+  b.prism(0, 0, 3.4, -42, -31, BLACK, 10, GRAY)
+  b.prism(0, 0, 2.2, -42.3, -41.6, GRAY, 10, BLACK)
+  for (let k = 0; k < 6; k++) { const a = (k * Math.PI) / 3, ex = Math.cos(a) * 6.6, ey = Math.sin(a) * 6.6; b.prism(ex, ey, 2.0, -38, -30.5, BLACK, 8, GRAY); b.prism(ex, ey, 1.1, -38.3, -37.8, GRAY, 8, BLACK) }
+  // a collar standing round the port, and eight latches on it
+  b.prism(0, 0, 6.3, PORT_Z - 1.6, PORT_Z - 0.1, WHITE, 8, GRAY)
+  for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2 + Math.PI / 8; b.box([Math.cos(a) * 6.5, Math.sin(a) * 6.5, PORT_Z - 0.9], [[Math.cos(a), Math.sin(a), 0], [-Math.sin(a), Math.cos(a), 0], [0, 0, 1]], [0.35, 0.5, 0.7], BLACK) }
+  // dishes and antennas on the spine
+  for (const [z, y] of [[-12, 7.5], [28, -7.5]] as [number, number][]) { b.bar([0, y > 0 ? 5 : -5, z], [0, y, z], 0.2, GRAY); b.prism(0, y + (y > 0 ? 0.4 : -0.4), 3.2, z - 0.25, z + 0.25, LIGHTM, 10, GRAY) }
   // the strobe, on the spine's rear
   b.box([0, 5.4, -28], AX, [0.35, 0.35, 0.35], WHITE)
   b.poly([[-0.3, 5.76, -28.3], [0.3, 5.76, -28.3], [0.3, 5.76, -27.7], [-0.3, 5.76, -27.7]], WHITE, { n: [0, 1, 0], light: LIGHT_STROBE })
@@ -237,7 +302,26 @@ export function enduranceModel(): Face[] {
     // the truss to the next module
     const am = a + Math.PI / MODULES, rm: P3 = [Math.cos(am), Math.sin(am), 0], tm: P3 = [-Math.sin(am), Math.cos(am), 0]
     for (const z of [-4.6, 4.6]) b.box([rm[0] * R * Math.cos(Math.PI / MODULES), rm[1] * R * Math.cos(Math.PI / MODULES), z], [tm, rm, Z], [5.8, 0.8, 0.8], GRAY)
-    if (i % 2 === 0) b.box(mul3(r, 28), [t, r, Z], [0.9, 24, 0.9], LIGHTM) // a spoke to every second module
+    // diagonal braces across the gap, an X on the face
+    {
+      const e0 = add3(mul3(r, R), mul3(t, 12)), e1 = add3(mul3(rm, R * 0.0 + R), mul3(tm, 0))
+      void e1
+      const an = ((i + 1) / MODULES) * Math.PI * 2, rn: P3 = [Math.cos(an), Math.sin(an), 0], tn: P3 = [-Math.sin(an), Math.cos(an), 0]
+      const s0 = add3(mul3(rn, R), mul3(tn, -12))
+      b.bar([e0[0], e0[1], -4.6], [s0[0], s0[1], 4.6], 0.22, GRAY)
+      b.bar([e0[0], e0[1], 4.6], [s0[0], s0[1], -4.6], 0.22, GRAY)
+    }
+    if (i % 2 === 0) { // a spoke to every second module: two rails with rungs between them
+      for (const sd of [-1.3, 1.3]) b.box(add3(mul3(r, 28), mul3(t, sd)), [t, r, Z], [0.3, 24, 0.3], LIGHTM)
+      for (let j = 0; j < 7; j++) b.box(mul3(r, 5 + j * 7.4), [t, r, Z], [1.3, 0.25, 0.25], GRAY)
+      b.bar(add3(mul3(r, 5), mul3(t, -1.3)), add3(mul3(r, 12.4), mul3(t, 1.3)), 0.12, GRAY)
+    }
+    // raised panels on the two big faces of the module, thruster blocks at its ends, a mast on its outside
+    for (const sz of [-1, 1]) for (let pi = 0; pi < 3; pi++) for (let pj = 0; pj < 2; pj++) {
+      b.box(add3(add3(mul3(r, R - 3.1 + pj * 6.2 - 0.0), mul3(t, (pi - 1) * 7.8)), [0, 0, sz * 6.1]), axes, [3.6, 2.8, 0.12], (pi + pj) % 3 === 1 ? LIGHTM : WHITE)
+    }
+    for (const sx of [-1, 1]) for (const sr of [-1, 1]) for (const sz of [-1, 1]) b.box(add3(add3(mul3(r, R + sr * 4.8), mul3(t, sx * 12.5)), [0, 0, sz * 4.4]), axes, [0.6, 0.5, 0.5], GRAY)
+    b.bar(add3(mul3(r, R + 6.5), mul3(t, 6)), add3(mul3(r, R + 11), mul3(t, 6)), 0.12, GRAY)
     // the lit ports at the ends of two modules, as navigation lights
     if (i === 0) b.poly([[R + 0.4, -0.5, 6.05], [R + 0.4, 0.5, 6.05], [R - 0.4, 0.5, 6.05], [R - 0.4, -0.5, 6.05]], WHITE, { n: Z, light: LIGHT_RED })
     if (i === 6) b.poly([[-R + 0.4, -0.5, 6.05], [-R + 0.4, 0.5, 6.05], [-R - 0.4, 0.5, 6.05], [-R - 0.4, -0.5, 6.05]], WHITE, { n: Z, light: LIGHT_GREEN })
@@ -245,6 +329,21 @@ export function enduranceModel(): Face[] {
   for (const fc of b.faces) for (let i = 0; i < fc.p.length; i++) fc.p[i] *= ES
   ENDURANCE = b.faces
   return ENDURANCE
+}
+
+/** One of the four clamp arms round the Endurance's docking port, along +y (the game turns it into four, and slides it in as the clamps close): `PORT_Z` is where the port face is. */
+let CLAMP: Face[] | null = null
+export function clampModel(): Face[] {
+  if (CLAMP) return CLAMP
+  const b = new Builder(), ax: [P3, P3, P3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+  const z0 = PORT_Z - 0.3
+  b.box([0, 1.0, z0 + 0.55], ax, [0.22, 0.55, 0.55], GRAY) // the arm
+  b.box([0, 0.55, z0 + 0.95], ax, [0.2, 0.18, 0.28], LIGHTM) // the hook that takes the Ranger's collar
+  b.box([0, 1.7, z0 + 0.25], ax, [0.3, 0.28, 0.3], BLACK) // the motor behind it
+  for (const x of [-0.3, 0.3]) b.box([x, 1.0, z0 + 0.3], ax, [0.05, 0.4, 0.3], BLACK)
+  b.poly([[-0.1, 0.4, z0 + 1.24], [0.1, 0.4, z0 + 1.24], [0.1, 0.5, z0 + 1.24], [-0.1, 0.5, z0 + 1.24]], WHITE, { n: [0, 0, 1], light: LIGHT_WINDOW })
+  CLAMP = b.faces
+  return CLAMP
 }
 
 /** A round docking hatch on a module's outer face: a hexagonal ring and a dark centre (faces pointing along `r`). */
