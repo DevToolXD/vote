@@ -472,6 +472,10 @@ describe('profile and shop', () => {
     await denied(play(b, 'b', 1))                                           // within 5 s of the last one
     await denied(fsGetDoc(fsDoc(b, 'songPlays', `${vid}_b`)))               // only the worker reads them
     await denied(deleteDoc(fsDoc(b, 'songPlays', `${vid}_b`)))
+    // the picks for you: only the worker writes them, and each person reads their own
+    await denied(fsSetDoc(fsDoc(b, 'recs', 'b'), { ids: [vid], at: fsServerTimestamp() }))
+    await denied(fsGetDoc(fsDoc(b, 'recs', 'a')))
+    await fsGetDoc(fsDoc(b, 'recs', 'b'))                                  // your own picks: readable (none yet)
     // not worth a point yet: 40 s
     const bonusOf = async () => (await read(a, 'candidates/a')).bonus ?? 0
     const start = await bonusOf()

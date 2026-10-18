@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
-import { addSong, isOpen, removeSong, songArt, watchSongs, type Song } from '../backend/songs'
+import { addSong, isOpen, removeSong, songArt, watchPicks, watchSongs, type Song } from '../backend/songs'
 import { searchAudius, trendingAudius } from '../backend/audius'
 import { archiveTracks, searchArchive, type Album } from '../backend/archive'
 import type { Person } from '../model'
@@ -76,7 +76,9 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
   const nowId = music.queue[music.index]?.id
   const playing = music.status === 'playing' || music.status === 'loading'
 
+  const [picks, setPicks] = useState<string[]>([])
   useEffect(() => (db && uid ? watchSongs(db, setSongs) : undefined), [db, uid])
+  useEffect(() => (db && uid ? watchPicks(db, uid, setPicks) : undefined), [db, uid])
   useEffect(() => {
     if (tab !== 'search') return
     const t = q.trim()
@@ -97,6 +99,8 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
   }, [tab, q])
   const who = (u: string) => byId.get(u)?.name ?? '알 수 없음'
   const mine = useMemo(() => (songs ?? []).filter(s => s.uid === uid), [songs, uid])
+  // 나를 위한 추천: the worker's picks (people with similar taste), in its order, the songs that are still there
+  const forYou = useMemo(() => { const by = new Map((songs ?? []).map(s => [s.id, s])); return picks.map(id => by.get(id)).filter((s): s is Song => !!s) }, [songs, picks])
   const popular = useMemo(() => [...(songs ?? [])].filter(s => s.plays > 0).sort((a, b) => b.plays - a.plays).slice(0, 10), [songs])
   const found = useMemo(() => {
     const t = q.trim().toLowerCase()
@@ -180,6 +184,13 @@ export const SpotifyApp = memo(function SpotifyApp({ db, uid, me, byId, onLogin,
                       </button>
                     ))}
                   </div>
+                  {forYou.length > 0 && (
+                    <>
+                      <h2 style={css('margin:22px 0 6px;font-size:22px;line-height:28px;font-weight:800')}>나를 위한 추천</h2>
+                      <div style={css('font-size:13px;line-height:18px;color:#b3b3b3;margin:0 0 6px')}>나와 비슷하게 들은 사람들이 많이 들은 곡이에요</div>
+                      {forYou.map(s => <Row key={s.id} s={s} who={who(s.uid)} active={s.id === nowId} playing={playing} onPlay={() => play(forYou, s)} />)}
+                    </>
+                  )}
                   {popular.length > 0 && (
                     <>
                       <h2 style={css('margin:22px 0 6px;font-size:22px;line-height:28px;font-weight:800')}>많이 들은 곡</h2>

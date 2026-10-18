@@ -554,6 +554,10 @@ const lastSeenAt = new Map()     // chatId → last.at already queued (a chat do
 let resetsPending = false
 let seasonEndsAt = null
 
+// (declared before the listeners, which can fire while the rest of the file is still starting)
+const listensBySong = new Map() // vid → Map(uid → secs)
+const RECS_EVERY_MS = 10 * 60_000, RECS_NEIGHBOURS = 150, RECS_PICKS = 12
+let recsAt = 0, recsDirty = true
 const listeners = []
 // accounts that changed (a new account, or a move): their grade is worked out at once, not at the next sweep
 const bankQueue = new Set(), bankSeen = new Map()
@@ -589,7 +593,14 @@ const firstDone = new Promise(resolve => {
       for (const c of snap.docChanges()) if (c.type !== 'removed') homeQueue.add('posts/' + c.doc.id)
     }),
     listen('songPlays', fdb.collection('songPlays'), snap => {
-      for (const c of snap.docChanges()) if (c.type !== 'removed' && Math.floor((c.doc.get('secs') ?? 0) / 60) > (c.doc.get('paidMin') ?? 0)) playQueue.add(c.doc.id)
+      for (const c of snap.docChanges()) {
+        const vid = c.doc.get('vid'), uid = c.doc.get('uid')
+        if (!vid || !uid) continue
+        if (c.type === 'removed') listensBySong.get(vid)?.delete(uid)
+        else { if (!listensBySong.has(vid)) listensBySong.set(vid, new Map()); listensBySong.get(vid).set(uid, c.doc.get('secs') ?? 0) }
+        if (c.type !== 'removed' && Math.floor((c.doc.get('secs') ?? 0) / 60) > (c.doc.get('paidMin') ?? 0)) playQueue.add(c.doc.id)
+      }
+      recsDirty = true
     }),
     listen('settings', fdb.collection('settings'), snap => snap.docChanges().forEach(c => c.type === 'removed' ? settings.delete(c.doc.id) : settings.set(c.doc.id, c.doc.data()))),
     listen('tokens', fdb.collection('pushTokens'), snap => {
@@ -1277,6 +1288,41 @@ async function playTick() {
   }
 }
 
+// Spotify picks: recs/{uid} holds the songs that people with the most similar taste listened to most, which this person has not
+// heard and did not add. Who listened to what is kept here in memory (from the songPlays listener above); every RECS_EVERY_MS
+// (when something changed) the picks are written. Similar taste: the seconds two people both listened to, against all their listening.
+async function recsTick(force = false) {
+  if (!force && (!recsDirty || Date.now() - recsAt < RECS_EVERY_MS)) return
+  recsDirty = false; recsAt = Date.now()
+  const songs = await fdb.collection('songs').select('uid').get()
+  const owner = new Map(songs.docs.map(d => [d.id, d.get('uid')]))
+  const byUser = new Map() // uid → Map(vid → secs)
+  for (const [vid, m] of listensBySong) if (owner.has(vid)) for (const [uid, secs] of m) {
+    if (!byUser.has(uid)) byUser.set(uid, new Map())
+    byUser.get(uid).set(vid, secs)
+  }
+  const total = m => [...m.values()].reduce((a, b) => a + b, 0) || 1
+  const writes = []
+  for (const [u, mine] of byUser) {
+    const tu = total(mine), near = new Map()
+    for (const vid of mine.keys()) for (const [l, secs] of listensBySong.get(vid)) if (l !== u) near.set(l, (near.get(l) ?? 0) + Math.min(secs, mine.get(vid)))
+    const score = new Map()
+    for (const [l, shared] of [...near.entries()].sort((a, b) => b[1] - a[1]).slice(0, RECS_NEIGHBOURS)) {
+      const theirs = byUser.get(l)
+      if (!theirs) continue
+      const sim = shared / Math.sqrt(tu * total(theirs))
+      for (const [vid, secs] of theirs) if (!mine.has(vid) && owner.get(vid) !== u) score.set(vid, (score.get(vid) ?? 0) + sim * secs)
+    }
+    const ids = [...score.entries()].sort((a, b) => b[1] - a[1]).slice(0, RECS_PICKS).map(([vid]) => vid)
+    writes.push([u, ids])
+  }
+  for (let i = 0; i < writes.length; i += 400) {
+    const batch = fdb.batch()
+    for (const [u, ids] of writes.slice(i, i + 400)) batch.set(fdb.doc(`recs/${u}`), { ids, at: FieldValue.serverTimestamp() })
+    await batch.commit()
+  }
+}
+
 async function bankTick() {
   const now = Date.now()
   const sweep = now - bankAt >= BANK_EVERY_MS
@@ -1524,6 +1570,7 @@ while (true) {
   await bankTick().catch(e => warn('Bank failed: ' + e.message))
   await homeTick().catch(e => warn('Hearts failed: ' + e.message))
   await playTick().catch(e => warn('Listens failed: ' + e.message))
+  await recsTick().catch(e => warn('Picks failed: ' + e.message))
   await fillCoinOrders()
   await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
   if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })

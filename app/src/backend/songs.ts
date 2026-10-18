@@ -36,6 +36,11 @@ export function youtubeId(input: string): string | null {
 export const songArt = (s: Pick<Song, 'id' | 'art'>, big = false) => s.art ?? thumbOf(s.id, big)
 export const thumbOf = (id: string, big = false) => `https://i.ytimg.com/vi/${id}/${big ? 'hqdefault' : 'mqdefault'}.jpg`
 
+/** The songs picked for this person (the worker writes recs/{uid}): video ids, best first. */
+export function watchPicks(db: Firestore, uid: string, cb: (ids: string[]) => void): Unsubscribe {
+  return onSnapshot(doc(db, 'recs', uid), snap => cb(((snap.data()?.ids ?? []) as unknown[]).filter((x): x is string => typeof x === 'string')), () => cb([]))
+}
+
 export function watchSongs(db: Firestore, cb: (songs: Song[]) => void): Unsubscribe {
   return onSnapshot(query(collection(db, 'songs'), orderBy('at', 'desc'), limit(300)), snap => {
     cb(snap.docs.map(d => {

@@ -1454,6 +1454,12 @@ service cloud.firestore {
       }
     }
 
+    // ---- Spotify picks for you: recs/{uid} is written by the worker only; each person reads their own
+    match /recs/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
     // ---- Spotify: songs are added from YouTube links. The doc id IS the YouTube video id (11 characters), so a
     // song can be added once, by whoever gets there first. The owner can fix the title or take it down.
     match /songs/{vid} {
