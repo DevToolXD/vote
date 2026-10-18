@@ -1294,14 +1294,16 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         if (meshes.includes(S) || depthOf(S) <= 1) continue
         proj(S.p, sp)
         if (sp[0] > -10 && sp[0] < W + 10 && sp[1] > -10 && sp[1] < H + 10) {
-          const on = (t * 0.9 + S.id * 0.37) % 1 < 0.5 // blinks: half a second lit, half dark
-          fx.fillStyle = on ? 'rgba(235,240,255,1)' : 'rgba(200,210,240,0.3)'
-          fx.beginPath(); fx.arc(sp[0], sp[1], on ? 2 : 1.3, 0, TAU); fx.fill()
+          const on = (t * 0.9 + S.id * 0.37) % 1 < 0.5 // blinks: half a second lit, half dark, so it can be told from the stars at any distance
+          fx.fillStyle = on ? 'rgba(255,255,255,1)' : 'rgba(200,210,240,0.2)'
+          fx.beginPath(); fx.arc(sp[0], sp[1], on ? 2.4 : 1.1, 0, TAU); fx.fill()
           if (on) {
-            const g = fx.createRadialGradient(sp[0], sp[1], 0, sp[0], sp[1], 18)
-            g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(1, 'rgba(255,255,255,0)')
+            const g = fx.createRadialGradient(sp[0], sp[1], 0, sp[0], sp[1], 34)
+            g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.15, 'rgba(255,235,200,0.6)'); g.addColorStop(1, 'rgba(255,200,140,0)')
             fx.fillStyle = g
-            fx.beginPath(); fx.arc(sp[0], sp[1], 18, 0, TAU); fx.fill()
+            fx.beginPath(); fx.arc(sp[0], sp[1], 34, 0, TAU); fx.fill()
+            fx.strokeStyle = 'rgba(255,245,225,0.75)'; fx.lineWidth = 1.2 // a cross of light
+            fx.beginPath(); fx.moveTo(sp[0] - 30, sp[1]); fx.lineTo(sp[0] + 30, sp[1]); fx.moveTo(sp[0], sp[1] - 30); fx.lineTo(sp[0], sp[1] + 30); fx.stroke()
           }
         }
       }
