@@ -1005,7 +1005,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
 
     // ---- the ships ----
     // each strobe flashes on its own beat; only the Endurance the Ranger is lining up on has its rings lit by how the approach goes
-    const lightOn = (id: number, S: Station | null) => (id === LIGHT_STROBE ? (t + (S ? S.id * 0.37 : 0)) % 2 < 0.22 : true)
+    const lightOn = (id: number, S: Station | null) => (id === LIGHT_STROBE ? (t * 0.9 + (S ? S.id * 0.37 : 0)) % 1 < 0.5 : true)
     const lightColor = (id: number, S: Station | null): [number, number, number] => (id >= LIGHT_RING && id < LIGHT_RING + 4 ? (S && dock.st === S && dock.lights[id - LIGHT_RING] ? [70, 255, 110] : [255, 60, 50]) : LIGHT_COLORS[id])
     const glows: { x: number; y: number; r: number; c: [number, number, number] }[] = []
     // the Endurances drawn piece by piece: the two nearest that are more than a speck; the others are specks
@@ -1294,13 +1294,14 @@ export function createEngine(base: string, cb: Callbacks): Engine {
         if (meshes.includes(S) || depthOf(S) <= 1) continue
         proj(S.p, sp)
         if (sp[0] > -10 && sp[0] < W + 10 && sp[1] > -10 && sp[1] < H + 10) {
-          fx.fillStyle = 'rgba(225,232,255,0.9)'
-          fx.beginPath(); fx.arc(sp[0], sp[1], 1.5, 0, TAU); fx.fill()
-          if ((t + S.id * 0.37) % 2 < 0.22) {
-            const g = fx.createRadialGradient(sp[0], sp[1], 0, sp[0], sp[1], 9)
+          const on = (t * 0.9 + S.id * 0.37) % 1 < 0.5 // blinks: half a second lit, half dark
+          fx.fillStyle = on ? 'rgba(235,240,255,1)' : 'rgba(200,210,240,0.3)'
+          fx.beginPath(); fx.arc(sp[0], sp[1], on ? 2 : 1.3, 0, TAU); fx.fill()
+          if (on) {
+            const g = fx.createRadialGradient(sp[0], sp[1], 0, sp[0], sp[1], 18)
             g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(1, 'rgba(255,255,255,0)')
             fx.fillStyle = g
-            fx.beginPath(); fx.arc(sp[0], sp[1], 9, 0, TAU); fx.fill()
+            fx.beginPath(); fx.arc(sp[0], sp[1], 18, 0, TAU); fx.fill()
           }
         }
       }
@@ -1330,30 +1331,6 @@ export function createEngine(base: string, cb: Callbacks): Engine {
           if (facing > 0) { fx.fillStyle = `rgba(255,248,235,${facing * 0.35})`; fx.fillRect(0, 0, W, H) }
         }
       }
-    }
-
-    // each world marked with a ring round it, and its name and the distance to its surface beside the ring
-    if (mode === 'fly' || mode === 'dead') {
-      const cand = seen.filter(sn => sn.zc > 1 && sn.d - sn.b.r > 0.12 * sn.b.r).sort((p, q) => p.d - p.b.r - (q.d - q.b.r)).slice(0, 4)
-      for (const sn of cand) {
-        const rp = sn.rpx
-        if (Math.abs(sn.x - W / 2) - rp > W / 2 || Math.abs(sn.y - H / 2) - rp > H / 2) continue // not on the screen at all
-        const m = 16
-        const lx = clamp(sn.x, m, W - m), ly = clamp(sn.y, m, H - m), clamped = lx !== sn.x || ly !== sn.y
-        const rr = clamped ? 11 : clamp(rp + 7, 12, Math.min(W, H) * 0.42) // the ring: a little wider than the world, never wider than the view
-        fx.strokeStyle = 'rgba(255,255,255,0.8)'; fx.lineWidth = 1.5
-        if (sn.b.kind === 'hole') fx.strokeRect(lx - rr, ly - rr, rr * 2, rr * 2); else { fx.beginPath(); fx.arc(lx, ly, rr, 0, TAU); fx.stroke() }
-        const l1 = sn.b.name, l2 = fmtDist(sn.d - sn.b.r)
-        fx.font = '600 12px -apple-system, "Noto Sans KR", sans-serif'
-        const w = Math.max(fx.measureText(l1).width, fx.measureText(l2).width)
-        const right = lx + rr + 8 + w < W - 6, tx = right ? lx + rr + 8 : lx - rr - 8
-        fx.textAlign = right ? 'left' : 'right'; fx.textBaseline = 'middle'
-        fx.shadowColor = 'rgba(0,0,0,0.85)'; fx.shadowBlur = 3
-        fx.fillStyle = '#fff'; fx.fillText(l1, tx, ly - 8)
-        fx.fillStyle = '#9fd0ff'; fx.fillText(l2, tx, ly + 8)
-        fx.shadowBlur = 0
-      }
-      fx.textAlign = 'start'; fx.textBaseline = 'alphabetic'
     }
 
     // the glow of air at speed
