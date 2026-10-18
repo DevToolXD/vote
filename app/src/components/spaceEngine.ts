@@ -605,8 +605,14 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     for (const S of stations) near = Math.min(near, len(sub(S.p, ship.p)))
     const spawn = (lo: number, hi: number) => {
       const r = () => Math.random() * 2 - 1
-      const dir = norm(add(ship.f, mul(norm([r(), r(), r()]), 0.9))) // mostly ahead, where it is seen
-      stations.push(makeStation(add(ship.p, mul(dir, lo + Math.random() * (hi - lo))), [r(), r(), r()], Math.random() * TAU, 0.08 + Math.random() * 0.08, stationId++))
+      // never inside a world, nor close to one (a docking there would drag the pair into it)
+      for (let tries = 0; tries < 10; tries++) {
+        const dir = norm(add(ship.f, mul(norm([r(), r(), r()]), 0.9))) // mostly ahead, where it is seen
+        const p = add(ship.p, mul(dir, lo + Math.random() * (hi - lo)))
+        if (list.some(b => len(sub(p, [b.x, b.y, b.z])) < b.r * (b.kind === 'hole' ? 3 : 1.2) + 3e5)) continue
+        stations.push(makeStation(p, [r(), r(), r()], Math.random() * TAU, 0.08 + Math.random() * 0.08, stationId++))
+        return
+      }
     }
     if (near > 60000) spawn(20000, 45000)
     else if (stations.length < 5 && Math.random() < 0.3) spawn(30000, 90000)
@@ -823,6 +829,13 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     if (flash > 0 && mode !== 'swallow') flash = Math.max(0, flash - dt * 0.9)
     shake = Math.max(0, shake - dt * 2.2)
     // the gear comes down by itself over a world a ship can land on; the air glows with speed
+    // a ship found inside a world (it was carried in) is put back on the surface, with the Endurance it is docked to
+    if (mode === 'fly' && hb && hAlt < -20 && !landedOn && !walker.on) {
+      const rel = sub(ship.p, [hb.x, hb.y, hb.z]), n: V = len(rel) < 1 ? [0, 1, 0] : norm(rel), d = mul(n, -hAlt + 60)
+      ship.p = add(ship.p, d); ship.v = [0, 0, 0]
+      if (dock.on && dock.st) dock.st.p = add(dock.st.p, d)
+      hAlt = 60
+    }
     if (mode === 'fly') {
       const want = !dock.on && (landedOn || (hb && LANDABLE[hb.kind] && hAlt < Math.max(3000, len(ship.v) * 6))) ? 1 : 0
       gear += clamp(want - gear, -dt / 1.6, dt / 1.6)
