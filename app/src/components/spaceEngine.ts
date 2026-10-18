@@ -542,7 +542,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     dock.lights = [v.axis, v.offset, v.roll, v.speed]
     if (dock.cool > 0) return
     // the nose at the port's face: lock if all four are right, else it bounces off
-    if (m.h < 0.6 && m.h > -6 && m.offset < 5.2) {
+    if (m.h < 0.6 && m.h > -6 && m.offset < 7.8) {
       if (v.all) {
         dock.on = true; dock.t = 0
         dock.from = { p: ship.p, f: ship.f, u: ship.u }
