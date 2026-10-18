@@ -372,7 +372,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
   }
 
   /** Attitude and engines: the push grows with the speed, up to the top speed. */
-  const vmaxNow = () => VMAX * vmul * (dock.on ? 2 : 1) // the 최대속도 패스 triples it, and the Endurance's engines behind the Ranger double it
+  const vmaxNow = () => VMAX * vmul * (dock.on ? 4 : 1) // the 최대속도 패스 triples it, and the Endurance's engines behind the Ranger quadruple it
   function stepControl(inp: Input, dt: number) {
     const kp = 1 - Math.exp(-dt * 5)
     // the final approach to a world: the ship holds itself level over the ground, and the engines under it slow the fall (as far as they can)
@@ -1680,7 +1680,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       else if (landedOn) note = '착륙 완료 · 내리기를 누르거나 가속하면 이륙해요'
       else if (dock.on && dock.t < 0.55) note = '도킹: 포트로 끌려 들어가는 중'
       else if (dock.on && dock.t < 1) note = '도킹: 고정 장치가 잠기는 중'
-      else if (dock.on) note = '도킹 완료 · 같이 날아가요 (최대속도 2배)'
+      else if (dock.on) note = '도킹 완료 · 같이 날아가요 (최대속도 4배)'
       else if (hb && LANDABLE[hb.kind] && hAlt < LAND_H && gear > 0.5) {
         const down = -dot(ship.v, norm(sub(ship.p, [hb.x, hb.y, hb.z])))
         note = `고도 ${fmtDist(Math.max(0, hAlt - HOVER))} · 하강 ${down.toFixed(1)} m/s${down > LAND_V ? ' · 너무 빨라요!' : ''}`
