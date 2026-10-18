@@ -14,7 +14,7 @@ import { shortPoints } from './PointsChip'
 const ACCENT = '#3182f6'
 const handle = <div style={css('width:36px;height:4px;border-radius:2px;background:#e5e8eb;margin:0 auto')} />
 
-type Mine = { id: string; owned: Record<ItemKind, string[]>; pass2x?: boolean | number; passFake?: boolean }
+type Mine = { id: string; owned: Record<ItemKind, string[]>; pass2x?: boolean | number; passFake?: boolean; passSpeed?: boolean }
 type Props = {
   loggedIn: boolean
   rows: Listing[]
@@ -31,7 +31,7 @@ const ago = (ms: number) => {
   const m = Math.floor((Date.now() - ms) / 60_000)
   return m < 1 ? '방금' : m < 60 ? `${m}분 전` : m < 1440 ? `${Math.floor(m / 60)}시간 전` : `${Math.floor(m / 1440)}일 전`
 }
-const hasItem = (me: Mine | undefined, kind: TradeKind, key: string) => !!me && (kind === 'pass' ? !!me[key as 'pass2x' | 'passFake'] : me.owned[kind].includes(key))
+const hasItem = (me: Mine | undefined, kind: TradeKind, key: string) => !!me && (kind === 'pass' ? !!me[key as 'pass2x' | 'passFake' | 'passSpeed'] : me.owned[kind].includes(key))
 
 /** 🥕 당근마켓, inside 상점 and in its App Store look: a card to sell from, then everyone's listings as white cards (사기 / 내리기). */
 export function MarketView({ loggedIn, rows, me, byId, points, onLogin, onBuy, onList, onCancel }: Props) {

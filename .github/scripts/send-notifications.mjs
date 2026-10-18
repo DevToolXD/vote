@@ -229,10 +229,10 @@ async function classify(o, d, uid = '') {
     else if (dSpent < 0) { out.push({ d: -dSpent, k: 'giftCancel' }); dSpent = 0 }
     if (dBonus > 0) { out.push({ d: dBonus, k: 'giftClaim', x: g?.from ?? '' }); dBonus = 0 }
   }
-  for (const pass of ['pass2x', 'passFake']) if (d[pass] && !o[pass] && dSpent > 0) { const cost = pass === 'passFake' ? Math.min(dSpent, 299) : Math.min(dSpent, 5000); out.push({ d: -cost, k: 'pass', x: pass }); dSpent -= cost }
+  for (const pass of ['pass2x', 'passFake', 'passSpeed']) if (d[pass] && !o[pass] && dSpent > 0) { const cost = pass === 'passFake' ? Math.min(dSpent, 299) : pass === 'passSpeed' ? Math.min(dSpent, 500) : Math.min(dSpent, 5000); out.push({ d: -cost, k: 'pass', x: pass }); dSpent -= cost }
   const items = marketMoved ? [] : newItems(o, d)
   if (items.length && dSpent > 0) { out.push({ d: -dSpent, k: 'buy', x: items.join(',') }); dSpent = 0 }
-  const gone = (d.lastGift !== o.lastGift || marketMoved ? [] : newItems(d, o)).concat(marketMoved ? [] : ['pass2x', 'passFake'].filter(k => o[k] && !d[k]))
+  const gone = (d.lastGift !== o.lastGift || marketMoved ? [] : newItems(d, o)).concat(marketMoved ? [] : ['pass2x', 'passFake', 'passSpeed'].filter(k => o[k] && !d[k]))
   if (gone.length && dSpent === 0) out.push({ d: 0, k: 'revoke', x: gone.join(',') })
   // hearts and listens the worker itself paid (it noted who from): not an admin grant
   const notes = payNotes.get(uid) ?? []

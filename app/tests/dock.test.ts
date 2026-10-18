@@ -70,3 +70,22 @@ test('the models are made of flat pieces with sound normals', () => {
   const topFace = rangerModel().find(f => f.uv)
   assert.ok(topFace && topFace.uv!.length === topFace.k * 2)
 })
+
+import { LANDABLE, surfaceTinted, worldOf } from '../src/components/spacePlanets'
+
+test('worlds made from a seed: the same seed the same world, other seeds other worlds', () => {
+  const pts: [number, number, number][] = [[0, 0, 1], [0.6, 0.3, 0.74], [-0.5, -0.5, 0.7]]
+  const col = (kind: 'rock' | 'gas', seed: number) => pts.map(([x, y, z]) => { const l = Math.hypot(x, y, z); return surfaceTinted(kind, seed)(x / l, y / l, z / l).map(Math.round).join(',') }).join('|')
+  assert.equal(col('rock', 7), col('rock', 7))
+  const seen = new Set<string>()
+  for (let s = 1; s <= 40; s++) seen.add(col('rock', s * 7919))
+  assert.ok(seen.size >= 38, `only ${seen.size} different rock worlds in 40`)
+  const gas = new Set<string>()
+  for (let s = 1; s <= 40; s++) gas.add(col('gas', s * 104729))
+  assert.ok(gas.size >= 38)
+  // some gas giants have rings, with bands inside the allowed span; the rock worlds can be landed on, the gas ones cannot
+  let rings = 0
+  for (let s = 1; s <= 60; s++) { const w = worldOf('gas', s * 31); if (w.bands) { rings++; assert.ok(w.bands.every(([a, b]) => a >= 1.2 && b > a && b <= 3.2)) } }
+  assert.ok(rings > 5 && rings < 40, `${rings} of 60 with rings`)
+  assert.ok(LANDABLE.rock && !('gas' in LANDABLE))
+})

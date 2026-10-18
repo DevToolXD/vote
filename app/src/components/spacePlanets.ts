@@ -2,7 +2,7 @@
 // Sizes are real (a moon 1 700 km across its radius ... Jupiter 70 000 km): a world unit is a metre.
 
 export type Kind = 'earth' | 'moon' | 'mars' | 'jupiter' | 'saturn' | 'neptune' | 'hole'
-  | 'mercury' | 'venus' | 'io' | 'europa' | 'titan' | 'pluto' | 'lava' | 'ocean' | 'desert' | 'jungle' | 'ice' | 'uranus' | 'pink'
+  | 'mercury' | 'venus' | 'io' | 'europa' | 'titan' | 'pluto' | 'lava' | 'ocean' | 'desert' | 'jungle' | 'ice' | 'uranus' | 'pink' | 'rock' | 'gas'
 
 /** Radius in metres. */
 export const KIND_RADIUS: Record<Kind, [number, number]> = {
@@ -10,13 +10,13 @@ export const KIND_RADIUS: Record<Kind, [number, number]> = {
   neptune: [2.3e7, 2.6e7], jupiter: [6.6e7, 7.2e7], saturn: [5.6e7, 6.2e7], hole: [5.5e7, 6.5e7],
   mercury: [2.3e6, 2.6e6], venus: [5.8e6, 6.2e6], io: [1.7e6, 1.9e6], europa: [1.4e6, 1.7e6], titan: [2.5e6, 2.8e6], pluto: [1.1e6, 1.3e6],
   lava: [4.5e6, 5.5e6], ocean: [5.5e6, 6.5e6], desert: [5.0e6, 6.0e6], jungle: [6.0e6, 7.0e6], ice: [4.0e6, 5.0e6],
-  uranus: [2.4e7, 2.6e7], pink: [3.0e7, 5.0e7],
+  uranus: [2.4e7, 2.6e7], pink: [3.0e7, 5.0e7], rock: [1.2e6, 7.5e6], gas: [2.0e7, 8.0e7],
 }
 /** Worlds with a surface to land on (not the gas giants, not a hole). */
-export const LANDABLE: Partial<Record<Kind, true>> = { moon: true, mars: true, earth: true, mercury: true, venus: true, io: true, europa: true, titan: true, pluto: true, lava: true, ocean: true, desert: true, jungle: true, ice: true }
+export const LANDABLE: Partial<Record<Kind, true>> = { moon: true, mars: true, earth: true, mercury: true, venus: true, io: true, europa: true, titan: true, pluto: true, lava: true, ocean: true, desert: true, jungle: true, ice: true, rock: true }
 /** The colour of a planet's air at its edge (r, g, b), or null for none. */
 export const ATMOSPHERE: Record<Kind, string | null> = { earth: '110,170,255', moon: null, mars: '230,150,100', jupiter: '230,205,170', saturn: '235,215,170', neptune: '110,150,255', hole: null,
-  mercury: null, venus: '240,210,140', io: null, europa: null, titan: '230,160,60', pluto: null, lava: '255,110,40', ocean: '120,180,255', desert: '240,190,130', jungle: '130,220,170', ice: '200,230,255', uranus: '150,230,235', pink: '240,170,210' }
+  mercury: null, venus: '240,210,140', io: null, europa: null, titan: '230,160,60', pluto: null, lava: '255,110,40', ocean: '120,180,255', desert: '240,190,130', jungle: '130,220,170', ice: '200,230,255', uranus: '150,230,235', pink: '240,170,210', rock: null, gas: null }
 /** Saturn's rings, as fractions of the planet's radius: [from, to, opacity]. */
 export const SATURN_RINGS: [number, number, number][] = [
   [1.24, 1.38, 0.1], [1.38, 1.52, 0.22], [1.52, 1.66, 0.62], [1.66, 1.8, 0.82], [1.8, 1.95, 0.7],
@@ -258,41 +258,121 @@ function surface(kind: Kind, seed: number): (X: number, Y: number, Z: number) =>
   }
 }
 
-/** A planet's picture, painted a few rows at a time. */
-export type Sprite = { cv: HTMLCanvasElement; done: boolean; avg: RGB; step(ms: number): void }
+const hsl = (h: number, sat: number, l: number): RGB => {
+  const a = sat * Math.min(l, 1 - l), k = (n: number) => (n + h / 30) % 12
+  const f = (n: number) => 255 * (l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))))
+  return [f(0), f(8), f(4)]
+}
 
-export function planetSprite(kind: Kind, seed: number, N = 256): Sprite {
-  const cv = document.createElement('canvas')
-  cv.width = cv.height = N
-  const cx = cv.getContext('2d')
-  const img = cx?.createImageData(N, N)
-  const f = surface(kind, seed)
-  const tr = rngOf(seed + 99), tint: RGB = [0.9 + 0.2 * tr(), 0.9 + 0.2 * tr(), 0.9 + 0.2 * tr()] // every world a little its own colour
-  let row = 0, n = 0
-  const sum: RGB = [0, 0, 0]
-  const sp: Sprite = {
-    cv, done: !cx || !img, avg: [120, 120, 120],
-    step(ms) {
-      if (sp.done || !cx || !img) return
-      const t0 = performance.now(), d = img.data
-      while (row < N && performance.now() - t0 < ms) {
-        for (let px = 0; px < N; px++) {
-          const nx = ((px + 0.5) / N) * 2 - 1, ny = ((row + 0.5) / N) * 2 - 1, rr = nx * nx + ny * ny
-          if (rr > 1) continue
-          const nz = Math.sqrt(1 - rr)
-          const c = f(nx, -ny, nz)
-          c[0] *= tint[0]; c[1] *= tint[1]; c[2] *= tint[2]
-          sum[0] += c[0]; sum[1] += c[1]; sum[2] += c[2]; n++
-          // limb darkening: the edge is a little darker
-          const limb = 0.62 + 0.38 * Math.pow(nz, 0.55)
-          const a = clamp01((1 - Math.sqrt(rr)) * N * 0.5)
-          const i = (row * N + px) * 4
-          d[i] = c[0] * limb; d[i + 1] = c[1] * limb; d[i + 2] = c[2] * limb; d[i + 3] = a * 255
-        }
-        row++
-      }
-      if (row >= N) { cx.putImageData(img, 0, 0); sp.avg = n ? [sum[0] / n, sum[1] / n, sum[2] / n] : sp.avg; sp.done = true }
-    },
+// ---- worlds made from a seed alone: every one different ----
+
+type Band = [number, number, number]
+type RockP = {
+  sea: number; seaShallow: RGB; seaDeep: RGB; landA: RGB; landB: RGB; rockCol: RGB; vegCol: RGB | null; craters: number; ice: number; lava: boolean; dunes: boolean
+  clouds: number; cloudCol: RGB; scale: number; warp: number; ridges: number; atm: string | null
+}
+function rockParams(seed: number): RockP {
+  const r = rngOf(seed ^ 0x2f6a1c3d)
+  const wet = r() < 0.55
+  const sea = wet ? 0.28 + 0.4 * r() : 0
+  const seaHue = [215, 200, 170, 280, 20, 340, 120][(r() * 7) | 0]
+  const seaDeep = seaHue === 20 || seaHue === 340 ? hsl(seaHue, 0.5, 0.12) : hsl(seaHue, 0.7, 0.2), seaShallow = hsl(seaHue, 0.55, 0.42)
+  const landHue = r() * 360, lsat = 0.12 + 0.5 * r()
+  const landA = hsl(landHue, lsat, 0.3 + 0.2 * r()), landB = hsl((landHue + 20 + 40 * r()) % 360, lsat, 0.5 + 0.2 * r())
+  const rockCol = hsl((landHue + 340) % 360, 0.1 + 0.15 * r(), 0.3 + 0.25 * r())
+  const veg = wet && r() < 0.6
+  const vegCol = veg ? hsl([110, 90, 140, 40, 300][(r() * 5) | 0], 0.4 + 0.3 * r(), 0.25 + 0.15 * r()) : null
+  const craters = r() < 0.45 ? 0.5 + 0.5 * r() : 0
+  const ice = r() < 0.55 ? 0.55 + 0.35 * r() : 0
+  const lava = !wet && r() < 0.18
+  const clouds = r() < 0.6 ? 0.25 + 0.7 * r() : 0
+  const cloudCol: RGB = r() < 0.6 ? [250, 250, 253] : hsl(r() * 360, 0.5, 0.82)
+  const hazy = clouds > 0.3 || sea > 0.3
+  const atm = hazy || r() < 0.3 ? hsl(r() < 0.5 && sea > 0 ? seaHue : r() * 360, 0.65, 0.65).map(Math.round).join(',') : null
+  return { sea, seaShallow, seaDeep, landA, landB, rockCol, vegCol, craters, ice, lava, dunes: !wet && r() < 0.4, clouds, cloudCol, scale: 1.2 + 1.8 * r(), warp: 0.3 + 1.2 * r(), ridges: r(), atm }
+}
+type GasP = { stops: RGB[]; freq: number; turb: number; spots: { lon: number; lat: number; w: number; h: number; col: RGB }[]; pole: RGB; atm: string }
+function gasParams(seed: number): GasP {
+  const r = rngOf(seed ^ 0x51ed27a3)
+  const hue = r() * 360, spread = 15 + 50 * r(), sat = 0.25 + 0.6 * r()
+  const stops: RGB[] = [0, 1, 2, 3].map(i => hsl((hue + (i - 1.5) * spread * (r() < 0.3 ? -1 : 1) + 360) % 360, sat * (0.7 + 0.5 * r()), 0.28 + 0.14 * i + 0.1 * r()))
+  const spots = Array.from({ length: (r() * 3) | 0 }, () => ({ lon: r() * 6.28 - 3.14, lat: (r() - 0.5) * 1.2, w: 0.18 + 0.3 * r(), h: 0.06 + 0.1 * r(), col: hsl(r() * 360, 0.6, 0.45 + 0.2 * r()) }))
+  const mid = stops[1]
+  return { stops, freq: 8 + 22 * r(), turb: 1 + 3 * r(), spots, pole: hsl((hue + 180) % 360, 0.3, 0.35), atm: [mid[0] * 0.8 + 50, mid[1] * 0.8 + 50, mid[2] * 0.8 + 50].map(Math.round).join(',') }
+}
+function ringBands(seed: number): { bands: Band[]; tint: [string, string] } {
+  const r = rngOf(seed ^ 0x7a1f3b55)
+  const bands: Band[] = []
+  let at = 1.2 + 0.25 * r()
+  for (let i = 0, n = 3 + ((r() * 4) | 0); i < n && at < 2.5; i++) { const w = 0.05 + 0.2 * r(); bands.push([at, at + w, 0.15 + 0.7 * r()]); at += w + 0.02 + 0.12 * r() }
+  const base = hsl(r() * 70 + 10, 0.2 + 0.25 * r(), 0.6)
+  const shade = (k: number) => base.map(v => Math.round(Math.min(255, v * k))).join(',')
+  return { bands, tint: [shade(1), shade(0.88)] }
+}
+
+/** What a world is besides its looks: the colour of its air, the bands of a ring (if it has one) and what the ring is tinted. */
+export function worldOf(kind: Kind, seed: number): { atm: string | null; bands: Band[] | null; tint: [string, string] } {
+  if (kind === 'saturn') return { atm: ATMOSPHERE.saturn, bands: SATURN_RINGS, tint: ['218,200,160', '202,184,148'] }
+  if (kind === 'rock') return { atm: rockParams(seed).atm, bands: null, tint: ['0,0,0', '0,0,0'] }
+  if (kind === 'gas') {
+    const g = gasParams(seed)
+    const rg = rngOf(seed ^ 0x3c6ef372)
+    const has = rg() < 0.35 ? ringBands(seed) : null
+    return { atm: g.atm, bands: has?.bands ?? null, tint: has?.tint ?? ['0,0,0', '0,0,0'] }
   }
-  return sp
+  return { atm: ATMOSPHERE[kind], bands: null, tint: ['0,0,0', '0,0,0'] }
+}
+
+function procSurface(kind: 'rock' | 'gas', seed: number): (X: number, Y: number, Z: number) => RGB {
+  const rnd = rngOf(seed), o = rnd() * 40, o2 = rnd() * 40
+  if (kind === 'rock') {
+    const P = rockParams(seed)
+    return (X, Y, Z) => {
+      const warp = fbm(X * P.scale * 0.7 + o, Y * P.scale * 0.7, Z * P.scale * 0.7, 3)
+      const h = fbm(X * P.scale + warp * P.warp + o, Y * P.scale + warp * P.warp, Z * P.scale, 6)
+      const lat = Math.abs(Y)
+      let c: RGB
+      if (P.sea > 0 && h < P.sea) {
+        c = mix(P.seaShallow, P.seaDeep, clamp01(((P.sea - h) / P.sea) * 2.4))
+        c = mix(mix(c, [230, 240, 245], 0.35), c, smooth(0, 0.03, P.sea - h)) // surf at the shore
+      } else {
+        const hh = P.sea > 0 ? (h - P.sea) / (1 - P.sea) : h
+        const m = fbm(X * 3 + o2, Y * 3, Z * 3, 4)
+        c = mix(P.landA, P.landB, m)
+        if (P.vegCol) c = mix(c, P.vegCol, smooth(0.35, 0.6, m) * (1 - smooth(0.45, 0.85, lat)) * (1 - hh * 0.7))
+        if (P.dunes) c = mix(c, mix(P.landA, P.landB, 0.5 + 0.5 * Math.sin((X + Z * 0.6) * 26 + warp * 9)), 0.55)
+        c = mix(c, P.rockCol, smooth(0.5, 0.78, hh) * (0.5 + 0.5 * P.ridges))
+        if (P.craters) { const cr = craters(X, Y, Z, 5, o) * craters(X, Y, Z, 13, o2); const k = 1 - P.craters * (1 - cr); c = [c[0] * k, c[1] * k, c[2] * k] }
+        if (P.lava) { const rv = Math.min(Math.abs(fbm(X * 3.4 + o, Y * 3.4, Z * 3.4, 4) - 0.5), Math.abs(fbm(X * 7 + o2, Y * 7, Z * 7, 3) - 0.5) * 1.5); const gl = smooth(0.05, 0, rv); c = mix([c[0] * 0.3, c[1] * 0.3, c[2] * 0.3], mix([255, 80, 12], [255, 200, 90], gl), gl) }
+      }
+      if (P.ice > 0) c = mix(c, [244, 247, 252], smooth(P.ice, P.ice + 0.1, lat + (fbm(X * 4, Y * 4, Z * 4 + o, 2) - 0.5) * 0.14))
+      if (P.clouds > 0) {
+        const cl = fbm(X * 3 + o2 + warp * 0.7, Y * 5 + warp * 0.5, Z * 3, 5)
+        c = mix(c, P.cloudCol, clamp01(smooth(1 - P.clouds * 0.7 - 0.2, 1 - P.clouds * 0.7 + 0.12, cl)) * 0.9)
+      }
+      return c
+    }
+  }
+  const G = gasParams(seed)
+  return (X, Y, Z) => {
+    const turb = fbm(X * 7 + o, Y * G.freq * 1.6, Z * 7, 4)
+    const b = 0.5 + 0.5 * Math.sin(Y * G.freq + G.turb * fbm(X * 2.4 + o, Y * 7, Z * 2.4, 3) + (turb - 0.5) * G.turb)
+    const t = b * 3, i = Math.min(2, Math.floor(t))
+    let c = mix(G.stops[i], G.stops[i + 1], t - i)
+    c = mix(c, [c[0] * 0.8 + 20, c[1] * 0.8 + 20, c[2] * 0.8 + 20], smooth(0.5, 0.7, turb) * 0.5)
+    c = mix(c, G.pole, smooth(0.78, 1, Math.abs(Y)) * 0.7)
+    const lon = Math.atan2(X, Z)
+    for (const sp of G.spots) {
+      const dl = Math.atan2(Math.sin(lon - sp.lon), Math.cos(lon - sp.lon)), e = (dl / sp.w) ** 2 + ((Y - sp.lat) / sp.h) ** 2
+      if (e < 1) c = mix(c, mix(sp.col, [c[0], c[1], c[2]], fbm(X * 12, Y * 12, Z * 12, 3) * 0.5), smooth(1, 0.3, e) * 0.9)
+    }
+    return c
+  }
+}
+
+/** The colour of a point of a world, with the world's own tint (each one a little its own colour). */
+export function surfaceTinted(kind: Kind, seed: number): (X: number, Y: number, Z: number) => RGB {
+  const f = kind === 'rock' || kind === 'gas' ? procSurface(kind, seed) : surface(kind, seed)
+  const tr = rngOf(seed + 99), tint: RGB = [0.9 + 0.2 * tr(), 0.9 + 0.2 * tr(), 0.9 + 0.2 * tr()]
+  return (X, Y, Z) => { const c = f(X, Y, Z); return [c[0] * tint[0], c[1] * tint[1], c[2] * tint[2]] }
 }

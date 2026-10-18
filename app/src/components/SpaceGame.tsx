@@ -35,7 +35,7 @@ export function fmtSpeed(v: number) {
 
 const BTN = 'height:32px;padding:0 12px;border-radius:9999px;background:rgba(255,255,255,0.14);color:#fff;font-size:13px;font-weight:600;white-space:nowrap'
 const STEER_KEYS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0], ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1] }
-const OTHER_KEYS = ['Space', 'ShiftLeft', 'ShiftRight', 'KeyX', 'KeyC', 'ControlLeft', 'KeyQ', 'KeyE']
+const OTHER_KEYS = ['KeyU', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyX', 'KeyC', 'ControlLeft', 'KeyQ', 'KeyE']
 
 /** A round button that is held down (a finger, or a mouse button). */
 function Hold({ label, size, style, on, children }: { label: string; size: number; style: string; on: (down: boolean) => void; children: ReactNode }) {
@@ -51,21 +51,23 @@ const Arrow = ({ flip }: { flip?: boolean }) => (
 )
 
 /** 인터스텔라: fly the Ranger 1. */
-export function SpaceGame() {
+export function SpaceGame({ speedPass = false }: { speedPass?: boolean }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const backRef = useRef<HTMLCanvasElement>(null)
   const frontRef = useRef<HTMLCanvasElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
   const speedRef = useRef<HTMLDivElement>(null)
-  const planetRef = useRef<HTMLDivElement>(null)
+  const [docked, setDocked] = useState(false)
   const hullRef = useRef<HTMLDivElement>(null)
+  const speedMulRef = useRef(1)
+  speedMulRef.current = speedPass ? 3 : 1 // the 최대속도 3배 패스
   const noteRef = useRef<HTMLDivElement>(null)
   const engine = useRef<Engine | null>(null)
   const aim = useRef<V2 | null>(null) // the mouse, or a finger on the screen, from the middle of the game
   const touching = useRef(false)
   const [sensor] = useState(() => createTilt()) // the phone's tilt (spaceTilt.ts)
   const keys = useRef({ x: 0, y: 0, held: new Set<string>() })
-  const btn = useRef({ thrust: false, brake: false, cw: false, ccw: false, mouse: false })
+  const btn = useRef({ thrust: false, brake: false, cw: false, ccw: false, mouse: false, undock: false })
   const [tiltOn, setTiltOn] = useState(false)
   const [askTilt, setAskTilt] = useState(false) // iOS: the tilt is allowed with a tap
   const [coarse] = useState(() => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) // a touch screen: a phone
@@ -145,7 +147,7 @@ export function SpaceGame() {
     const eng = engine.current ?? (engine.current = createEngine(import.meta.env.BASE_URL, {
       hud: h => {
         if (speedRef.current) speedRef.current.textContent = `속도 ${fmtSpeed(h.speed)}`
-        if (planetRef.current) planetRef.current.textContent = `행성까지 ${fmtDistance(h.planet)}`
+        setDocked(d => (d === h.docked ? d : h.docked))
         if (noteRef.current) noteRef.current.textContent = h.note
         if (hullRef.current) { // shown once the hull is hurt
           hullRef.current.textContent = h.hull < 100 ? `내구도 ${Math.max(0, Math.ceil(h.hull))}%` : ''
@@ -186,6 +188,8 @@ export function SpaceGame() {
         rollStop: cw && ccw,
         thrust: b.thrust || b.mouse || k.held.has('Space') || k.held.has('ShiftLeft') || k.held.has('ShiftRight'),
         brake: b.brake || k.held.has('KeyX') || k.held.has('KeyC') || k.held.has('ControlLeft'),
+        speedMul: speedMulRef.current,
+        undock: b.undock || k.held.has('KeyU'),
       })
     }
     const stop = () => { cancelAnimationFrame(raf); raf = 0 }
@@ -213,7 +217,6 @@ export function SpaceGame() {
       <canvas ref={frontRef} style={css('position:absolute;left:0;top:0;width:100%;height:100%;display:block')} />
       <div style={css('position:absolute;left:16px;top:12px;color:#fff;font-size:14px;font-weight:600;line-height:19px;font-variant-numeric:tabular-nums;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,0.8)')}>
         <div ref={speedRef}>속도 0.00 m/s</div>
-        <div ref={planetRef}>행성까지 -</div>
         <div ref={hullRef} />
         <div ref={noteRef} style={css('color:#8ecbff')} />
       </div>
@@ -224,6 +227,7 @@ export function SpaceGame() {
       <Hold label="왼쪽으로 구르기" size={56} style="left:16px;bottom:18px" on={d => { btn.current.ccw = d }}><Arrow flip /></Hold>
       <Hold label="오른쪽으로 구르기" size={56} style="left:80px;bottom:18px" on={d => { btn.current.cw = d }}><Arrow /></Hold>
       <Hold label="감속" size={56} style="right:100px;bottom:18px" on={d => { btn.current.brake = d }}>감속</Hold>
+      {docked && <Hold label="분리" size={56} style="left:50%;margin-left:-28px;bottom:18px" on={d => { btn.current.undock = d }}>분리</Hold>}
       <Hold label="가속" size={72} style="right:18px;bottom:18px" on={d => { btn.current.thrust = d }}>가속</Hold>
       {askTilt && (
         <button className="pr-96" onClick={allowTilt} style={css('position:absolute;left:50%;bottom:64px;transform:translateX(-50%);height:40px;padding:0 18px;border-radius:9999px;background:#fff;color:#000;font-size:14px;font-weight:700;white-space:nowrap')}>기울기로 조종 켜기</button>

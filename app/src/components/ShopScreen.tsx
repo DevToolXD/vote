@@ -1,7 +1,7 @@
 import { memo, useState, type ReactNode } from 'react'
 import { css, sx } from '../css'
 import { BANNERS, BLUE, FRAMES, LEGENDARY, SKINS, seriesItems, seriesMissing, seriesPrice, skinGeom, type ItemKind } from '../data'
-import { FAKE_PASS_PRICE, PASS_PRICE, type PassKind } from '../backend/types'
+import { FAKE_PASS_PRICE, PASS_PRICE, SPEED_PASS_PRICE, type PassKind } from '../backend/types'
 import { Avatar } from './Avatar'
 import { ChevronRight } from './icons'
 import { Nameplate } from './Nameplate'
@@ -39,6 +39,7 @@ type Props = {
 export const PASSES: { key: PassKind; title: string; desc: string; icon: string; bg: string; price: number }[] = [
   { key: 'pass2x', title: '투표 2배권', desc: '한 사람에게 일주일에 두 번 투표', icon: '×2', bg: 'linear-gradient(135deg,#1b64da,#6a3cf0)', price: PASS_PRICE },
   { key: 'passFake', title: '페이크 선물 패스', desc: '채팅에서 페이크 선물을 보낼 수 있어요', icon: '🤡', bg: 'linear-gradient(135deg,#8b5cf6,#c026d3)', price: FAKE_PASS_PRICE },
+  { key: 'passSpeed', title: '최대속도 3배 패스', desc: '인터스텔라 우주선의 최대 속도가 3배가 돼요', icon: '🚀', bg: 'linear-gradient(135deg,#0ea5e9,#1d4ed8)', price: SPEED_PASS_PRICE },
 ]
 
 /** The sets a person can buy as a whole, and the pills that sort them. */

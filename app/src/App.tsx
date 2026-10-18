@@ -8,10 +8,10 @@ import { stopPosts } from './backend/postStore'
 import { accessOf, blockedUsers, myIp, recordIp, setAccess, watchAccess, watchIp, type Access, type IpDoc } from './backend/ip'
 import { authErrorMessage, chooseNewPassword, logIn, logOut, needsNewPassword, onAuthChange, saveLoginId, savedLoginId, signUp } from './backend/auth'
 import { TRADE_BAN_FOREVER, deleteAccount, grantPoints, revokeItem, setTradeBan, isAdminEmail, renameUser, resetPassword, setSeasonConfig, resetSeason, setSeasonName, subscribeSeason, type AdminProgress } from './backend/admin'
-import { buyItem, buySeries, buyPass, castVote, hasFakePass, hasPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
+import { buyItem, buySeries, buyPass, castVote, hasFakePass, hasPass, hasSpeedPass, claimAppBonus, equipItem, pointsOf, subscribeCandidates, subscribeMyVote, subscribeMyVotes, updateMyProfile, type CandidateRow } from './backend/candidates'
 import { createGroup, inviteMembers, isUnread, leaveGroup, onMyReads, setReadsUser, openDm, sendImage, sendMessage, setChatMuted, setGroupInfo, setMessagesOff, scheduleMessage, subscribeMyChats, type ChatRow, type ReplyRef } from './backend/messages'
 import { DEFAULT_NOTIFY, saveNotifySettings, subscribeNotifySettings, type NotifySettings as NotifyPrefs } from './backend/push'
-import { DEFAULT_OWNED, DEFAULT_SEASON, FAKE_PASS_PRICE, PASS_PRICE, type PassKind, type MyVote, type Season, type WeekKind } from './backend/types'
+import { DEFAULT_OWNED, DEFAULT_SEASON, FAKE_PASS_PRICE, PASS_PRICE, SPEED_PASS_PRICE, type PassKind, type MyVote, type Season, type WeekKind } from './backend/types'
 import { deviceRegistered, disablePush, enablePush, pushAskLater, pushErrorMessage, pushOnOpen, pushSupport, refreshPush, setPushOptOut } from './push'
 import { fileToChatImage, fileToPhotoDataUrl } from './backend/image'
 import { AccountScreen, type LoginForm, type SignupForm } from './components/AccountScreen'
@@ -875,7 +875,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
   })
   const equipped = useMemo(() => (me ? { frame: me.frame, plate: me.plate, skin: me.skin } : { frame: 'none', plate: 'none', skin: 'none' }), [me?.frame, me?.plate, me?.skin]) // eslint-disable-line react-hooks/exhaustive-deps
   const fakePassOwned = hasFakePass(me)
-  const passes = useMemo(() => ({ pass2x: passActive, passFake: fakePassOwned }), [passActive, fakePassOwned])
+  const speedPassOwned = hasSpeedPass(me)
+  const passes = useMemo(() => ({ pass2x: passActive, passFake: fakePassOwned, passSpeed: speedPassOwned }), [passActive, fakePassOwned, speedPassOwned])
 
   if (!firebaseConfigured) return <SetupNotice />
   if (!authReady) return <div data-g="app" style={css('width:100%;max-width:var(--app-w);min-height:100vh;background:#ffffff')} />
@@ -999,7 +1000,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
             </div>
           ) : (
             <HomeScreen
-              sub={homeTab} onSub={setHomeTab} me={me} loggedIn={loggedIn} onProfile={uiFns.goAcct} onAdmin={isAdmin ? () => go('admin') : undefined}
+              sub={homeTab} onSub={setHomeTab} me={me} loggedIn={loggedIn} onProfile={uiFns.goAcct} onAdmin={isAdmin ? () => go('admin') : undefined} speedPass={speedPassOwned}
               rank={
                 <RankScreen
                   all={all} query={query} onQuery={uiFns.query}
@@ -1104,19 +1105,19 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
         })()}
         {adminShopOpen && me && isAdmin && (
           <AdminShop name={me.name} photoCss={me.photoCss ?? 'none'} equipped={{ frame: me.frame, plate: me.plate, skin: me.skin }} owned={me.owned ?? DEFAULT_OWNED}
-            passes={{ pass2x: passActive, passFake: hasFakePass(me) }} points={points} onPick={adminPick} onBuyPass={setPassAsk} onClose={() => setAdminShopOpen(false)} />
+            passes={{ pass2x: passActive, passFake: hasFakePass(me), passSpeed: hasSpeedPass(me) }} points={points} onPick={adminPick} onBuyPass={setPassAsk} onClose={() => setAdminShopOpen(false)} />
         )}
         {casinoOpen && me && <Casino points={points} onBet={bet} onClose={() => setCasinoOpen(false)} />}
         {ledgerOpen && me && <LedgerSheet uid={me.id} title="거래 내역" byId={byId} onClose={() => setLedgerOpen(false)} />}
         {passAsk && me && (() => {
-          const fake = passAsk === 'passFake'
-          const price = fake ? FAKE_PASS_PRICE : PASS_PRICE
+          const fake = passAsk === 'passFake', speed = passAsk === 'passSpeed'
+          const price = fake ? FAKE_PASS_PRICE : speed ? SPEED_PASS_PRICE : PASS_PRICE
           const can = points >= price
           return (
             <BuyDialog
               b={{
-                title: fake ? '페이크 선물 패스를 살까요?' : '투표 2배권을 살까요?',
-                desc: !can ? '포인트가 더 쌓이면 살 수 있어요' : fake ? '영구 · 채팅에서 페이크 선물을 보낼 수 있어요' : '영구 · 한 사람에게 일주일에 두 번까지 투표할 수 있어요',
+                title: fake ? '페이크 선물 패스를 살까요?' : speed ? '최대속도 3배 패스를 살까요?' : '투표 2배권을 살까요?',
+                desc: !can ? '포인트가 더 쌓이면 살 수 있어요' : fake ? '영구 · 채팅에서 페이크 선물을 보낼 수 있어요' : speed ? '영구 · 인터스텔라 우주선의 최대 속도가 3배가 돼요' : '영구 · 한 사람에게 일주일에 두 번까지 투표할 수 있어요',
                 price: price.toLocaleString() + 'P',
                 remain: (points - price).toLocaleString() + 'P',
                 can,
@@ -1128,7 +1129,7 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
                 if (tradeBanned(me)) { showToast(banText(me)); return }
                 try {
                   await buyPass(db!, me.id, passAsk); setPassAsk(null)
-                  showToast(fake ? '페이크 선물 패스를 샀어요. 채팅 + 에서 보낼 수 있어요' : '투표 2배권을 샀어요. 이제 한 사람에게 일주일에 두 번 투표할 수 있어요')
+                  showToast(fake ? '페이크 선물 패스를 샀어요. 채팅 + 에서 보낼 수 있어요' : speed ? '최대속도 3배 패스를 샀어요. 인터스텔라에서 최대 속도가 3배가 돼요' : '투표 2배권을 샀어요. 이제 한 사람에게 일주일에 두 번 투표할 수 있어요')
                 } catch (e) { failToast('사지 못했어요. 다시 시도해주세요', e) }
               }}
             />
