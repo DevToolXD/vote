@@ -61,7 +61,7 @@ const RING_REACH = 40 // how close to Saturn's ring plane the ship must be to be
 const LAND_H = 500 // below this a ship with its gear down is in the landing approach (m)
 const LAND_V = 18, LAND_SIDE = 45 // set down on a world: at most this fast into it and along it (m/s), or it is a crash
 const HOVER = 5.3 // the ship's centre above the ground when it stands on its gear (m)
-const SKY_H = 1.5e5 // the air thins out to nothing by this height (m)
+const SKY_H = 1.2e6 // the air thins out to nothing by this height (m): a thick atmosphere, so a fast ship is slowed long before the ground
 const HOLE_G = 1.5e7 // m/s² at a black hole's edge
 const SHIP_R = 7 * RS // the Ranger's body, for hitting things
 const MAXN = 12 // corners a piece can have once it has been cut at the near plane
@@ -430,7 +430,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     for (const b of list) {
       if (b.kind === 'hole' || !b.atm) continue
       const alt = len(sub(p0, [b.x, b.y, b.z])) - b.r
-      if (alt < 3e5) ship.v = mul(ship.v, Math.exp(-0.25 * Math.exp(-Math.max(alt, 0) / 40000) * dt))
+      if (alt < 3e6) ship.v = mul(ship.v, Math.exp(-0.7 * Math.exp(-Math.max(alt, 0) / 300000) * dt))
     }
     const p1 = add(p0, mul(ship.v, dt))
     // Saturn's rings: only close to them, and only a little at a time
@@ -785,7 +785,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     if (mode === 'fly') {
       const want = !dock.on && (landedOn || (hb && LANDABLE[hb.kind] && hAlt < Math.max(3000, len(ship.v) * 6))) ? 1 : 0
       gear += clamp(want - gear, -dt / 1.6, dt / 1.6)
-      const q = hb && hb.atm ? clamp((len(ship.v) / 1500) * Math.exp(-Math.max(0, hAlt) / 40000), 0, 1) : 0
+      const q = hb && hb.atm ? clamp((len(ship.v) / 1500) * Math.exp(-Math.max(0, hAlt) / 120000), 0, 1) : 0
       heat += (q - heat) * (1 - Math.exp(-dt * 4))
       if (heat > 0.05) shake = Math.max(shake, heat * 0.7)
       touch = Math.min(1, touch + dt / 0.7)
@@ -859,6 +859,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
 
     // ================= back canvas =================
     bx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    bx.imageSmoothingQuality = 'high'
     bx.fillStyle = '#000'
     bx.fillRect(0, 0, W, H)
     // the sky of a world with air hides the stars, the thinner the higher the ship is
@@ -1044,7 +1045,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
           bx.beginPath(); bx.arc(X, Y, rpx * 1.1, 0, TAU); bx.fill()
         }
         // the ball: painted from its map as it is seen from here and lit by the sun, again when the view has turned enough to show
-        const S = clamp(Math.ceil((rpx * 2) / 32) * 32, 32, 256)
+        const S = clamp(Math.ceil((rpx * 2) / 32) * 32, 32, 320)
         const ez = norm(sub(cam.p, [b.x, b.y, b.z]))
         const old = b.ball
         if (gAlpha < 0.4 && (!old || old.S !== S || dot(old.ez, ez) < 0.99997 || dot(old.cr, CR) < 0.99997)) {

@@ -1,7 +1,7 @@
 // A world's map of colours, painted by a worker (or, where there is none, a few rows a frame on the page).
 import { surfaceTinted, type Kind, type RGB } from './spacePlanets'
 
-export const TEX_W = 512, TEX_H = 256
+export const TEX_W = 768, TEX_H = 384
 export type Tex = { px: Uint32Array | null; avg: RGB; ready: boolean; step?: (ms: number) => void }
 
 const pending = new Map<number, { tex: Tex; kind: Kind; seed: number }>()
