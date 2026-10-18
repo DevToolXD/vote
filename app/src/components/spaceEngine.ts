@@ -61,7 +61,7 @@ const RING_REACH = 40 // how close to Saturn's ring plane the ship must be to be
 const LAND_H = 500 // below this a ship with its gear down is in the landing approach (m)
 const LAND_V = 18, LAND_SIDE = 45 // set down on a world: at most this fast into it and along it (m/s), or it is a crash
 const HOVER = 5.3 // the ship's centre above the ground when it stands on its gear (m)
-const SKY_H = 1.2e6 // the air thins out to nothing by this height (m): a thick atmosphere, so a fast ship is slowed long before the ground
+const SKY_H = 4e5 // the air thins out to nothing by this height (m)
 const HOLE_G = 1.5e7 // m/s² at a black hole's edge
 const SHIP_R = 7 * RS // the Ranger's body, for hitting things
 const MAXN = 12 // corners a piece can have once it has been cut at the near plane
@@ -178,6 +178,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
   // the hull: 100 whole; each hit takes some, and pieces of the Ranger come off as it goes down
   let hull = 100, deadT = 0, ringT = 0, camSp = 0, emitAcc = 0
   let hAlt = Infinity, hb: Body | null = null // the nearest world and the height above it
+  let deathWhy = ''
   let camCap = 0, emitDust = 0, vmul = 1, retro = 0, touch = 1, landCam = 0, camDock = 0
   let gear = 0, heat = 0, landedOn: Body | null = null // the landing gear (0 up .. 1 down), the glow of the air, the world it stands on
   const gg = gearModel()
@@ -430,7 +431,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     for (const b of list) {
       if (b.kind === 'hole' || !b.atm) continue
       const alt = len(sub(p0, [b.x, b.y, b.z])) - b.r
-      if (alt < 3e6) ship.v = mul(ship.v, Math.exp(-0.7 * Math.exp(-Math.max(alt, 0) / 300000) * dt))
+      if (alt < 1e6) ship.v = mul(ship.v, Math.exp(-0.7 * Math.exp(-Math.max(alt, 0) / 100000) * dt))
     }
     const p1 = add(p0, mul(ship.v, dt))
     // Saturn's rings: only close to them, and only a little at a time
@@ -464,17 +465,17 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     const n = norm(sub(pt, c)), into = -dot(ship.v, n)
     if (LANDABLE[b.kind] && dock.on) { // the pair cannot land: a hard touch ends it, a soft one bounces
       ship.p = add(c, mul(n, b.r + HOVER + 2))
-      if (into > 6) { explode(); return }
+      if (into > 6) { explode('둘이 붙은 채로는 착륙할 수 없어요'); return }
       bump(n, 1); ship.v = mul(ship.v, 0.6)
       return
     }
     if (LANDABLE[b.kind]) { // a world with a ground: set down on the gear if it is slow enough, else it is a crash
-      if (into > LAND_V || len(sub(ship.v, mul(n, -into))) > LAND_SIDE) { ship.p = pt; explode(); return }
+      if (into > LAND_V || len(sub(ship.v, mul(n, -into))) > LAND_SIDE) { ship.p = pt; explode(`착륙 실패: 너무 빨랐어요 (땅에 ${Math.round(into)} m/s, ${LAND_V} m/s 이하여야 해요)`); return }
       landOn(b, n)
       return
     }
     ship.p = add(c, mul(n, b.r + 12 * RS + 2)) // out past the hit distance, so the next step starts free of it
-    if (into > CRASH_V) { explode(); return }
+    if (into > CRASH_V) { explode('가스 행성은 착륙할 수 없어요: 부딪혀서 터졌어요'); return }
     bump(n, 2)
     ship.v = mul(ship.v, 0.6)
     if (into > 2) hurt(5 + into * 0.4, n)
@@ -538,8 +539,9 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     }
     if (hull <= 0) explode()
   }
-  function explode() {
+  function explode(why = '충돌했어요') {
     if (mode !== 'fly') return
+    deathWhy = why
     mode = 'dead'; deadT = 0; hull = 0
     for (let i = 0; i < 70; i++) {
       const d = norm([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]), sp = 6 + Math.random() * 60
@@ -720,7 +722,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     qualityT += dt
     if (qualityT > 1.2) {
       qualityT = 0
-      if (frameEma > 26 && quality > 0.5) { // slower than about 40 frames a second: draw smaller
+      if (frameEma > 28 && quality > 0.5) { // slower than about 40 frames a second: draw smaller
         quality = Math.max(0.5, quality - 0.12); goodRuns = 0
         if (realT - raisedAt < 9) qualityCap = quality // it was the last rise that was too much
         applyQuality()
@@ -785,7 +787,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     if (mode === 'fly') {
       const want = !dock.on && (landedOn || (hb && LANDABLE[hb.kind] && hAlt < Math.max(3000, len(ship.v) * 6))) ? 1 : 0
       gear += clamp(want - gear, -dt / 1.6, dt / 1.6)
-      const q = hb && hb.atm ? clamp((len(ship.v) / 1500) * Math.exp(-Math.max(0, hAlt) / 120000), 0, 1) : 0
+      const q = hb && hb.atm ? clamp((len(ship.v) / 1500) * Math.exp(-Math.max(0, hAlt) / 40000), 0, 1) : 0
       heat += (q - heat) * (1 - Math.exp(-dt * 4))
       if (heat > 0.05) shake = Math.max(shake, heat * 0.7)
       touch = Math.min(1, touch + dt / 0.7)
@@ -1045,7 +1047,7 @@ export function createEngine(base: string, cb: Callbacks): Engine {
           bx.beginPath(); bx.arc(X, Y, rpx * 1.1, 0, TAU); bx.fill()
         }
         // the ball: painted from its map as it is seen from here and lit by the sun, again when the view has turned enough to show
-        const S = clamp(Math.ceil((rpx * 2) / 32) * 32, 32, 320)
+        const S = clamp(Math.ceil((rpx * 2) / 32) * 32, 32, 448)
         const ez = norm(sub(cam.p, [b.x, b.y, b.z]))
         const old = b.ball
         if (gAlpha < 0.4 && (!old || old.S !== S || dot(old.ez, ez) < 0.99997 || dot(old.cr, CR) < 0.99997)) {
@@ -1583,14 +1585,17 @@ export function createEngine(base: string, cb: Callbacks): Engine {
       let planet = Infinity
       for (const b of list) planet = Math.min(planet, Math.max(0, len(sub(ship.p, [b.x, b.y, b.z])) - b.r))
       let note = ''
-      if (landedOn) note = '착륙 완료 · 가속하면 이륙해요'
+      if (mode === 'dead') note = deathWhy
+      else if (landedOn) note = '착륙 완료 · 가속하면 이륙해요'
       else if (dock.on && dock.t < 0.55) note = '도킹: 포트로 끌려 들어가는 중'
       else if (dock.on && dock.t < 1) note = '도킹: 고정 장치가 잠기는 중'
       else if (dock.on) note = '도킹 완료 · 같이 날아가요 (최대속도 2배)'
       else if (hb && LANDABLE[hb.kind] && hAlt < LAND_H && gear > 0.5) {
         const down = -dot(ship.v, norm(sub(ship.p, [hb.x, hb.y, hb.z])))
         note = `고도 ${fmtDist(Math.max(0, hAlt - HOVER))} · 하강 ${down.toFixed(1)} m/s${down > LAND_V ? ' · 너무 빨라요!' : ''}`
-      } else if (heat > 0.25) note = '대기권 진입 중'
+      } else if (hb && !LANDABLE[hb.kind] && hAlt < 30000) note = '가스 행성이에요 · 착륙할 수 없어요'
+      else if (hb && LANDABLE[hb.kind] && hAlt < 20000 && gear < 0.5) note = `착륙할 수 있는 행성 · 고도 ${fmtDist(Math.max(0, hAlt))}`
+      else if (heat > 0.25) note = '대기권 진입 중'
       else if (gear > 0.5) note = '착륙 장치 내려감'
       cb.hud({ speed: len(ship.v), planet, hull, note, docked: dock.on && dock.t >= 1 })
     }

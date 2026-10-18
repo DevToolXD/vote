@@ -160,7 +160,7 @@ export function SpaceGame({ speedPass = false }: { speedPass?: boolean }) {
     if (new URLSearchParams(location.search).has('spacedebug')) (window as unknown as { __space?: Engine }).__space = eng // for testing
     const fit = () => {
       const w = root.clientWidth, h = root.clientHeight, turned = coarse && h > w
-      eng.resize(turned ? h : w, turned ? w : h, Math.min(window.devicePixelRatio || 1, 2)) // (the game turns its own picture down when the phone cannot keep up)
+      eng.resize(turned ? h : w, turned ? w : h, Math.min(window.devicePixelRatio || 1, 3)) // (the game turns its own picture down when the phone cannot keep up)
       setBox(b => (b.w === w && b.h === h ? b : { w, h }))
     }
     fit()
