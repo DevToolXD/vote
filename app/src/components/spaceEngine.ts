@@ -58,8 +58,8 @@ const VMAX_CAP = 6e6 // what the engines add per second at most, far from everyt
 const VMAX = 1.5e6 // top speed (m/s): fast, but a planet can still be seen coming
 const CRASH_V = 12 // into a planet faster than this (m/s) and the Ranger blows up
 const RING_REACH = 40 // how close to Saturn's ring plane the ship must be to be hit by the rings (m)
-const LAND_H = 500 // below this a ship with its gear down is in the landing approach (m)
-const LAND_V = 18, LAND_SIDE = 45 // set down on a world: at most this fast into it and along it (m/s), or it is a crash
+const LAND_H = 2500 // below this a ship with its gear down is in the landing approach (m)
+const LAND_V = 25, LAND_SIDE = 45 // set down on a world: at most this fast into it and along it (m/s), or it is a crash
 const HOVER = 5.3 // the ship's centre above the ground when it stands on its gear (m)
 const SKY_H = 4e5 // the air thins out to nothing by this height (m)
 const HOLE_G = 1.5e7 // m/s² at a black hole's edge
@@ -403,10 +403,13 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     }
     let retroOn = false
     if (land && hb) {
-      const n = norm(sub(ship.p, [hb.x, hb.y, hb.z])), down = -dot(ship.v, n), safe = 3 + 0.1 * Math.max(0, hAlt - HOVER)
-      if (inp.thrust) ship.v = add(ship.v, mul(n, 6 * dt)) // pushing the engines lifts it (and ends the landing)
-      else if (down > safe) { ship.v = add(ship.v, mul(n, Math.min(down - safe, 7 * dt))); retroOn = true }
-      if (hAlt < 120) { const vt = sub(ship.v, mul(n, dot(ship.v, n))); ship.v = sub(ship.v, mul(vt, 1 - Math.exp(-(inp.brake ? 1.2 : 0.35) * dt))) } // the ground drags it along
+      // the landing autopilot: left alone the ship comes down along a curve that ends in a soft touch (it speeds up the fall when it is too
+      // slow, brakes it when it is too fast); holding the brake keeps it where it is, pushing the engines lifts it (and ends the landing)
+      const n = norm(sub(ship.p, [hb.x, hb.y, hb.z])), down = -dot(ship.v, n), target = 3 + Math.sqrt(2 * 8 * Math.max(0, hAlt - HOVER))
+      if (inp.thrust) ship.v = add(ship.v, mul(n, 6 * dt))
+      else if (down > target) { ship.v = add(ship.v, mul(n, Math.min(down - target, 16 * dt))); retroOn = true }
+      else if (!inp.brake && down < target) { ship.v = sub(ship.v, mul(n, Math.min(target - down, 12 * dt))); retroOn = down > target * 0.6 }
+      if (hAlt < 400) { const vt = sub(ship.v, mul(n, dot(ship.v, n))); ship.v = sub(ship.v, mul(vt, 1 - Math.exp(-(inp.brake ? 1.2 : 0.35) * dt))) } // the ground drags it along
     }
     retro += ((retroOn ? 1 : 0) - retro) * (1 - Math.exp(-dt * 8))
     governor(dt, null)
@@ -633,6 +636,14 @@ export function createEngine(base: string, cb: Callbacks): Engine {
     const v = dockVerdict(dockMetrics({ ship: ship.p, f: ship.f, u: ship.u, vel: ship.v, e: S.p, ex: S.x, ey: S.y, ez: S.z, spin: S.spin }), dock.rate)
     dock.lights = [v.axis, v.offset, v.roll, v.speed]
     if (dock.cool > 0) return
+    // all four lights green: the Endurance takes the Ranger in at once (it is drawn in from where it is)
+    if (v.all && m.h < 30 && m.h > -6 && m.offset < 12) {
+      dock.on = true; dock.t = 0
+      dock.from = { p: ship.p, f: ship.f, u: ship.u }
+      ship.v = [0, 0, 0]; ship.wp = ship.wy = ship.wr = 0
+      cb.haptic([30, 40, 30])
+      return
+    }
     // the nose at the port's face: lock if all four are right, else it bounces off
     if (m.h < 0.6 && m.h > -6 && m.offset < 12) {
       if (v.all) {
