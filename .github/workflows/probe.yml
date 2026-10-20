@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - '.github/scripts/probe-usage.mjs'
+      - '.github/scripts/probe-deletions.mjs'
       - '.github/workflows/probe.yml'
   workflow_dispatch:
 
@@ -25,5 +26,8 @@ jobs:
         with:
           node-version: 22
       - run: node .github/scripts/probe-usage.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - run: node .github/scripts/probe-deletions.mjs
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
