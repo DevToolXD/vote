@@ -203,7 +203,9 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
     const code = (e as { code?: string })?.code
     // Firebase's free daily limit is used up (it resets at 16:00 KST).
     if (code === 'resource-exhausted') return showToast(`${msg}. 오늘 서버 사용량이 다 찼어요. 오후 4시 이후에 다시 해주세요`)
-    showToast(code ? `${msg} (${code})` : msg)
+    // not a Firebase error: say what it was (e.g. the reason the server gave for a failed deletion)
+    const why = code ?? (e instanceof Error ? e.message.replace(/^Firebase: /, '').slice(0, 60) : '')
+    showToast(why ? `${msg} (${why})` : msg)
   }
 
   useEffect(() => { const p = placeOf(startTab); setTab(p.tab); setOverlay(p.overlay); if (p.money) setMoneyTab(p.money); if (p.invest) setInvestTab(p.invest) }, [startTab])
@@ -679,6 +681,8 @@ export function App({ startTab = 'rank', startChat = null, startSupport = null, 
       showToast(`${label}을 마쳤어요`)
       return true
     } catch (e) {
+      // the request is saved; the server side just hasn't got to it yet (it restarts now and then)
+      if (e instanceof Error && e.message === 'deletion-queued') { showToast('삭제를 요청했어요. 서버가 곧 처리해요 (잠시 뒤 목록에서 사라져요)'); return true }
       failToast(`${label}에 실패했어요`, e)
       return false
     } finally {

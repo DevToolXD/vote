@@ -245,7 +245,7 @@ export async function deleteAccount(db: Firestore, adminUid: string, target: str
   ], onProgress)
   await new Promise<void>((resolve, reject) => {
     let stop = () => {}
-    const timer = setTimeout(() => { stop(); reject(new Error('deletion-timeout')) }, 180_000)
+    const timer = setTimeout(() => { stop(); reject(new Error('deletion-queued')) }, 180_000)
     stop = onSnapshot(ref, snap => {
       const d = snap.data()
       if (d?.status === 'done') { clearTimeout(timer); stop(); resolve() }
