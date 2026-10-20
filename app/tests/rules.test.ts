@@ -715,6 +715,16 @@ describe('admin: single-use tokens ×3', () => {
     assert.equal((await getDoc(doc(c, 'banned', 'c'))).exists(), true)
     await denied(setDoc(doc(c, 'candidates', 'c'), newCandidateDoc('c', '다시')))
   })
+  test('delete account: votes made in the real app (with the season number) are taken back', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c')
+    await castVote(c, 'c', 'a', 'up', 1, 1)
+    await castVote(c, 'c', 'b', 'down', 1, 1)
+    await castVote(b, 'b', 'c', 'up', 1, 1)
+    await castVote(a, 'a', 'b', 'up', 1, 1)
+    const admin = dbAs(ADMIN)
+    await deleteAccount(admin, ADMIN.uid, 'c')
+    assert.equal((await getDoc(doc(admin, 'candidates', 'c'))).exists(), false)
+  })
   test('refused: regular users deleting accounts', async () => {
     await signUp('a'); const b = await signUp('b')
     await assert.rejects(deleteAccount(b, 'b', 'a'))

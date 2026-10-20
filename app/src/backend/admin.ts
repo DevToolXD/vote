@@ -239,6 +239,18 @@ export async function resetSeason(db: Firestore, adminUid: string, newName: stri
  */
 export async function deleteAccount(db: Firestore, adminUid: string, target: string, onProgress?: (p: AdminProgress) => void) {
   if (target === adminUid) throw new Error('cannot-delete-self')
+  // The tallies are read before the writes, so if someone votes meanwhile the rules refuse the batch (permission-denied).
+  // Batches that went through already removed their votes, so reading again and going on is safe.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await deleteAccountOnce(db, adminUid, target, onProgress)
+    } catch (e) {
+      if (attempt >= 4 || (e as { code?: string }).code !== 'permission-denied') throw e
+    }
+  }
+}
+
+async function deleteAccountOnce(db: Firestore, adminUid: string, target: string, onProgress?: (p: AdminProgress) => void) {
   const [cast, received] = await Promise.all([
     getDocs(query(collection(db, 'votes'), where('uid', '==', target))),
     getDocs(query(collection(db, 'votes'), where('candidateId', '==', target))),
