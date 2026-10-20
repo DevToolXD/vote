@@ -741,6 +741,7 @@ describe('admin: single-use tokens ×3', () => {
     await assert.rejects(deleteAccount(b, 'b', 'a'))
     await denied(deleteDoc(doc(b, 'candidates', 'a')))
     await denied(setDoc(doc(b, 'banned', 'a'), { at: serverTimestamp(), by: 'b' }))
+    await denied(setDoc(doc(b, 'deletions', 'a'), { target: 'a', by: 'b', at: serverTimestamp(), status: 'queued' })) // only with the admin's verified action
   })
 })
 

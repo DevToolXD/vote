@@ -1454,14 +1454,14 @@ service cloud.firestore {
       }
     }
 
-    // ---- account deletion requests: the admin asks, the worker does it (deletions/{uid}, one request per account)
+    // ---- account deletion requests: written with a verified admin action (the batch names it in the lock); the worker does
+    // the deleting, and marks the request done or failed (it has the admin rights itself)
     match /deletions/{uid} {
       allow read: if isAdmin();
-      allow create, update: if isAdmin() && uid != request.auth.uid
+      allow create, update: if adminOp('deleteAccount') && lock().payload.target == uid
         && request.resource.data.keys().hasOnly(['target', 'by', 'at', 'status'])
         && request.resource.data.target == uid && request.resource.data.by == request.auth.uid
-        && request.resource.data.at == request.time && request.resource.data.status == 'queued'
-        && (resource == null || resource.data.status in ['done', 'failed']);
+        && request.resource.data.at == request.time && request.resource.data.status == 'queued';
       allow delete: if false;
     }
 

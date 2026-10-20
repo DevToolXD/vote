@@ -232,16 +232,17 @@ export async function resetSeason(db: Firestore, adminUid: string, newName: stri
 }
 
 /**
- * Deletes an account. The admin only asks: the worker (which has full rights, so no batch-by-batch rule checks) takes back
- * every vote they cast (fixing those tallies), removes votes on them, deletes their leaderboard entry, and bans the uid so
- * the same login can't re-create it. Waits until the worker says it is done. The Firebase Auth login itself is removed by
- * the purge-deleted-accounts workflow.
+ * Deletes an account, as a verified admin action (the same three single-use tokens as every other one). The batch only asks: it
+ * writes deletions/{target} (queued). The background worker, which has full rights, then takes back every vote they cast (fixing
+ * those tallies), removes votes on them, deletes their leaderboard entry, and bans the uid, and marks the request done (or failed,
+ * with the reason). This waits for that. The Firebase Auth login itself is removed by the purge-deleted-accounts workflow.
  */
 export async function deleteAccount(db: Firestore, adminUid: string, target: string, onProgress?: (p: AdminProgress) => void) {
   if (target === adminUid) throw new Error('cannot-delete-self')
   const ref = doc(db, 'deletions', target)
-  await setDoc(ref, { target, by: adminUid, at: serverTimestamp(), status: 'queued' })
-  onProgress?.({ batch: 1, batches: 1, verified: 0 })
+  await runAdminOp(db, adminUid, 'deleteAccount', { target }, [
+    b => { b.set(ref, { target, by: adminUid, at: serverTimestamp(), status: 'queued' }); return 1 },
+  ], onProgress)
   await new Promise<void>((resolve, reject) => {
     let stop = () => {}
     const timer = setTimeout(() => { stop(); reject(new Error('deletion-timeout')) }, 180_000)
