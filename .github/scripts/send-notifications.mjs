@@ -555,6 +555,47 @@ let resetsPending = false
 let seasonEndsAt = null
 
 // (declared before the listeners, which can fire while the rest of the file is still starting)
+// Deleting an account (the admin's 계정 삭제, asked for in deletions/{uid}): done here with full rights, one account at a time.
+// Each vote they cast is taken back in a transaction (its candidate's tallies with it), then the votes on them, their entry,
+// and the ban; the request ends as 'done' (or 'failed' with the reason), so the admin's screen can say which.
+const deletionQueue = new Set()
+async function deletionsTick() {
+  for (const id of [...deletionQueue]) {
+    deletionQueue.delete(id)
+    const ref = fdb.doc(`deletions/${id}`)
+    try {
+      const cur = (await fdb.doc('meta/season').get()).get('number') ?? 1
+      const cast = await fdb.collection('votes').where('uid', '==', id).get()
+      for (const v of cast.docs) {
+        await fdb.runTransaction(async tx => {
+          const vs = await tx.get(v.ref)
+          if (!vs.exists) return
+          const vote = vs.data(), cRef = fdb.doc(`candidates/${vote.candidateId}`)
+          const c = vote.candidateId && vote.candidateId !== id ? await tx.get(cRef) : null
+          const ups = vote.season === cur ? vote.ups ?? 0 : 0, downs = vote.season === cur ? vote.downs ?? 0 : 0
+          if (c?.exists && (ups || downs)) {
+            const up = (c.get('up') ?? 0) - ups, down = (c.get('down') ?? 0) - downs
+            tx.update(cRef, { up, down, score: up - down })
+          }
+          tx.delete(v.ref)
+        })
+      }
+      const received = await fdb.collection('votes').where('candidateId', '==', id).get()
+      for (let i = 0; i < received.docs.length; i += 400) {
+        const b = fdb.batch()
+        for (const d of received.docs.slice(i, i + 400)) b.delete(d.ref)
+        await b.commit()
+      }
+      await fdb.doc(`candidates/${id}`).delete()
+      await fdb.doc(`banned/${id}`).set({ at: FieldValue.serverTimestamp(), by: (await ref.get()).get('by') ?? '' })
+      await ref.update({ status: 'done', doneAt: FieldValue.serverTimestamp() })
+      notice(`Account ${id} deleted.`)
+    } catch (e) {
+      warn(`Deleting ${id} failed: ${e.message}`)
+      await ref.update({ status: 'failed', error: String(e.message ?? e).slice(0, 200) }).catch(() => {})
+    }
+  }
+}
 const listensBySong = new Map() // vid → Map(uid → secs)
 const RECS_EVERY_MS = 10 * 60_000, RECS_NEIGHBOURS = 150, RECS_PICKS = 12
 let recsAt = 0, recsDirty = true
@@ -601,6 +642,10 @@ const firstDone = new Promise(resolve => {
         if (c.type !== 'removed' && Math.floor((c.doc.get('secs') ?? 0) / 60) > (c.doc.get('paidMin') ?? 0)) playQueue.add(c.doc.id)
       }
       recsDirty = true
+    }),
+    // account deletions the admin asked for (deletions/{uid}, status 'queued')
+    listen('deletions', fdb.collection('deletions').where('status', '==', 'queued'), snap => {
+      for (const c of snap.docChanges()) if (c.type !== 'removed') deletionQueue.add(c.doc.id)
     }),
     listen('settings', fdb.collection('settings'), snap => snap.docChanges().forEach(c => c.type === 'removed' ? settings.delete(c.doc.id) : settings.set(c.doc.id, c.doc.data()))),
     listen('tokens', fdb.collection('pushTokens'), snap => {
@@ -1571,6 +1616,7 @@ while (true) {
   await homeTick().catch(e => warn('Hearts failed: ' + e.message))
   await playTick().catch(e => warn('Listens failed: ' + e.message))
   await recsTick().catch(e => warn('Picks failed: ' + e.message))
+  await deletionsTick().catch(e => warn('Deletions failed: ' + e.message))
   await fillCoinOrders()
   await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
   if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })

@@ -232,54 +232,25 @@ export async function resetSeason(db: Firestore, adminUid: string, newName: stri
 }
 
 /**
- * Deletes an account: takes back every vote they cast (fixing those tallies),
- * removes votes on them, deletes their leaderboard entry, and bans the uid so
- * the same login can't re-create it. The Firebase Auth login itself is removed
- * by the purge-deleted-accounts workflow, which has the admin credentials.
+ * Deletes an account. The admin only asks: the worker (which has full rights, so no batch-by-batch rule checks) takes back
+ * every vote they cast (fixing those tallies), removes votes on them, deletes their leaderboard entry, and bans the uid so
+ * the same login can't re-create it. Waits until the worker says it is done. The Firebase Auth login itself is removed by
+ * the purge-deleted-accounts workflow.
  */
 export async function deleteAccount(db: Firestore, adminUid: string, target: string, onProgress?: (p: AdminProgress) => void) {
   if (target === adminUid) throw new Error('cannot-delete-self')
-  // The tallies are read before the writes, so if someone votes meanwhile the rules refuse the batch (permission-denied).
-  // Batches that went through already removed their votes, so reading again and going on is safe.
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await deleteAccountOnce(db, adminUid, target, onProgress)
-    } catch (e) {
-      if (attempt >= 4 || (e as { code?: string }).code !== 'permission-denied') throw e
-    }
-  }
-}
-
-async function deleteAccountOnce(db: Firestore, adminUid: string, target: string, onProgress?: (p: AdminProgress) => void) {
-  const [cast, received] = await Promise.all([
-    getDocs(query(collection(db, 'votes'), where('uid', '==', target))),
-    getDocs(query(collection(db, 'votes'), where('candidateId', '==', target))),
-  ])
-  const groups: ((b: WriteBatch) => number)[] = []
-  const cur = (await getSeason(db)).number
-  for (const v of cast.docs) {
-    const vote = v.data() as Partial<VoteDoc>
-    if (!vote.candidateId || vote.candidateId === target) continue
-    // Only this season's part of the vote is in the tally (see firestore.rules upsNow/downNow).
-    const ups = vote.season === cur ? vote.ups ?? 0 : 0
-    const downs = vote.season === cur ? vote.downs ?? 0 : 0
-    const candRef = doc(db, 'candidates', vote.candidateId)
-    const cand = ups || downs ? await getDoc(candRef) : null
-    if (cand?.exists()) {
-      const c = cand.data() as CandidateDoc
-      const up = c.up - ups, down = c.down - downs
-      groups.push(b => { b.update(candRef, { up, down, score: up - down }); b.delete(v.ref); return 2 })
-    } else {
-      groups.push(b => { b.delete(v.ref); return 1 })
-    }
-  }
-  for (const v of received.docs) groups.push(b => { b.delete(v.ref); return 1 })
-  groups.push(b => {
-    b.delete(doc(db, 'candidates', target))
-    b.set(doc(db, 'banned', target), { at: serverTimestamp(), by: adminUid })
-    return 2
+  const ref = doc(db, 'deletions', target)
+  await setDoc(ref, { target, by: adminUid, at: serverTimestamp(), status: 'queued' })
+  onProgress?.({ batch: 1, batches: 1, verified: 0 })
+  await new Promise<void>((resolve, reject) => {
+    let stop = () => {}
+    const timer = setTimeout(() => { stop(); reject(new Error('deletion-timeout')) }, 180_000)
+    stop = onSnapshot(ref, snap => {
+      const d = snap.data()
+      if (d?.status === 'done') { clearTimeout(timer); stop(); resolve() }
+      else if (d?.status === 'failed') { clearTimeout(timer); stop(); reject(new Error(String(d.error ?? 'deletion-failed'))) }
+    }, err => { clearTimeout(timer); reject(err) })
   })
-  await runAdminOp(db, adminUid, 'deleteAccount', { target }, groups, onProgress)
 }
 
 /** For the app: is this signed-in (non-admin) user a deleted account? */

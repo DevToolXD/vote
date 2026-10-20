@@ -705,6 +705,7 @@ describe('admin: single-use tokens ×3', () => {
     await castVote(b, 'b', 'c', 'up')
     await castVote(a, 'a', 'b', 'up')
     const admin = dbAs(ADMIN)
+    await kickWorker(90000)
     await deleteAccount(admin, ADMIN.uid, 'c')
     assert.equal((await getDoc(doc(admin, 'candidates', 'c'))).exists(), false)
     const ca = await read(admin, 'candidates/a'), cb = await read(admin, 'candidates/b')
@@ -722,8 +723,18 @@ describe('admin: single-use tokens ×3', () => {
     await castVote(b, 'b', 'c', 'up', 1, 1)
     await castVote(a, 'a', 'b', 'up', 1, 1)
     const admin = dbAs(ADMIN)
+    await kickWorker(90000)
     await deleteAccount(admin, ADMIN.uid, 'c')
     assert.equal((await getDoc(doc(admin, 'candidates', 'c'))).exists(), false)
+  })
+  test('delete account: a person with many votes (several batches of them)', async () => {
+    const people = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+    const dbsP: Record<string, Firestore> = {}
+    for (const p of people) dbsP[p] = await signUp(p)
+    for (const x of people) for (const y of people) if (x !== y && (x === 'c' || y === 'c')) await castVote(dbsP[x], x, y, 'up', 1, 1)
+    await kickWorker(90000)
+    await deleteAccount(dbAs(ADMIN), ADMIN.uid, 'c')
+    assert.equal((await getDoc(doc(dbAs(ADMIN), 'candidates', 'c'))).exists(), false)
   })
   test('refused: regular users deleting accounts', async () => {
     await signUp('a'); const b = await signUp('b')

@@ -1454,6 +1454,17 @@ service cloud.firestore {
       }
     }
 
+    // ---- account deletion requests: the admin asks, the worker does it (deletions/{uid}, one request per account)
+    match /deletions/{uid} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() && uid != request.auth.uid
+        && request.resource.data.keys().hasOnly(['target', 'by', 'at', 'status'])
+        && request.resource.data.target == uid && request.resource.data.by == request.auth.uid
+        && request.resource.data.at == request.time && request.resource.data.status == 'queued'
+        && (resource == null || resource.data.status in ['done', 'failed']);
+      allow delete: if false;
+    }
+
     // ---- Spotify picks for you: recs/{uid} is written by the worker only; each person reads their own
     match /recs/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
