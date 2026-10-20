@@ -146,6 +146,54 @@ try {
   check(aAfter.json.fields?.bonus?.integerValue === '50', 'Granted points landed', 'Granted points missing', aAfter.json.fields?.bonus)
   const replay = await commit(adm.token, grantWrites())
   check(replay.status === 403, 'Replaying used tokens is refused', `Replaying used tokens was NOT refused (${replay.status})`)
+
+  // ---- 계정 삭제 (관리 탭): exactly what the app does — 3 verified tokens, one batch with the lock and deletions/{uid},
+  // then the worker deletes the account. First, A's own vote for B (so rolling it back can be seen on B's tally).
+  docs.push(`votes/${a.uid}_${b.uid}`)
+  const aVotesB = await commit(a.token, [
+    update(`candidates/${b.uid}`, { up: 1, down: 0, score: 1, earned: 10 }, ['up', 'down', 'score', 'earned']),
+    upVote(a.uid, b.uid, 1),
+  ])
+  check(aVotesB.ok, 'Setup: A voted for B (to be rolled back with A)', `Setup vote A→B was refused (${aVotesB.status})`, aVotesB.json)
+
+  const delPayload = { target: a.uid }
+  const delTokens = []
+  for (const seq of [1, 2, 3]) {
+    const id = randomId(); delTokens.push(id); docs.push(`adminTokens/${id}`)
+    const r = await commit(adm.token, [{ ...withServerTime(update(`adminTokens/${id}`, { uid: adm.uid, action: 'deleteAccount', payload: delPayload, seq, used: false }), 'createdAt'), currentDocument: { exists: false } }])
+    if (!check(r.ok, `Deletion token ${seq}/3 issued`, `Deletion token ${seq} was refused (${r.status})`, r.json)) throw 0
+  }
+  docs.push(`deletions/${a.uid}`, `banned/${a.uid}`)
+  const delReq = await commit(adm.token, [
+    withServerTime(update('meta/adminLock', { by: adm.uid, action: 'deleteAccount', payload: delPayload, tokens: delTokens }), 'at'),
+    ...delTokens.map(t => update(`adminTokens/${t}`, { used: true }, ['used'])),
+    withServerTime(update(`deletions/${a.uid}`, { target: a.uid, by: adm.uid, status: 'queued' }), 'at'),
+  ])
+  if (!check(delReq.ok, 'Admin deletion request (3 tokens + lock + deletions doc) goes through', `The admin's deletion request was refused (${delReq.status})`, delReq.json)) throw 0
+
+  const regularDelete = await commit(b.token, [{ delete: `${dbRoot}/candidates/${a.uid}` }])
+  check(regularDelete.status === 403 || regularDelete.status === 404 || regularDelete.status === 400, 'A regular user can’t delete someone else’s account doc', `A regular user deleted someone else's doc (${regularDelete.status})`)
+
+  // The worker (a long-running job) picks the request up; give it time, then look at the result.
+  let status = 'queued', detail = null
+  for (let i = 0; i < 40 && status === 'queued'; i++) {
+    await new Promise(r => setTimeout(r, 3000))
+    const d = await call(`${fsApi}/${dbRoot}/deletions/${a.uid}`, { headers: bearer(adm.token) })
+    status = d.json?.fields?.status?.stringValue ?? 'missing'
+    detail = d.json?.fields?.error?.stringValue
+  }
+  if (status === 'queued') warn('The worker did not process the deletion request within 2 minutes (it may be restarting); the rules accepted the request.')
+  else if (check(status === 'done', 'Worker deleted the account', `The worker could not delete the account: ${status} ${detail ?? ''}`)) {
+    const gone = await call(`${fsApi}/${dbRoot}/candidates/${a.uid}?key=${apiKey}`)
+    check(gone.status === 404, 'Their leaderboard entry is gone', `Their leaderboard entry is still there (${gone.status})`)
+    const bRead = await call(`${fsApi}/${dbRoot}/candidates/${b.uid}?key=${apiKey}`)
+    check(bRead.json.fields?.up?.integerValue === '0' && bRead.json.fields?.score?.integerValue === '0', 'Their vote for B was taken back (B’s tally back to 0)', 'B’s tally still has A’s vote', bRead.json.fields)
+    const vGone = await call(`${fsApi}/${dbRoot}/votes/${a.uid}_${b.uid}`, { headers: bearer(adm.token) })
+    const vRecv = await call(`${fsApi}/${dbRoot}/votes/${b.uid}_${a.uid}`, { headers: bearer(adm.token) })
+    check(vGone.status === 404 && vRecv.status === 404, 'Votes they cast and received are gone', `Votes remain (${vGone.status}/${vRecv.status})`)
+    const ban = await call(`${fsApi}/${dbRoot}/banned/${a.uid}`, { headers: bearer(adm.token) })
+    check(ban.ok, 'They are banned from re-joining', `No ban doc (${ban.status})`)
+  }
 } catch (e) {
   if (e !== 0) { failed = String(e); console.log('::error::Smoke test crashed: ' + e) }
 } finally {
