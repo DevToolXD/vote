@@ -115,8 +115,16 @@ async function writeBoard() {
 const plain = v => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && typeof x.toMillis === 'function' ? { __ms: x.toMillis() } : x))
 let rtRows = new Map(), rtExtra = '', rtAt = 0, rtDirty = true
 const RT_HEARTBEAT_MS = 10 * 60_000
+// What is really in the database is looked at now and then (and at once after an account is deleted): a row left by an earlier
+// worker, by a write that failed, or for a doc deleted behind the worker's back would otherwise stay on the ranking for good.
+const RT_SYNC_MS = 2 * 60_000
+let rtSyncAt = 0
 async function writeRtBoard() {
   rtDirty = false
+  if (Date.now() - rtSyncAt >= RT_SYNC_MS) {
+    rtRows = new Map(Object.entries((await rdb.ref('board/rows').once('value')).val() ?? {}))
+    rtSyncAt = Date.now()
+  }
   const next = new Map(boardRows().map(r => [r.id, plain(r)]))
   const up = {}
   for (const [id, j] of next) if (rtRows.get(id) !== j) up[`rows/${id}`] = j
@@ -652,36 +660,56 @@ async function wipePerson(id) {
   })
   return failed
 }
+// Votes they cast are taken back (each candidate's tallies with them, for the current season), then the votes on them go.
+async function rollbackVotes(id) {
+  const cur = (await fdb.doc('meta/season').get()).get('number') ?? 1
+  for (const v of (await fdb.collection('votes').where('uid', '==', id).get()).docs) {
+    await fdb.runTransaction(async tx => {
+      const vs = await tx.get(v.ref)
+      if (!vs.exists) return
+      const vote = vs.data(), cRef = fdb.doc(`candidates/${vote.candidateId}`)
+      const c = vote.candidateId && vote.candidateId !== id ? await tx.get(cRef) : null
+      const ups = vote.season === cur ? vote.ups ?? 0 : 0, downs = vote.season === cur ? vote.downs ?? 0 : 0
+      if (c?.exists && (ups || downs)) {
+        const up = (c.get('up') ?? 0) - ups, down = (c.get('down') ?? 0) - downs
+        tx.update(cRef, { up, down, score: up - down })
+      }
+      tx.delete(v.ref)
+    })
+  }
+  const received = await fdb.collection('votes').where('candidateId', '==', id).get()
+  for (let i = 0; i < received.docs.length; i += 400) {
+    const b = fdb.batch()
+    for (const d of received.docs.slice(i, i + 400)) b.delete(d.ref)
+    await b.commit()
+  }
+}
+const banned_mark = id => fdb.doc(`banned/${id}`).update({ wiped: true }).catch(() => {})
+// Accounts deleted before everything of theirs was wiped (or by the old in-app deletion) get the same clean-up once:
+// their leftovers (ranking rows, chats, wallet, history …) go. Marked banned/{uid}.wiped when done.
+let bannedSweepAt = 0
+async function bannedSweep() {
+  if (Date.now() - bannedSweepAt < 30 * 60_000) return
+  bannedSweepAt = Date.now()
+  for (const b of (await fdb.collection('banned').get()).docs) {
+    if (b.get('wiped')) continue
+    const id = b.id
+    await rollbackVotes(id).catch(e => warn(`Old votes of ${id}: ${e.message}`))
+    const left = await wipePerson(id)
+    await rdb.ref(`board/rows/${id}`).remove().catch(() => {})
+    if (!left.length) await banned_mark(id)
+    notice(`Cleaned up what was left of the deleted account ${id}${left.length ? ' (not everything: ' + left.join(', ') + ')' : ''}.`)
+  }
+}
 const deletionQueue = new Set()
 async function deletionsTick() {
   for (const id of [...deletionQueue]) {
     deletionQueue.delete(id)
     const ref = fdb.doc(`deletions/${id}`)
     try {
-      const cur = (await fdb.doc('meta/season').get()).get('number') ?? 1
-      const cast = await fdb.collection('votes').where('uid', '==', id).get()
-      for (const v of cast.docs) {
-        await fdb.runTransaction(async tx => {
-          const vs = await tx.get(v.ref)
-          if (!vs.exists) return
-          const vote = vs.data(), cRef = fdb.doc(`candidates/${vote.candidateId}`)
-          const c = vote.candidateId && vote.candidateId !== id ? await tx.get(cRef) : null
-          const ups = vote.season === cur ? vote.ups ?? 0 : 0, downs = vote.season === cur ? vote.downs ?? 0 : 0
-          if (c?.exists && (ups || downs)) {
-            const up = (c.get('up') ?? 0) - ups, down = (c.get('down') ?? 0) - downs
-            tx.update(cRef, { up, down, score: up - down })
-          }
-          tx.delete(v.ref)
-        })
-      }
+      await rollbackVotes(id)
       const undone = await undoMoney(id)
       const notWiped = await wipePerson(id)
-      const received = await fdb.collection('votes').where('candidateId', '==', id).get()
-      for (let i = 0; i < received.docs.length; i += 400) {
-        const b = fdb.batch()
-        for (const d of received.docs.slice(i, i + 400)) b.delete(d.ref)
-        await b.commit()
-      }
       await fdb.doc(`candidates/${id}`).delete()
       await fdb.doc(`banned/${id}`).set({ at: FieldValue.serverTimestamp(), by: (await ref.get()).get('by') ?? '' })
       // their login goes too, at once (the hourly sweep of banned/ would leave it working for up to an hour)
@@ -690,6 +718,9 @@ async function deletionsTick() {
         if (del.ok && !del.json?.errors?.length) await fdb.doc(`banned/${id}`).update({ authDeleted: true })
         else warn(`Removing the login of ${id} failed (${del.status}); the hourly sweep will retry.`)
       }
+      await rdb.ref(`board/rows/${id}`).remove().catch(() => {})
+      candidates.delete(id); rtSyncAt = 0; rtDirty = boardDirty = true // the ranking drops them now, whatever the listeners say
+      await banned_mark(id)
       await ref.update({ status: 'done', doneAt: FieldValue.serverTimestamp(), ...(notWiped.length ? { leftovers: notWiped.join(',') } : {}) })
       notice(`Account ${id} deleted.${undone ? ' Rolled back: ' + undone : ''}`)
     } catch (e) {
@@ -1719,9 +1750,10 @@ while (true) {
   await playTick().catch(e => warn('Listens failed: ' + e.message))
   await recsTick().catch(e => warn('Picks failed: ' + e.message))
   await deletionsTick().catch(e => warn('Deletions failed: ' + e.message))
+  await bannedSweep().catch(e => warn('Clean-up of deleted accounts failed: ' + e.message))
   await fillCoinOrders()
   await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
-  if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })
+  if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS || Date.now() - rtSyncAt >= RT_SYNC_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })
   if ((boardDirty && Date.now() - boardWrittenAt >= BOARD_MIN_MS) || Date.now() - boardWrittenAt > BOARD_HEARTBEAT_MS) await writeBoard().catch(e => warn('Writing the board failed: ' + e.message))
   if (!migrated && Date.now() >= nextMigration) { nextMigration = Date.now() + 30 * 60_000; migrated = await migrateChats().catch(e => { warn('Moving chats failed (will retry): ' + e.message); return false }) }
   if (resetsPending) { resetsPending = false; await passwordResets() }

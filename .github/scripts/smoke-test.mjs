@@ -210,6 +210,11 @@ try {
     const r = await call(`${fsApi}/${dbRoot}/${d}`, { method: 'DELETE', headers: admin })
     if (!r.ok && r.status !== 404) leftovers.push(`${d} (${r.status})`)
   }
+  // the test accounts were on the live ranking (the Realtime Database board) while they existed: take their rows off it too
+  try {
+    const rtToken = await getAccessToken(key, 'https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/firebase.database')
+    for (const u of users) await call(`https://${projectId}-default-rtdb.asia-southeast1.firebasedatabase.app/board/rows/${u.uid}.json`, { method: 'DELETE', headers: { Authorization: `Bearer ${rtToken}` } })
+  } catch (e) { leftovers.push('ranking rows (' + e + ')') }
   for (const u of users) {
     if (u.gone) continue
     const r = await call(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${apiKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: u.token }) })
