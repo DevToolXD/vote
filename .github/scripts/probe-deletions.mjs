@@ -17,7 +17,7 @@ for (const d of dels) notice(`deletion ${d.name.split('/').pop()} ${JSON.stringi
 const lock = await call(`${root}/meta/adminLock`, { headers: H })
 notice(`adminLock ${lock.ok ? JSON.stringify(plain(lock.json.fields)) : lock.status}`)
 const banned = await list('banned', 20)
-for (const b of banned) notice(`banned ${b.name.split('/').pop()} ${JSON.stringify(plain(b.fields))}`)
+for (const b of banned.slice(0,0)) notice(`banned ${b.name.split('/').pop()} ${JSON.stringify(plain(b.fields))}`)
 const tokens = await list('adminTokens', 20)
 notice(`adminTokens (first 20): ${tokens.length}, used=${tokens.filter(t => t.fields?.used?.booleanValue).length}, actions=${[...new Set(tokens.map(t => t.fields?.action?.stringValue))].join(',')}`)
 
@@ -34,7 +34,7 @@ const ids = [...new Set([...dels.map(d => d.name.split('/').pop()), ...banned.ma
 const boardRt = await rt('board/rows')
 const boardFs = await call(`${root}/meta/board`, { headers: H })
 const fsRows = (boardFs.json?.fields?.rows?.arrayValue?.values ?? []).map(v => v.mapValue?.fields?.id?.stringValue)
-notice(`board: RTDB rows ${Object.keys(boardRt ?? {}).length}, Firestore rows ${fsRows.length}`)
+warn(`board: RTDB rows ${Object.keys(boardRt ?? {}).length}, Firestore rows ${fsRows.length}`)
 for (const id of ids.slice(0, 8)) {
   const cand = await call(`${root}/candidates/${id}`, { headers: H })
   const lk = await call(`https://identitytoolkit.googleapis.com/v1/projects/${project}/accounts:lookup`, { method: 'POST', headers: H, body: JSON.stringify({ localId: [id] }) })
@@ -44,7 +44,7 @@ for (const id of ids.slice(0, 8)) {
     homework: await count('homework', 'uid', id), comments: await count('comments', 'uid', id),
     wallet: !!(await rt(`wallets/${id}`)), userChats: !!(await rt(`userChats/${id}`)), ledger: !!(await rt(`ledger/${id}`)),
   }
-  notice(`leftovers ${id}: ${JSON.stringify(parts)}`)
+  warn(`leftovers ${id}: ${JSON.stringify(parts)}`)
 }
 const season = await call(`${root}/meta/season`, { headers: H })
-notice(`season.last.top ids: ${JSON.stringify((season.json?.fields?.last?.mapValue?.fields?.top?.arrayValue?.values ?? []).map(v => v.mapValue?.fields?.id?.stringValue))}`)
+warn(`season.last.top ids: ${JSON.stringify((season.json?.fields?.last?.mapValue?.fields?.top?.arrayValue?.values ?? []).map(v => v.mapValue?.fields?.id?.stringValue))}`)
