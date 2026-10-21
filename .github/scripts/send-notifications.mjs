@@ -588,6 +588,70 @@ async function undoMoney(id) {
   await fdb.recursiveDelete(fdb.doc(`banks/${id}`)).catch(() => {})
   return Object.entries(done).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(', ')
 }
+// Everything else of theirs goes too, so nothing is left in the ranking, the feeds, the chats or the wallets. Every step is
+// separate (one failing doesn't stop the rest); returns the names of the steps that failed.
+async function wipePerson(id) {
+  const failed = []
+  const step = async (name, fn) => { try { await fn() } catch (e) { failed.push(name); warn(`Wiping ${name} of ${id} failed: ${e.message}`) } }
+  const gone = (q, rec) => async () => { for (const d of (await q.get()).docs) rec ? await fdb.recursiveDelete(d.ref) : await d.ref.delete() }
+  // posts (with their comments and views), 문서, songs and their listens, bets, orders, devices, access records
+  await step('posts', gone(fdb.collection('posts').where('uid', '==', id), true))
+  await step('homework', gone(fdb.collection('homework').where('uid', '==', id), true))
+  await step('songs', async () => {
+    for (const sg of (await fdb.collection('songs').where('uid', '==', id).get()).docs) {
+      await gone(fdb.collection('songPlays').where('vid', '==', sg.id))()
+      await sg.ref.delete()
+    }
+  })
+  await step('listens', gone(fdb.collection('songPlays').where('uid', '==', id)))
+  await step('bets', gone(fdb.collection('gambles').where('uid', '==', id)))
+  await step('orders', gone(fdb.collection('coinOrders').where('uid', '==', id)))
+  await step('devices', gone(fdb.collection('pushTokens').where('uid', '==', id)))
+  await step('addresses', gone(fdb.collection('ips').where('uid', '==', id)))
+  await step('comments', async () => {
+    // their comments on other people's posts and 문서
+    try { await gone(fdb.collectionGroup('comments').where('uid', '==', id))() } catch {
+      for (const col of ['posts', 'homework']) for (const d of (await fdb.collection(col).select().get()).docs) await gone(d.ref.collection('comments').where('uid', '==', id))()
+    }
+  })
+  for (const [name, path] of [['settings', `settings/${id}`], ['support', `support/${id}`], ['access', `userIps/${id}`], ['noticeReads', `noticeReads/${id}`], ['resets', `pwResets/${id}`], ['picks', `recs/${id}`]]) {
+    await step(name, () => fdb.recursiveDelete(fdb.doc(path)))
+  }
+  // last season's podium and the season results
+  await step('seasons', async () => {
+    const sRef = fdb.doc('meta/season')
+    await fdb.runTransaction(async tx => {
+      const sd = await tx.get(sRef), top = sd.get('last.top')
+      if (Array.isArray(top) && top.some(t => t.id === id)) tx.update(sRef, { 'last.top': top.filter(t => t.id !== id) })
+    })
+    for (const r of (await fdb.collection('seasonResults').get()).docs) {
+      const paid = r.get('paid')
+      if (Array.isArray(paid) && paid.some(x => x.id === id || x.uid === id)) await r.ref.update({ paid: paid.filter(x => x.id !== id && x.uid !== id) })
+    }
+  })
+  // Realtime Database: their wallet, positions, history, flags, and every chat they were in
+  await step('wallet', async () => {
+    for (const root of ['wallets', 'positions', 'ledger', 'ledgerState', 'alerts', 'perks', 'reads', 'here', 'msgOff', 'scheduled', 'status', 'phone', 'callIn']) await rdb.ref(`${root}/${id}`).remove()
+    const feed = (await rdb.ref('ledgerFeed').once('value')).val() ?? {}
+    const mine = Object.entries(feed).filter(([, e]) => e && (e.uid === id || e.u === id)).map(([k]) => [k, null])
+    if (mine.length) await rdb.ref('ledgerFeed').update(Object.fromEntries(mine))
+  })
+  await step('chats', async () => {
+    const mine = Object.keys((await rdb.ref(`userChats/${id}`).once('value')).val() ?? {})
+    for (const c of mine) {
+      if (c.includes('_')) { // a 1:1 chat goes away for both
+        const other = c.split('_').find(u => u !== id)
+        await Promise.all([rdb.ref(`chats/${c}`).remove(), rdb.ref(`msgs/${c}`).remove(), rdb.ref(`chatPhotos/${c}`).remove(), other ? rdb.ref(`userChats/${other}/${c}`).remove() : null])
+      } else { // a group: they leave and their messages go
+        const msgs = (await rdb.ref(`msgs/${c}`).once('value')).val() ?? {}
+        const upd = Object.fromEntries(Object.entries(msgs).filter(([, m]) => m?.uid === id).map(([k]) => [`msgs/${c}/${k}`, null]))
+        await rdb.ref().update({ ...upd, [`chats/${c}/members/${id}`]: null, [`chats/${c}/mutes/${id}`]: null, [`chats/${c}/timeouts/${id}`]: null })
+      }
+    }
+    await rdb.ref(`userChats/${id}`).remove()
+  })
+  return failed
+}
 const deletionQueue = new Set()
 async function deletionsTick() {
   for (const id of [...deletionQueue]) {
@@ -611,6 +675,7 @@ async function deletionsTick() {
         })
       }
       const undone = await undoMoney(id)
+      const notWiped = await wipePerson(id)
       const received = await fdb.collection('votes').where('candidateId', '==', id).get()
       for (let i = 0; i < received.docs.length; i += 400) {
         const b = fdb.batch()
@@ -625,7 +690,7 @@ async function deletionsTick() {
         if (del.ok && !del.json?.errors?.length) await fdb.doc(`banned/${id}`).update({ authDeleted: true })
         else warn(`Removing the login of ${id} failed (${del.status}); the hourly sweep will retry.`)
       }
-      await ref.update({ status: 'done', doneAt: FieldValue.serverTimestamp() })
+      await ref.update({ status: 'done', doneAt: FieldValue.serverTimestamp(), ...(notWiped.length ? { leftovers: notWiped.join(',') } : {}) })
       notice(`Account ${id} deleted.${undone ? ' Rolled back: ' + undone : ''}`)
     } catch (e) {
       warn(`Deleting ${id} failed: ${e.message}`)
