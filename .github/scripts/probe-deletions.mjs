@@ -1,5 +1,9 @@
 // Read-only diagnostics: what happened to the admin's account deletions (deletions/*), the last admin lock, and recent bans.
-import { call, getAccessToken, loadServiceAccount, notice, warn } from './lib/google.mjs'
+import { call, getAccessToken, loadServiceAccount, notice, warn as warn1 } from './lib/google.mjs'
+// Annotations are capped per step, so everything goes out as one multi-line warning at the end.
+const lines = []
+const warn = m => lines.push(m)
+process.on('exit', () => { if (lines.length) warn1(lines.join('%0A')) })
 
 const key = loadServiceAccount()
 const root = `https://firestore.googleapis.com/v1/projects/${key.project_id}/databases/(default)/documents`
