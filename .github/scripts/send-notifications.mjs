@@ -558,6 +558,36 @@ let seasonEndsAt = null
 // Deleting an account (the admin's 계정 삭제, asked for in deletions/{uid}): done here with full rights, one account at a time.
 // Each vote they cast is taken back in a transaction (its candidate's tallies with it), then the votes on them, their entry,
 // and the ban; the request ends as 'done' (or 'failed' with the reason), so the admin's screen can say which.
+// Everything the person did with other people's points is undone, so nobody is left better or worse off through an account that's gone:
+//  - 선물 they sent that nobody took: cancelled;  that someone took: the points are taken back from that person
+//  - 선물 for them (not taken yet): cancelled and the sender gets the held points back;  taken by them: the sender gets them back
+//  - 당근마켓 listings of theirs: taken down
+// (Their own coins, stocks, bank and points go away with the account.) Returns a short text of what was undone.
+async function undoMoney(id) {
+  const done = { cancelled: 0, takenBack: 0, refunded: 0, listings: 0 }
+  const change = async (uid, fn) => fdb.runTransaction(async tx => {
+    const r = fdb.doc(`candidates/${uid}`), c = await tx.get(r)
+    if (c.exists) tx.update(r, fn(c.data()))
+  })
+  const cancel = g => g.ref.update({ status: 'cancelled', doneAt: FieldValue.serverTimestamp() })
+  const refund = (g, d) => d.from && d.from !== id && change(d.from, c => ({ spent: Math.max(0, (c.spent ?? 0) - d.amount) })).then(() => done.refunded++)
+  for (const g of (await fdb.collection('gifts').where('from', '==', id).get()).docs) {
+    const d = g.data()
+    if (d.status === 'open') { await cancel(g); done.cancelled++ }
+    else if (d.status === 'claimed' && !d.itemKind && d.claimedBy && d.claimedBy !== id) {
+      await change(d.claimedBy, c => ({ bonus: (c.bonus ?? 0) - d.amount })); done.takenBack++
+    }
+  }
+  for (const g of (await fdb.collection('gifts').where('to', '==', id).where('status', '==', 'open').get()).docs) {
+    await cancel(g); await refund(g, g.data()); done.cancelled++
+  }
+  for (const g of (await fdb.collection('gifts').where('claimedBy', '==', id).get()).docs) await refund(g, g.data())
+  for (const m of (await fdb.collection('market').where('seller', '==', id).where('status', '==', 'open').get()).docs) {
+    await m.ref.update({ status: 'cancelled', doneAt: FieldValue.serverTimestamp() }); done.listings++
+  }
+  await fdb.recursiveDelete(fdb.doc(`banks/${id}`)).catch(() => {})
+  return Object.entries(done).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(', ')
+}
 const deletionQueue = new Set()
 async function deletionsTick() {
   for (const id of [...deletionQueue]) {
@@ -580,6 +610,7 @@ async function deletionsTick() {
           tx.delete(v.ref)
         })
       }
+      const undone = await undoMoney(id)
       const received = await fdb.collection('votes').where('candidateId', '==', id).get()
       for (let i = 0; i < received.docs.length; i += 400) {
         const b = fdb.batch()
@@ -589,7 +620,7 @@ async function deletionsTick() {
       await fdb.doc(`candidates/${id}`).delete()
       await fdb.doc(`banned/${id}`).set({ at: FieldValue.serverTimestamp(), by: (await ref.get()).get('by') ?? '' })
       await ref.update({ status: 'done', doneAt: FieldValue.serverTimestamp() })
-      notice(`Account ${id} deleted.`)
+      notice(`Account ${id} deleted.${undone ? ' Rolled back: ' + undone : ''}`)
     } catch (e) {
       warn(`Deleting ${id} failed: ${e.message}`)
       await ref.update({ status: 'failed', error: String(e.message ?? e).slice(0, 200) }).catch(() => {})

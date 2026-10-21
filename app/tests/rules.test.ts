@@ -1112,6 +1112,33 @@ describe('포인트 선물', () => {
     await assert.rejects(cancelGift(a, 'a', gid)) // already taken
     assert.equal(await points(a, 'a'), 80)
   })
+  const giftIds = async (db: Firestore, id: string) => (Object.values((await rt(db, `msgs/${id}`)) ?? {}) as { giftId?: string }[]).map(m => m.giftId).filter(Boolean) as string[]
+  test('delete account: gifts they took or were sent are paid back to the senders; their open ones are cancelled', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const c = await signUp('c'); const admin = dbAs(ADMIN)
+    for (const u of ['a', 'b', 'c']) await grantPoints(admin, ADMIN.uid, u, 500)
+    const ab = await openDm(a, 'a', 'b'), bc = await openDm(b, 'b', 'c')
+    await sendGift(a, 'a', await chatOf(a, ab), 120)           // a → b, taken by b
+    await claimGift(b, 'b', (await giftIds(a, ab))[0])
+    await sendGift(b, 'b', await chatOf(b, bc), 70)            // b → c, nobody took it
+    await sendGift(c, 'c', await chatOf(c, bc), 30)            // c → b, b hasn't taken it
+    assert.equal(await points(a, 'a'), 380); assert.equal(await points(c, 'c'), 470)
+    await kickWorker(90000)
+    await deleteAccount(admin, ADMIN.uid, 'b')
+    assert.equal(await points(a, 'a'), 500)
+    assert.equal(await points(c, 'c'), 500)
+    for (const gid of [...await giftIds(c, bc)]) assert.notEqual((await getDoc(doc(c, 'gifts', gid))).data()!.status, 'open')
+  })
+  test('delete account: points they gave away are taken back from the one who took them', async () => {
+    const a = await signUp('a'); const b = await signUp('b'); const admin = dbAs(ADMIN)
+    await grantPoints(admin, ADMIN.uid, 'a', 500)
+    const ab = await openDm(a, 'a', 'b')
+    await sendGift(a, 'a', await chatOf(a, ab), 120)
+    await claimGift(b, 'b', (await giftIds(a, ab))[0])
+    assert.equal(await points(b, 'b'), 120)
+    await kickWorker(90000)
+    await deleteAccount(admin, ADMIN.uid, 'a')
+    assert.equal(await points(b, 'b'), 0)
+  })
   test('최대속도 3배 패스: 500P, once, exactly that price', async () => {
     const a = await signUp('a'); const admin = dbAs(ADMIN)
     await assert.rejects(buyPass(a, 'a', 'passSpeed')) // 0P
