@@ -193,6 +193,12 @@ try {
     check(vGone.status === 404 && vRecv.status === 404, 'Votes they cast and received are gone', `Votes remain (${vGone.status}/${vRecv.status})`)
     const ban = await call(`${fsApi}/${dbRoot}/banned/${a.uid}`, { headers: bearer(adm.token) })
     check(ban.ok, 'They are banned from re-joining', `No ban doc (${ban.status})`)
+    const login = await call(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: a.email, password: 'smoke-test-pw-123', returnSecureToken: true }),
+    })
+    a.gone = !login.ok
+    check(!login.ok, 'Their login no longer works (removed at once, not hours later)', 'The deleted account can still log in', login.json?.error?.message)
   }
 } catch (e) {
   if (e !== 0) { failed = String(e); console.log('::error::Smoke test crashed: ' + e) }
@@ -205,6 +211,7 @@ try {
     if (!r.ok && r.status !== 404) leftovers.push(`${d} (${r.status})`)
   }
   for (const u of users) {
+    if (u.gone) continue
     const r = await call(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${apiKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: u.token }) })
     if (!r.ok) leftovers.push(`auth user ${u.uid} (${r.status})`)
   }

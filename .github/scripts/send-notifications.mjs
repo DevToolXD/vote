@@ -619,6 +619,12 @@ async function deletionsTick() {
       }
       await fdb.doc(`candidates/${id}`).delete()
       await fdb.doc(`banned/${id}`).set({ at: FieldValue.serverTimestamp(), by: (await ref.get()).get('by') ?? '' })
+      // their login goes too, at once (the hourly sweep of banned/ would leave it working for up to an hour)
+      if (!LOCAL) {
+        const del = await call(`${AUTH}/v1/projects/${project}/accounts:batchDelete`, { method: 'POST', headers: await headers(), body: JSON.stringify({ localIds: [id], force: true }) })
+        if (del.ok && !del.json?.errors?.length) await fdb.doc(`banned/${id}`).update({ authDeleted: true })
+        else warn(`Removing the login of ${id} failed (${del.status}); the hourly sweep will retry.`)
+      }
       await ref.update({ status: 'done', doneAt: FieldValue.serverTimestamp() })
       notice(`Account ${id} deleted.${undone ? ' Rolled back: ' + undone : ''}`)
     } catch (e) {
