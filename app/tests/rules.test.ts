@@ -759,6 +759,12 @@ describe('admin: single-use tokens ×3', () => {
     assert.equal(await (await fetch(`${RTDB}/${`chats/${id}`}.json?ns=${RTDB_NS}`, { headers: { Authorization: 'Bearer owner' } })).json(), null)
     assert.equal(await (await fetch(`${RTDB}/${`userChats/a/${id}`}.json?ns=${RTDB_NS}`, { headers: { Authorization: 'Bearer owner' } })).json(), null)
     assert.equal((await getDoc(doc(admin, 'candidates', 'a'))).exists(), true)
+    // the ranking tab reads the Realtime Database board first: their row must be gone from it (and a's still there)
+    const board = async () => (await (await fetch(`${RTDB}/board/rows.json?ns=${RTDB_NS}`, { headers: { Authorization: 'Bearer owner' } })).json()) as Record<string, string> | null
+    for (let i = 0; i < 15 && (await board())?.c; i++) await new Promise(r => setTimeout(r, 1000))
+    const rows = await board()
+    assert.ok(rows?.a, 'a is on the live board')
+    assert.equal(rows?.c, undefined, 'the deleted person is gone from the live board')
   })
   test('refused: regular users deleting accounts', async () => {
     await signUp('a'); const b = await signUp('b')

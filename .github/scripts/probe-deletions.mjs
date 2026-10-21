@@ -48,3 +48,16 @@ for (const id of ids.slice(0, 8)) {
 }
 const season = await call(`${root}/meta/season`, { headers: H })
 warn(`season.last.top ids: ${JSON.stringify((season.json?.fields?.last?.mapValue?.fields?.top?.arrayValue?.values ?? []).map(v => v.mapValue?.fields?.id?.stringValue))}`)
+
+const at = await rt('board/at')
+warn(`RTDB board/at = ${at} (${at ? Math.round((Date.now() - at) / 1000) + 's ago' : 'none'}); extra length ${String(await rt('board/extra') ?? '').length}`)
+for (const id of ids.slice(0, 8)) {
+  const row = boardRt?.[id]
+  if (row) warn(`RTDB row ${id}: ${String(row).slice(0, 260)}`)
+}
+const names = Object.values(boardRt ?? {}).map(j => { try { const r = JSON.parse(j); return `${r.name}:${r.id.slice(0, 5)}:${r.score}` } catch { return '?' } })
+warn(`RTDB rows: ${names.join(' | ')}`)
+const fsNames = (boardFs.json?.fields?.rows?.arrayValue?.values ?? []).map(v => v.mapValue?.fields?.name?.stringValue + ':' + v.mapValue?.fields?.id?.stringValue?.slice(0, 5))
+warn(`Firestore rows: ${fsNames.join(' | ')}`)
+const bts = boardFs.json?.fields?.at?.timestampValue
+warn(`Firestore board at ${bts}`)
