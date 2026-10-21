@@ -193,6 +193,14 @@ try {
     check(vGone.status === 404 && vRecv.status === 404, 'Votes they cast and received are gone', `Votes remain (${vGone.status}/${vRecv.status})`)
     const ban = await call(`${fsApi}/${dbRoot}/banned/${a.uid}`, { headers: bearer(adm.token) })
     check(ban.ok, 'They are banned from re-joining', `No ban doc (${ban.status})`)
+    // the ranking tab reads the Realtime Database board: their row must be off it (this is what "삭제했는데 랭킹에 그대로" was)
+    const rtTok = await getAccessToken(key, 'https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/firebase.database')
+    const rtUrl = `https://${projectId}-default-rtdb.asia-southeast1.firebasedatabase.app`
+    const rowOf = id => call(`${rtUrl}/board/rows/${id}.json`, { headers: { Authorization: `Bearer ${rtTok}` } })
+    const rowA = await rowOf(a.uid)
+    check(rowA.ok && rowA.json === null, 'Their row is gone from the live ranking', 'The deleted account is still on the live ranking', rowA.json)
+    const rowB = await rowOf(b.uid)
+    notice(`(B's row is ${rowB.json ? 'on' : 'not on'} the ranking, as expected while B still exists)`)
     const login = await call(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: a.email, password: 'smoke-test-pw-123', returnSecureToken: true }),

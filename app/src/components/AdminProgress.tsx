@@ -15,7 +15,7 @@ export function AdminProgressOverlay({ label, p }: { label: string; p: AdminProg
           ))}
         </div>
         <span style={css('font-size:14px;line-height:21px;color:#6b7684')}>
-          보안 토큰 확인 {p.verified}/3{p.batches > 1 ? ` · 묶음 ${p.batch}/${p.batches}` : ''}
+          {p.waiting ? '확인 끝! 서버가 그 사람의 데이터를 지우는 중이에요 (보통 몇 초, 길면 1분쯤 걸려요)' : `보안 토큰 확인 ${p.verified}/3${p.batches > 1 ? ` · 묶음 ${p.batch}/${p.batches}` : ''}`}
         </span>
       </div>
     </div>

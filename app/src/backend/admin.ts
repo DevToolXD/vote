@@ -32,7 +32,7 @@ export const ADMIN_EMAIL = 'admin@vote.local'
 export const isAdminEmail = (email: string | null | undefined) => email === ADMIN_EMAIL
 
 export type AdminAction = 'revokeItem' | 'grantPoints' | 'setSeasonName' | 'seasonReset' | 'deleteAccount' | 'renameUser' | 'resetPassword' | 'postNotice' | 'seasonConfig' | 'tradeBan' | 'ipSet'
-export type AdminProgress = { batch: number; batches: number; verified: number }
+export type AdminProgress = { batch: number; batches: number; verified: number; /** the request is in; the server is doing the work */ waiting?: boolean }
 
 /** Keep each batch's rule evaluation well under Firestore's per-request document-access limit. */
 const WRITES_PER_BATCH = 8
@@ -243,6 +243,7 @@ export async function deleteAccount(db: Firestore, adminUid: string, target: str
   await runAdminOp(db, adminUid, 'deleteAccount', { target }, [
     b => { b.set(ref, { target, by: adminUid, at: serverTimestamp(), status: 'queued' }); return 1 },
   ], onProgress)
+  onProgress?.({ batch: 1, batches: 1, verified: 3, waiting: true })
   await new Promise<void>((resolve, reject) => {
     let stop = () => {}
     const timer = setTimeout(() => { stop(); reject(new Error('deletion-queued')) }, 180_000)
