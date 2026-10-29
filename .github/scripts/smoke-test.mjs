@@ -203,7 +203,10 @@ try {
   a.gone = !login.ok
   if (status !== 'queued') check(!login.ok, 'Their login no longer works (removed at once, not hours later)', 'The deleted account can still log in', login.json?.error?.message)
   if (status !== 'queued' && check(status === 'done', 'Worker deleted the account', `The worker could not delete the account: ${status} ${detail ?? ''}`)) {
-    notice(`Deleting an account took ${((Date.now() - asked) / 1000).toFixed(1)} s (from the request to done)`)
+    // how long it took, from the request to done: kept in one doc (overwritten each run) for the probe to read, and checked
+    const took = Date.now() - asked
+    check(took < 60_000, 'Deleting an account takes under a minute', `Deleting an account took ${(took / 1000).toFixed(1)} s`)
+    await call(`${fsApi}/${dbRoot}/meta/smokeDeletion?updateMask.fieldPaths=ms&updateMask.fieldPaths=at`, { method: 'PATCH', headers: asAdmin, body: JSON.stringify({ fields: fields({ ms: took, at: new Date() }) }) })
     const postGone = await call(`${fsApi}/${dbRoot}/posts/${postA}`, { headers: asAdmin })
     check(postGone.status === 404, 'Their post is gone', `Their post is still there (${postGone.status})`)
     const postKept = await call(`${fsApi}/${dbRoot}/posts/${postB}`, { headers: asAdmin })

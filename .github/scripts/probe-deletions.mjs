@@ -77,3 +77,6 @@ warn(`Firestore board at ${bts}`)
     warn(`${col}: ${r.ok ? r.json.filter(x => x.document).length : r.status} documents (${Date.now() - t1} ms to list their names)`)
   }
 }
+
+const sd = await call(`${root}/meta/smokeDeletion`, { headers: H })
+warn(`smoke test: deleting an account took ${sd.json?.fields?.ms?.integerValue ?? '?'} ms (last run ${sd.json?.fields?.at?.timestampValue ?? '?'})`)
