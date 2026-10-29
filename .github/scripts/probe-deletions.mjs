@@ -80,3 +80,15 @@ warn(`Firestore board at ${bts}`)
 
 const sd = await call(`${root}/meta/smokeDeletion`, { headers: H })
 warn(`smoke test: deleting an account took ${sd.json?.fields?.ms?.integerValue ?? '?'} ms (last run ${sd.json?.fields?.at?.timestampValue ?? '?'})`)
+
+// ---- the banned accounts that still have votes or no clean-up mark ----
+{
+  const all = await list('banned', 300)
+  const open = all.filter(b => !b.fields?.wiped?.booleanValue)
+  warn(`banned: ${all.length} accounts, ${open.length} without the clean-up mark`)
+  for (const b of all.slice(0, 40)) {
+    const id = b.name.split('/').pop()
+    const v = await count('votes', 'uid', id)
+    if (v || !b.fields?.wiped?.booleanValue) warn(`banned ${id}: wiped=${!!b.fields?.wiped?.booleanValue} authDeleted=${!!b.fields?.authDeleted?.booleanValue} at=${b.fields?.at?.timestampValue ?? '?'} votes=${v}`)
+  }
+}
