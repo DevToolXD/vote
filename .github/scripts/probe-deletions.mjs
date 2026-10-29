@@ -65,3 +65,15 @@ const fsNames = (boardFs.json?.fields?.rows?.arrayValue?.values ?? []).map(v => 
 warn(`Firestore rows: ${fsNames.join(' | ')}`)
 const bts = boardFs.json?.fields?.at?.timestampValue
 warn(`Firestore board at ${bts}`)
+
+// ---- why deleting is slow: the comments query and how much the fallback would read ----
+{
+  const t0 = Date.now()
+  const cg = await call(`${root}:runQuery`, { method: 'POST', headers: H, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'comments', allDescendants: true }], where: { fieldFilter: { field: { fieldPath: 'uid' }, op: 'EQUAL', value: { stringValue: 'nobody' } } }, limit: 1 } }) })
+  warn(`comments collection-group query: ${cg.status} ${cg.ok ? 'ok' : JSON.stringify(cg.json).slice(0, 500)} (${Date.now() - t0} ms)`)
+  for (const col of ['posts', 'homework']) {
+    const t1 = Date.now()
+    const r = await call(`${root}:runQuery`, { method: 'POST', headers: H, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: col }], select: { fields: [{ fieldPath: '__name__' }] } } }) })
+    warn(`${col}: ${r.ok ? r.json.filter(x => x.document).length : r.status} documents (${Date.now() - t1} ms to list their names)`)
+  }
+}
