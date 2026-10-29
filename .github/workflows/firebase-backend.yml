@@ -45,7 +45,13 @@ jobs:
           java-version: 21
       - name: Rules tests (emulator)
         working-directory: app
-        run: npm ci --prefix ../.github/scripts --no-audit --no-fund && npm ci && npm run test:rules
+        run: |
+          npm ci --prefix ../.github/scripts --no-audit --no-fund && npm ci
+          status=0
+          npm run test:rules 2>&1 | tee "$RUNNER_TEMP/rules.log" || status=$?
+          # the failing tests as annotations (the log itself is not readable from outside)
+          grep -E "^ *not ok|^# (pass|fail) " "$RUNNER_TEMP/rules.log" | sed -E 's/^ */::error::/' || true
+          exit $status
       - name: Deploy Firestore rules
         run: node .github/scripts/deploy-firestore-rules.mjs
       - name: Realtime Database (chat) and its rules
