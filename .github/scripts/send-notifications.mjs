@@ -573,6 +573,7 @@ let seasonEndsAt = null
 const deletionQueue = new Set()
 const inDeletion = new Set()
 let deletionRunning = null
+let sweepRunning = null
 let bannedSweepAt = 0
 let indexWarned = false
 const INDEX_LINK = 'https://console.firebase.google.com/v1/r/project/popular-vote-eda0a/firestore/indexes?create_exemption=ClRwcm9qZWN0cy9wb3B1bGFyLXZvdGUtZWRhMGEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2NvbW1lbnRzL2ZpZWxkcy91aWQQAhoHCgN1aWQQAQ'
@@ -1784,6 +1785,8 @@ let nextCodeCheck = Date.now() + 10 * 60_000, nextRules = Date.now() + 60 * 60_0
 while (true) {
   // a deletion runs beside the rest (nothing else should hold it up); the worker doesn't stop while one is running
   if (deletionQueue.size && !deletionRunning) deletionRunning = deletionsTick().catch(e => warn('Deletions failed: ' + e.message)).finally(() => { deletionRunning = null })
+  // the clean-up of deleted accounts runs beside the rest too (it can take a while, and must never hold a deletion up)
+  if (!sweepRunning && Date.now() - bannedSweepAt >= 30 * 60_000) sweepRunning = bannedSweep().catch(e => warn('Clean-up of deleted accounts failed: ' + e.message)).finally(() => { sweepRunning = null })
   const due = Date.now() - SETTLE_MS
   let sentUpTo = 0
   for (const [id, e] of chatEvents) {
@@ -1821,7 +1824,6 @@ while (true) {
   await homeTick().catch(e => warn('Hearts failed: ' + e.message))
   await playTick().catch(e => warn('Listens failed: ' + e.message))
   await recsTick().catch(e => warn('Picks failed: ' + e.message))
-  await bannedSweep().catch(e => warn('Clean-up of deleted accounts failed: ' + e.message))
   await fillCoinOrders()
   await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
   if (rtDirty || Date.now() - rtAt > RT_HEARTBEAT_MS || Date.now() - rtSyncAt >= RT_SYNC_MS) await writeRtBoard().catch(e => { rtDirty = true; warn('Writing the live board failed: ' + e.message) })
@@ -1831,10 +1833,11 @@ while (true) {
   if (seasonEndsAt && Date.now() >= seasonEndsAt) { seasonEndsAt = null; await endSeasonIfDue().catch(e => warn('Season end check failed: ' + e)) }
   if (Date.now() >= nextRules && !LOCAL) { nextRules = Date.now() + 60 * 60_000; await rulesCheck() }
   if (Date.now() >= nextCodeCheck) { nextCodeCheck = Date.now() + 5 * 60_000; if (await newerCodeOnMain()) { notice('Newer code on main; handing over to a fresh run.'); break } }
-  if (Date.now() - started + TICK_MS > RUN_FOR_MS && !chatEvents.size && !voteEvents.length && !supportEvents.size && !deletionRunning) break
+  if (Date.now() - started + TICK_MS > RUN_FOR_MS && !chatEvents.size && !voteEvents.length && !supportEvents.size && !deletionRunning && !sweepRunning) break
   await new Promise(res => setTimeout(res, TICK_MS))
 }
 if (deletionRunning) await deletionRunning
+if (sweepRunning) await sweepRunning
 listeners.forEach(stop => stop())
 chatsRef.off(); hereRef.off(); readsRef.off()
 await adminApp.delete?.().catch?.(() => {})
