@@ -58,6 +58,8 @@ jobs:
         run: node .github/scripts/migrate-votes.mjs
       - name: Check Authentication settings
         run: node .github/scripts/setup-auth.mjs
+      - name: Comments searchable by person (deleting an account needs it)
+        run: node .github/scripts/ensure-indexes.mjs
       - name: End-to-end smoke test
         run: node .github/scripts/smoke-test.mjs
       - name: Make sure the background worker is running

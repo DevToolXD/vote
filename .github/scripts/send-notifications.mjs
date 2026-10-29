@@ -563,170 +563,222 @@ let resetsPending = false
 let seasonEndsAt = null
 
 // (declared before the listeners, which can fire while the rest of the file is still starting)
-// Deleting an account (the admin's 계정 삭제, asked for in deletions/{uid}): done here with full rights, one account at a time.
-// Each vote they cast is taken back in a transaction (its candidate's tallies with it), then the votes on them, their entry,
-// and the ban; the request ends as 'done' (or 'failed' with the reason), so the admin's screen can say which.
-// Everything the person did with other people's points is undone, so nobody is left better or worse off through an account that's gone:
-//  - 선물 they sent that nobody took: cancelled;  that someone took: the points are taken back from that person
-//  - 선물 for them (not taken yet): cancelled and the sender gets the held points back;  taken by them: the sender gets them back
-//  - 당근마켓 listings of theirs: taken down
-// (Their own coins, stocks, bank and points go away with the account.) Returns a short text of what was undone.
-async function undoMoney(id) {
-  const done = { cancelled: 0, takenBack: 0, refunded: 0, listings: 0 }
-  const change = async (uid, fn) => fdb.runTransaction(async tx => {
-    const r = fdb.doc(`candidates/${uid}`), c = await tx.get(r)
-    if (c.exists) tx.update(r, fn(c.data()))
-  })
-  const cancel = g => g.ref.update({ status: 'cancelled', doneAt: FieldValue.serverTimestamp() })
-  const refund = (g, d) => d.from && d.from !== id && change(d.from, c => ({ spent: Math.max(0, (c.spent ?? 0) - d.amount) })).then(() => done.refunded++)
-  for (const g of (await fdb.collection('gifts').where('from', '==', id).get()).docs) {
-    const d = g.data()
-    if (d.status === 'open') { await cancel(g); done.cancelled++ }
-    else if (d.status === 'claimed' && !d.itemKind && d.claimedBy && d.claimedBy !== id) {
-      await change(d.claimedBy, c => ({ bonus: (c.bonus ?? 0) - d.amount })); done.takenBack++
+// Deleting an account (the admin's 계정 삭제, asked for in deletions/{uid}), in this order, so it's quick and nothing stays usable:
+//  1. banned/{uid} (no new account under this id) and the login: they can't use the app from this moment on;
+//  2. the ranking: the leaderboard entry and its row on the live board, so they're gone from it at once;
+//  3. the rest, several steps at a time: their votes taken back (tallies too), the points they moved put back, every doc of theirs;
+//  4. the 선물 docs, once the points are back.
+// The request ends as 'done' (or 'failed' with the reason), so the admin's screen can say which. Every step can be run again
+// (after a failure, a crash or a restart), and money that's been put back is marked, so it's never moved twice.
+const deletionQueue = new Set()
+const inDeletion = new Set()
+let deletionRunning = null
+let bannedSweepAt = 0
+const secs = ms => (ms / 1000).toFixed(1)
+const banned_mark = id => fdb.doc(`banned/${id}`).update({ wiped: true }).catch(() => {})
+
+// Runs fn over items, `limit` at a time. After the first failure no new item is started; the failure is thrown once the running ones are done.
+async function eachLimit(items, limit, fn) {
+  let i = 0, error = null
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length && !error) {
+      try { await fn(items[i++]) } catch (e) { error ??= e }
     }
+  }))
+  if (error) throw error
+}
+// The refs of what a query matches (their data isn't read).
+const refsOf = async q => (await q.select().get()).docs.map(d => d.ref)
+// Deletes refs, 500 to a batch.
+async function deleteRefs(refs) {
+  for (let i = 0; i < refs.length; i += 500) {
+    const b = fdb.batch()
+    for (const r of refs.slice(i, i + 500)) b.delete(r)
+    await b.commit()
   }
-  for (const g of (await fdb.collection('gifts').where('to', '==', id).where('status', '==', 'open').get()).docs) {
-    await cancel(g); await refund(g, g.data()); done.cancelled++
-  }
-  for (const g of (await fdb.collection('gifts').where('claimedBy', '==', id).get()).docs) await refund(g, g.data())
-  for (const m of (await fdb.collection('market').where('seller', '==', id).where('status', '==', 'open').get()).docs) {
-    await m.ref.update({ status: 'cancelled', doneAt: FieldValue.serverTimestamp() }); done.listings++
-  }
-  await fdb.recursiveDelete(fdb.doc(`banks/${id}`)).catch(() => {})
+}
+
+// The points they moved are put back, so nobody is left better or worse off through an account that's gone:
+//  - a 선물 they sent that nobody took: cancelled;  one someone took: the points come back from that person
+//  - a 선물 for them that isn't taken yet: cancelled, and the sender gets the points back;  one they took: the sender gets them back
+//  - 당근마켓 listings of theirs: taken down (wipePerson)
+// Each gift is changed in one transaction together with the points it moves, and marked `undone`, so a repeated run never moves them twice.
+async function undoMoney(id) {
+  const done = { cancelled: 0, takenBack: 0, refunded: 0 }
+  const cand = uid => fdb.doc(`candidates/${uid}`)
+  const undoGift = ref => fdb.runTransaction(async tx => {
+    const g = await tx.get(ref)
+    if (!g.exists || g.get('undone')) return null
+    const d = g.data()
+    const cancel = d.status === 'open' && (d.from === id || d.to === id)
+    const refundTo = d.from && d.from !== id && ((d.to === id && d.status === 'open') || d.claimedBy === id) ? d.from : null
+    const takeFrom = d.from === id && d.status === 'claimed' && !d.itemKind && d.claimedBy && d.claimedBy !== id ? d.claimedBy : null
+    if (!cancel && !refundTo && !takeFrom) return null
+    const payee = refundTo ? await tx.get(cand(refundTo)) : null
+    const payer = takeFrom ? await tx.get(cand(takeFrom)) : null
+    if (payee?.exists) tx.update(cand(refundTo), { spent: Math.max(0, (payee.get('spent') ?? 0) - d.amount) })
+    if (payer?.exists) tx.update(cand(takeFrom), { bonus: (payer.get('bonus') ?? 0) - d.amount })
+    tx.update(ref, { undone: true, doneAt: FieldValue.serverTimestamp(), ...(cancel ? { status: 'cancelled' } : {}) })
+    return { cancel, refundTo, takeFrom }
+  })
+  const refs = new Map()
+  for (const f of ['from', 'to', 'claimedBy']) for (const r of await refsOf(fdb.collection('gifts').where(f, '==', id))) refs.set(r.path, r)
+  await eachLimit([...refs.values()], 8, async ref => {
+    const r = await undoGift(ref)
+    if (!r) return
+    if (r.cancel) done.cancelled++
+    if (r.refundTo) done.refunded++
+    if (r.takeFrom) done.takenBack++
+  })
   return Object.entries(done).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(', ')
 }
-// Everything else of theirs goes too, so nothing is left in the ranking, the feeds, the chats or the wallets. Every step is
-// separate (one failing doesn't stop the rest); returns the names of the steps that failed.
+// Their 선물 docs go once the points are back (so none is deleted before its money was undone).
+async function deleteGifts(id) {
+  const refs = new Map()
+  for (const f of ['from', 'to', 'claimedBy']) for (const r of await refsOf(fdb.collection('gifts').where(f, '==', id))) refs.set(r.path, r)
+  await deleteRefs([...refs.values()])
+}
+
+// Everything else of theirs goes too: nothing is left in the feeds, the chats, the wallets or last season's podium. The steps run
+// together and each one on its own (one failing doesn't stop the rest); returns the names of the steps that failed.
 async function wipePerson(id) {
   const failed = []
   const step = async (name, fn) => { try { await fn() } catch (e) { failed.push(name); warn(`Wiping ${name} of ${id} failed: ${e.message}`) } }
-  const gone = (q, rec) => async () => { for (const d of (await q.get()).docs) rec ? await fdb.recursiveDelete(d.ref) : await d.ref.delete() }
-  // posts (with their comments and views), 문서, songs and their listens, bets, orders, devices, access records
-  await step('posts', gone(fdb.collection('posts').where('uid', '==', id), true))
-  await step('homework', gone(fdb.collection('homework').where('uid', '==', id), true))
-  await step('songs', async () => {
-    for (const sg of (await fdb.collection('songs').where('uid', '==', id).get()).docs) {
-      await gone(fdb.collection('songPlays').where('vid', '==', sg.id))()
-      await sg.ref.delete()
-    }
-  })
-  await step('listens', gone(fdb.collection('songPlays').where('uid', '==', id)))
-  await step('bets', gone(fdb.collection('gambles').where('uid', '==', id)))
-  await step('orders', gone(fdb.collection('coinOrders').where('uid', '==', id)))
-  await step('devices', gone(fdb.collection('pushTokens').where('uid', '==', id)))
-  await step('addresses', gone(fdb.collection('ips').where('uid', '==', id)))
-  await step('comments', async () => {
-    // their comments on other people's posts and 문서
-    try { await gone(fdb.collectionGroup('comments').where('uid', '==', id))() } catch {
-      for (const col of ['posts', 'homework']) for (const d of (await fdb.collection(col).select().get()).docs) await gone(d.ref.collection('comments').where('uid', '==', id))()
-    }
-  })
-  for (const [name, path] of [['settings', `settings/${id}`], ['support', `support/${id}`], ['access', `userIps/${id}`], ['noticeReads', `noticeReads/${id}`], ['resets', `pwResets/${id}`], ['picks', `recs/${id}`]]) {
-    await step(name, () => fdb.recursiveDelete(fdb.doc(path)))
-  }
-  // last season's podium and the season results
-  await step('seasons', async () => {
-    const sRef = fdb.doc('meta/season')
-    await fdb.runTransaction(async tx => {
-      const sd = await tx.get(sRef), top = sd.get('last.top')
-      if (Array.isArray(top) && top.some(t => t.id === id)) tx.update(sRef, { 'last.top': top.filter(t => t.id !== id) })
-    })
-    for (const r of (await fdb.collection('seasonResults').get()).docs) {
-      const paid = r.get('paid')
-      if (Array.isArray(paid) && paid.some(x => x.id === id || x.uid === id)) await r.ref.update({ paid: paid.filter(x => x.id !== id && x.uid !== id) })
-    }
-  })
-  // Realtime Database: their wallet, positions, history, flags, and every chat they were in
-  await step('wallet', async () => {
-    for (const root of ['wallets', 'positions', 'ledger', 'ledgerState', 'alerts', 'perks', 'reads', 'here', 'msgOff', 'scheduled', 'status', 'phone', 'callIn']) await rdb.ref(`${root}/${id}`).remove()
-    const feed = (await rdb.ref('ledgerFeed').once('value')).val() ?? {}
-    const mine = Object.entries(feed).filter(([, e]) => e && (e.uid === id || e.u === id)).map(([k]) => [k, null])
-    if (mine.length) await rdb.ref('ledgerFeed').update(Object.fromEntries(mine))
-  })
-  await step('chats', async () => {
-    const mine = Object.keys((await rdb.ref(`userChats/${id}`).once('value')).val() ?? {})
-    for (const c of mine) {
-      if (c.includes('_')) { // a 1:1 chat goes away for both
-        const other = c.split('_').find(u => u !== id)
-        await Promise.all([rdb.ref(`chats/${c}`).remove(), rdb.ref(`msgs/${c}`).remove(), rdb.ref(`chatPhotos/${c}`).remove(), other ? rdb.ref(`userChats/${other}/${c}`).remove() : null])
-      } else { // a group: they leave and their messages go
-        const msgs = (await rdb.ref(`msgs/${c}`).once('value')).val() ?? {}
-        const upd = Object.fromEntries(Object.entries(msgs).filter(([, m]) => m?.uid === id).map(([k]) => [`msgs/${c}/${k}`, null]))
-        await rdb.ref().update({ ...upd, [`chats/${c}/members/${id}`]: null, [`chats/${c}/mutes/${id}`]: null, [`chats/${c}/timeouts/${id}`]: null })
+  const byUid = (col, field = 'uid') => refsOf(fdb.collection(col).where(field, '==', id))
+  await Promise.all([
+    step('posts', async () => eachLimit(await byUid('posts'), 8, r => fdb.recursiveDelete(r))), // with their comments and views
+    step('homework', async () => eachLimit(await byUid('homework'), 8, r => fdb.recursiveDelete(r))),
+    // their comments on other people's posts and 문서 (a collection-group query: it needs the comments index, see ensure-indexes.mjs)
+    step('comments', async () => deleteRefs(await refsOf(fdb.collectionGroup('comments').where('uid', '==', id)))),
+    step('songs', async () => eachLimit(await byUid('songs'), 8, async song => {
+      await deleteRefs(await refsOf(fdb.collection('songPlays').where('vid', '==', song.id)))
+      await song.delete()
+    })),
+    step('listens', async () => deleteRefs(await byUid('songPlays'))),
+    step('bets', async () => deleteRefs(await byUid('gambles'))),
+    step('orders', async () => deleteRefs(await byUid('coinOrders'))),
+    step('market', async () => deleteRefs(await byUid('market', 'seller'))),
+    step('devices', async () => deleteRefs(await byUid('pushTokens'))),
+    step('addresses', async () => deleteRefs(await byUid('ips'))),
+    step('records', () => Promise.all([`settings/${id}`, `support/${id}`, `userIps/${id}`, `noticeReads/${id}`, `pwResets/${id}`, `recs/${id}`, `banks/${id}`]
+      .map(p => fdb.recursiveDelete(fdb.doc(p))))),
+    // last season's podium, and the season results that name them
+    step('seasons', async () => {
+      const sRef = fdb.doc('meta/season')
+      await fdb.runTransaction(async tx => {
+        const top = (await tx.get(sRef)).get('last.top')
+        if (Array.isArray(top) && top.some(t => t.id === id)) tx.update(sRef, { 'last.top': top.filter(t => t.id !== id) })
+      })
+      for (const r of (await fdb.collection('seasonResults').get()).docs) {
+        const paid = r.get('paid')
+        if (Array.isArray(paid) && paid.some(x => x.id === id || x.uid === id)) await r.ref.update({ paid: paid.filter(x => x.id !== id && x.uid !== id) })
       }
-    }
-    await rdb.ref(`userChats/${id}`).remove()
-  })
+    }),
+    // Realtime Database: their wallet, positions, history, flags, and every chat they were in
+    step('wallet', async () => {
+      await Promise.all(['wallets', 'positions', 'ledger', 'ledgerState', 'alerts', 'perks', 'reads', 'here', 'msgOff', 'scheduled', 'status', 'phone', 'callIn']
+        .map(root => rdb.ref(`${root}/${id}`).remove()))
+      const feed = (await rdb.ref('ledgerFeed').once('value')).val() ?? {}
+      const mine = Object.keys(feed).filter(k => feed[k] && (feed[k].uid === id || feed[k].u === id))
+      if (mine.length) await rdb.ref('ledgerFeed').update(Object.fromEntries(mine.map(k => [k, null])))
+    }),
+    step('chats', async () => {
+      const mine = Object.keys((await rdb.ref(`userChats/${id}`).once('value')).val() ?? {})
+      await eachLimit(mine, 4, async c => {
+        if (c.includes('_')) { // a 1:1 chat goes away for both
+          const other = c.split('_').find(u => u !== id)
+          await Promise.all([rdb.ref(`chats/${c}`).remove(), rdb.ref(`msgs/${c}`).remove(), rdb.ref(`chatPhotos/${c}`).remove(), other ? rdb.ref(`userChats/${other}/${c}`).remove() : null])
+        } else { // a group: they leave and their messages go
+          const msgs = (await rdb.ref(`msgs/${c}`).once('value')).val() ?? {}
+          const upd = Object.fromEntries(Object.entries(msgs).filter(([, m]) => m?.uid === id).map(([k]) => [`msgs/${c}/${k}`, null]))
+          await rdb.ref().update({ ...upd, [`chats/${c}/members/${id}`]: null, [`chats/${c}/mutes/${id}`]: null, [`chats/${c}/timeouts/${id}`]: null })
+        }
+      })
+      await rdb.ref(`userChats/${id}`).remove()
+    }),
+  ])
   return failed
 }
 // Votes they cast are taken back (each candidate's tallies with them, for the current season), then the votes on them go.
 async function rollbackVotes(id) {
   const cur = (await fdb.doc('meta/season').get()).get('number') ?? 1
-  for (const v of (await fdb.collection('votes').where('uid', '==', id).get()).docs) {
-    await fdb.runTransaction(async tx => {
-      const vs = await tx.get(v.ref)
-      if (!vs.exists) return
-      const vote = vs.data(), cRef = fdb.doc(`candidates/${vote.candidateId}`)
-      const c = vote.candidateId && vote.candidateId !== id ? await tx.get(cRef) : null
-      const ups = vote.season === cur ? vote.ups ?? 0 : 0, downs = vote.season === cur ? vote.downs ?? 0 : 0
-      if (c?.exists && (ups || downs)) {
-        const up = (c.get('up') ?? 0) - ups, down = (c.get('down') ?? 0) - downs
-        tx.update(cRef, { up, down, score: up - down })
+  const cast = await refsOf(fdb.collection('votes').where('uid', '==', id))
+  // a vote's id is voter_candidate, so each one is its own transaction: its candidate's tallies change in the same write as the vote goes
+  await eachLimit(cast, 12, vRef => fdb.runTransaction(async tx => {
+    const vs = await tx.get(vRef)
+    if (!vs.exists) return
+    const vote = vs.data(), cRef = fdb.doc(`candidates/${vote.candidateId}`)
+    const c = vote.candidateId && vote.candidateId !== id ? await tx.get(cRef) : null
+    const ups = vote.season === cur ? vote.ups ?? 0 : 0, downs = vote.season === cur ? vote.downs ?? 0 : 0
+    if (c?.exists && (ups || downs)) {
+      const up = (c.get('up') ?? 0) - ups, down = (c.get('down') ?? 0) - downs
+      tx.update(cRef, { up, down, score: up - down })
+    }
+    tx.delete(vRef)
+  }))
+  await deleteRefs(await refsOf(fdb.collection('votes').where('candidateId', '==', id)))
+}
+// Everything of theirs, in an order that keeps the money right: votes and the points they moved first (both read the people who are left),
+// then their 선물 docs, only once the money is undone. Returns what went wrong (empty = all done) and what was undone.
+async function clearAll(id) {
+  const [votes, money, rest] = await Promise.allSettled([rollbackVotes(id), undoMoney(id), wipePerson(id)])
+  const problems = []
+  if (votes.status === 'rejected') problems.push('votes: ' + votes.reason?.message)
+  if (rest.status === 'fulfilled') problems.push(...rest.value)
+  else problems.push('wipe: ' + rest.reason?.message)
+  let undone = ''
+  if (money.status === 'fulfilled') {
+    undone = money.value
+    await deleteGifts(id).catch(e => problems.push('gifts: ' + e.message))
+  } else problems.push('money: ' + money.reason?.message)
+  return { problems, undone }
+}
+
+async function deletionsTick() {
+  for (const id of [...deletionQueue]) {
+    deletionQueue.delete(id)
+    inDeletion.add(id)
+    const ref = fdb.doc(`deletions/${id}`), t0 = Date.now(), took = {}
+    try {
+      await fdb.doc(`banned/${id}`).set({ at: FieldValue.serverTimestamp(), by: (await ref.get()).get('by') ?? '' })
+      // the login goes at once (the hourly purge of banned/ is only a backstop)
+      if (!LOCAL) {
+        const del = await call(`${AUTH}/v1/projects/${project}/accounts:batchDelete`, { method: 'POST', headers: await headers(), body: JSON.stringify({ localIds: [id], force: true }) })
+        if (del.ok && !del.json?.errors?.length) await fdb.doc(`banned/${id}`).update({ authDeleted: true })
+        else warn(`Removing the login of ${id} failed (${del.status}); the hourly purge will try again.`)
       }
-      tx.delete(v.ref)
-    })
-  }
-  const received = await fdb.collection('votes').where('candidateId', '==', id).get()
-  for (let i = 0; i < received.docs.length; i += 400) {
-    const b = fdb.batch()
-    for (const d of received.docs.slice(i, i + 400)) b.delete(d.ref)
-    await b.commit()
+      took.login = Date.now() - t0
+      // the ranking: the entry, and its row on the live board (the app reads that one first)
+      await fdb.doc(`candidates/${id}`).delete()
+      await rdb.ref(`board/rows/${id}`).remove()
+      candidates.delete(id); rtSyncAt = 0; rtDirty = boardDirty = true
+      took.ranking = Date.now() - t0
+      const { problems, undone } = await clearAll(id)
+      took.rest = Date.now() - t0
+      if (problems.length) throw new Error(problems.join('; '))
+      await banned_mark(id)
+      await ref.update({ status: 'done', doneAt: FieldValue.serverTimestamp() })
+      notice(`Account ${id} deleted in ${secs(Date.now() - t0)} s (login ${secs(took.login)} s, ranking ${secs(took.ranking)} s, the rest ${secs(took.rest)} s).${undone ? ' Rolled back: ' + undone : ''}`)
+    } catch (e) {
+      warn(`Deleting ${id} failed: ${e.message}`)
+      await ref.update({ status: 'failed', error: String(e.message ?? e).slice(0, 200) }).catch(() => {})
+    } finally {
+      inDeletion.delete(id)
+    }
   }
 }
-const banned_mark = id => fdb.doc(`banned/${id}`).update({ wiped: true }).catch(() => {})
-// Accounts deleted before everything of theirs was wiped (or by the old in-app deletion) get the same clean-up once:
-// their leftovers (ranking rows, chats, wallet, history …) go. Marked banned/{uid}.wiped when done.
-let bannedSweepAt = 0
+// Accounts deleted before everything of theirs was wiped get the same clean-up once (their leftovers: ranking rows, chats, wallet, history …).
+// Marked banned/{uid}.wiped when done. Checked every 30 minutes.
 async function bannedSweep() {
   if (Date.now() - bannedSweepAt < 30 * 60_000) return
   bannedSweepAt = Date.now()
   for (const b of (await fdb.collection('banned').get()).docs) {
-    if (b.get('wiped')) continue
     const id = b.id
-    await rollbackVotes(id).catch(e => warn(`Old votes of ${id}: ${e.message}`))
-    const left = await wipePerson(id)
+    if (b.get('wiped') || inDeletion.has(id)) continue
+    const { problems } = await clearAll(id)
     await rdb.ref(`board/rows/${id}`).remove().catch(() => {})
-    if (!left.length) await banned_mark(id)
-    notice(`Cleaned up what was left of the deleted account ${id}${left.length ? ' (not everything: ' + left.join(', ') + ')' : ''}.`)
-  }
-}
-const deletionQueue = new Set()
-async function deletionsTick() {
-  for (const id of [...deletionQueue]) {
-    deletionQueue.delete(id)
-    const ref = fdb.doc(`deletions/${id}`)
-    try {
-      await rollbackVotes(id)
-      const undone = await undoMoney(id)
-      const notWiped = await wipePerson(id)
-      await fdb.doc(`candidates/${id}`).delete()
-      await fdb.doc(`banned/${id}`).set({ at: FieldValue.serverTimestamp(), by: (await ref.get()).get('by') ?? '' })
-      // their login goes too, at once (the hourly sweep of banned/ would leave it working for up to an hour)
-      if (!LOCAL) {
-        const del = await call(`${AUTH}/v1/projects/${project}/accounts:batchDelete`, { method: 'POST', headers: await headers(), body: JSON.stringify({ localIds: [id], force: true }) })
-        if (del.ok && !del.json?.errors?.length) await fdb.doc(`banned/${id}`).update({ authDeleted: true })
-        else warn(`Removing the login of ${id} failed (${del.status}); the hourly sweep will retry.`)
-      }
-      await rdb.ref(`board/rows/${id}`).remove().catch(() => {})
-      candidates.delete(id); rtSyncAt = 0; rtDirty = boardDirty = true // the ranking drops them now, whatever the listeners say
-      await banned_mark(id)
-      await ref.update({ status: 'done', doneAt: FieldValue.serverTimestamp(), ...(notWiped.length ? { leftovers: notWiped.join(',') } : {}) })
-      notice(`Account ${id} deleted.${undone ? ' Rolled back: ' + undone : ''}`)
-    } catch (e) {
-      warn(`Deleting ${id} failed: ${e.message}`)
-      await ref.update({ status: 'failed', error: String(e.message ?? e).slice(0, 200) }).catch(() => {})
-    }
+    if (problems.length) warn(`Clean-up of ${id} is not finished: ${problems.join('; ')}`)
+    else { await banned_mark(id); notice(`Cleaned up what was left of the deleted account ${id}.`) }
   }
 }
 const listensBySong = new Map() // vid → Map(uid → secs)
@@ -1712,6 +1764,8 @@ let rounds = 0
 const TICK_MS = Number(process.env.TICK_MS ?? 1000)
 let nextCodeCheck = Date.now() + 10 * 60_000, nextRules = Date.now() + 60 * 60_000
 while (true) {
+  // a deletion runs beside the rest (nothing else should hold it up); the worker doesn't stop while one is running
+  if (deletionQueue.size && !deletionRunning) deletionRunning = deletionsTick().catch(e => warn('Deletions failed: ' + e.message)).finally(() => { deletionRunning = null })
   const due = Date.now() - SETTLE_MS
   let sentUpTo = 0
   for (const [id, e] of chatEvents) {
@@ -1749,7 +1803,6 @@ while (true) {
   await homeTick().catch(e => warn('Hearts failed: ' + e.message))
   await playTick().catch(e => warn('Listens failed: ' + e.message))
   await recsTick().catch(e => warn('Picks failed: ' + e.message))
-  await deletionsTick().catch(e => warn('Deletions failed: ' + e.message))
   await bannedSweep().catch(e => warn('Clean-up of deleted accounts failed: ' + e.message))
   await fillCoinOrders()
   await mirrorPerks().catch(e => warn('Mirroring passes failed: ' + e.message))
@@ -1760,9 +1813,10 @@ while (true) {
   if (seasonEndsAt && Date.now() >= seasonEndsAt) { seasonEndsAt = null; await endSeasonIfDue().catch(e => warn('Season end check failed: ' + e)) }
   if (Date.now() >= nextRules && !LOCAL) { nextRules = Date.now() + 60 * 60_000; await rulesCheck() }
   if (Date.now() >= nextCodeCheck) { nextCodeCheck = Date.now() + 5 * 60_000; if (await newerCodeOnMain()) { notice('Newer code on main; handing over to a fresh run.'); break } }
-  if (Date.now() - started + TICK_MS > RUN_FOR_MS && !chatEvents.size && !voteEvents.length && !supportEvents.size) break
+  if (Date.now() - started + TICK_MS > RUN_FOR_MS && !chatEvents.size && !voteEvents.length && !supportEvents.size && !deletionRunning) break
   await new Promise(res => setTimeout(res, TICK_MS))
 }
+if (deletionRunning) await deletionRunning
 listeners.forEach(stop => stop())
 chatsRef.off(); hereRef.off(); readsRef.off()
 await adminApp.delete?.().catch?.(() => {})

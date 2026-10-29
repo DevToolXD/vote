@@ -743,6 +743,7 @@ describe('admin: single-use tokens ×3', () => {
     await seed('meta/season', { number: 1, last: { mapValue: { fields: { name: str('x'), top: { arrayValue: { values: [row('c'), row('a')] } } } } } })
     await seed('posts/p1', { uid: 'c', name: '이름c', caption: 'hi', at: new Date() })
     await seed('posts/p2', { uid: 'a', name: '이름a', caption: 'keep', at: new Date() })
+    await seed('posts/p2/comments/cc1', { uid: 'c', name: '이름c', text: 'hey', at: new Date() }) // their comment on a's post
     await seed('homework/h1', { uid: 'c', title: 't', at: new Date() })
     await seed('songs/aaaaaaaaaaa', { vid: 'aaaaaaaaaaa', title: 'mine', uid: 'c', at: new Date(), plays: 0 })
     await seed('songs/bbbbbbbbbbb', { vid: 'bbbbbbbbbbb', title: 'theirs', uid: 'a', at: new Date(), plays: 0 })
@@ -753,6 +754,7 @@ describe('admin: single-use tokens ×3', () => {
     await deleteAccount(admin, ADMIN.uid, 'c')
     for (const path of ['posts/p1', 'homework/h1', 'songs/aaaaaaaaaaa']) assert.equal((await getDoc(doc(admin, path))).exists(), false, path)
     for (const path of ['posts/p2', 'songs/bbbbbbbbbbb']) assert.equal((await getDoc(doc(admin, path))).exists(), true, path) // other people's stay
+    assert.equal((await getDoc(doc(admin, 'posts/p2/comments/cc1'))).exists(), false, 'their comment on a post is gone')
     assert.deepEqual(((await read(admin, 'meta/season')).last.top as { id: string }[]).map(t => t.id), ['a'])
     assert.equal(await (await fetch(`${RTDB}/${'wallets/c'}.json?ns=${RTDB_NS}`, { headers: { Authorization: 'Bearer owner' } })).json(), null)
     assert.equal(await (await fetch(`${RTDB}/${'ledger/c'}.json?ns=${RTDB_NS}`, { headers: { Authorization: 'Bearer owner' } })).json(), null)

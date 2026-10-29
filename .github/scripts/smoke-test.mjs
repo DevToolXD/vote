@@ -156,6 +156,17 @@ try {
   ])
   check(aVotesB.ok, 'Setup: A voted for B (to be rolled back with A)', `Setup vote A→B was refused (${aVotesB.status})`, aVotesB.json)
 
+  // beyond votes, something of theirs to find: a post, and a comment of theirs on b's post (the worker must find and remove both)
+  const postA = randomId(), postB = randomId(), commentA = randomId()
+  docs.push(`posts/${postA}`, `posts/${postB}/comments/${commentA}`, `posts/${postB}`)
+  const asAdmin = bearer(await getAccessToken(key))
+  const made = await Promise.all([
+    call(`${fsApi}/${dbRoot}/posts?documentId=${postA}`, { method: 'POST', headers: asAdmin, body: JSON.stringify({ fields: fields({ uid: a.uid, name: 'Smoke A', photo: '', caption: 'smoke', likes: [], views: 0, comments: 0, at: new Date() }) }) }),
+    call(`${fsApi}/${dbRoot}/posts?documentId=${postB}`, { method: 'POST', headers: asAdmin, body: JSON.stringify({ fields: fields({ uid: b.uid, name: 'Smoke B', photo: '', caption: 'smoke', likes: [], views: 0, comments: 1, at: new Date() }) }) }),
+  ])
+  const comment = await call(`${fsApi}/${dbRoot}/posts/${postB}/comments?documentId=${commentA}`, { method: 'POST', headers: asAdmin, body: JSON.stringify({ fields: fields({ uid: a.uid, name: 'Smoke A', text: 'smoke', at: new Date() }) }) })
+  if (!check(made.every(r => r.ok) && comment.ok, 'Test post and comment made', `Test post or comment could not be made (${made.map(r => r.status)} ${comment.status})`)) throw 0
+
   const delPayload = { target: a.uid }
   const delTokens = []
   for (const seq of [1, 2, 3]) {
@@ -175,6 +186,7 @@ try {
   check(regularDelete.status === 403 || regularDelete.status === 404 || regularDelete.status === 400, 'A regular user can’t delete someone else’s account doc', `A regular user deleted someone else's doc (${regularDelete.status})`)
 
   // The worker (a long-running job) picks the request up; give it time, then look at the result.
+  const asked = Date.now()
   let status = 'queued', detail = null
   for (let i = 0; i < 40 && status === 'queued'; i++) {
     await new Promise(r => setTimeout(r, 3000))
@@ -184,6 +196,13 @@ try {
   }
   if (status === 'queued') warn('The worker did not process the deletion request within 2 minutes (it may be restarting); the rules accepted the request.')
   else if (check(status === 'done', 'Worker deleted the account', `The worker could not delete the account: ${status} ${detail ?? ''}`)) {
+    notice(`Deleting an account took ${((Date.now() - asked) / 1000).toFixed(1)} s (from the request to done)`)
+    const postGone = await call(`${fsApi}/${dbRoot}/posts/${postA}?key=${apiKey}`)
+    check(postGone.status === 404, 'Their post is gone', `Their post is still there (${postGone.status})`)
+    const postKept = await call(`${fsApi}/${dbRoot}/posts/${postB}?key=${apiKey}`)
+    check(postKept.ok, "Someone else's post stays", `Someone else's post was removed (${postKept.status})`)
+    const left = await call(`${fsApi}/${dbRoot}:runQuery`, { method: 'POST', headers: asAdmin, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'comments', allDescendants: true }], where: { fieldFilter: { field: { fieldPath: 'uid' }, op: 'EQUAL', value: { stringValue: a.uid } } } } }) })
+    check(left.ok && !left.json.some(r => r.document), 'Their comments are gone', `Their comments are still there (${left.status})`, left.json?.[0]?.error)
     const gone = await call(`${fsApi}/${dbRoot}/candidates/${a.uid}?key=${apiKey}`)
     check(gone.status === 404, 'Their leaderboard entry is gone', `Their leaderboard entry is still there (${gone.status})`)
     const bRead = await call(`${fsApi}/${dbRoot}/candidates/${b.uid}?key=${apiKey}`)

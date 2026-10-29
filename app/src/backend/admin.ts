@@ -46,19 +46,17 @@ function randomTokenId() {
 const samePayload = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 async function issueVerifiedTokens(db: Firestore, uid: string, action: AdminAction, payload: object, onVerified: (n: number) => void) {
-  const ids: string[] = []
-  for (const seq of [1, 2, 3]) {
-    const id = randomTokenId()
-    const ref = doc(db, 'adminTokens', id)
-    await setDoc(ref, { uid, action, payload, seq, used: false, createdAt: serverTimestamp() })
-    const snap = await getDoc(ref)
-    const t = snap.data()
+  // the three go out together, and are read back together: two round trips instead of six
+  const ids = [1, 2, 3].map(() => randomTokenId())
+  await Promise.all(ids.map((id, i) => setDoc(doc(db, 'adminTokens', id), { uid, action, payload, seq: i + 1, used: false, createdAt: serverTimestamp() })))
+  const snaps = await Promise.all(ids.map(id => getDoc(doc(db, 'adminTokens', id))))
+  snaps.forEach((snap, i) => {
+    const seq = i + 1, t = snap.data()
     if (!snap.exists() || t?.used !== false || t.uid !== uid || t.action !== action || t.seq !== seq || !samePayload(t.payload, payload)) {
       throw new Error(`admin-token-verification-failed-${seq}`)
     }
-    ids.push(id)
     onVerified(seq)
-  }
+  })
   return ids
 }
 
