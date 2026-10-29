@@ -8,6 +8,7 @@ const project = key.project_id
 const H = { Authorization: `Bearer ${await getAccessToken(key)}`, 'Content-Type': 'application/json' }
 const root = `https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/documents`
 const field = `https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/collectionGroups/comments/fields/uid`
+const LINK = 'https://console.firebase.google.com/v1/r/project/popular-vote-eda0a/firestore/indexes?create_exemption=ClRwcm9qZWN0cy9wb3B1bGFyLXZvdGUtZWRhMGEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2NvbW1lbnRzL2ZpZWxkcy91aWQQAhoHCgN1aWQQAQ'
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 // The same query the deletion makes; it works once the index is there.
@@ -23,8 +24,8 @@ else {
     { queryScope: 'COLLECTION', fields: [{ fieldPath: 'uid', order: 'DESCENDING' }] },
     { queryScope: 'COLLECTION_GROUP', fields: [{ fieldPath: 'uid', order: 'ASCENDING' }] },
   ] } }) })
-  if (!set.ok) warn(`Turning on the comments index failed (${set.status}): ${JSON.stringify(set.json).slice(0, 300)}`)
+  if (!set.ok) warn(`Turning on the comments index from here failed (${set.status}). Turn it on by hand, once: open ${LINK} and press Save.`)
   for (let i = 0; i < 30 && !(await works()); i++) await sleep(5000)
   if (await works()) notice('Comments are findable by person now (index turned on).')
-  else warn('The comments index is still building; deleting an account will fail until it is ready (it is retried).')
+  else warn(`The comments index is not on yet. Deleting an account still works, but searches comments post by post (slower). Turn it on once: open ${LINK} and press Save.`)
 }

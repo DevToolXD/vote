@@ -195,14 +195,21 @@ try {
     detail = d.json?.fields?.error?.stringValue
   }
   if (status === 'queued') warn('The worker did not process the deletion request within 2 minutes (it may be restarting); the rules accepted the request.')
-  else if (check(status === 'done', 'Worker deleted the account', `The worker could not delete the account: ${status} ${detail ?? ''}`)) {
+  // the login goes first, so it's checked whatever the outcome
+  const login = await call(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: a.email, password: 'smoke-test-pw-123', returnSecureToken: true }),
+  })
+  a.gone = !login.ok
+  if (status !== 'queued') check(!login.ok, 'Their login no longer works (removed at once, not hours later)', 'The deleted account can still log in', login.json?.error?.message)
+  if (status !== 'queued' && check(status === 'done', 'Worker deleted the account', `The worker could not delete the account: ${status} ${detail ?? ''}`)) {
     notice(`Deleting an account took ${((Date.now() - asked) / 1000).toFixed(1)} s (from the request to done)`)
     const postGone = await call(`${fsApi}/${dbRoot}/posts/${postA}?key=${apiKey}`)
     check(postGone.status === 404, 'Their post is gone', `Their post is still there (${postGone.status})`)
     const postKept = await call(`${fsApi}/${dbRoot}/posts/${postB}?key=${apiKey}`)
     check(postKept.ok, "Someone else's post stays", `Someone else's post was removed (${postKept.status})`)
-    const left = await call(`${fsApi}/${dbRoot}:runQuery`, { method: 'POST', headers: asAdmin, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'comments', allDescendants: true }], where: { fieldFilter: { field: { fieldPath: 'uid' }, op: 'EQUAL', value: { stringValue: a.uid } } } } }) })
-    check(left.ok && !left.json.some(r => r.document), 'Their comments are gone', `Their comments are still there (${left.status})`, left.json?.[0]?.error)
+    const commentGone = await call(`${fsApi}/${dbRoot}/posts/${postB}/comments/${commentA}?key=${apiKey}`)
+    check(commentGone.status === 404, 'Their comment on someone else’s post is gone', `Their comment is still there (${commentGone.status})`)
     const gone = await call(`${fsApi}/${dbRoot}/candidates/${a.uid}?key=${apiKey}`)
     check(gone.status === 404, 'Their leaderboard entry is gone', `Their leaderboard entry is still there (${gone.status})`)
     const bRead = await call(`${fsApi}/${dbRoot}/candidates/${b.uid}?key=${apiKey}`)
@@ -220,12 +227,6 @@ try {
     check(rowA.ok && rowA.json === null, 'Their row is gone from the live ranking', 'The deleted account is still on the live ranking', rowA.json)
     const rowB = await rowOf(b.uid)
     notice(`(B's row is ${rowB.json ? 'on' : 'not on'} the ranking, as expected while B still exists)`)
-    const login = await call(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: a.email, password: 'smoke-test-pw-123', returnSecureToken: true }),
-    })
-    a.gone = !login.ok
-    check(!login.ok, 'Their login no longer works (removed at once, not hours later)', 'The deleted account can still log in', login.json?.error?.message)
   }
 } catch (e) {
   if (e !== 0) { failed = String(e); console.log('::error::Smoke test crashed: ' + e) }

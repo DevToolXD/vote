@@ -742,7 +742,7 @@ describe('admin: single-use tokens ×3', () => {
     const row = (id: string) => ({ mapValue: { fields: { id: str(id), name: str(id) } } })
     await seed('meta/season', { number: 1, last: { mapValue: { fields: { name: str('x'), top: { arrayValue: { values: [row('c'), row('a')] } } } } } })
     await seed('posts/p1', { uid: 'c', name: '이름c', caption: 'hi', at: new Date() })
-    await seed('posts/p2', { uid: 'a', name: '이름a', caption: 'keep', at: new Date() })
+    await seed('posts/p2', { uid: 'a', name: '이름a', caption: 'keep', comments: 1, at: new Date() })
     await seed('posts/p2/comments/cc1', { uid: 'c', name: '이름c', text: 'hey', at: new Date() }) // their comment on a's post
     await seed('homework/h1', { uid: 'c', title: 't', at: new Date() })
     await seed('songs/aaaaaaaaaaa', { vid: 'aaaaaaaaaaa', title: 'mine', uid: 'c', at: new Date(), plays: 0 })

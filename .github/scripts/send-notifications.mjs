@@ -574,6 +574,8 @@ const deletionQueue = new Set()
 const inDeletion = new Set()
 let deletionRunning = null
 let bannedSweepAt = 0
+let indexWarned = false
+const INDEX_LINK = 'https://console.firebase.google.com/v1/r/project/popular-vote-eda0a/firestore/indexes?create_exemption=ClRwcm9qZWN0cy9wb3B1bGFyLXZvdGUtZWRhMGEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2NvbW1lbnRzL2ZpZWxkcy91aWQQAhoHCgN1aWQQAQ'
 const secs = ms => (ms / 1000).toFixed(1)
 const banned_mark = id => fdb.doc(`banned/${id}`).update({ wiped: true }).catch(() => {})
 
@@ -648,8 +650,16 @@ async function wipePerson(id) {
   await Promise.all([
     step('posts', async () => eachLimit(await byUid('posts'), 8, r => fdb.recursiveDelete(r))), // with their comments and views
     step('homework', async () => eachLimit(await byUid('homework'), 8, r => fdb.recursiveDelete(r))),
-    // their comments on other people's posts and 문서 (a collection-group query: it needs the comments index, see ensure-indexes.mjs)
-    step('comments', async () => deleteRefs(await refsOf(fdb.collectionGroup('comments').where('uid', '==', id)))),
+    step('comments', async () => {
+      // their comments on other people's posts and 문서: one search across all of them (needs the comments index, see ensure-indexes.mjs)
+      try { return await deleteRefs(await refsOf(fdb.collectionGroup('comments').where('uid', '==', id))) } catch (e) {
+        if (!/index/i.test(e.message ?? '')) throw e
+      }
+      // until the index is on: post by post, over the posts that have comments (the counter says which) and every 문서 (no counter there)
+      if (!indexWarned) { indexWarned = true; warn(`The comments index is not on yet, so comments are searched post by post (slower). Turn it on once: open ${INDEX_LINK} and press Save.`) }
+      const parents = [...await refsOf(fdb.collection('posts').where('comments', '>', 0)), ...await refsOf(fdb.collection('homework'))]
+      await eachLimit(parents, 8, async p => deleteRefs(await refsOf(p.collection('comments').where('uid', '==', id))))
+    }),
     step('songs', async () => eachLimit(await byUid('songs'), 8, async song => {
       await deleteRefs(await refsOf(fdb.collection('songPlays').where('vid', '==', song.id)))
       await song.delete()
