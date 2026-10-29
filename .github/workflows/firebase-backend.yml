@@ -51,7 +51,8 @@ jobs:
           status=0
           npm run test:rules 2>&1 | tee "$RUNNER_TEMP/rules.log" || status=$?
           # the failing tests as annotations (the log itself is not readable from outside)
-          grep -E -A7 "^ *not ok|^# (pass|fail) " "$RUNNER_TEMP/rules.log" | grep -E "not ok|error|expected|actual|message|pass|fail|location" | cut -c1-300 | sed -E 's/^ */::error::/' || true
+          # each failing test's report, as one annotation (its message included)
+          awk '/^ *not ok/ {on = 1; block = $0; n = 0; next} on && n < 40 {block = block "%0A" $0; n++} on && /^ *\.\.\./ {print "::error::" substr(block, 1, 1800); on = 0}' "$RUNNER_TEMP/rules.log" || true
           exit $status
       - name: Deploy Firestore rules
         run: node .github/scripts/deploy-firestore-rules.mjs

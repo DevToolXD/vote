@@ -779,7 +779,10 @@ describe('admin: single-use tokens ×3', () => {
     await seed('posts/p9', { uid: 'old', name: 'o', caption: 'left', at: new Date() })
     await put('wallets/old/BTC', 3)
     await kickWorker(60000)
-    for (let i = 0; i < 25 && ((await get('board/rows/ghost')) !== null || (await get('wallets/old')) !== null); i++) await new Promise(r => setTimeout(r, 1000))
+    // the clean-up runs its steps together: wait until all of them are done, not just the first one
+    const done = async () => (await get('board/rows/ghost')) === null && (await get('wallets/old')) === null
+      && !(await getDoc(doc(admin, 'posts', 'p9'))).exists() && (await getDoc(doc(admin, 'banned', 'old'))).data()?.wiped === true
+    for (let i = 0; i < 60 && !(await done()); i++) await new Promise(r => setTimeout(r, 1000))
     assert.equal(await get('board/rows/ghost'), null, 'ghost row removed')
     assert.ok(await get('board/rows/a'), 'real rows stay')
     assert.equal(await get('wallets/old'), null, 'old leftovers wiped')
