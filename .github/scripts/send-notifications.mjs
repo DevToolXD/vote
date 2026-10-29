@@ -1782,11 +1782,14 @@ let nextMigration = Date.now() + 30 * 60_000
 let rounds = 0
 const TICK_MS = Number(process.env.TICK_MS ?? 1000)
 let nextCodeCheck = Date.now() + 10 * 60_000, nextRules = Date.now() + 60 * 60_000
-while (true) {
-  // a deletion runs beside the rest (nothing else should hold it up); the worker doesn't stop while one is running
+// Deletions and the clean-up of deleted accounts run beside the main loop (a round of it can take seconds, and must never hold a
+// deletion up). The worker doesn't stop while one of them is running.
+function startDeletionWork() {
   if (deletionQueue.size && !deletionRunning) deletionRunning = deletionsTick().catch(e => warn('Deletions failed: ' + e.message)).finally(() => { deletionRunning = null })
-  // the clean-up of deleted accounts runs beside the rest too (it can take a while, and must never hold a deletion up)
   if (!sweepRunning && Date.now() - bannedSweepAt >= 30 * 60_000) sweepRunning = bannedSweep().catch(e => warn('Clean-up of deleted accounts failed: ' + e.message)).finally(() => { sweepRunning = null })
+}
+const deletionTimer = setInterval(startDeletionWork, 500)
+while (true) {
   const due = Date.now() - SETTLE_MS
   let sentUpTo = 0
   for (const [id, e] of chatEvents) {
@@ -1833,9 +1836,10 @@ while (true) {
   if (seasonEndsAt && Date.now() >= seasonEndsAt) { seasonEndsAt = null; await endSeasonIfDue().catch(e => warn('Season end check failed: ' + e)) }
   if (Date.now() >= nextRules && !LOCAL) { nextRules = Date.now() + 60 * 60_000; await rulesCheck() }
   if (Date.now() >= nextCodeCheck) { nextCodeCheck = Date.now() + 5 * 60_000; if (await newerCodeOnMain()) { notice('Newer code on main; handing over to a fresh run.'); break } }
-  if (Date.now() - started + TICK_MS > RUN_FOR_MS && !chatEvents.size && !voteEvents.length && !supportEvents.size && !deletionRunning && !sweepRunning) break
+  if (Date.now() - started + TICK_MS > RUN_FOR_MS && !chatEvents.size && !voteEvents.length && !supportEvents.size && !deletionQueue.size && !deletionRunning && !sweepRunning) break
   await new Promise(res => setTimeout(res, TICK_MS))
 }
+clearInterval(deletionTimer)
 if (deletionRunning) await deletionRunning
 if (sweepRunning) await sweepRunning
 listeners.forEach(stop => stop())
