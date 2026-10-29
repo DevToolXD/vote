@@ -787,6 +787,16 @@ describe('admin: single-use tokens ×3', () => {
     assert.equal((await getDoc(doc(admin, 'banned', 'old'))).data()?.wiped, true)
     assert.equal((await getDoc(doc(a, 'candidates', 'a'))).exists(), true)
   })
+  test('a vote left by a deleted account (cast before its login was taken away) is taken back, tally included', async () => {
+    const a = await signUp('a'); const admin = dbAs(ADMIN)
+    await seed('candidates/a', { up: 1, down: 0, score: 1 })
+    await seed('votes/gone_a', { uid: 'gone', candidateId: 'a', season: 1, ups: 1, downs: 0 })
+    await seed('banned/gone', { by: 'x', wiped: true })
+    await kickWorker(60000)
+    for (let i = 0; i < 25 && (await getDoc(doc(admin, 'votes', 'gone_a'))).exists(); i++) await new Promise(r => setTimeout(r, 1000))
+    assert.equal((await getDoc(doc(admin, 'votes', 'gone_a'))).exists(), false)
+    assert.deepEqual(await tally(a, 'a'), [0, 0, 0])
+  })
   test('refused: regular users deleting accounts', async () => {
     await signUp('a'); const b = await signUp('b')
     await assert.rejects(deleteAccount(b, 'b', 'a'))

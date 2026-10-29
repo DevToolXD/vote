@@ -777,14 +777,22 @@ async function deletionsTick() {
     }
   }
 }
-// Accounts deleted before everything of theirs was wiped get the same clean-up once (their leftovers: ranking rows, chats, wallet, history …).
-// Marked banned/{uid}.wiped when done. Checked every 30 minutes.
+// Every 30 minutes, for every deleted account: what is still there gets cleaned up. Accounts deleted before everything of theirs was
+// wiped get the whole clean-up once (their leftovers: ranking rows, chats, wallet, history …), marked banned/{uid}.wiped. Accounts
+// already wiped are checked for votes only: a vote cast before their login was taken away would still count for others.
 async function bannedSweep() {
   if (Date.now() - bannedSweepAt < 30 * 60_000) return
   bannedSweepAt = Date.now()
   for (const b of (await fdb.collection('banned').get()).docs) {
     const id = b.id
-    if (b.get('wiped') || inDeletion.has(id)) continue
+    if (inDeletion.has(id)) continue
+    if (b.get('wiped')) {
+      if ((await refsOf(fdb.collection('votes').where('uid', '==', id).limit(1))).length) {
+        await rollbackVotes(id).catch(e => warn(`Taking back the votes of ${id} failed: ${e.message}`))
+        notice(`Took back votes left by the deleted account ${id}.`)
+      }
+      continue
+    }
     const { problems } = await clearAll(id)
     await rdb.ref(`board/rows/${id}`).remove().catch(() => {})
     if (problems.length) warn(`Clean-up of ${id} is not finished: ${problems.join('; ')}`)
