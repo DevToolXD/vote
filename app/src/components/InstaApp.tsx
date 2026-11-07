@@ -3,6 +3,7 @@ import { LazyImg, useNear } from './LazyImg'
 import { slowNet } from '../net'
 import type { Firestore } from 'firebase/firestore'
 import { css } from '../css'
+import { LinkText } from './LinkText'
 import { Avatar as ProfilePic } from './Avatar'
 import { InstaMessages } from './InstaMessages'
 import { isUnread, type ChatRow } from '../backend/messages'
@@ -248,7 +249,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
               <LazyImg src={p.photo} style={css('display:block;width:100%;aspect-ratio:1/1;object-fit:cover;background:#f2f2f2')} />
             </button>
             <div style={css('padding:10px 14px 0')}>{actions(p, () => setDetail(p.id))}</div>
-            {p.caption && <p style={css('margin:8px 14px 0;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}><b>{nameOf(who, p.uid, p.name)}</b> {p.caption}</p>}
+            {p.caption && <p style={css('margin:8px 14px 0;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}><b>{nameOf(who, p.uid, p.name)}</b> <LinkText text={p.caption} /></p>}
           </article>
         ))}
         {more && ranked && ranked.length > 0 && <MoreSentinel key={`${liveKey}${older.length}`} onNear={loadMore} />}
@@ -365,7 +366,7 @@ export const InstaApp = memo(function InstaApp({ db, uid, me, chats, byId, isAdm
             </div>
             <img src={open.photo} alt="" style={css('display:block;width:100%;max-height:70vh;object-fit:contain;background:#000')} />
             <div style={css('padding:12px 14px 0')}>{actions(open, () => undefined)}</div>
-            {open.caption && <p style={css('margin:8px 14px 12px;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}><b>{nameOf(who, open.uid, open.name)}</b> {open.caption}</p>}
+            {open.caption && <p style={css('margin:8px 14px 12px;font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word')}><b>{nameOf(who, open.uid, open.name)}</b> <LinkText text={open.caption} /></p>}
             <Comments db={db} post={open} uid={uid} name={name} who={who} isAdmin={isAdmin} onToast={onToast} />
           </div>
         </div>
@@ -411,7 +412,7 @@ function Reel({ db, uid, who, post, onLike, onComment }: { db: Firestore | null;
       </div>
       <div style={css('position:absolute;left:14px;right:70px;bottom:104px;color:#fff;display:flex;flex-direction:column;gap:8px')}>
         <span style={css('display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700')}><Pic who={who} uid={post.uid} name={post.name} size={34} ring />{nameOf(who, post.uid, post.name)}</span>
-        {post.caption && <span style={css('font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word;max-height:80px;overflow:hidden')}>{post.caption}</span>}
+        {post.caption && <span style={css('font-size:14px;line-height:20px;white-space:pre-wrap;word-break:break-word;max-height:80px;overflow:hidden')}><LinkText text={post.caption} /></span>}
       </div>
     </div>
   )

@@ -8,6 +8,7 @@ import { MAX_GIFT, giftPrice, hasGift, itemLabel, subscribeGift, type Gift, type
 import { PASSES } from './ShopScreen'
 import { FRAMES, LEGENDARY, SKIN_SERIES, skinGeom } from '../data'
 import { Nameplate } from './Nameplate'
+import { LinkText } from './LinkText'
 import { TowerSkin } from './TowerSkin'
 import { saveImage } from '../saveImage'
 import { useKeyboardRoom } from '../keyboardRoom'
@@ -869,7 +870,7 @@ const MessageItem = memo(function MessageItem({ m, mine, first, last, day, isNew
             <span style={sx('font-size:13px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px', { color: mine ? 'rgba(255,255,255,0.85)' : '#4e5968', fontWeight: 400 })}>{m.replyTo.text}</span>
           </button>
         )}
-        <span>{m.text}</span>
+        <span><LinkText text={m.text} mine={mine} /></span>
         {last && <Tail mine={mine} color={mine ? '#66cb66' : '#e9e9eb'} />}
       </span>
   return (

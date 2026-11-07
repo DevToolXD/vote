@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { Firestore } from 'firebase/firestore'
 import { css, imageCss } from '../css'
 import { Avatar } from './Avatar'
+import { LinkText } from './LinkText'
 import { fileToChatImage } from '../backend/image'
 import { HEARTBEAT_MS, MAX_TEXT, isUnread, loadImage, markGone, markHere, mergeMessages, noteRead, openDm, sendImage, sendMessage, subscribeMessages, type ChatRow, type MessageRow } from '../backend/messages'
 import type { Person } from '../model'
@@ -247,7 +248,7 @@ const DmRow = memo(function DmRow({ db, chatId, m, mine, first, last, time, name
         <span style={css('max-width:72%;display:flex;flex-direction:column;gap:2px;' + (mine ? 'align-items:flex-end' : 'align-items:flex-start'))}>
           {!mine && first && name && <span style={css('font-size:11px;color:#8e8e93;padding-left:4px')}>{name}</span>}
           {m.kind === 'image' ? <Photo db={db} chatId={chatId} m={m} /> : (
-            <span style={mine ? BUBBLE_MINE : BUBBLE_THEIRS}>{m.kind === 'gift' || m.kind === 'fake' ? `🎁 ${m.text || '포인트 선물'}` : m.text}</span>
+            <span style={mine ? BUBBLE_MINE : BUBBLE_THEIRS}>{m.kind === 'gift' || m.kind === 'fake' ? `🎁 ${m.text || '포인트 선물'}` : <LinkText text={m.text} mine={mine} />}</span>
           )}
         </span>
       </div>
